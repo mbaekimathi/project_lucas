@@ -281,7 +281,9 @@
 
     <!-- Main Content -->
     <main class="min-h-screen lg:ml-64 transition-all duration-300">
-        {% block content %}{% endblock %}
+        <div class="w-full">
+            {% block content %}{% endblock %}
+        </div>
     </main>
 
     <!-- Footer -->

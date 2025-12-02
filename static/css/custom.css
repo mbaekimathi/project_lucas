@@ -299,6 +299,25 @@ html {
     transform: translateY(0);
 }
 
+/* Content spacing adjustments for sidebar */
+main {
+    @apply bg-gray-50 dark:bg-gray-900;
+}
+
+main > div {
+    min-height: calc(100vh - 4rem);
+}
+
+/* Section spacing improvements */
+section {
+    @apply py-12 lg:py-16;
+}
+
+/* Container max-width adjustments */
+.container {
+    @apply max-w-7xl;
+}
+
 /* Hero Section */
 .hero-gradient {
     background: linear-gradient(135deg, #1C6DD0 0%, #10B981 100%);

@@ -35,6 +35,14 @@ DB_CONFIG = {
     'charset': 'utf8mb4',
     'cursorclass': DictCursor
 }
+DB_CONFIG = {
+    'host': os.getenv('DB_HOST', 'localhost'),
+    'user': os.getenv('DB_USER', 'root'),
+    'password': os.getenv('DB_PASSWORD', ''),
+    'database': os.getenv('DB_NAME', 'school'),
+    'charset': 'utf8mb4',
+    'cursorclass': DictCursor
+}
 
 def ensure_database_exists():
     """Ensure the database exists, create it if it doesn't"""
