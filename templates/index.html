@@ -4,9 +4,8 @@
 
 {% block content %}
 <!-- Hero Section -->
-<section class="hero-gradient text-white py-20 lg:py-32 relative overflow-hidden">
-    <div class="absolute inset-0 bg-black opacity-20"></div>
-    <!-- Animated Background Elements -->
+<section class="bg-gradient-to-r from-primary via-blue-600 to-blue-700 text-white py-20 lg:py-32 relative overflow-hidden">
+    <div class="absolute inset-0 bg-black opacity-10"></div>
     <div class="absolute inset-0 overflow-hidden">
         <div class="absolute top-20 left-10 w-72 h-72 bg-white opacity-10 rounded-full blur-3xl animate-pulse"></div>
         <div class="absolute bottom-20 right-10 w-96 h-96 bg-white opacity-10 rounded-full blur-3xl animate-pulse" style="animation-delay: 1s;"></div>
@@ -14,31 +13,31 @@
     <div class="container mx-auto px-4 lg:px-8 relative z-10">
         <div class="max-w-5xl mx-auto text-center fade-in-section">
             <div class="mb-8">
-                <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
-                    <i class="fas fa-graduation-cap text-6xl text-white"></i>
+                <div class="inline-block p-6 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6 shadow-2xl">
+                    <i class="fas fa-graduation-cap text-7xl text-white"></i>
                 </div>
             </div>
-            <h1 class="text-5xl md:text-7xl font-extrabold mb-6 animate-fade-in text-white leading-tight">
+            <h1 class="text-5xl md:text-7xl font-extrabold mb-6 text-white leading-tight">
                 Welcome to Modern School
             </h1>
-            <div class="w-24 h-1 bg-white mx-auto mb-8"></div>
+            <div class="w-32 h-1.5 bg-white mx-auto mb-8 rounded-full"></div>
             <p class="text-2xl md:text-3xl mb-6 text-gray-100 font-light tracking-wide">
                 Excellence in Education, Empowering Future Leaders
             </p>
-            <p class="text-lg md:text-xl mb-10 text-gray-200 max-w-2xl mx-auto leading-relaxed">
+            <p class="text-lg md:text-xl mb-10 text-gray-200 max-w-3xl mx-auto leading-relaxed">
                 A premier educational institution committed to nurturing young minds through innovative teaching methods and holistic development.
             </p>
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="{{ url_for('admissions') }}" class="bg-white text-primary px-8 py-4 rounded-lg font-semibold hover:bg-gray-50 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                <a href="{{ url_for('admissions') }}" class="bg-white text-primary px-8 py-4 rounded-xl font-semibold hover:bg-gray-50 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
                     <i class="fas fa-graduation-cap"></i>
                     Apply Now
                     <i class="fas fa-arrow-right ml-1"></i>
                 </a>
-                <a href="{{ url_for('donate') }}" class="border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                <a href="{{ url_for('donate') }}" class="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
                     <i class="fas fa-heart"></i>
                     Donate
                 </a>
-                <a href="{{ url_for('contact') }}" class="border-2 border-white text-white px-8 py-4 rounded-lg font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
+                <a href="{{ url_for('contact') }}" class="border-2 border-white text-white px-8 py-4 rounded-xl font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 flex items-center justify-center gap-2">
                     <i class="fas fa-envelope"></i>
                     Contact Us
                 </a>
@@ -53,145 +52,89 @@
 </section>
 
 <!-- Quick Navigation -->
-<section class="py-20 bg-white dark:bg-gray-900">
+<section class="py-16 bg-white dark:bg-gray-800">
     <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-16 fade-in-section">
-            <h2 class="text-4xl md:text-5xl font-bold mb-4 text-gray-900 dark:text-white">Quick Access</h2>
-            <div class="w-20 h-1 bg-primary mx-auto mb-4"></div>
+        <div class="text-center mb-12 fade-in-section">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">Quick Navigation</h2>
             <p class="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">Navigate to key sections instantly</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <a href="{{ url_for('admissions') }}" class="group bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-primary transform hover:-translate-y-2">
-                <div class="w-20 h-20 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                    <i class="fas fa-graduation-cap text-white text-3xl"></i>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            <a href="{{ url_for('programs') }}" class="group bg-gradient-to-br from-primary to-blue-600 text-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-book text-3xl"></i>
                 </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900 dark:text-white">Admissions</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">Start your educational journey with us. Apply today and join our community of learners.</p>
-                <span class="text-primary font-semibold inline-flex items-center gap-2 group-hover:gap-3 transition-all">
-                    Learn More
-                    <i class="fas fa-arrow-right"></i>
-                </span>
+                <h3 class="text-2xl font-bold mb-3">Our Programs</h3>
+                <p class="text-blue-100">Explore our comprehensive academic programs from nursery to secondary education.</p>
+                <div class="mt-4 flex items-center text-sm font-semibold">
+                    Learn More <i class="fas fa-arrow-right ml-2 group-hover:translate-x-2 transition-transform"></i>
+                </div>
             </a>
             
-            <a href="{{ url_for('programs') }}" class="group bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-secondary transform hover:-translate-y-2">
-                <div class="w-20 h-20 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                    <i class="fas fa-book text-white text-3xl"></i>
+            <a href="{{ url_for('admissions') }}" class="group bg-gradient-to-br from-secondary to-green-600 text-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-graduation-cap text-3xl"></i>
                 </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900 dark:text-white">Programs</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">Explore our comprehensive academic programs designed for excellence and innovation.</p>
-                <span class="text-secondary font-semibold inline-flex items-center gap-2 group-hover:gap-3 transition-all">
-                    View Programs
-                    <i class="fas fa-arrow-right"></i>
-                </span>
+                <h3 class="text-2xl font-bold mb-3">Admissions</h3>
+                <p class="text-green-100">Start your educational journey with us. Apply now for the upcoming academic year.</p>
+                <div class="mt-4 flex items-center text-sm font-semibold">
+                    Apply Now <i class="fas fa-arrow-right ml-2 group-hover:translate-x-2 transition-transform"></i>
+                </div>
             </a>
             
-            <a href="{{ url_for('events') }}" class="group bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-primary transform hover:-translate-y-2">
-                <div class="w-20 h-20 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                    <i class="fas fa-calendar-alt text-white text-3xl"></i>
+            <a href="{{ url_for('news') }}" class="group bg-gradient-to-br from-purple-500 to-purple-700 text-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-white bg-opacity-20 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-newspaper text-3xl"></i>
                 </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900 dark:text-white">Events</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">Stay updated with our latest school activities, workshops, and community events.</p>
-                <span class="text-primary font-semibold inline-flex items-center gap-2 group-hover:gap-3 transition-all">
-                    View Events
-                    <i class="fas fa-arrow-right"></i>
-                </span>
+                <h3 class="text-2xl font-bold mb-3">News & Events</h3>
+                <p class="text-purple-100">Stay updated with the latest news, events, and announcements from our school.</p>
+                <div class="mt-4 flex items-center text-sm font-semibold">
+                    Read More <i class="fas fa-arrow-right ml-2 group-hover:translate-x-2 transition-transform"></i>
+                </div>
             </a>
         </div>
     </div>
 </section>
 
 <!-- About Preview -->
-<section class="py-20 bg-gray-50 dark:bg-gray-800">
+<section class="py-16 bg-gray-50 dark:bg-gray-900">
     <div class="container mx-auto px-4 lg:px-8">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center fade-in-section max-w-7xl mx-auto">
             <div>
-                <div class="inline-block mb-6">
-                    <span class="text-sm font-semibold text-primary uppercase tracking-wider">About Us</span>
-                </div>
-                <h2 class="text-4xl md:text-5xl font-bold mb-6 text-gray-900 dark:text-white leading-tight">
-                    About Our School
-                </h2>
-                <div class="w-16 h-1 bg-primary mb-8"></div>
+                <span class="text-sm font-semibold text-primary uppercase tracking-wider">About Us</span>
+                <h2 class="text-4xl md:text-5xl font-bold mb-6 mt-4 text-gray-900 dark:text-white">Excellence in Education Since Our Foundation</h2>
+                <div class="w-20 h-1 bg-primary mb-6"></div>
                 <p class="text-lg text-gray-700 dark:text-gray-300 mb-6 leading-relaxed">
-                    Modern School is dedicated to providing quality education that prepares students for success in an ever-changing world. We combine traditional values with innovative teaching methods to create a comprehensive learning experience.
+                    Modern School has been a beacon of educational excellence, providing quality education that shapes future leaders. Our commitment to holistic development ensures every student reaches their full potential.
                 </p>
-                <p class="text-lg text-gray-700 dark:text-gray-300 mb-8 leading-relaxed">
-                    Our mission is to nurture well-rounded individuals who are academically excellent, socially responsible, and ready to make a positive impact in their communities.
+                <p class="text-gray-600 dark:text-gray-400 mb-8 leading-relaxed">
+                    With state-of-the-art facilities, experienced faculty, and innovative teaching methodologies, we create an environment where learning thrives and dreams are realized.
                 </p>
-                <a href="{{ url_for('about') }}" class="inline-flex items-center gap-3 bg-primary text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1">
-                    <span>Learn More</span>
+                <a href="{{ url_for('about') }}" class="inline-flex items-center gap-2 bg-primary text-white px-8 py-4 rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1">
+                    <span>Learn More About Us</span>
                     <i class="fas fa-arrow-right"></i>
                 </a>
             </div>
             <div class="relative">
-                <div class="relative rounded-2xl overflow-hidden shadow-2xl">
-                    <div class="aspect-w-16 aspect-h-12 bg-gradient-to-br from-primary via-blue-500 to-blue-600 flex items-center justify-center">
-                        <div class="text-center text-white p-12">
-                            <i class="fas fa-school text-8xl mb-6 opacity-80"></i>
-                            <h3 class="text-3xl font-bold mb-2">Excellence in Education</h3>
-                            <p class="text-xl opacity-90">Since Our Foundation</p>
+                <div class="bg-gradient-to-br from-primary to-blue-600 rounded-2xl p-12 shadow-2xl transform rotate-3 hover:rotate-0 transition-transform duration-300">
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="bg-white bg-opacity-20 rounded-xl p-6 backdrop-blur-sm">
+                            <div class="text-4xl font-bold mb-2">500+</div>
+                            <div class="text-blue-100">Students</div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 rounded-xl p-6 backdrop-blur-sm">
+                            <div class="text-4xl font-bold mb-2">50+</div>
+                            <div class="text-blue-100">Teachers</div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 rounded-xl p-6 backdrop-blur-sm">
+                            <div class="text-4xl font-bold mb-2">15+</div>
+                            <div class="text-blue-100">Years</div>
+                        </div>
+                        <div class="bg-white bg-opacity-20 rounded-xl p-6 backdrop-blur-sm">
+                            <div class="text-4xl font-bold mb-2">100%</div>
+                            <div class="text-blue-100">Success</div>
                         </div>
                     </div>
-                    <div class="absolute inset-0 bg-gradient-to-t from-black opacity-20"></div>
                 </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Programs Preview -->
-<section class="py-20 bg-white dark:bg-gray-900">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
-            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Our Programs</span>
-            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">Academic Excellence</h2>
-            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
-            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
-                We offer comprehensive educational programs from Nursery through Secondary levels, designed to foster academic excellence and personal growth.
-            </p>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-primary transform hover:-translate-y-2 fade-in-section">
-                <div class="w-16 h-16 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
-                    <i class="fas fa-baby text-white text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Nursery</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                    Early childhood education focusing on play-based learning and social development for ages 3-5.
-                </p>
-                <a href="{{ url_for('programs') }}" class="text-primary font-semibold inline-flex items-center gap-2 hover:gap-3 transition-all">
-                    Learn More
-                    <i class="fas fa-arrow-right text-sm"></i>
-                </a>
-            </div>
-            
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-secondary transform hover:-translate-y-2 fade-in-section">
-                <div class="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
-                    <i class="fas fa-child text-white text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Primary</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                    Comprehensive primary education with emphasis on foundational skills and creativity for grades 1-8.
-                </p>
-                <a href="{{ url_for('programs') }}" class="text-secondary font-semibold inline-flex items-center gap-2 hover:gap-3 transition-all">
-                    Learn More
-                    <i class="fas fa-arrow-right text-sm"></i>
-                </a>
-            </div>
-            
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 hover:border-primary transform hover:-translate-y-2 fade-in-section">
-                <div class="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
-                    <i class="fas fa-user-graduate text-white text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Secondary</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed">
-                    Advanced secondary education preparing students for higher education and careers for grades 9-12.
-                </p>
-                <a href="{{ url_for('programs') }}" class="text-primary font-semibold inline-flex items-center gap-2 hover:gap-3 transition-all">
-                    Learn More
-                    <i class="fas fa-arrow-right text-sm"></i>
-                </a>
             </div>
         </div>
     </div>
@@ -199,35 +142,30 @@
 
 <!-- Testimonials -->
 {% if testimonials %}
-<section class="py-20 bg-gray-50 dark:bg-gray-800">
+<section class="py-16 bg-white dark:bg-gray-800">
     <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
+        <div class="text-center mb-12 fade-in-section">
             <span class="text-sm font-semibold text-primary uppercase tracking-wider">Testimonials</span>
-            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">What People Say</h2>
-            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
-            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
-                Testimonials from our students, parents, and community members
-            </p>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4 mt-2 text-gray-900 dark:text-white">What People Say</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-4"></div>
+            <p class="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">Hear from our students, parents, and community members</p>
         </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-            {% for testimonial in testimonials %}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
-                <div class="flex items-center mb-6">
-                    {% for i in range(testimonial.rating) %}
-                    <i class="fas fa-star text-yellow-400 text-lg"></i>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            {% for testimonial in testimonials[:3] %}
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 border border-gray-100 dark:border-gray-700 hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 fade-in-section">
+                <div class="flex items-center mb-4">
+                    {% for i in range(testimonial.rating or 5) %}
+                    <i class="fas fa-star text-yellow-400"></i>
                     {% endfor %}
                 </div>
-                <p class="text-gray-700 dark:text-gray-300 mb-6 italic text-lg leading-relaxed">
-                    "{{ testimonial.content }}"
-                </p>
-                <div class="flex items-center pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <div class="w-14 h-14 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center mr-4 shadow-lg">
-                        <i class="fas fa-user text-white"></i>
+                <p class="text-gray-700 dark:text-gray-300 mb-6 leading-relaxed italic">"{{ testimonial.content }}"</p>
+                <div class="flex items-center">
+                    <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-full flex items-center justify-center text-white font-bold mr-4">
+                        {{ testimonial.name[0] }}
                     </div>
                     <div>
-                        <h4 class="font-bold text-lg text-gray-900 dark:text-white">{{ testimonial.name }}</h4>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">{{ testimonial.role or 'Parent' }}</p>
+                        <div class="font-bold text-gray-900 dark:text-white">{{ testimonial.name }}</div>
+                        <div class="text-sm text-gray-600 dark:text-gray-400">{{ testimonial.role or 'Parent' }}</div>
                     </div>
                 </div>
             </div>
@@ -237,89 +175,75 @@
 </section>
 {% endif %}
 
-<!-- Upcoming Events -->
-{% if events %}
-<section class="py-16 bg-gray-50 dark:bg-gray-800">
+<!-- News & Events Preview -->
+{% if posts or events %}
+<section class="py-16 bg-gray-50 dark:bg-gray-900">
     <div class="container mx-auto px-4 lg:px-8">
         <div class="text-center mb-12 fade-in-section">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Upcoming Events</h2>
-            <p class="text-lg text-gray-600 dark:text-gray-400">
-                Join us for these exciting upcoming events
-            </p>
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Latest Updates</span>
+            <h2 class="text-3xl md:text-4xl font-bold mb-4 mt-2 text-gray-900 dark:text-white">News & Events</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-4"></div>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {% for event in events %}
-            <div class="card fade-in-section">
-                <div class="bg-gray-200 dark:bg-gray-700 rounded-lg h-48 flex items-center justify-center mb-4">
-                    <i class="fas fa-calendar-alt text-4xl text-gray-400"></i>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
+            <!-- Latest News -->
+            {% if posts %}
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700 fade-in-section">
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-newspaper text-primary"></i>
+                        Latest News
+                    </h3>
                 </div>
-                <h3 class="text-xl font-bold mb-2">{{ event.title }}</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-4">
-                    {{ event.description[:100] }}...
-                </p>
-                <div class="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-4">
-                    <i class="fas fa-calendar mr-2"></i>
-                    <span>{{ event.event_date.strftime('%B %d, %Y') if event.event_date else 'TBA' }}</span>
-                    {% if event.event_time %}
-                    <i class="fas fa-clock ml-4 mr-2"></i>
-                    <span>{{ event.event_time.strftime('%I:%M %p') }}</span>
-                    {% endif %}
+                <div class="p-6 space-y-4">
+                    {% for post in posts[:3] %}
+                    <div class="pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0 last:pb-0">
+                        <h4 class="font-bold text-gray-900 dark:text-white mb-2 hover:text-primary transition-colors">
+                            <a href="#">{{ post.title }}</a>
+                        </h4>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">{{ post.created_at.strftime('%B %d, %Y') if post.created_at else 'Recent' }}</p>
+                    </div>
+                    {% endfor %}
                 </div>
-                <a href="{{ url_for('events') }}" class="text-primary font-semibold hover:underline">
-                    View Details <i class="fas fa-arrow-right ml-1"></i>
-                </a>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <div class="text-center mt-8">
-            <a href="{{ url_for('events') }}" class="btn-primary">
-                View All Events
-            </a>
-        </div>
-    </div>
-</section>
-{% endif %}
-
-<!-- Latest News -->
-{% if posts %}
-<section class="py-16">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-12 fade-in-section">
-            <h2 class="text-3xl md:text-4xl font-bold mb-4">Latest News</h2>
-            <p class="text-lg text-gray-600 dark:text-gray-400">
-                Stay informed with our latest updates and announcements
-            </p>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {% for post in posts %}
-            <article class="card fade-in-section">
-                <div class="bg-gray-200 dark:bg-gray-700 rounded-lg h-48 flex items-center justify-center mb-4">
-                    <i class="fas fa-newspaper text-4xl text-gray-400"></i>
-                </div>
-                <span class="text-sm text-primary font-semibold">{{ post.category or 'News' }}</span>
-                <h3 class="text-xl font-bold mb-2 mt-2">{{ post.title }}</h3>
-                <p class="text-gray-600 dark:text-gray-400 mb-4">
-                    {{ post.content[:100] }}...
-                </p>
-                <div class="flex items-center justify-between">
-                    <span class="text-sm text-gray-500 dark:text-gray-400">
-                        <i class="fas fa-user mr-1"></i>{{ post.author_name or 'Admin' }}
-                    </span>
-                    <a href="{{ url_for('news') }}" class="text-primary font-semibold hover:underline">
-                        Read More <i class="fas fa-arrow-right ml-1"></i>
+                <div class="p-6 border-t border-gray-200 dark:border-gray-700">
+                    <a href="{{ url_for('news') }}" class="text-primary font-semibold hover:underline flex items-center gap-2">
+                        View All News <i class="fas fa-arrow-right"></i>
                     </a>
                 </div>
-            </article>
-            {% endfor %}
-        </div>
-        
-        <div class="text-center mt-8">
-            <a href="{{ url_for('news') }}" class="btn-primary">
-                View All News
-            </a>
+            </div>
+            {% endif %}
+            
+            <!-- Upcoming Events -->
+            {% if events %}
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700 fade-in-section">
+                <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-calendar-alt text-primary"></i>
+                        Upcoming Events
+                    </h3>
+                </div>
+                <div class="p-6 space-y-4">
+                    {% for event in events[:3] %}
+                    <div class="pb-4 border-b border-gray-200 dark:border-gray-700 last:border-0 last:pb-0">
+                        <h4 class="font-bold text-gray-900 dark:text-white mb-2 hover:text-primary transition-colors">
+                            <a href="#">{{ event.title }}</a>
+                        </h4>
+                        <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
+                            <span><i class="fas fa-calendar mr-1"></i>{{ event.event_date.strftime('%B %d, %Y') if event.event_date else 'TBA' }}</span>
+                            {% if event.location %}
+                            <span><i class="fas fa-map-marker-alt mr-1"></i>{{ event.location }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="p-6 border-t border-gray-200 dark:border-gray-700">
+                    <a href="{{ url_for('events') }}" class="text-primary font-semibold hover:underline flex items-center gap-2">
+                        View All Events <i class="fas fa-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </section>
@@ -327,29 +251,23 @@
 
 <!-- Call to Action -->
 <section class="py-20 bg-gradient-to-r from-primary to-blue-600 text-white relative overflow-hidden">
-    <div class="absolute inset-0 opacity-10">
-        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
-    </div>
-    <div class="container mx-auto px-4 text-center relative z-10 max-w-4xl">
-        <h2 class="text-4xl md:text-5xl font-bold mb-6 fade-in-section">
-            Ready to Join Our Community?
-        </h2>
+    <div class="absolute inset-0 bg-black opacity-10"></div>
+    <div class="container mx-auto px-4 lg:px-8 text-center relative z-10 max-w-4xl">
+        <h2 class="text-4xl md:text-5xl font-bold mb-6 fade-in-section">Ready to Join Us?</h2>
         <div class="w-24 h-1 bg-white mx-auto mb-8"></div>
         <p class="text-xl md:text-2xl mb-10 text-gray-100 fade-in-section leading-relaxed">
-            Take the first step towards a brighter future. Apply today and become part of our educational excellence.
+            Start your educational journey today and become part of our thriving community
         </p>
         <div class="flex flex-col sm:flex-row gap-4 justify-center fade-in-section">
-            <a href="{{ url_for('admissions') }}" class="bg-white text-primary px-10 py-4 rounded-lg font-semibold hover:bg-gray-50 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 inline-flex items-center justify-center gap-2">
+            <a href="{{ url_for('admissions') }}" class="bg-white text-primary px-10 py-4 rounded-xl font-semibold hover:bg-gray-50 transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 inline-flex items-center justify-center gap-2">
                 <i class="fas fa-graduation-cap"></i>
-                Apply for Admission
-                <i class="fas fa-arrow-right"></i>
+                Apply Now
             </a>
-            <a href="{{ url_for('contact') }}" class="border-2 border-white text-white px-10 py-4 rounded-lg font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 inline-flex items-center justify-center gap-2">
+            <a href="{{ url_for('contact') }}" class="border-2 border-white text-white px-10 py-4 rounded-xl font-semibold hover:bg-white hover:text-primary transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-1 inline-flex items-center justify-center gap-2">
                 <i class="fas fa-envelope"></i>
-                Get in Touch
+                Contact Us
             </a>
         </div>
     </div>
 </section>
 {% endblock %}
-
