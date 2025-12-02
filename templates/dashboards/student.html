@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard - Modern School{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Welcome Section -->
+    <div class="mb-8 fade-in-section">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h1 class="text-3xl font-bold mb-2 text-gray-900 dark:text-white">Welcome back, {{ session.full_name }}!</h1>
+                <p class="text-gray-600 dark:text-gray-400">Here's your academic overview</p>
+            </div>
+            {% if student_data %}
+            <div class="px-6 py-3 rounded-xl font-semibold shadow-lg
+                {% if student_data.status == 'Active' %}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
+                {% elif student_data.status == 'Pending Approval' %}bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200
+                {% elif student_data.status == 'Suspended' %}bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200
+                {% elif student_data.status == 'Completed' %}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
+                {% elif student_data.status == 'Expelled' %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200
+                {% endif %}">
+                Status: {{ student_data.status }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Student Profile Information -->
+    {% if student_data %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-100 dark:border-gray-700 mb-8 fade-in-section">
+        <div class="flex items-start gap-8">
+            <div class="flex-shrink-0">
+                {% if student_data.profile_image %}
+                <img src="{{ student_data.profile_image }}" alt="{{ student_data.child_full_name }}" class="w-32 h-32 rounded-xl object-cover shadow-lg">
+                {% else %}
+                <div class="w-32 h-32 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-user text-white text-4xl"></i>
+                </div>
+                {% endif %}
+            </div>
+            <div class="flex-1">
+                <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">My Profile</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Full Name</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.child_full_name }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Age</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.current_age }} years</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Birth Date</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.birth_date.strftime('%B %d, %Y') if student_data.birth_date else 'Not specified' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Gender</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.gender }}</p>
+                    </div>
+                    {% if student_data.current_class %}
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Current Class</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.current_class }}</p>
+                    </div>
+                    {% endif %}
+                    {% if student_data.school_name %}
+                    <div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">School</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ student_data.school_name }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Additional Information Sections -->
+        {% if student_data.case_history or student_data.interests_hobbies or student_data.future_aspirations %}
+        <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {% if student_data.interests_hobbies %}
+                <div>
+                    <h3 class="font-bold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-heart text-primary"></i> Interests & Hobbies
+                    </h3>
+                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ student_data.interests_hobbies }}</p>
+                </div>
+                {% endif %}
+                {% if student_data.future_aspirations %}
+                <div>
+                    <h3 class="font-bold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-star text-primary"></i> Future Aspirations
+                    </h3>
+                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ student_data.future_aspirations }}</p>
+                </div>
+                {% endif %}
+                {% if student_data.favorite_subjects %}
+                <div>
+                    <h3 class="font-bold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-book text-primary"></i> Favorite Subjects
+                    </h3>
+                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ student_data.favorite_subjects }}</p>
+                </div>
+                {% endif %}
+                {% if student_data.sibling_information %}
+                <div>
+                    <h3 class="font-bold mb-3 text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-users text-primary"></i> Siblings
+                    </h3>
+                    <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ student_data.sibling_information }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="bg-gradient-to-br from-primary to-blue-600 text-white rounded-xl p-6 shadow-xl transform hover:-translate-y-2 transition-all fade-in-section">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-blue-100 mb-2 text-sm font-medium">Assignments</p>
+                    <p class="text-4xl font-bold">12</p>
+                </div>
+                <i class="fas fa-tasks text-4xl opacity-50"></i>
+            </div>
+        </div>
+        
+        <div class="bg-gradient-to-br from-primary to-blue-600 text-white rounded-xl p-6 shadow-xl transform hover:-translate-y-2 transition-all fade-in-section">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-blue-100 mb-2 text-sm font-medium">Pending</p>
+                    <p class="text-4xl font-bold">5</p>
+                </div>
+                <i class="fas fa-clock text-4xl opacity-50"></i>
+            </div>
+        </div>
+        
+        <div class="bg-gradient-to-br from-primary to-blue-600 text-white rounded-xl p-6 shadow-xl transform hover:-translate-y-2 transition-all fade-in-section">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-blue-100 mb-2 text-sm font-medium">Average Grade</p>
+                    <p class="text-4xl font-bold">A-</p>
+                </div>
+                <i class="fas fa-chart-line text-4xl opacity-50"></i>
+            </div>
+        </div>
+        
+        <div class="bg-gradient-to-br from-primary to-blue-600 text-white rounded-xl p-6 shadow-xl transform hover:-translate-y-2 transition-all fade-in-section">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-blue-100 mb-2 text-sm font-medium">Attendance</p>
+                    <p class="text-4xl font-bold">95%</p>
+                </div>
+                <i class="fas fa-calendar-check text-4xl opacity-50"></i>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Timetable -->
+            <div class="lg:col-span-2">
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-100 dark:border-gray-700 fade-in-section">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Today's Timetable</h2>
+                        <a href="#" class="text-primary hover:underline font-semibold">View Full Schedule</a>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center p-5 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all">
+                            <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 shadow-lg">
+                                <span class="text-white font-bold">08:00</span>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-bold text-lg text-gray-900 dark:text-white">Mathematics</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Room 101 - Mr. Johnson</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-5 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all">
+                            <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mr-4 shadow-lg">
+                                <span class="text-white font-bold">09:30</span>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-bold text-lg text-gray-900 dark:text-white">Science</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Lab 2 - Ms. Williams</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center p-5 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all">
+                            <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 shadow-lg">
+                                <span class="text-white font-bold">11:00</span>
+                            </div>
+                            <div class="flex-1">
+                                <h3 class="font-bold text-lg text-gray-900 dark:text-white">English</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Room 205 - Mrs. Davis</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Assignments -->
+                <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-8 border border-gray-100 dark:border-gray-700 fade-in-section mt-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Recent Assignments</h2>
+                        <a href="#" class="text-primary hover:underline font-semibold">View All</a>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="flex items-center justify-between p-5 border-l-4 border-primary bg-gray-50 dark:bg-gray-700 rounded-xl">
+                            <div>
+                                <h3 class="font-bold text-gray-900 dark:text-white">Math Homework - Chapter 5</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Due: Tomorrow</p>
+                            </div>
+                            <span class="px-4 py-2 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200 rounded-lg text-sm font-semibold">Pending</span>
+                        </div>
+                        <div class="flex items-center justify-between p-5 border-l-4 border-secondary bg-gray-50 dark:bg-gray-700 rounded-xl">
+                            <div>
+                                <h3 class="font-bold text-gray-900 dark:text-white">Science Project</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Due: Next Week</p>
+                            </div>
+                            <span class="px-4 py-2 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-lg text-sm font-semibold">In Progress</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        
+        <!-- Sidebar -->
+        <div class="space-y-8">
+            <!-- Quick Links -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Quick Links</h2>
+                <div class="space-y-2">
+                    <a href="#" class="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-calendar-alt text-primary mr-3"></i>
+                        <span>Full Timetable</span>
+                    </a>
+                    <a href="#" class="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-tasks text-primary mr-3"></i>
+                        <span>All Assignments</span>
+                    </a>
+                    <a href="#" class="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-chart-line text-primary mr-3"></i>
+                        <span>View Results</span>
+                    </a>
+                    <a href="#" class="flex items-center p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-money-bill-wave text-primary mr-3"></i>
+                        <span>Fee Status</span>
+                    </a>
+                </div>
+            </div>
+            
+            <!-- Application Status -->
+            {% if student_data %}
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Application Status</h2>
+                <div class="space-y-4">
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Current Status</p>
+                        <p class="text-lg font-bold 
+                            {% if student_data.status == 'Active' %}text-green-600
+                            {% elif student_data.status == 'Pending Approval' %}text-yellow-600
+                            {% elif student_data.status == 'Suspended' %}text-red-600
+                            {% elif student_data.status == 'Completed' %}text-blue-600
+                            {% else %}text-gray-600{% endif %}">
+                            {{ student_data.status }}
+                        </p>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Application Date</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">
+                            {{ student_data.created_at.strftime('%B %d, %Y') if student_data.created_at else 'N/A' }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <!-- Recent Results -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <h2 class="text-xl font-bold mb-4 text-gray-900 dark:text-white">Recent Results</h2>
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-gray-700 dark:text-gray-300 font-medium">Mathematics</span>
+                        <span class="font-bold text-primary text-lg">A</span>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-gray-700 dark:text-gray-300 font-medium">Science</span>
+                        <span class="font-bold text-secondary text-lg">A-</span>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <span class="text-gray-700 dark:text-gray-300 font-medium">English</span>
+                        <span class="font-bold text-primary text-lg">B+</span>
+                    </div>
+                </div>
+                <a href="#" class="block text-center mt-6 text-primary hover:underline font-semibold">View All Results</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

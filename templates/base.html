@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en" class="{% if session.get('theme') == 'dark' %}dark{% else %}light{% endif %}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Modern School{% endblock %}</title>
+    
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    
+    <!-- Tailwind Config for Dark Mode -->
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1C6DD0',
+                        secondary: '#10B981',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+    
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-md transition-colors duration-300">
+        <nav class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <!-- Logo and School Name -->
+                <div class="flex items-center space-x-4">
+                    <div class="w-14 h-14 bg-gradient-to-br from-primary to-blue-600 rounded-lg flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
+                        <i class="fas fa-graduation-cap text-white text-2xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+                            Modern School
+                        </h1>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 font-medium">
+                            Excellence in Education
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden lg:flex items-center space-x-6">
+                    {% if session.user_id %}
+                        <!-- Logged-in Navigation -->
+                        <a href="{{ url_for('dashboard') }}" class="nav-link">
+                            <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                        </a>
+                        {% if session.user_role == 'student' %}
+                            <a href="{{ url_for('student_dashboard') }}" class="nav-link">My Classes</a>
+                            <a href="{{ url_for('student_dashboard') }}" class="nav-link">Assignments</a>
+                        {% elif session.user_role == 'parent' %}
+                            <a href="{{ url_for('parent_dashboard') }}" class="nav-link">My Children</a>
+                        {% elif session.user_role == 'teacher' %}
+                            <a href="{{ url_for('teacher_dashboard') }}" class="nav-link">My Classes</a>
+                        {% elif session.user_role == 'admin' %}
+                            <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Admin Panel</a>
+                        {% endif %}
+                        <a href="{{ url_for('index') }}" class="nav-link">Home</a>
+                        <div class="relative group">
+                            <button class="nav-link flex items-center">
+                                <i class="fas fa-user-circle mr-2"></i>{{ session.full_name }}
+                                <i class="fas fa-chevron-down ml-2 text-xs"></i>
+                            </button>
+                            <div class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
+                                <a href="#" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Profile</a>
+                                <a href="{{ url_for('logout') }}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Logout</a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- Logged-out Navigation -->
+                        <a href="{{ url_for('index') }}" class="nav-link">Home</a>
+                        <a href="{{ url_for('about') }}" class="nav-link">About</a>
+                        <a href="{{ url_for('programs') }}" class="nav-link">Programs</a>
+                        <a href="{{ url_for('admissions') }}" class="nav-link">Admissions</a>
+                        <a href="{{ url_for('news') }}" class="nav-link">News</a>
+                        <a href="{{ url_for('contact') }}" class="nav-link">Contact</a>
+                        <a href="{{ url_for('ngo') }}" class="nav-link">NGO</a>
+                        <a href="{{ url_for('donate') }}" class="nav-link bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">Donate</a>
+                    {% endif %}
+                    
+                    <!-- Theme Toggle -->
+                    <button id="theme-toggle" class="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-md">
+                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
+                        <i class="fas fa-sun hidden dark:inline text-yellow-400"></i>
+                    </button>
+                </div>
+
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" class="lg:hidden p-2 rounded-lg bg-gray-100 dark:bg-gray-700">
+                    <i class="fas fa-bars text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Mobile Navigation -->
+            <div id="mobile-menu" class="hidden lg:hidden mt-4 pb-4 border-t border-gray-200 dark:border-gray-700">
+                {% if session.user_id %}
+                    <a href="{{ url_for('dashboard') }}" class="block py-2 nav-link">Dashboard</a>
+                    <a href="{{ url_for('index') }}" class="block py-2 nav-link">Home</a>
+                    <a href="#" class="block py-2 nav-link">Profile</a>
+                    <a href="{{ url_for('logout') }}" class="block py-2 nav-link">Logout</a>
+                {% else %}
+                    <a href="{{ url_for('index') }}" class="block py-2 nav-link">Home</a>
+                    <a href="{{ url_for('about') }}" class="block py-2 nav-link">About</a>
+                    <a href="{{ url_for('programs') }}" class="block py-2 nav-link">Programs</a>
+                    <a href="{{ url_for('admissions') }}" class="block py-2 nav-link">Admissions</a>
+                    <a href="{{ url_for('news') }}" class="block py-2 nav-link">News</a>
+                    <a href="{{ url_for('contact') }}" class="block py-2 nav-link">Contact</a>
+                    <a href="{{ url_for('ngo') }}" class="block py-2 nav-link">NGO</a>
+                    <a href="{{ url_for('donate') }}" class="block py-2 nav-link">Donate</a>
+                {% endif %}
+                <div class="flex items-center justify-between mt-4">
+                    <span>Theme</span>
+                    <button id="theme-toggle-mobile" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700">
+                        <i class="fas fa-moon dark:hidden"></i>
+                        <i class="fas fa-sun hidden dark:inline"></i>
+                    </button>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="min-h-screen">
+        {% if session.user_id and request.endpoint and 'dashboard' in request.endpoint %}
+            <!-- Dashboard Layout with Sidebar -->
+            <div class="flex">
+                <!-- Sidebar (Desktop) -->
+                <aside id="sidebar" class="hidden lg:block w-64 bg-gray-50 dark:bg-gray-800 min-h-screen p-6 transition-all duration-300 border-r border-gray-200 dark:border-gray-700">
+                    <div class="mb-6">
+                        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 capitalize">{{ session.user_role }}</p>
+                    </div>
+                    
+                    <nav class="space-y-2">
+                        {% if session.user_role == 'student' %}
+                            <a href="{{ url_for('student_dashboard') }}" class="sidebar-link">
+                                <i class="fas fa-home mr-3"></i>Overview
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-calendar-alt mr-3"></i>Timetable
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-tasks mr-3"></i>Assignments
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-chart-line mr-3"></i>Results
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-money-bill-wave mr-3"></i>Fees
+                            </a>
+                        {% elif session.user_role == 'parent' %}
+                            <a href="{{ url_for('parent_dashboard') }}" class="sidebar-link">
+                                <i class="fas fa-home mr-3"></i>Overview
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-child mr-3"></i>My Children
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-calendar-check mr-3"></i>Attendance
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-graduation-cap mr-3"></i>Grades
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-money-bill-wave mr-3"></i>Fee Status
+                            </a>
+                        {% elif session.user_role == 'teacher' %}
+                            <a href="{{ url_for('teacher_dashboard') }}" class="sidebar-link">
+                                <i class="fas fa-home mr-3"></i>Overview
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-users mr-3"></i>My Classes
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-clipboard-list mr-3"></i>Grading
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-tasks mr-3"></i>Assignments
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-calendar-alt mr-3"></i>Schedule
+                            </a>
+                        {% elif session.user_role == 'admin' %}
+                            <a href="{{ url_for('admin_dashboard') }}" class="sidebar-link">
+                                <i class="fas fa-home mr-3"></i>Overview
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-users mr-3"></i>Students
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-chalkboard-teacher mr-3"></i>Staff
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-file-alt mr-3"></i>Reports
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-dollar-sign mr-3"></i>Finance
+                            </a>
+                            <a href="#" class="sidebar-link">
+                                <i class="fas fa-cog mr-3"></i>Settings
+                            </a>
+                        {% endif %}
+                    </nav>
+                </aside>
+
+                <!-- Mobile Sidebar Toggle -->
+                <button id="sidebar-toggle" class="lg:hidden fixed top-20 left-4 z-40 p-2 bg-primary text-white rounded-lg shadow-lg">
+                    <i class="fas fa-bars"></i>
+                </button>
+
+                <!-- Main Content Area -->
+                <div class="flex-1 lg:ml-0">
+        {% endif %}
+                    {% block content %}{% endblock %}
+        {% if session.user_id and request.endpoint and 'dashboard' in request.endpoint %}
+                </div>
+            </div>
+        {% endif %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 dark:bg-gray-900 text-gray-300 py-12 mt-16">
+        <div class="container mx-auto px-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <!-- About Section -->
+                <div>
+                    <h3 class="text-white text-lg font-bold mb-4">About Us</h3>
+                    <p class="text-sm mb-6 text-gray-400 leading-relaxed">
+                        Excellence in education, empowering students for a brighter future through innovative learning and holistic development.
+                    </p>
+                    <div class="flex space-x-3">
+                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white transition-colors">
+                            <i class="fab fa-facebook"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-400 rounded-lg flex items-center justify-center text-white transition-colors">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-pink-600 rounded-lg flex items-center justify-center text-white transition-colors">
+                            <i class="fab fa-instagram"></i>
+                        </a>
+                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-700 rounded-lg flex items-center justify-center text-white transition-colors">
+                            <i class="fab fa-linkedin"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Quick Links -->
+                <div>
+                    <h3 class="text-white text-lg font-bold mb-4">Quick Links</h3>
+                    <ul class="space-y-3">
+                        <li><a href="{{ url_for('about') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                            <i class="fas fa-chevron-right text-xs"></i> About Us
+                        </a></li>
+                        <li><a href="{{ url_for('programs') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                            <i class="fas fa-chevron-right text-xs"></i> Programs
+                        </a></li>
+                        <li><a href="{{ url_for('admissions') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                            <i class="fas fa-chevron-right text-xs"></i> Admissions
+                        </a></li>
+                        <li><a href="{{ url_for('news') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                            <i class="fas fa-chevron-right text-xs"></i> News & Events
+                        </a></li>
+                        {% if session.user_id %}
+                            <li><a href="{{ url_for('dashboard') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                                <i class="fas fa-chevron-right text-xs"></i> Dashboard
+                            </a></li>
+                            <li><a href="#" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                                <i class="fas fa-chevron-right text-xs"></i> Profile
+                            </a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+
+                <!-- Contact Info -->
+                <div>
+                    <h3 class="text-white text-lg font-bold mb-4">Contact Us</h3>
+                    <ul class="space-y-3 text-sm text-gray-400">
+                        <li class="flex items-start gap-3">
+                            <i class="fas fa-map-marker-alt mt-1 text-primary"></i>
+                            <span>123 Education Street, City, State 12345</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-phone text-primary"></i>
+                            <span>+1 (555) 123-4567</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-envelope text-primary"></i>
+                            <span>info@school.com</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <i class="fas fa-clock text-primary"></i>
+                            <span>Mon-Fri: 8:00 AM - 5:00 PM</span>
+                        </li>
+                    </ul>
+                </div>
+
+                <!-- Newsletter -->
+                <div>
+                    <h3 class="text-white text-lg font-bold mb-4">Newsletter</h3>
+                    <p class="text-sm mb-4 text-gray-400">
+                        Subscribe to our newsletter for updates and announcements.
+                    </p>
+                    <form class="flex flex-col space-y-3">
+                        <input type="email" placeholder="Your email address" class="px-4 py-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary transition-all">
+                        <button type="submit" class="bg-primary text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg flex items-center justify-center gap-2 font-semibold">
+                            <span>Subscribe</span>
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-sm">
+                <p>&copy; 2024 Modern School. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div id="flash-messages" class="fixed top-20 right-4 z-50 space-y-2">
+                {% for category, message in messages %}
+                    <div class="flash-message flash-{{ category }} bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 min-w-[300px] border-l-4 animate-slide-in">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                {% if category == 'success' %}
+                                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
+                                {% elif category == 'danger' %}
+                                    <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
+                                {% elif category == 'warning' %}
+                                    <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+                                {% else %}
+                                    <i class="fas fa-info-circle text-blue-500 mr-3"></i>
+                                {% endif %}
+                                <span>{{ message }}</span>
+                            </div>
+                            <button class="ml-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick="this.parentElement.parentElement.remove()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+

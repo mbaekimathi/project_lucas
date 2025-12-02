@@ -1,0 +1,291 @@
+{% extends "base.html" %}
+
+{% block title %}Programs - Modern School{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-gradient-to-r from-primary to-blue-600 text-white py-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    </div>
+    <div class="container mx-auto px-4 text-center relative z-10">
+        <div class="mb-8">
+            <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
+                <i class="fas fa-book text-6xl text-white"></i>
+            </div>
+        </div>
+        <h1 class="text-4xl md:text-6xl font-bold mb-6 fade-in-section">Our Programs</h1>
+        <div class="w-24 h-1 bg-white mx-auto mb-6"></div>
+        <p class="text-xl text-gray-100 fade-in-section max-w-3xl mx-auto">
+            Comprehensive Education from Nursery to Secondary
+        </p>
+    </div>
+</section>
+
+<!-- Grade Levels -->
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+            <!-- Nursery -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-20 h-20 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-baby text-white text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Nursery</h2>
+                <p class="text-gray-700 dark:text-gray-300 mb-4">
+                    Ages 3-5 years. Our nursery program focuses on early childhood development through play-based learning, creative activities, and social interaction.
+                </p>
+                <ul class="space-y-2 text-gray-600 dark:text-gray-400 mb-6">
+                    <li><i class="fas fa-check text-primary mr-2"></i>Play-based learning</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>Social development</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>Creative expression</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>Basic numeracy & literacy</li>
+                </ul>
+            </div>
+            
+            <!-- Primary -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-child text-white text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Primary</h2>
+                <p class="text-gray-700 dark:text-gray-300 mb-4">
+                    Grades 1-8. Comprehensive primary education with emphasis on foundational skills, critical thinking, and holistic development.
+                </p>
+                <ul class="space-y-2 text-gray-600 dark:text-gray-400 mb-6">
+                    <li><i class="fas fa-check text-secondary mr-2"></i>Core subjects</li>
+                    <li><i class="fas fa-check text-secondary mr-2"></i>STEM education</li>
+                    <li><i class="fas fa-check text-secondary mr-2"></i>Arts & creativity</li>
+                    <li><i class="fas fa-check text-secondary mr-2"></i>Physical education</li>
+                </ul>
+            </div>
+            
+            <!-- Secondary -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-20 h-20 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-user-graduate text-white text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold mb-4 text-gray-900 dark:text-white">Secondary</h2>
+                <p class="text-gray-700 dark:text-gray-300 mb-4">
+                    Grades 9-12. Advanced secondary education preparing students for higher education and future careers.
+                </p>
+                <ul class="space-y-2 text-gray-600 dark:text-gray-400 mb-6">
+                    <li><i class="fas fa-check text-primary mr-2"></i>Advanced curriculum</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>Career guidance</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>College preparation</li>
+                    <li><i class="fas fa-check text-primary mr-2"></i>Leadership programs</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Special Programs -->
+<section class="py-16 bg-gray-50 dark:bg-gray-800">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Special Programs</span>
+            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">Enhancing Education</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
+            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                Enhancing education through specialized programs
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-flask text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">STEM Program</h3>
+                <p class="text-gray-600 dark:text-gray-400">
+                    Science, Technology, Engineering, and Mathematics program with hands-on experiments, robotics, and coding.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-palette text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Arts & Culture</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Music, drama, visual arts, and cultural programs to foster creativity and appreciation for the arts.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-futbol text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Sports & Athletics</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Comprehensive sports program including football, basketball, athletics, and more.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-language text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Language Programs</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Multiple language options including English, French, Spanish, and local languages.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-laptop-code text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Technology Integration</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Modern computer labs, digital learning tools, and technology-enhanced classrooms.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-hands-helping text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Community Service</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Service learning programs that connect students with their communities.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Curriculum Details -->
+{% if programs %}
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Curriculum</span>
+            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">Program Details</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
+            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                Explore our comprehensive program offerings
+            </p>
+        </div>
+        
+        <div class="space-y-6">
+            {% for program in programs %}
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="flex flex-col md:flex-row items-start gap-6">
+                    <div class="w-full md:w-64 h-48 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
+                        <i class="fas fa-book text-5xl text-white opacity-80"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="flex items-center gap-4 mb-4 flex-wrap">
+                            <h3 class="text-2xl font-bold text-gray-900 dark:text-white">{{ program.name }}</h3>
+                            {% if program.grade_level %}
+                            <span class="px-4 py-2 bg-primary text-white rounded-lg text-sm font-semibold">{{ program.grade_level }}</span>
+                            {% endif %}
+                            {% if program.category %}
+                            <span class="px-4 py-2 bg-secondary text-white rounded-lg text-sm font-semibold">{{ program.category }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-gray-700 dark:text-gray-300 mb-4 leading-relaxed">
+                            {{ program.description or 'Comprehensive program designed to provide quality education and holistic development.' }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Teaching Methods -->
+<section class="py-16 bg-gray-50 dark:bg-gray-800">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Methodology</span>
+            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">Innovative Teaching Methods</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
+            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                Modern approaches to learning and development
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-chalkboard-teacher text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Interactive Learning</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Student-centered approaches that encourage active participation and critical thinking.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-project-diagram text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Project-Based Learning</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Real-world projects that develop problem-solving skills and practical knowledge.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-users-cog text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Collaborative Learning</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Group activities and teamwork to enhance communication and social skills.
+                </p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mb-6 shadow-lg">
+                    <i class="fas fa-tablet-alt text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Digital Integration</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Technology-enhanced learning with tablets, smart boards, and online resources.
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Achievement Highlights -->
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-16 fade-in-section max-w-3xl mx-auto">
+            <span class="text-sm font-semibold text-primary uppercase tracking-wider">Achievements</span>
+            <h2 class="text-4xl md:text-5xl font-bold mb-4 mt-4 text-gray-900 dark:text-white">Achievement Highlights</h2>
+            <div class="w-20 h-1 bg-primary mx-auto mb-6"></div>
+            <p class="text-lg text-gray-600 dark:text-gray-400 leading-relaxed">
+                Celebrating our students' success
+            </p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="text-5xl font-bold text-primary mb-3">95%</div>
+                <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Pass Rate</h3>
+                <p class="text-gray-600 dark:text-gray-400">National examination success rate</p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="text-5xl font-bold text-secondary mb-3">50+</div>
+                <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Awards</h3>
+                <p class="text-gray-600 dark:text-gray-400">Competitions and achievements</p>
+            </div>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl p-8 text-center transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section">
+                <div class="text-5xl font-bold text-primary mb-3">100%</div>
+                <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Scholarships</h3>
+                <p class="text-gray-600 dark:text-gray-400">Students receiving support</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+

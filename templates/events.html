@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Events - Modern School{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-gradient-to-r from-primary to-blue-600 text-white py-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    </div>
+    <div class="container mx-auto px-4 text-center relative z-10">
+        <div class="mb-8">
+            <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
+                <i class="fas fa-calendar-alt text-6xl text-white"></i>
+            </div>
+        </div>
+        <h1 class="text-4xl md:text-6xl font-bold mb-6 fade-in-section">School Events</h1>
+        <div class="w-24 h-1 bg-white mx-auto mb-6"></div>
+        <p class="text-xl text-gray-100 fade-in-section max-w-3xl mx-auto">
+            Join Us for Exciting Activities
+        </p>
+    </div>
+</section>
+
+<!-- Events List -->
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        {% if events %}
+        <div class="space-y-8">
+            {% for event in events %}
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section overflow-hidden">
+                <div class="flex flex-col md:flex-row">
+                    <div class="w-full md:w-64 h-48 bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+                        {% if event.image_url %}
+                        <img src="{{ event.image_url }}" alt="{{ event.title }}" class="w-full h-full object-cover">
+                        {% else %}
+                        <i class="fas fa-calendar-alt text-5xl text-gray-400"></i>
+                        {% endif %}
+                    </div>
+                    <div class="flex-1 p-8">
+                        <div class="flex items-start gap-6 mb-4">
+                            <div class="px-6 py-4 bg-gradient-to-br from-primary to-blue-600 text-white rounded-xl shadow-lg text-center min-w-[80px]">
+                                <div class="text-3xl font-bold">
+                                    {{ event.event_date.strftime('%d') if event.event_date else 'TBA' }}
+                                </div>
+                                <div class="text-sm uppercase tracking-wider">
+                                    {{ event.event_date.strftime('%b') if event.event_date else '' }}
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <h2 class="text-2xl font-bold mb-3 text-gray-900 dark:text-white">{{ event.title }}</h2>
+                                <div class="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
+                                    {% if event.event_time %}
+                                    <span class="flex items-center gap-2"><i class="fas fa-clock"></i>{{ event.event_time.strftime('%I:%M %p') }}</span>
+                                    {% endif %}
+                                    {% if event.location %}
+                                    <span class="flex items-center gap-2"><i class="fas fa-map-marker-alt"></i>{{ event.location }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <p class="text-gray-700 dark:text-gray-300 mb-6 leading-relaxed">
+                            {{ event.description or 'Join us for this exciting event!' }}
+                        </p>
+                        <a href="#" class="text-primary font-semibold hover:underline inline-flex items-center gap-2">
+                            View Details
+                            <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-16 fade-in-section">
+            <i class="fas fa-calendar-alt text-6xl text-gray-400 mb-4"></i>
+            <h2 class="text-2xl font-bold mb-2">No Upcoming Events</h2>
+            <p class="text-gray-600 dark:text-gray-400">Check back soon for upcoming events!</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+

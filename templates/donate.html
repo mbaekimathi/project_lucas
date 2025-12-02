@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}Donate - Modern School{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-gradient-to-r from-primary to-blue-600 text-white py-20 relative overflow-hidden">
+    <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    </div>
+    <div class="container mx-auto px-4 text-center relative z-10">
+        <div class="mb-8">
+            <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
+                <i class="fas fa-heart text-6xl text-white"></i>
+            </div>
+        </div>
+        <h1 class="text-4xl md:text-6xl font-bold mb-6 fade-in-section">Support Our School</h1>
+        <div class="w-24 h-1 bg-white mx-auto mb-6"></div>
+        <p class="text-xl text-gray-100 fade-in-section max-w-3xl mx-auto">
+            Your Donation Makes a Difference
+        </p>
+    </div>
+</section>
+
+<!-- Why Donate -->
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-10 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <span class="text-sm font-semibold text-primary uppercase tracking-wider">Impact</span>
+                <h2 class="text-3xl font-bold mb-6 mt-2 text-gray-900 dark:text-white">Why Donate?</h2>
+                <p class="text-lg text-gray-700 dark:text-gray-300 mb-6">
+                    Your generous contributions help us provide quality education to students who might not otherwise have access. Every donation, no matter the size, makes a real impact on our students' lives and futures.
+                </p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="flex items-start p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 flex-shrink-0 shadow-lg">
+                    <i class="fas fa-graduation-cap text-white"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Scholarships</h3>
+                    <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Support deserving students with financial aid</p>
+                </div>
+            </div>
+            <div class="flex items-start p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 flex-shrink-0 shadow-lg">
+                    <i class="fas fa-book text-white"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Resources</h3>
+                    <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Provide books, materials, and technology</p>
+                </div>
+            </div>
+            <div class="flex items-start p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 flex-shrink-0 shadow-lg">
+                    <i class="fas fa-building text-white"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Infrastructure</h3>
+                    <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Improve facilities and learning spaces</p>
+                </div>
+            </div>
+            <div class="flex items-start p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mr-4 flex-shrink-0 shadow-lg">
+                    <i class="fas fa-utensils text-white"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Meals Program</h3>
+                    <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Ensure students have nutritious meals</p>
+                </div>
+            </div>
+        </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Donation Options -->
+<section class="py-16 bg-gray-50 dark:bg-gray-800">
+    <div class="container mx-auto px-4">
+        <div class="text-center mb-12 fade-in-section">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">How to Donate</h2>
+            <p class="text-lg text-gray-600 dark:text-gray-400">
+                Choose a donation option that works for you
+            </p>
+        </div>
+        
+        <div class="max-w-4xl mx-auto">
+            <form method="POST" action="{{ url_for('donate') }}" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-10 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <span class="text-sm font-semibold text-primary uppercase tracking-wider">Contribute</span>
+                <h3 class="text-2xl font-bold mb-6 mt-2 text-gray-900 dark:text-white">Make a Donation</h3>
+                
+                <div class="mb-6">
+                    <label class="form-label">Donation Type</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <label class="flex items-center p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                            <input type="radio" name="donation_type" value="one-time" class="mr-3" checked>
+                            <div>
+                                <div class="font-bold">One-Time Donation</div>
+                                <div class="text-sm text-gray-600 dark:text-gray-400">Single contribution</div>
+                            </div>
+                        </label>
+                        <label class="flex items-center p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                            <input type="radio" name="donation_type" value="monthly" class="mr-3">
+                            <div>
+                                <div class="font-bold">Monthly Donation</div>
+                                <div class="text-sm text-gray-600 dark:text-gray-400">Recurring support</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="form-label">Amount</label>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <button type="button" class="donation-amount-btn p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary transition-colors font-bold">$25</button>
+                        <button type="button" class="donation-amount-btn p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary transition-colors font-bold">$50</button>
+                        <button type="button" class="donation-amount-btn p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary transition-colors font-bold">$100</button>
+                        <button type="button" class="donation-amount-btn p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-primary transition-colors font-bold">$500</button>
+                    </div>
+                    <input type="number" name="amount" placeholder="Or enter custom amount" class="form-input" min="1" required>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="form-label">Designate Your Donation (Optional)</label>
+                    <select name="designation" class="form-input">
+                        <option value="">General Fund</option>
+                        <option value="scholarships">Scholarships</option>
+                        <option value="library">Library</option>
+                        <option value="meals">Meals Program</option>
+                        <option value="infrastructure">Infrastructure</option>
+                        <option value="technology">Technology</option>
+                    </select>
+                </div>
+                
+                <div class="mb-6">
+                    <label class="form-label">Your Information</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <input type="text" name="donor_name" placeholder="Full Name" class="form-input" required>
+                        <input type="email" name="donor_email" placeholder="Email" class="form-input" required>
+                    </div>
+                    <input type="tel" name="donor_phone" placeholder="Phone (Optional)" class="form-input">
+                </div>
+                
+                <div class="mb-6">
+                    <label class="form-label">Payment Method</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <label class="flex items-center p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                            <input type="radio" name="payment_method" value="card" class="mr-3" checked>
+                            <i class="fas fa-credit-card text-2xl mr-3"></i>
+                            <span class="font-bold">Credit Card</span>
+                        </label>
+                        <label class="flex items-center p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                            <input type="radio" name="payment_method" value="paypal" class="mr-3">
+                            <i class="fab fa-paypal text-2xl mr-3"></i>
+                            <span class="font-bold">PayPal</span>
+                        </label>
+                        <label class="flex items-center p-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                            <input type="radio" name="payment_method" value="mpesa" class="mr-3">
+                            <i class="fas fa-mobile-alt text-2xl mr-3"></i>
+                            <span class="font-bold">M-Pesa</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <button type="submit" class="bg-primary text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1 w-full flex items-center justify-center gap-2">
+                    <i class="fas fa-heart"></i>
+                    Donate Now
+                </button>
+                
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-4 text-center">
+                    <i class="fas fa-lock mr-1"></i>Your donation is secure and tax-deductible
+                </p>
+            </form>
+        </div>
+    </div>
+</section>
+
+<!-- Transparency -->
+<section class="py-16">
+    <div class="container mx-auto px-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-10 border border-gray-100 dark:border-gray-700 fade-in-section">
+                <span class="text-sm font-semibold text-primary uppercase tracking-wider">Accountability</span>
+                <h2 class="text-3xl font-bold mb-6 mt-2 text-gray-900 dark:text-white">Transparency & Impact</h2>
+                <p class="text-lg text-gray-700 dark:text-gray-300 mb-6">
+                    We believe in transparency and accountability. All donations are used directly for the benefit of our students and school programs.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="text-center p-8 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                        <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                            <i class="fas fa-chart-pie text-white text-2xl"></i>
+                        </div>
+                        <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Annual Reports</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Detailed financial reports available</p>
+                    </div>
+                    <div class="text-center p-8 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                        <div class="w-16 h-16 bg-gradient-to-br from-secondary to-green-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                            <i class="fas fa-check-circle text-white text-2xl"></i>
+                        </div>
+                        <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Verified Impact</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">See how your donation helps</p>
+                    </div>
+                    <div class="text-center p-8 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                        <div class="w-16 h-16 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                            <i class="fas fa-receipt text-white text-2xl"></i>
+                        </div>
+                        <h3 class="font-bold mb-2 text-gray-900 dark:text-white">Tax Receipts</h3>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">Receive official receipts</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const amountButtons = document.querySelectorAll('.donation-amount-btn');
+    const amountInput = document.querySelector('input[name="amount"]');
+    
+    amountButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const amount = this.textContent.replace('$', '');
+            amountInput.value = amount;
+            amountButtons.forEach(btn => btn.classList.remove('border-primary', 'bg-primary', 'text-white'));
+            this.classList.add('border-primary', 'bg-primary', 'text-white');
+        });
+    });
+});
+</script>
+{% endblock %}
+
