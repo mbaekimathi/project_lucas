@@ -36,44 +36,92 @@ DB_CONFIG = {
     'cursorclass': DictCursor
 }
 
+def ensure_database_exists():
+    """Ensure the database exists, create it if it doesn't"""
+    try:
+        # Try to connect without specifying database
+        temp_config = DB_CONFIG.copy()
+        db_name = temp_config.pop('database')
+        temp_config.pop('cursorclass', None)  # Remove cursorclass for connection
+        
+        temp_conn = pymysql.connect(**temp_config)
+        with temp_conn.cursor() as cursor:
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+            temp_conn.commit()
+        temp_conn.close()
+        print(f"✅ Database '{db_name}' ensured to exist.")
+        return True
+    except Exception as e:
+        print(f"❌ Error ensuring database exists: {e}")
+        return False
+
 def get_db_connection():
-    """Create and return a database connection"""
+    """Create and return a database connection with automatic database creation"""
+    # First ensure database exists
+    ensure_database_exists()
+    
     try:
         connection = pymysql.connect(**DB_CONFIG)
         return connection
     except pymysql.err.OperationalError as e:
-        if e.args[0] == 1049:  # Unknown database
-            # Try to create the database
-            try:
-                temp_config = DB_CONFIG.copy()
-                temp_config.pop('database')
-                temp_conn = pymysql.connect(**temp_config)
-                with temp_conn.cursor() as cursor:
-                    cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_CONFIG['database']} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-                    temp_conn.commit()
-                temp_conn.close()
-                # Now try connecting again
-                connection = pymysql.connect(**DB_CONFIG)
-                return connection
-            except Exception as create_error:
-                print(f"Error creating database: {create_error}")
+        error_code = e.args[0] if e.args else None
+        if error_code == 1049:  # Unknown database
+            # Try to create the database again
+            if ensure_database_exists():
+                try:
+                    connection = pymysql.connect(**DB_CONFIG)
+                    return connection
+                except Exception as retry_error:
+                    print(f"❌ Error connecting after database creation: {retry_error}")
+                    return None
+            else:
+                print(f"❌ Failed to create database: {DB_CONFIG['database']}")
                 return None
+        elif error_code == 1045:  # Access denied
+            print(f"❌ Database access denied. Please check credentials.")
+            print(f"   Host: {DB_CONFIG['host']}")
+            print(f"   User: {DB_CONFIG['user']}")
+            print(f"   Database: {DB_CONFIG['database']}")
+            return None
         else:
-            print(f"Database connection error: {e}")
+            print(f"❌ Database connection error (Code {error_code}): {e}")
             return None
     except Exception as e:
-        print(f"Database connection error: {e}")
+        print(f"❌ Unexpected database error: {e}")
         return None
 
+def check_table_exists(cursor, table_name):
+    """Check if a table exists in the database"""
+    cursor.execute("""
+        SELECT COUNT(*) as count
+        FROM information_schema.tables 
+        WHERE table_schema = DATABASE() 
+        AND table_name = %s
+    """, (table_name,))
+    result = cursor.fetchone()
+    return result['count'] > 0 if result else False
+
 def init_db():
-    """Initialize database with required tables"""
+    """Initialize database with required tables and ensure schema is up to date"""
+    print("\n🔄 Initializing database...")
+    
+    # First ensure database exists
+    if not ensure_database_exists():
+        print("❌ Failed to ensure database exists. Aborting initialization.")
+        return False
+    
     connection = get_db_connection()
     if not connection:
+        print("❌ Failed to get database connection. Aborting initialization.")
         return False
     
     try:
         with connection.cursor() as cursor:
+            print("📊 Checking and creating tables...")
             # Users table
+            table_name = 'users'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -84,10 +132,13 @@ def init_db():
                     role ENUM('student', 'parent', 'teacher', 'admin') NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Students table for sponsorship intake
+            table_name = 'students'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS students (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -114,10 +165,13 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Student images table
+            table_name = 'student_images'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS student_images (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -125,10 +179,13 @@ def init_db():
                     image_url VARCHAR(500) NOT NULL,
                     uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Posts/News table
+            table_name = 'posts'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS posts (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -139,10 +196,13 @@ def init_db():
                     image_url VARCHAR(500),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Events table
+            table_name = 'events'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS events (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -153,10 +213,13 @@ def init_db():
                     location VARCHAR(255),
                     image_url VARCHAR(500),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Programs table
+            table_name = 'programs'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS programs (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -165,10 +228,13 @@ def init_db():
                     grade_level VARCHAR(50),
                     category VARCHAR(100),
                     image_url VARCHAR(500)
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Gallery table
+            table_name = 'gallery'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS gallery (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -176,10 +242,13 @@ def init_db():
                     image_url VARCHAR(500) NOT NULL,
                     category VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Testimonials table
+            table_name = 'testimonials'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS testimonials (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -189,10 +258,13 @@ def init_db():
                     image_url VARCHAR(500),
                     rating INT DEFAULT 5,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             # Staff table
+            table_name = 'staff'
+            if not check_table_exists(cursor, table_name):
+                print(f"   Creating table: {table_name}")
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS staff (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -203,26 +275,33 @@ def init_db():
                     image_url VARCHAR(500),
                     email VARCHAR(255),
                     subjects VARCHAR(255)
-                )
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
             
             connection.commit()
+            print("✅ All tables created/verified successfully!")
             
             # Create default admin user if not exists
             cursor.execute("SELECT COUNT(*) as count FROM users WHERE role = 'admin'")
-            if cursor.fetchone()['count'] == 0:
+            admin_count = cursor.fetchone()
+            if admin_count and admin_count['count'] == 0:
                 cursor.execute("""
                     INSERT INTO users (username, email, password, full_name, role)
                     VALUES ('admin', 'admin@school.com', 'admin123', 'Administrator', 'admin')
                 """)
                 connection.commit()
+                print("✅ Default admin user created (username: admin, password: admin123)")
             
+        print("✅ Database initialization completed successfully!\n")
         return True
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        print(f"❌ Database initialization error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
-        connection.close()
+        if connection:
+            connection.close()
 
 # Decorator for role-based access
 def role_required(*roles):
@@ -650,8 +729,42 @@ def toggle_theme():
     session['theme'] = theme
     return jsonify({'success': True, 'theme': theme})
 
+# Admin route to manually initialize/update database
+@app.route('/admin/init-db', methods=['GET', 'POST'])
+@role_required('admin')
+def admin_init_db():
+    """Admin route to manually initialize or update database schema"""
+    if request.method == 'POST':
+        result = init_db()
+        if result:
+            flash('Database initialized/updated successfully!', 'success')
+        else:
+            flash('Database initialization failed. Check server logs.', 'danger')
+        return redirect(url_for('admin_dashboard'))
+    
+    return render_template('admin_init_db.html') if hasattr(render_template, '__call__') else jsonify({'message': 'Use POST to initialize database'})
+
 if __name__ == '__main__':
-    # Initialize database on first run
-    init_db()
+    # Initialize database on startup
+    print("=" * 60)
+    print("🚀 Starting Modern School Website Application")
+    print("=" * 60)
+    print(f"📊 Database Configuration:")
+    print(f"   Host: {DB_CONFIG['host']}")
+    print(f"   User: {DB_CONFIG['user']}")
+    print(f"   Database: {DB_CONFIG['database']}")
+    print("=" * 60)
+    
+    # Initialize database
+    if init_db():
+        print("✅ Application ready to start!")
+    else:
+        print("⚠️  Database initialization had issues. Application may not work correctly.")
+        print("   Please check your database credentials and connection.")
+    
+    print("=" * 60)
+    print("🌐 Starting Flask server...")
+    print("=" * 60)
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
 

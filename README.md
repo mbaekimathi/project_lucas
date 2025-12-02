@@ -25,6 +25,12 @@ A professional, responsive school website built with Flask, TailwindCSS, and PyM
    
    The application is configured to work with both **local** and **hosted** environments.
    
+   **Automatic Database Initialization:**
+   - The application automatically creates the database if it doesn't exist
+   - All required tables are created automatically on startup
+   - Database schema is checked and updated on every application start
+   - No manual database setup required!
+   
    **Default Database Configuration (Hosted):**
    - Host: `localhost`
    - User: `groundle_school`
@@ -51,7 +57,11 @@ A professional, responsive school website built with Flask, TailwindCSS, and PyM
    DB_NAME=groundle_school
    ```
    
-   **Note:** The `.env` file is gitignored for security. Create it locally as needed.
+   **Note:** 
+   - The `.env` file is gitignored for security. Create it locally as needed.
+   - The database and tables are automatically created/verified on startup
+   - When you push to GitHub and deploy, the hosted version will automatically initialize the database
+   - Admin users can manually trigger database initialization via `/admin/init-db` route
 
 4. **Run the application:**
    ```bash

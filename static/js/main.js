@@ -6,7 +6,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
     
     // Theme toggle buttons
-    const themeToggles = document.querySelectorAll('#theme-toggle, #theme-toggle-mobile');
+    const themeToggles = document.querySelectorAll('#theme-toggle, #theme-toggle-sidebar');
+    const themeText = document.getElementById('theme-text');
+    
+    function updateThemeUI(theme) {
+        if (themeText) {
+            themeText.textContent = theme === 'dark' ? 'Dark' : 'Light';
+        }
+    }
     
     themeToggles.forEach(button => {
         button.addEventListener('click', function() {
@@ -16,12 +23,18 @@ document.addEventListener('DOMContentLoaded', function() {
             if (isDark) {
                 html.classList.remove('dark');
                 updateTheme('light');
+                updateThemeUI('light');
             } else {
                 html.classList.add('dark');
                 updateTheme('dark');
+                updateThemeUI('dark');
             }
         });
     });
+    
+    // Initialize theme text
+    const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    updateThemeUI(currentTheme);
     
     // Update theme on server
     function updateTheme(theme) {
@@ -34,15 +47,19 @@ document.addEventListener('DOMContentLoaded', function() {
         }).catch(err => console.error('Error updating theme:', err));
     }
     
-    // Mobile Menu Toggle
+    // Sidebar Toggle (Mobile)
     const mobileMenuBtn = document.getElementById('mobile-menu-btn');
-    const mobileMenu = document.getElementById('mobile-menu');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
     
-    if (mobileMenuBtn && mobileMenu) {
+    if (mobileMenuBtn && sidebar) {
         mobileMenuBtn.addEventListener('click', function() {
-            mobileMenu.classList.toggle('hidden');
+            sidebar.classList.toggle('-translate-x-full');
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.toggle('hidden');
+            }
             const icon = mobileMenuBtn.querySelector('i');
-            if (mobileMenu.classList.contains('hidden')) {
+            if (sidebar.classList.contains('-translate-x-full')) {
                 icon.classList.remove('fa-times');
                 icon.classList.add('fa-bars');
             } else {
@@ -52,17 +69,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Sidebar Toggle (Mobile)
-    const sidebarToggle = document.getElementById('sidebar-toggle');
-    const sidebar = document.getElementById('sidebar');
-    
-    if (sidebarToggle && sidebar) {
-        sidebarToggle.addEventListener('click', function() {
-            sidebar.classList.toggle('hidden');
-            sidebar.classList.toggle('fixed');
-            sidebar.classList.toggle('z-50');
+    // Close sidebar when clicking overlay
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', function() {
+            sidebar.classList.add('-translate-x-full');
+            sidebarOverlay.classList.add('hidden');
+            const icon = mobileMenuBtn.querySelector('i');
+            icon.classList.remove('fa-times');
+            icon.classList.add('fa-bars');
         });
     }
+    
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener('click', function(e) {
+        if (window.innerWidth < 1024) {
+            if (sidebar && !sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
+                if (!sidebar.classList.contains('-translate-x-full')) {
+                    sidebar.classList.add('-translate-x-full');
+                    if (sidebarOverlay) {
+                        sidebarOverlay.classList.add('hidden');
+                    }
+                    const icon = mobileMenuBtn.querySelector('i');
+                    icon.classList.remove('fa-times');
+                    icon.classList.add('fa-bars');
+                }
+            }
+        }
+    });
     
     // Fade-in on Scroll
     const observerOptions = {
@@ -132,12 +165,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Close mobile menu when clicking outside
-    document.addEventListener('click', function(e) {
-        if (mobileMenu && !mobileMenu.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
-            if (!mobileMenu.classList.contains('hidden')) {
-                mobileMenu.classList.add('hidden');
-                const icon = mobileMenuBtn.querySelector('i');
+    // Handle window resize - close mobile sidebar on desktop
+    window.addEventListener('resize', function() {
+        if (window.innerWidth >= 1024 && sidebar) {
+            sidebar.classList.remove('-translate-x-full');
+            if (sidebarOverlay) {
+                sidebarOverlay.classList.add('hidden');
+            }
+            const icon = mobileMenuBtn.querySelector('i');
+            if (icon) {
                 icon.classList.remove('fa-times');
                 icon.classList.add('fa-bars');
             }

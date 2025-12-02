@@ -34,16 +34,16 @@
 <body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
     
     <!-- Header -->
-    <header class="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-md transition-colors duration-300">
-        <nav class="container mx-auto px-4 py-4">
+    <header class="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+        <nav class="container mx-auto px-4 py-3">
             <div class="flex items-center justify-between">
                 <!-- Logo and School Name -->
-                <div class="flex items-center space-x-4">
-                    <div class="w-14 h-14 bg-gradient-to-br from-primary to-blue-600 rounded-lg flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
-                        <i class="fas fa-graduation-cap text-white text-2xl"></i>
+                <div class="flex items-center space-x-3">
+                    <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg transform hover:scale-105 transition-transform">
+                        <i class="fas fa-graduation-cap text-white text-xl"></i>
                     </div>
                     <div>
-                        <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+                        <h1 class="text-lg font-bold text-gray-900 dark:text-white">
                             Modern School
                         </h1>
                         <p class="text-xs text-gray-600 dark:text-gray-400 font-medium">
@@ -52,184 +52,236 @@
                     </div>
                 </div>
 
-                <!-- Desktop Navigation -->
-                <div class="hidden lg:flex items-center space-x-6">
-                    {% if session.user_id %}
-                        <!-- Logged-in Navigation -->
-                        <a href="{{ url_for('dashboard') }}" class="nav-link">
-                            <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
-                        </a>
-                        {% if session.user_role == 'student' %}
-                            <a href="{{ url_for('student_dashboard') }}" class="nav-link">My Classes</a>
-                            <a href="{{ url_for('student_dashboard') }}" class="nav-link">Assignments</a>
-                        {% elif session.user_role == 'parent' %}
-                            <a href="{{ url_for('parent_dashboard') }}" class="nav-link">My Children</a>
-                        {% elif session.user_role == 'teacher' %}
-                            <a href="{{ url_for('teacher_dashboard') }}" class="nav-link">My Classes</a>
-                        {% elif session.user_role == 'admin' %}
-                            <a href="{{ url_for('admin_dashboard') }}" class="nav-link">Admin Panel</a>
-                        {% endif %}
-                        <a href="{{ url_for('index') }}" class="nav-link">Home</a>
-                        <div class="relative group">
-                            <button class="nav-link flex items-center">
-                                <i class="fas fa-user-circle mr-2"></i>{{ session.full_name }}
-                                <i class="fas fa-chevron-down ml-2 text-xs"></i>
-                            </button>
-                            <div class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300">
-                                <a href="#" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Profile</a>
-                                <a href="{{ url_for('logout') }}" class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700">Logout</a>
-                            </div>
-                        </div>
-                    {% else %}
-                        <!-- Logged-out Navigation -->
-                        <a href="{{ url_for('index') }}" class="nav-link">Home</a>
-                        <a href="{{ url_for('about') }}" class="nav-link">About</a>
-                        <a href="{{ url_for('programs') }}" class="nav-link">Programs</a>
-                        <a href="{{ url_for('admissions') }}" class="nav-link">Admissions</a>
-                        <a href="{{ url_for('news') }}" class="nav-link">News</a>
-                        <a href="{{ url_for('contact') }}" class="nav-link">Contact</a>
-                        <a href="{{ url_for('ngo') }}" class="nav-link">NGO</a>
-                        <a href="{{ url_for('donate') }}" class="nav-link bg-primary text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">Donate</a>
-                    {% endif %}
-                    
+                <!-- Desktop Header Actions -->
+                <div class="hidden lg:flex items-center space-x-4">
                     <!-- Theme Toggle -->
-                    <button id="theme-toggle" class="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-md">
+                    <button id="theme-toggle" class="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all shadow-md hover:shadow-lg">
                         <i class="fas fa-moon dark:hidden text-gray-700"></i>
                         <i class="fas fa-sun hidden dark:inline text-yellow-400"></i>
                     </button>
+                    
+                    {% if session.user_id %}
+                        <!-- User Menu -->
+                        <div class="relative group">
+                            <button class="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
+                                <i class="fas fa-user-circle text-primary"></i>
+                                <span class="font-medium text-gray-900 dark:text-white">{{ session.full_name }}</span>
+                                <i class="fas fa-chevron-down text-xs text-gray-600 dark:text-gray-400"></i>
+                            </button>
+                            <div class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 border border-gray-200 dark:border-gray-700">
+                                <a href="#" class="block px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-xl transition-colors">
+                                    <i class="fas fa-user mr-2 text-primary"></i>Profile
+                                </a>
+                                <a href="{{ url_for('logout') }}" class="block px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-xl transition-colors">
+                                    <i class="fas fa-sign-out-alt mr-2 text-red-500"></i>Logout
+                                </a>
+                            </div>
+                        </div>
+                    {% else %}
+                        <!-- Login/Register Buttons -->
+                        <a href="{{ url_for('login') }}" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-primary dark:hover:text-primary transition-colors font-medium">
+                            Login
+                        </a>
+                        <a href="{{ url_for('register') }}" class="px-6 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg font-semibold">
+                            Register
+                        </a>
+                    {% endif %}
                 </div>
 
                 <!-- Mobile Menu Button -->
-                <button id="mobile-menu-btn" class="lg:hidden p-2 rounded-lg bg-gray-100 dark:bg-gray-700">
-                    <i class="fas fa-bars text-xl"></i>
+                <button id="mobile-menu-btn" class="lg:hidden p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
+                    <i class="fas fa-bars text-xl text-gray-700 dark:text-gray-300"></i>
                 </button>
-            </div>
-
-            <!-- Mobile Navigation -->
-            <div id="mobile-menu" class="hidden lg:hidden mt-4 pb-4 border-t border-gray-200 dark:border-gray-700">
-                {% if session.user_id %}
-                    <a href="{{ url_for('dashboard') }}" class="block py-2 nav-link">Dashboard</a>
-                    <a href="{{ url_for('index') }}" class="block py-2 nav-link">Home</a>
-                    <a href="#" class="block py-2 nav-link">Profile</a>
-                    <a href="{{ url_for('logout') }}" class="block py-2 nav-link">Logout</a>
-                {% else %}
-                    <a href="{{ url_for('index') }}" class="block py-2 nav-link">Home</a>
-                    <a href="{{ url_for('about') }}" class="block py-2 nav-link">About</a>
-                    <a href="{{ url_for('programs') }}" class="block py-2 nav-link">Programs</a>
-                    <a href="{{ url_for('admissions') }}" class="block py-2 nav-link">Admissions</a>
-                    <a href="{{ url_for('news') }}" class="block py-2 nav-link">News</a>
-                    <a href="{{ url_for('contact') }}" class="block py-2 nav-link">Contact</a>
-                    <a href="{{ url_for('ngo') }}" class="block py-2 nav-link">NGO</a>
-                    <a href="{{ url_for('donate') }}" class="block py-2 nav-link">Donate</a>
-                {% endif %}
-                <div class="flex items-center justify-between mt-4">
-                    <span>Theme</span>
-                    <button id="theme-toggle-mobile" class="p-2 rounded-lg bg-gray-100 dark:bg-gray-700">
-                        <i class="fas fa-moon dark:hidden"></i>
-                        <i class="fas fa-sun hidden dark:inline"></i>
-                    </button>
-                </div>
             </div>
         </nav>
     </header>
 
-    <!-- Main Content -->
-    <main class="min-h-screen">
-        {% if session.user_id and request.endpoint and 'dashboard' in request.endpoint %}
-            <!-- Dashboard Layout with Sidebar -->
-            <div class="flex">
-                <!-- Sidebar (Desktop) -->
-                <aside id="sidebar" class="hidden lg:block w-64 bg-gray-50 dark:bg-gray-800 min-h-screen p-6 transition-all duration-300 border-r border-gray-200 dark:border-gray-700">
-                    <div class="mb-6">
-                        <h2 class="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h2>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 capitalize">{{ session.user_role }}</p>
+    <!-- Sidebar Overlay (Mobile) -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden hidden transition-opacity duration-300"></div>
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-gray-800 shadow-xl border-r border-gray-200 dark:border-gray-700 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out">
+        <div class="h-full flex flex-col">
+            <!-- Sidebar Header -->
+            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
+                {% if session.user_id %}
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
+                            <i class="fas fa-user text-white"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-gray-900 dark:text-white text-sm">{{ session.full_name }}</h3>
+                            <p class="text-xs text-gray-600 dark:text-gray-400 capitalize">{{ session.user_role }}</p>
+                        </div>
                     </div>
-                    
-                    <nav class="space-y-2">
-                        {% if session.user_role == 'student' %}
-                            <a href="{{ url_for('student_dashboard') }}" class="sidebar-link">
-                                <i class="fas fa-home mr-3"></i>Overview
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-calendar-alt mr-3"></i>Timetable
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-tasks mr-3"></i>Assignments
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-chart-line mr-3"></i>Results
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-money-bill-wave mr-3"></i>Fees
-                            </a>
-                        {% elif session.user_role == 'parent' %}
-                            <a href="{{ url_for('parent_dashboard') }}" class="sidebar-link">
-                                <i class="fas fa-home mr-3"></i>Overview
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-child mr-3"></i>My Children
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-calendar-check mr-3"></i>Attendance
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-graduation-cap mr-3"></i>Grades
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-money-bill-wave mr-3"></i>Fee Status
-                            </a>
-                        {% elif session.user_role == 'teacher' %}
-                            <a href="{{ url_for('teacher_dashboard') }}" class="sidebar-link">
-                                <i class="fas fa-home mr-3"></i>Overview
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-users mr-3"></i>My Classes
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-clipboard-list mr-3"></i>Grading
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-tasks mr-3"></i>Assignments
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-calendar-alt mr-3"></i>Schedule
-                            </a>
-                        {% elif session.user_role == 'admin' %}
-                            <a href="{{ url_for('admin_dashboard') }}" class="sidebar-link">
-                                <i class="fas fa-home mr-3"></i>Overview
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-users mr-3"></i>Students
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-chalkboard-teacher mr-3"></i>Staff
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-file-alt mr-3"></i>Reports
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-dollar-sign mr-3"></i>Finance
-                            </a>
-                            <a href="#" class="sidebar-link">
-                                <i class="fas fa-cog mr-3"></i>Settings
-                            </a>
-                        {% endif %}
-                    </nav>
-                </aside>
-
-                <!-- Mobile Sidebar Toggle -->
-                <button id="sidebar-toggle" class="lg:hidden fixed top-20 left-4 z-40 p-2 bg-primary text-white rounded-lg shadow-lg">
-                    <i class="fas fa-bars"></i>
-                </button>
-
-                <!-- Main Content Area -->
-                <div class="flex-1 lg:ml-0">
-        {% endif %}
-                    {% block content %}{% endblock %}
-        {% if session.user_id and request.endpoint and 'dashboard' in request.endpoint %}
-                </div>
+                {% else %}
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Navigation</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Explore our website</p>
+                {% endif %}
             </div>
-        {% endif %}
+
+            <!-- Sidebar Navigation -->
+            <nav class="flex-1 overflow-y-auto p-4 space-y-1">
+                {% if session.user_id %}
+                    <!-- Logged-in Navigation -->
+                    {% if session.user_role == 'student' %}
+                        <a href="{{ url_for('student_dashboard') }}" class="sidebar-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Timetable</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Results</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <span>Fees</span>
+                        </a>
+                    {% elif session.user_role == 'parent' %}
+                        <a href="{{ url_for('parent_dashboard') }}" class="sidebar-link {% if request.endpoint == 'parent_dashboard' %}active{% endif %}">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-child"></i>
+                            <span>My Children</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-calendar-check"></i>
+                            <span>Attendance</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-graduation-cap"></i>
+                            <span>Grades</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <span>Fee Status</span>
+                        </a>
+                    {% elif session.user_role == 'teacher' %}
+                        <a href="{{ url_for('teacher_dashboard') }}" class="sidebar-link {% if request.endpoint == 'teacher_dashboard' %}active{% endif %}">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-users"></i>
+                            <span>My Classes</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-clipboard-list"></i>
+                            <span>Grading</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-tasks"></i>
+                            <span>Assignments</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span>Schedule</span>
+                        </a>
+                    {% elif session.user_role == 'admin' %}
+                        <a href="{{ url_for('admin_dashboard') }}" class="sidebar-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                            <i class="fas fa-home"></i>
+                            <span>Dashboard</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-users"></i>
+                            <span>Students</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                            <span>Staff</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Reports</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-dollar-sign"></i>
+                            <span>Finance</span>
+                        </a>
+                        <a href="#" class="sidebar-link">
+                            <i class="fas fa-cog"></i>
+                            <span>Settings</span>
+                        </a>
+                    {% endif %}
+                    
+                    <div class="border-t border-gray-200 dark:border-gray-700 my-4"></div>
+                    
+                    <a href="{{ url_for('index') }}" class="sidebar-link">
+                        <i class="fas fa-home"></i>
+                        <span>Home</span>
+                    </a>
+                {% else %}
+                    <!-- Public Navigation -->
+                    <a href="{{ url_for('index') }}" class="sidebar-link {% if request.endpoint == 'index' %}active{% endif %}">
+                        <i class="fas fa-home"></i>
+                        <span>Home</span>
+                    </a>
+                    <a href="{{ url_for('about') }}" class="sidebar-link {% if request.endpoint == 'about' %}active{% endif %}">
+                        <i class="fas fa-info-circle"></i>
+                        <span>About Us</span>
+                    </a>
+                    <a href="{{ url_for('programs') }}" class="sidebar-link {% if request.endpoint == 'programs' %}active{% endif %}">
+                        <i class="fas fa-book"></i>
+                        <span>Programs</span>
+                    </a>
+                    <a href="{{ url_for('admissions') }}" class="sidebar-link {% if request.endpoint == 'admissions' %}active{% endif %}">
+                        <i class="fas fa-graduation-cap"></i>
+                        <span>Admissions</span>
+                    </a>
+                    <a href="{{ url_for('news') }}" class="sidebar-link {% if request.endpoint == 'news' %}active{% endif %}">
+                        <i class="fas fa-newspaper"></i>
+                        <span>News & Events</span>
+                    </a>
+                    <a href="{{ url_for('gallery') }}" class="sidebar-link {% if request.endpoint == 'gallery' %}active{% endif %}">
+                        <i class="fas fa-images"></i>
+                        <span>Gallery</span>
+                    </a>
+                    <a href="{{ url_for('contact') }}" class="sidebar-link {% if request.endpoint == 'contact' %}active{% endif %}">
+                        <i class="fas fa-envelope"></i>
+                        <span>Contact</span>
+                    </a>
+                    <a href="{{ url_for('ngo') }}" class="sidebar-link {% if request.endpoint == 'ngo' %}active{% endif %}">
+                        <i class="fas fa-handshake"></i>
+                        <span>NGO Partners</span>
+                    </a>
+                    <a href="{{ url_for('donate') }}" class="sidebar-link {% if request.endpoint == 'donate' %}active{% endif %}">
+                        <i class="fas fa-heart"></i>
+                        <span>Donate</span>
+                    </a>
+                    <a href="{{ url_for('staff') }}" class="sidebar-link {% if request.endpoint == 'staff' %}active{% endif %}">
+                        <i class="fas fa-users"></i>
+                        <span>Staff</span>
+                    </a>
+                {% endif %}
+            </nav>
+
+            <!-- Sidebar Footer -->
+            <div class="p-4 border-t border-gray-200 dark:border-gray-700">
+                <button id="theme-toggle-sidebar" class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
+                        <i class="fas fa-sun hidden dark:inline text-yellow-400"></i>
+                        <span class="font-medium text-gray-900 dark:text-white">Theme</span>
+                    </div>
+                    <span class="text-sm text-gray-600 dark:text-gray-400" id="theme-text">Light</span>
+                </button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="min-h-screen lg:ml-64 transition-all duration-300">
+        {% block content %}{% endblock %}
     </main>
 
     <!-- Footer -->
