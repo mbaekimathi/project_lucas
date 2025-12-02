@@ -4,12 +4,18 @@ Run this script if you encounter database connection errors.
 """
 import pymysql
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Database configuration
+# Default values are set for hosted environment (groundle_school)
+# Override with .env file for local development
 DB_HOST = os.getenv('DB_HOST', 'localhost')
-DB_USER = os.getenv('DB_USER', 'root')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '')
-DB_NAME = os.getenv('DB_NAME', 'school_db')
+DB_USER = os.getenv('DB_USER', 'groundle_school')
+DB_PASSWORD = os.getenv('DB_PASSWORD', 'Itskimathi007')
+DB_NAME = os.getenv('DB_NAME', 'groundle_school')
 
 try:
     # Connect without specifying database

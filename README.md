@@ -22,21 +22,36 @@ A professional, responsive school website built with Flask, TailwindCSS, and PyM
    ```
 
 3. **Set up MySQL database:**
-   - Create a MySQL database named `school_db` (or update the name in `app.py`)
-   - Update database credentials in `app.py` or set environment variables:
-     - `DB_HOST` (default: localhost)
-     - `DB_USER` (default: root)
-     - `DB_PASSWORD` (default: empty)
-     - `DB_NAME` (default: school_db)
    
-   **Optional:** Create a `.env` file in the project root:
+   The application is configured to work with both **local** and **hosted** environments.
+   
+   **Default Database Configuration (Hosted):**
+   - Host: `localhost`
+   - User: `groundle_school`
+   - Password: `Itskimathi007`
+   - Database: `groundle_school`
+   
+   **For Local Development:**
+   
+   Create a `.env` file in the project root to override defaults:
    ```
    DB_HOST=localhost
    DB_USER=root
-   DB_PASSWORD=your_password
+   DB_PASSWORD=your_local_password
    DB_NAME=school_db
-   SECRET_KEY=your-secret-key-here
    ```
+   
+   **For Hosted Environment:**
+   
+   The application will automatically use the hosted credentials (groundle_school) if no `.env` file is present. You can also explicitly set them in `.env`:
+   ```
+   DB_HOST=localhost
+   DB_USER=groundle_school
+   DB_PASSWORD=Itskimathi007
+   DB_NAME=groundle_school
+   ```
+   
+   **Note:** The `.env` file is gitignored for security. Create it locally as needed.
 
 4. **Run the application:**
    ```bash

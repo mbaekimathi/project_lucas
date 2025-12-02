@@ -19,12 +19,19 @@ Session(app)
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 # Database configuration
+# Supports both local and hosted environments via environment variables
+# Default values are set for hosted environment (groundle_school)
+# Override with .env file for local development
 DB_CONFIG = {
     'host': os.getenv('DB_HOST', 'localhost'),
-    'user': os.getenv('DB_USER', 'root'),
-    'password': os.getenv('DB_PASSWORD', ''),
-    'database': os.getenv('DB_NAME', 'school_db'),
+    'user': os.getenv('DB_USER', 'groundle_school'),
+    'password': os.getenv('DB_PASSWORD', 'Itskimathi007'),
+    'database': os.getenv('DB_NAME', 'groundle_school'),
     'charset': 'utf8mb4',
     'cursorclass': DictCursor
 }
