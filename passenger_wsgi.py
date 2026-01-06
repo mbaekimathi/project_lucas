@@ -1,20 +1,14 @@
-#!/usr/bin/env python3
-"""
-Passenger WSGI entry point for cPanel deployment
-This file is used by Passenger to run the Flask application
-"""
 import sys
 import os
 
 # Add the project directory to the Python path
-sys.path.insert(0, os.path.dirname(__file__))
+project_dir = os.path.dirname(os.path.abspath(__file__))
+if project_dir not in sys.path:
+    sys.path.insert(0, project_dir)
 
-# Import the Flask app
+# Import the Flask app from app.py
 from app import app
 
-# Passenger expects the 'application' variable
+# Passenger requires the 'application' variable (not 'app')
 application = app
-
-# Optional: Initialize database on Passenger startup (only once)
-# This is handled automatically by app.py's initialization
 
