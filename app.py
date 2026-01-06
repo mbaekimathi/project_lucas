@@ -8846,8 +8846,13 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
+# Passenger (cPanel) compatibility
+# Passenger handles running the app, so we don't use app.run()
+# The app variable is exported for Passenger to import
+
+# For local development only: run the development server
 if __name__ == '__main__':
-    # Initialize database on startup
+    # Initialize database on startup (development only)
     print("Initializing database...")
     try:
         if init_db():
@@ -8861,6 +8866,12 @@ if __name__ == '__main__':
         traceback.print_exc()
         print("The application will continue, but some features may not work correctly.")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Only run development server if not in production/Passenger environment
+    # Passenger will import the app and run it automatically
+    if os.environ.get('FLASK_ENV') != 'production' and not os.environ.get('PASSENGER_APP_ENV'):
+        # Development server (localhost only)
+        app.run(debug=True, host='127.0.0.1', port=5000)
+    else:
+        print("Running in production mode. Passenger will handle the application server.")
 
 
