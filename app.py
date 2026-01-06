@@ -169,18 +169,23 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'norep
 # Initialize Flask-Mail
 mail = Mail(app)
 
-# File upload configuration
-UPLOAD_FOLDER = 'static/uploads/profiles'
-PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
+# File upload configuration - use absolute paths for hosted deployment
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'profiles')
+PAYMENT_PROOF_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'payment_proofs')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_PAYMENT_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PAYMENT_PROOF_FOLDER'] = PAYMENT_PROOF_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
-# Create upload directories if they don't exist
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
+# Create upload directories if they don't exist (with error handling)
+try:
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
+    print(f"Upload directories created: {UPLOAD_FOLDER}, {PAYMENT_PROOF_FOLDER}")
+except Exception as e:
+    print(f"Error creating upload directories: {e}")
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -1769,25 +1774,29 @@ def home():
         import traceback
         traceback.print_exc()
         # Return a simple HTML response as fallback
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Project Lucas - Deployment Successful</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
-                h1 {{ color: #2563eb; }}
-                p {{ color: #666; }}
-            </style>
-        </head>
-        <body>
-            <h1>✅ Project Lucas is Running Successfully!</h1>
-            <p>Flask application is deployed and working on cPanel/Passenger.</p>
-            <p>If you see this message, the deployment is successful.</p>
-            <p><small>Error details: {str(e)}</small></p>
-        </body>
-        </html>
-        """, 200
+        error_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Project Lucas - Deployment Successful</title>
+    <meta charset="UTF-8">
+    <style>
+        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }}
+        .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        h1 {{ color: #2563eb; }}
+        .success {{ color: #10b981; font-weight: bold; }}
+        .error {{ color: #ef4444; font-size: 12px; margin-top: 20px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✅ Project Lucas is Running Successfully!</h1>
+        <p class="success">Flask application is deployed and working on cPanel/Passenger.</p>
+        <p>If you see this message, the deployment is successful.</p>
+        <p class="error">Template error: {str(e)}</p>
+    </div>
+</body>
+</html>"""
+        return error_html, 200
 
 @app.route('/about')
 def about():
