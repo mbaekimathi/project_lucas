@@ -154,7 +154,11 @@ def validate_env_vars():
 # Run validation
 validate_env_vars()
 
-app = Flask(__name__)
+# Initialize Flask app with explicit paths for hosted deployment
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, 
+            template_folder=os.path.join(BASE_DIR, 'templates'),
+            static_folder=os.path.join(BASE_DIR, 'static'))
 # SECRET_KEY is required - validation above ensures it exists (or fails in production)
 app.secret_key = os.environ.get('SECRET_KEY') or 'your-secret-key-change-in-production'
 
