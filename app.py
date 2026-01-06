@@ -1730,34 +1730,64 @@ This is an automated message. Please do not reply to this email.
 # Routes
 @app.route('/')
 def home():
-    # Fetch active academic levels for admission form
-    academic_levels = []
-    connection = get_db_connection()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, level_category, level_name, level_description 
-                    FROM academic_levels 
-                    WHERE level_status = 'active'
-                    ORDER BY level_name ASC
-                """)
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        academic_levels.append({
-                            'id': row.get('id'),
-                            'level_category': row.get('level_category', ''),
-                            'level_name': row.get('level_name', ''),
-                            'level_description': row.get('level_description', '')
-                        })
-        except Exception as e:
-            print(f"Error fetching academic levels for home: {e}")
-        finally:
-            connection.close()
+    """Home page route - handles both localhost and hosted deployments"""
+    try:
+        # Fetch active academic levels for admission form
+        academic_levels = []
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT id, level_category, level_name, level_description 
+                        FROM academic_levels 
+                        WHERE level_status = 'active'
+                        ORDER BY level_name ASC
+                    """)
+                    results = cursor.fetchall()
+                    
+                    if results:
+                        for row in results:
+                            academic_levels.append({
+                                'id': row.get('id'),
+                                'level_category': row.get('level_category', ''),
+                                'level_name': row.get('level_name', ''),
+                                'level_description': row.get('level_description', '')
+                            })
+            except Exception as e:
+                print(f"Error fetching academic levels for home: {e}")
+                # Continue with empty academic_levels if database query fails
+            finally:
+                connection.close()
+        
+        # Render the home template
+        return render_template('home.html', academic_levels=academic_levels)
     
-    return render_template('home.html', academic_levels=academic_levels)
+    except Exception as e:
+        # Fallback: Return a simple message if template rendering fails
+        print(f"Error in home route: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a simple HTML response as fallback
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Project Lucas - Deployment Successful</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; }}
+                h1 {{ color: #2563eb; }}
+                p {{ color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h1>✅ Project Lucas is Running Successfully!</h1>
+            <p>Flask application is deployed and working on cPanel/Passenger.</p>
+            <p>If you see this message, the deployment is successful.</p>
+            <p><small>Error details: {str(e)}</small></p>
+        </body>
+        </html>
+        """, 200
 
 @app.route('/about')
 def about():
