@@ -1,7 +1,9 @@
 # Passenger WSGI entry point for cPanel
-# This file is used by Passenger to run the Flask application
+# Application startup file: app.py
+# Entry point: app
 
 from app import app
 
-# Passenger requires the 'application' variable
+# Export app as the entry point (configured in cPanel Passenger settings)
+# Also export as 'application' for compatibility
 application = app
