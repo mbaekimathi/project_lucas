@@ -1,0 +1,420 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Staff Management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<!-- Staff Management Links -->
+<a href="/staff-management" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-user-tie w-5"></i>
+    <span>Staff Management</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a href="/assign-roles-approve" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Assign Roles & Approve</span>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-calendar-times w-5"></i>
+    <span>Leave Management</span>
+</a>
+
+<a href="/dashboard/employee/staff-and-salaries" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-money-check-alt w-5"></i>
+    <span>Payroll Management</span>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Job Attendance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-clock w-5"></i>
+    <span>Job Attendance</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="staffManagement()">
+    <!-- Header -->
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">Staff Management</h1>
+        <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Total: {{ employees|length }} employees</p>
+    </div>
+
+    <!-- Success/Error Messages -->
+    <div x-show="message.show" 
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-2"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         :class="message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'"
+         class="mb-4 p-3 sm:p-4 rounded-lg border text-sm sm:text-base">
+        <div class="flex items-center justify-between gap-2">
+            <span class="flex-1" x-text="message.text"></span>
+            <button @click="message.show = false" class="ml-2 sm:ml-4 text-current hover:opacity-75 flex-shrink-0 p-1">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Employees List -->
+    <div class="space-y-3 sm:space-y-4">
+        {% if employees %}
+            {% for employee in employees %}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-5 transition-all hover:shadow-md"
+                 :id="'employee-' + {{ employee.id }}">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+                    <!-- Employee Info -->
+                    <div class="flex items-start sm:items-center space-x-3 flex-1 min-w-0">
+                        <div class="w-12 h-12 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
+                            {% if employee.get('profile_picture') %}
+                            <img src="{{ url_for('static', filename=employee.profile_picture) }}" 
+                                 alt="{{ employee.full_name }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-user text-white text-sm sm:text-base"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">{{ employee.full_name }}</p>
+                            <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ employee.email }}</p>
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
+                                <span class="text-xs text-gray-600 dark:text-gray-400">ID: <span class="font-mono">{{ employee.employee_id }}</span></span>
+                                <span class="text-xs text-gray-400 hidden sm:inline">•</span>
+                                <span class="text-xs text-gray-600 dark:text-gray-400 break-all">{{ employee.phone }}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status and Actions -->
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3 sm:gap-4">
+                        <!-- Status Badges -->
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 whitespace-nowrap">
+                                {{ employee.role|title }}
+                            </span>
+                            {% if employee.status == 'active' %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">Active</span>
+                            {% elif employee.status == 'pending approval' %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">Pending</span>
+                            {% elif employee.status == 'suspended' %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">Suspended</span>
+                            {% elif employee.status == 'fired' %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">Fired</span>
+                            {% elif employee.status == 'retired' %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">Retired</span>
+                            {% else %}
+                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 whitespace-nowrap"
+                                  :id="'status-' + {{ employee.id }}">{{ employee.status|title }}</span>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2">
+                            <button @click="openEditModal({{ employee.id }})" 
+                                    class="flex-1 sm:flex-none text-xs sm:text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors min-h-[44px] sm:min-h-0 flex items-center justify-center gap-1.5 sm:gap-1">
+                                <i class="fas fa-edit"></i> 
+                                <span>Edit</span>
+                            </button>
+                            <button @click="deleteEmployee({{ employee.id }}, '{{ employee.full_name }}')" 
+                                    class="flex-1 sm:flex-none text-xs sm:text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 font-medium px-3 sm:px-2.5 py-2 sm:py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors min-h-[44px] sm:min-h-0 flex items-center justify-center gap-1.5 sm:gap-1">
+                                <i class="fas fa-trash"></i> 
+                                <span>Delete</span>
+                            </button>
+                            {% if employee.status != 'fired' and employee.status != 'retired' %}
+                            <label class="relative inline-flex items-center cursor-pointer gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <input type="checkbox" 
+                                       :checked="{{ 'true' if employee.status == 'suspended' else 'false' }}"
+                                       @change="toggleSuspend({{ employee.id }})"
+                                       class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
+                                <span class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">Suspend</span>
+                            </label>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 sm:p-12 text-center">
+                <i class="fas fa-users text-gray-400 text-3xl sm:text-4xl md:text-5xl mb-3 sm:mb-4"></i>
+                <p class="text-sm sm:text-base text-gray-500 dark:text-gray-400">No employees found</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Edit Employee Modal -->
+    <div x-show="editModal.open" 
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6"
+         @click.self="editModal.open = false"
+         style="backdrop-filter: blur(4px);">
+        <div x-show="editModal.open"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform scale-95"
+             x-transition:enter-end="opacity-100 transform scale-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100 transform scale-100"
+             x-transition:leave-end="opacity-0 transform scale-95"
+             class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-2xl max-w-md w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            <div class="p-4 sm:p-5 md:p-6">
+                <div class="flex items-center justify-between mb-4 sm:mb-6">
+                    <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Edit Employee</h3>
+                    <button @click="editModal.open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+                
+                <form @submit.prevent="updateEmployee()" class="space-y-3 sm:space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Full Name</label>
+                        <input type="text" 
+                               x-model="editModal.data.full_name"
+                               required
+                               class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Email</label>
+                        <input type="email" 
+                               x-model="editModal.data.email"
+                               required
+                               class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Phone</label>
+                        <input type="tel" 
+                               x-model="editModal.data.phone"
+                               required
+                               class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">ID Number</label>
+                        <input type="text" 
+                               x-model="editModal.data.id_number"
+                               required
+                               class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Role</label>
+                        <select x-model="editModal.data.role"
+                                required
+                                class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                            <option value="employee">Employee</option>
+                            <option value="super admin">Super Admin</option>
+                            <option value="principal">Principal</option>
+                            <option value="deputy principal">Deputy Principal</option>
+                            <option value="academic coordinator">Academic Coordinator</option>
+                            <option value="teachers">Teachers</option>
+                            <option value="accountant">Accountant</option>
+                            <option value="librarian">Librarian</option>
+                            <option value="warden">Warden</option>
+                            <option value="transport manager">Transport Manager</option>
+                            <option value="technician">Technician</option>
+                        </select>
+                    </div>
+                    
+                    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 sm:pt-6">
+                        <button type="submit" 
+                                :disabled="editModal.loading"
+                                class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center justify-center text-sm sm:text-base">
+                            <span x-show="!editModal.loading">Update</span>
+                            <span x-show="editModal.loading" class="flex items-center gap-2">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>Updating...</span>
+                            </span>
+                        </button>
+                        <button type="button" 
+                                @click="editModal.open = false"
+                                class="flex-1 sm:flex-none sm:min-w-[100px] bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors min-h-[44px] text-sm sm:text-base">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function staffManagement() {
+    return {
+        message: {
+            show: false,
+            text: '',
+            type: 'success'
+        },
+        editModal: {
+            open: false,
+            loading: false,
+            data: {
+                id: null,
+                full_name: '',
+                email: '',
+                phone: '',
+                id_number: '',
+                role: ''
+            }
+        },
+        
+        showMessage(text, type = 'success') {
+            this.message.text = text;
+            this.message.type = type;
+            this.message.show = true;
+            setTimeout(() => {
+                this.message.show = false;
+            }, 5000);
+        },
+        
+        async openEditModal(employeeId) {
+            try {
+                const response = await fetch(`/get-employee/${employeeId}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.editModal.data = {
+                        id: result.employee.id,
+                        full_name: result.employee.full_name,
+                        email: result.employee.email,
+                        phone: result.employee.phone,
+                        id_number: result.employee.id_number || '',
+                        role: result.employee.role
+                    };
+                    this.editModal.open = true;
+                } else {
+                    this.showMessage(result.message || 'Failed to load employee details', 'error');
+                }
+            } catch (error) {
+                console.error('Error loading employee:', error);
+                this.showMessage('Error loading employee details', 'error');
+            }
+        },
+        
+        async updateEmployee() {
+            this.editModal.loading = true;
+            try {
+                const response = await fetch(`/update-employee/${this.editModal.data.id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(this.editModal.data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.showMessage(result.message, 'success');
+                    this.editModal.open = false;
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    this.showMessage(result.message || 'Failed to update employee', 'error');
+                }
+            } catch (error) {
+                console.error('Error updating employee:', error);
+                this.showMessage('Error updating employee', 'error');
+            } finally {
+                this.editModal.loading = false;
+            }
+        },
+        
+        async deleteEmployee(employeeId, employeeName) {
+            if (!confirm(`Are you sure you want to delete ${employeeName}? This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/delete-employee/${employeeId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.showMessage(result.message, 'success');
+                    const employeeElement = document.getElementById(`employee-${employeeId}`);
+                    if (employeeElement) {
+                        employeeElement.style.transition = 'opacity 0.3s';
+                        employeeElement.style.opacity = '0';
+                        setTimeout(() => {
+                            employeeElement.remove();
+                        }, 300);
+                    } else {
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1000);
+                    }
+                } else {
+                    this.showMessage(result.message || 'Failed to delete employee', 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting employee:', error);
+                this.showMessage('Error deleting employee', 'error');
+            }
+        },
+        
+        async toggleSuspend(employeeId) {
+            try {
+                const response = await fetch(`/toggle-suspend-employee/${employeeId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.showMessage(result.message, 'success');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    this.showMessage(result.message || 'Failed to update employee status', 'error');
+                    // Reload to reset toggle state
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                }
+            } catch (error) {
+                console.error('Error toggling suspend:', error);
+                this.showMessage('Error updating employee status', 'error');
+                // Reload to reset toggle state
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
+
+

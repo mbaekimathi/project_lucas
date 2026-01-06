@@ -7,6 +7,8 @@ __pycache__/
 env/
 venv/
 ENV/
+env.bak/
+venv.bak/
 build/
 develop-eggs/
 dist/
@@ -22,13 +24,20 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Flask
 instance/
 .webassets-cache
+flask_session/
 
-# Environment variables
+# Environment variables - CRITICAL: Never commit these!
 .env
+.env.local
+.env.*.local
+.venv
+*.env
+!env.example
 
 # IDE
 .vscode/
@@ -36,19 +45,66 @@ instance/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+*.log.*
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
+*.sql
+db.sqlite3
 
-# Logs
-*.log
+# Static files/uploads (user-uploaded content)
+static/uploads/*
+!static/uploads/.gitkeep
 
-# Session files
-flask_session/
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+*.tmp
+*.temp
+*.zip
+*.tar.gz
+*.rar
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Cursor
+.cursor/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
 

@@ -1,0 +1,993 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Student Management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<!-- Student Management Links -->
+<a href="/student-management" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student Management</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Student Attendance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Student Attendance</span>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Students Progress'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students Progress</span>
+</a>
+
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% if user_role == 'principal' or viewing_as_role == 'principal' %}
+<a href="/dashboard/employee/student-fees" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payments</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-2 sm:p-3 md:p-4 lg:p-6" 
+     x-data="{ 
+         searchQuery: '', 
+         filterStatus: 'all',
+         viewModalOpen: false,
+         editModalOpen: false,
+         deleteModalOpen: false,
+         selectedStudent: null,
+         loading: false,
+         async loadStudent(studentId) {
+             this.loading = true;
+             try {
+                 const response = await fetch(`/get-student/${studentId}`);
+                 const data = await response.json();
+                 if (data.success) {
+                     this.selectedStudent = data.student;
+                     this.viewModalOpen = true;
+                 } else {
+                     alert(data.message || 'Error loading student details');
+                 }
+             } catch (error) {
+                 console.error('Error:', error);
+                 alert('Error loading student details');
+             } finally {
+                 this.loading = false;
+             }
+         },
+         async openEditModal(studentId) {
+             await this.loadStudent(studentId);
+             this.originalStudentId = this.selectedStudent.student_id;
+             this.studentIdError = '';
+             this.viewModalOpen = false;
+             this.editModalOpen = true;
+         },
+         originalStudentId: null,
+         studentIdError: '',
+         async validateStudentId(studentId, originalId) {
+             if (!studentId || studentId.trim() === '') {
+                 this.studentIdError = 'Student ID is required';
+                 return false;
+             }
+             if (studentId === originalId) {
+                 this.studentIdError = '';
+                 return true;
+             }
+             this.loading = true;
+             try {
+                 const response = await fetch(`/check-student-id/${studentId}`);
+                 const data = await response.json();
+                 if (data.exists) {
+                     this.studentIdError = 'This Student ID is already registered to another student';
+                     this.loading = false;
+                     return false;
+                 } else {
+                     this.studentIdError = '';
+                     this.loading = false;
+                     return true;
+                 }
+             } catch (error) {
+                 console.error('Error:', error);
+                 this.studentIdError = 'Error validating Student ID';
+                 this.loading = false;
+                 return false;
+             }
+         },
+         async saveStudent() {
+             if (!this.selectedStudent) return;
+             
+             // Validate student ID
+             const isValidId = await this.validateStudentId(this.selectedStudent.student_id, this.originalStudentId);
+             if (!isValidId) {
+                 return;
+             }
+             
+             this.loading = true;
+             try {
+                 const response = await fetch(`/update-student/${this.originalStudentId}`, {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                     },
+                     body: JSON.stringify(this.selectedStudent)
+                 });
+                 const data = await response.json();
+                 if (data.success) {
+                     alert('Student updated successfully!');
+                     this.editModalOpen = false;
+                     location.reload();
+                 } else {
+                     alert(data.message || 'Error updating student');
+                 }
+             } catch (error) {
+                 console.error('Error:', error);
+                 alert('Error updating student');
+             } finally {
+                 this.loading = false;
+             }
+         },
+         async deleteStudent() {
+             if (!this.selectedStudent) return;
+             if (!confirm(`Are you sure you want to delete ${this.selectedStudent.full_name}? This action cannot be undone.`)) {
+                 return;
+             }
+             this.loading = true;
+             try {
+                 const response = await fetch(`/delete-student/${this.selectedStudent.student_id}`, {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                     }
+                 });
+                 const data = await response.json();
+                 if (data.success) {
+                     alert('Student deleted successfully!');
+                     this.deleteModalOpen = false;
+                     location.reload();
+                 } else {
+                     alert(data.message || 'Error deleting student');
+                 }
+             } catch (error) {
+                 console.error('Error:', error);
+                 alert('Error deleting student');
+             } finally {
+                 this.loading = false;
+             }
+         }
+     }">
+    <!-- Header Section -->
+    <div class="mb-4 sm:mb-5 md:mb-6">
+        <div class="mb-4 sm:mb-5 md:mb-6">
+            <h1 class="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2 flex items-center gap-2 sm:gap-3">
+                <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg flex-shrink-0">
+                    <i class="fas fa-user-graduate text-white text-sm sm:text-base md:text-lg"></i>
+                </div>
+                <span class="truncate">Student Management</span>
+            </h1>
+            <p class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">Manage and monitor all student records</p>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-5 md:mb-6">
+            <div class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Total Students</p>
+                        <p class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ students|length }}</p>
+                    </div>
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0 ml-2">
+                        <i class="fas fa-users text-white text-sm sm:text-base md:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            
+            {% set in_session = students|selectattr('status', 'equalto', 'in session')|list|length %}
+            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">In Session</p>
+                        <p class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ in_session }}</p>
+                    </div>
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0 ml-2">
+                        <i class="fas fa-check-circle text-white text-sm sm:text-base md:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            
+            {% set pending = students|selectattr('status', 'equalto', 'pending approval')|list|length %}
+            <div class="bg-gradient-to-br from-yellow-500 to-amber-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Pending</p>
+                        <p class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ pending }}</p>
+                    </div>
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0 ml-2">
+                        <i class="fas fa-clock text-white text-sm sm:text-base md:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+            
+            {% set suspended = students|selectattr('status', 'equalto', 'suspended')|list|length + students|selectattr('status', 'equalto', 'expelled')|list|length %}
+            <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+                <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Suspended</p>
+                        <p class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ suspended }}</p>
+                    </div>
+                    <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0 ml-2">
+                        <i class="fas fa-ban text-white text-sm sm:text-base md:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Filter Bar -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md sm:shadow-lg border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-4 sm:mb-5 md:mb-6">
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4">
+                <div class="flex-1 relative min-w-0">
+                    <div class="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-gray-400 text-xs sm:text-sm"></i>
+                    </div>
+                    <input type="text" 
+                           x-model="searchQuery" 
+                           placeholder="Search by name, ID, or parent..." 
+                           class="w-full pl-8 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 text-sm sm:text-base rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+                <div class="w-full sm:w-auto sm:min-w-[140px] md:min-w-[180px]">
+                    <select x-model="filterStatus" 
+                            class="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        <option value="all">All Status</option>
+                        <option value="in session">In Session</option>
+                        <option value="pending approval">Pending Approval</option>
+                        <option value="suspended">Suspended</option>
+                        <option value="expelled">Expelled</option>
+                        <option value="alumni">Alumni</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Students List - Simple List Format -->
+    <!-- Mobile View (< 768px) -->
+    <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700">
+        {% if students %}
+            {% for student in students %}
+            <div class="student-card py-2 px-2.5"
+                 data-status="{{ student.status }}"
+                 data-name="{{ student.full_name|lower }}"
+                 data-id="{{ student.student_id|lower }}"
+                 data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
+                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                <div class="flex items-start gap-2">
+                    <!-- Avatar -->
+                    <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <i class="fas fa-user-graduate text-white text-[10px]"></i>
+                    </div>
+                    
+                    <!-- Student Info -->
+                    <div class="flex-1 min-w-0">
+                        <!-- Name and Status -->
+                        <div class="flex items-center justify-between gap-1.5 mb-1">
+                            <h3 class="text-[9px] font-bold text-gray-900 dark:text-white uppercase leading-tight">{{ student.full_name }}</h3>
+                            {% if student.status == 'in session' %}
+                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex-shrink-0 whitespace-nowrap">
+                                <span class="w-1 h-1 bg-green-500 rounded-full inline-block mr-0.5"></span>Active
+                            </span>
+                            {% elif student.status == 'pending approval' %}
+                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 flex-shrink-0 whitespace-nowrap">
+                                Pending
+                            </span>
+                            {% elif student.status == 'suspended' %}
+                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 flex-shrink-0 whitespace-nowrap">
+                                Susp
+                            </span>
+                            {% elif student.status == 'expelled' %}
+                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 flex-shrink-0 whitespace-nowrap">
+                                Exp
+                            </span>
+                            {% elif student.status == 'alumni' %}
+                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 flex-shrink-0 whitespace-nowrap">
+                                Alumni
+                            </span>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Student Details - All visible -->
+                        <div class="space-y-0.5">
+                            <!-- Student ID -->
+                            <div class="flex items-center gap-1.5 text-[9px] text-gray-600 dark:text-gray-400">
+                                <span class="font-mono font-semibold text-gray-700 dark:text-gray-300">{{ student.student_id }}</span>
+                            </div>
+                            
+                            <!-- Grade and Category Row -->
+                            <div class="flex items-center flex-wrap gap-1.5">
+                                {% if student.current_grade %}
+                                <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 uppercase whitespace-nowrap">
+                                    {{ student.current_grade }}
+                                </span>
+                                {% endif %}
+                                {% if student.student_category %}
+                                <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize whitespace-nowrap">
+                                    {{ student.student_category }}
+                                </span>
+                                {% endif %}
+                                {% if student.gender %}
+                                <span class="text-[9px] text-gray-600 dark:text-gray-400 uppercase font-medium">{{ student.gender }}</span>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Parent Name -->
+                            {% if student.parent_name %}
+                            <div class="flex items-center gap-1 text-[9px] text-gray-600 dark:text-gray-400">
+                                <i class="fas fa-user-friends text-[8px] text-gray-400"></i>
+                                <span class="truncate">{{ student.parent_name }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex flex-col items-center gap-1.5 flex-shrink-0 pt-0.5">
+                        {% if student.status == 'pending approval' %}
+                        <form action="/approve-student/{{ student.student_id }}" method="POST" class="inline">
+                            <button type="submit" class="w-8 h-8 flex items-center justify-center text-white bg-green-500 hover:bg-green-600 rounded transition-colors touch-manipulation shadow-sm">
+                                <i class="fas fa-check-circle text-[11px]"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                        <button @click.prevent="loadStudent('{{ student.student_id }}')" 
+                                class="w-7 h-7 flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-eye text-[10px]"></i>
+                        </button>
+                        <button @click.prevent="openEditModal('{{ student.student_id }}')" 
+                                class="w-7 h-7 flex items-center justify-center text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-edit text-[10px]"></i>
+                        </button>
+                        <button @click.prevent="selectedStudent = {student_id: '{{ student.student_id }}', full_name: '{{ student.full_name }}'}; deleteStudent()" 
+                                class="w-7 h-7 flex items-center justify-center text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-trash text-[10px]"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="py-8 text-center">
+                <i class="fas fa-user-graduate text-gray-400 text-3xl mb-2"></i>
+                <p class="text-sm text-gray-500 dark:text-gray-400">No students found</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Tablet View (768px - 1023px) -->
+    <div class="hidden md:block lg:hidden divide-y divide-gray-200 dark:divide-gray-700">
+        <!-- List Header -->
+        <div class="grid grid-cols-8 gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-[10px] sm:text-xs text-gray-700 dark:text-gray-300">
+            <div class="col-span-3">Student</div>
+            <div class="col-span-1">ID</div>
+            <div class="col-span-1">Grade</div>
+            <div class="col-span-1">Category</div>
+            <div class="col-span-1">Status</div>
+            <div class="col-span-1 text-right">Actions</div>
+        </div>
+        
+        <!-- Students List Items -->
+        {% if students %}
+            {% for student in students %}
+            <div class="student-card hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors duration-200"
+                 data-status="{{ student.status }}"
+                 data-name="{{ student.full_name|lower }}"
+                 data-id="{{ student.student_id|lower }}"
+                 data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
+                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                <div class="grid grid-cols-8 gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 items-center">
+                    <!-- Student Name -->
+                    <div class="col-span-3 flex items-center space-x-2 min-w-0">
+                        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-user-graduate text-white text-xs"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs font-semibold text-gray-900 dark:text-white truncate">{{ student.full_name }}</p>
+                            {% if student.parent_name %}
+                            <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate">{{ student.parent_name }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Student ID -->
+                    <div class="col-span-1">
+                        <p class="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 font-mono truncate">{{ student.student_id }}</p>
+                    </div>
+                    
+                    <!-- Grade -->
+                    <div class="col-span-1">
+                        {% if student.current_grade %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                            {{ student.current_grade }}
+                        </span>
+                        {% else %}
+                        <span class="text-[10px] text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Category -->
+                    <div class="col-span-1">
+                        {% if student.student_category %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize truncate block">
+                            {{ student.student_category }}
+                        </span>
+                        {% else %}
+                        <span class="text-[10px] text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Status -->
+                    <div class="col-span-1">
+                        {% if student.status == 'in session' %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center gap-1 w-fit">
+                            <span class="w-1 h-1 bg-green-500 rounded-full"></span>
+                            <span class="hidden sm:inline">Active</span>
+                            <span class="sm:hidden">A</span>
+                        </span>
+                        {% elif student.status == 'pending approval' %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 w-fit">
+                            <span class="hidden sm:inline">Pending</span>
+                            <span class="sm:hidden">P</span>
+                        </span>
+                        {% elif student.status == 'suspended' %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                            <span class="hidden sm:inline">Susp</span>
+                            <span class="sm:hidden">S</span>
+                        </span>
+                        {% elif student.status == 'expelled' %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                            <span class="hidden sm:inline">Exp</span>
+                            <span class="sm:hidden">E</span>
+                        </span>
+                        {% elif student.status == 'alumni' %}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
+                            <span class="hidden sm:inline">Alumni</span>
+                            <span class="sm:hidden">A</span>
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="col-span-1 flex items-center justify-end gap-1">
+                        {% if student.status == 'pending approval' %}
+                        <form action="/approve-student/{{ student.student_id }}" method="POST" class="inline">
+                            <button type="submit" 
+                                    class="w-7 h-7 flex items-center justify-center text-white bg-green-500 hover:bg-green-600 rounded transition-colors touch-manipulation">
+                                <i class="fas fa-check-circle text-[10px]"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                        <button @click.prevent="loadStudent('{{ student.student_id }}')" 
+                                class="w-7 h-7 flex items-center justify-center text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-eye text-[10px]"></i>
+                        </button>
+                        <button @click.prevent="openEditModal('{{ student.student_id }}')" 
+                                class="w-7 h-7 flex items-center justify-center text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-edit text-[10px]"></i>
+                        </button>
+                        <button @click.prevent="selectedStudent = {student_id: '{{ student.student_id }}', full_name: '{{ student.full_name }}'}; deleteStudent()" 
+                                class="w-7 h-7 flex items-center justify-center text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors touch-manipulation">
+                            <i class="fas fa-trash text-[10px]"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="py-8 text-center">
+                <i class="fas fa-user-graduate text-gray-400 text-3xl mb-2"></i>
+                <p class="text-sm text-gray-500 dark:text-gray-400">No students found</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- Desktop View (≥ 1024px) - Simple List -->
+    <div class="hidden lg:block divide-y divide-gray-200 dark:divide-gray-700">
+        <!-- List Header -->
+        <div class="grid lg:grid-cols-12 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-xs xl:text-sm text-gray-700 dark:text-gray-300">
+            <div class="col-span-3">Student</div>
+            <div class="col-span-1">ID</div>
+            <div class="col-span-1">Grade</div>
+            <div class="col-span-1">Category</div>
+            <div class="col-span-2">Parent</div>
+            <div class="col-span-1">Gender</div>
+            <div class="col-span-1">Status</div>
+            <div class="col-span-2 text-right">Actions</div>
+        </div>
+        
+        <!-- Students List Items -->
+        {% if students %}
+            {% for student in students %}
+            <div class="student-card hover:bg-gray-50 dark:hover:bg-gray-900/30 transition-colors duration-200"
+                 data-status="{{ student.status }}"
+                 data-name="{{ student.full_name|lower }}"
+                 data-id="{{ student.student_id|lower }}"
+                 data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
+                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                <div class="grid lg:grid-cols-12 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 items-center">
+                    <!-- Student Name -->
+                    <div class="col-span-3 flex items-center space-x-2 xl:space-x-3 min-w-0">
+                        <div class="w-9 h-9 xl:w-10 xl:h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-user-graduate text-white text-xs xl:text-sm"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-xs xl:text-sm font-semibold text-gray-900 dark:text-white truncate">{{ student.full_name }}</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Student ID -->
+                    <div class="col-span-1">
+                        <p class="text-xs xl:text-sm text-gray-600 dark:text-gray-400 font-mono truncate">{{ student.student_id }}</p>
+                    </div>
+                    
+                    <!-- Grade -->
+                    <div class="col-span-1">
+                        {% if student.current_grade %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                            {{ student.current_grade }}
+                        </span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Category -->
+                    <div class="col-span-1">
+                        {% if student.student_category %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize truncate block">
+                            {{ student.student_category }}
+                        </span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Parent -->
+                    <div class="col-span-2 min-w-0">
+                        {% if student.parent_name %}
+                        <p class="text-xs xl:text-sm text-gray-600 dark:text-gray-400 truncate" title="{{ student.parent_name }}">
+                            {{ student.parent_name }}
+                        </p>
+                        {% else %}
+                        <span class="text-xs text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Gender -->
+                    <div class="col-span-1">
+                        {% if student.gender %}
+                        <span class="text-xs xl:text-sm text-gray-600 dark:text-gray-400">{{ student.gender }}</span>
+                        {% else %}
+                        <span class="text-xs text-gray-400">-</span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Status -->
+                    <div class="col-span-1">
+                            {% if student.status == 'in session' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center gap-1.5 w-fit">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                            Active
+                            </span>
+                            {% elif student.status == 'pending approval' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 w-fit">
+                            Pending
+                            </span>
+                            {% elif student.status == 'suspended' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                                Suspended
+                            </span>
+                            {% elif student.status == 'expelled' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                                Expelled
+                            </span>
+                            {% elif student.status == 'alumni' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
+                                Alumni
+                            </span>
+                            {% else %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
+                                {{ student.status|title }}
+                            </span>
+                            {% endif %}
+                        </div>
+                    
+                    <!-- Actions -->
+                    <div class="col-span-2 flex items-center justify-end gap-1.5 xl:gap-2">
+                            {% if student.status == 'pending approval' %}
+                            <form action="/approve-student/{{ student.student_id }}" method="POST" class="inline">
+                                <button type="submit" 
+                                    class="px-2 xl:px-3 py-1.5 text-xs font-semibold text-white bg-green-500 hover:bg-green-600 rounded-lg transition-colors touch-manipulation">
+                                <i class="fas fa-check-circle mr-1"></i><span class="hidden xl:inline">Approve</span><span class="xl:hidden">OK</span>
+                                </button>
+                            </form>
+                            {% endif %}
+                        <button @click.prevent="loadStudent('{{ student.student_id }}')" 
+                                class="px-2 xl:px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors touch-manipulation">
+                            <i class="fas fa-eye mr-1"></i><span class="hidden xl:inline">View</span><span class="xl:hidden">V</span>
+                        </button>
+                        <button @click.prevent="openEditModal('{{ student.student_id }}')" 
+                                class="px-2 xl:px-3 py-1.5 text-xs font-semibold text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors touch-manipulation">
+                            <i class="fas fa-edit mr-1"></i><span class="hidden xl:inline">Edit</span><span class="xl:hidden">E</span>
+                            </button>
+                        <button @click.prevent="selectedStudent = {student_id: '{{ student.student_id }}', full_name: '{{ student.full_name }}'}; deleteStudent()" 
+                                class="px-2 xl:px-3 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors touch-manipulation">
+                            <i class="fas fa-trash mr-1"></i><span class="hidden xl:inline">Delete</span><span class="xl:hidden">D</span>
+                            </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-12 sm:p-16 text-center">
+                <div class="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-full flex items-center justify-center">
+                    <i class="fas fa-user-graduate text-gray-400 text-4xl sm:text-5xl"></i>
+                </div>
+                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-2">No Students Found</h3>
+                <p class="text-sm sm:text-base text-gray-500 dark:text-gray-400">Start by adding new student records</p>
+            </div>
+        {% endif %}
+    </div>
+    
+    <!-- View Student Details Modal -->
+    <div x-show="viewModalOpen" 
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         x-transition:enter="ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="viewModalOpen = false"></div>
+            
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
+                
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-green-500 to-emerald-600 px-4 sm:px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg sm:text-xl font-bold text-white">Student Details</h3>
+                        <button @click="viewModalOpen = false" class="text-white hover:text-gray-200">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Modal Body -->
+                <div class="bg-white dark:bg-gray-800 px-4 sm:px-6 py-4 sm:py-6 max-h-[70vh] overflow-y-auto">
+                    <template x-if="selectedStudent">
+                        <div class="space-y-4">
+                            <!-- Student Information -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Student ID</label>
+                                    <p class="text-sm text-gray-900 dark:text-white font-mono" x-text="selectedStudent.student_id"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Full Name</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.full_name"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Date of Birth</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.date_of_birth || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Gender</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.gender || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Current Grade</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.current_grade || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Status</label>
+                                    <span class="inline-block px-2 py-1 text-xs font-semibold rounded-full" 
+                                          :class="{
+                                              'bg-green-100 text-green-800': selectedStudent.status === 'in session',
+                                              'bg-yellow-100 text-yellow-800': selectedStudent.status === 'pending approval',
+                                              'bg-red-100 text-red-800': selectedStudent.status === 'suspended' || selectedStudent.status === 'expelled',
+                                              'bg-gray-100 text-gray-800': selectedStudent.status === 'alumni'
+                                          }"
+                                          x-text="selectedStudent.status"></span>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                                    <p class="text-sm text-gray-900 dark:text-white capitalize" x-text="selectedStudent.student_category || 'N/A'"></p>
+                                </div>
+                                <div>
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Previous School</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.previous_school || 'N/A'"></p>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Address</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.address || 'N/A'"></p>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Medical Information</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.medical_info || 'N/A'"></p>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Special Needs</label>
+                                    <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.special_needs || 'N/A'"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Sponsor Information -->
+                            <div class="border-t pt-4">
+                                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-3">Sponsor Information</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Name</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.sponsor_name || 'N/A'"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Phone</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.sponsor_phone || 'N/A'"></p>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Email</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.sponsor_email || 'N/A'"></p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Parent Information -->
+                            <div class="border-t pt-4">
+                                <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-3">Parent/Guardian Information</h4>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Parent Name</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.parent_name || 'N/A'"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Relationship</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.relationship || 'N/A'"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Phone</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.parent_phone || 'N/A'"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.parent_email || 'N/A'"></p>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Emergency Contact</label>
+                                        <p class="text-sm text-gray-900 dark:text-white" x-text="selectedStudent.emergency_contact || 'N/A'"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Modal Footer -->
+                <div class="bg-gray-50 dark:bg-gray-900 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row justify-end gap-2">
+                    <button @click="openEditModal(selectedStudent.student_id)" 
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                        <i class="fas fa-edit mr-2"></i>Edit
+                    </button>
+                    <button @click="viewModalOpen = false" 
+                            class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Edit Student Modal -->
+    <div x-show="editModalOpen" 
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         x-transition:enter="ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="editModalOpen = false"></div>
+            
+            <div class="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full"
+                 x-transition:enter="ease-out duration-300"
+                 x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+                 x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave="ease-in duration-200"
+                 x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+                 x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
+                
+                <!-- Modal Header -->
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 px-4 sm:px-6 py-4">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg sm:text-xl font-bold text-white">Edit Student Details</h3>
+                        <button @click="editModalOpen = false" class="text-white hover:text-gray-200">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Modal Body -->
+                <form @submit.prevent="saveStudent()">
+                    <div class="bg-white dark:bg-gray-800 px-4 sm:px-6 py-4 sm:py-6 max-h-[70vh] overflow-y-auto">
+                        <template x-if="selectedStudent">
+                            <div class="space-y-4">
+                                <!-- Student Information -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Student ID *</label>
+                                        <input type="text" 
+                                               x-model="selectedStudent.student_id" 
+                                               @blur="validateStudentId(selectedStudent.student_id, originalStudentId)"
+                                               @input="studentIdError = ''"
+                                               required
+                                               :class="studentIdError ? 'border-red-500' : 'border-gray-300'"
+                                               class="w-full px-3 py-2 border rounded-lg text-sm">
+                                        <p x-show="studentIdError" x-text="studentIdError" class="text-xs text-red-600 mt-1"></p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Full Name *</label>
+                                        <input type="text" x-model="selectedStudent.full_name" required
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Date of Birth</label>
+                                        <input type="date" x-model="selectedStudent.date_of_birth"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Gender</label>
+                                        <select x-model="selectedStudent.gender" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            <option value="">Select Gender</option>
+                                            <option value="MALE">Male</option>
+                                            <option value="FEMALE">Female</option>
+                                            <option value="OTHER">Other</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Current Grade</label>
+                                        <input type="text" x-model="selectedStudent.current_grade"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Status</label>
+                                        <select x-model="selectedStudent.status" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            <option value="pending approval">Pending Approval</option>
+                                            <option value="in session">In Session</option>
+                                            <option value="suspended">Suspended</option>
+                                            <option value="expelled">Expelled</option>
+                                            <option value="alumni">Alumni</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                                        <select x-model="selectedStudent.student_category" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                            <option value="">Select Category</option>
+                                            <option value="sponsored">Sponsored</option>
+                                            <option value="self sponsored">Self Sponsored</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Previous School</label>
+                                        <input type="text" x-model="selectedStudent.previous_school"
+                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Address</label>
+                                        <textarea x-model="selectedStudent.address" rows="2"
+                                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Medical Information</label>
+                                        <textarea x-model="selectedStudent.medical_info" rows="2"
+                                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Special Needs</label>
+                                        <textarea x-model="selectedStudent.special_needs" rows="2"
+                                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></textarea>
+                                    </div>
+                                </div>
+                                
+                                <!-- Sponsor Information -->
+                                <div class="border-t pt-4">
+                                    <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-3">Sponsor Information</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Name</label>
+                                            <input type="text" x-model="selectedStudent.sponsor_name"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Phone</label>
+                                            <input type="text" x-model="selectedStudent.sponsor_phone"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Sponsor Email</label>
+                                            <input type="email" x-model="selectedStudent.sponsor_email"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Parent Information -->
+                                <div class="border-t pt-4">
+                                    <h4 class="text-sm font-bold text-gray-900 dark:text-white mb-3">Parent/Guardian Information</h4>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Parent Name</label>
+                                            <input type="text" x-model="selectedStudent.parent_name"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Relationship</label>
+                                            <input type="text" x-model="selectedStudent.relationship"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Phone</label>
+                                            <input type="text" x-model="selectedStudent.parent_phone"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                                            <input type="email" x-model="selectedStudent.parent_email"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Emergency Contact</label>
+                                            <input type="text" x-model="selectedStudent.emergency_contact"
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    
+                    <!-- Modal Footer -->
+                    <div class="bg-gray-50 dark:bg-gray-900 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row justify-end gap-2">
+                        <button type="button" @click="editModalOpen = false" 
+                                class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" :disabled="loading"
+                                class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50">
+                            <i class="fas fa-save mr-2"></i><span x-text="loading ? 'Saving...' : 'Save Changes'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

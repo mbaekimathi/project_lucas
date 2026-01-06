@@ -1,0 +1,89 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Profile - Parent - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#F97316{% endblock %}
+{% block role_secondary %}#FB923C{% endblock %}
+{% block role_accent %}#EA580C{% endblock %}
+{% block role_gradient_start %}#F97316{% endblock %}
+{% block role_gradient_end %}#EA580C{% endblock %}
+
+{% block role_display %}Parent{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/parent" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a href="/profile/parent" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4" style="border-color: var(--role-primary);">
+    <i class="fas fa-user w-5"></i>
+    <span>Profile</span>
+</a>
+<a href="/settings/parent" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-cog w-5"></i>
+    <span>Settings</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">My Profile</h1>
+        <p class="text-gray-600 dark:text-gray-400">View and manage your parent profile information</p>
+    </div>
+
+    <!-- Profile Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8">
+            <!-- Profile Picture -->
+            <div class="relative">
+                <div class="w-32 h-32 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center border-4 border-gray-200 dark:border-gray-700 shadow-lg">
+                    <i class="fas fa-users text-white text-5xl"></i>
+                </div>
+            </div>
+
+            <!-- Profile Info -->
+            <div class="flex-1 text-center md:text-left">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ user_data.get('full_name', session.get('full_name', 'Parent')) }}</h2>
+                <p class="text-gray-600 dark:text-gray-400 mb-4">Parent/Guardian</p>
+                <div class="flex flex-wrap gap-4 justify-center md:justify-start">
+                    <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-envelope"></i>
+                        <span>{{ user_data.get('email', session.get('email', 'N/A')) }}</span>
+                    </div>
+                    <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-phone"></i>
+                        <span>{{ user_data.get('phone', 'N/A') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Information -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Profile Information</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-500 dark:text-gray-400">Full Name</label>
+                <p class="text-gray-900 dark:text-white font-medium">{{ user_data.get('full_name', 'N/A') }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-500 dark:text-gray-400">Email</label>
+                <p class="text-gray-900 dark:text-white font-medium">{{ user_data.get('email', 'N/A') }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-500 dark:text-gray-400">Phone Number</label>
+                <p class="text-gray-900 dark:text-white font-medium">{{ user_data.get('phone', 'N/A') }}</p>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-500 dark:text-gray-400">Relationship</label>
+                <p class="text-gray-900 dark:text-white font-medium">{{ user_data.get('relationship', 'N/A') }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

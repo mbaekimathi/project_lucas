@@ -1,413 +1,1638 @@
 <!DOCTYPE html>
-<html lang="en" class="{% if session.get('theme') == 'dark' %}dark{% else %}light{% endif %}">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Modern School{% endblock %}</title>
-    
-    <!-- TailwindCSS CDN -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>{% block title %}{{ school_settings.school_name or 'Modern School' }} - NGO Sponsored Education{% endblock %}</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Font Awesome for icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
-    
-    <!-- Tailwind Config for Dark Mode -->
     <script>
         tailwind.config = {
-            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        primary: '#1C6DD0',
-                        secondary: '#10B981',
+                        'brand-primary': '#1D3557',      // Deep royal blue - navigation, headers, footer
+                        'brand-secondary': '#E63946',    // Romantic red - CTAs, active states, highlights
+                        'brand-accent': '#E63946',      // Romantic red - accents
+                        'brand-warm': '#1D3557',         // Royal blue
+                        'warm-cream': '#F8F9FA',         // Soft white - backgrounds
+                        'warm-beige': '#F8F9FA',         // Soft white
+                        'warm-slate': '#2B2D42',         // Charcoal - main text
+                        'warm-coral': '#E63946',         // Romantic red
+                        'warm-gold': '#E63946',          // Romantic red
+                        'warm-navy': '#1D3557',         // Royal blue
+                        'warm-teal': '#1D3557',          // Royal blue
+                        'vibrant-blue': '#1D3557',      // Royal blue
+                        'vibrant-purple': '#1D3557',     // Royal blue
+                        'vibrant-pink': '#E63946',       // Romantic red
+                        'light-blue': '#E3F2FD',         // Light blue - brightness accents
+                        'light-blue-50': '#E8F4F8',     // Very light blue
+                        'light-blue-100': '#BBDEFB',    // Light blue tint
+                        // Legacy support
+                        'brand-orange': '#E63946',      // Romantic red
+                        'brand-blue': '#1D3557',        // Royal blue
+                        'orange-light': '#F8F9FA',      // Soft white
+                        'orange-dark': '#1D3557',       // Royal blue
+                        'blue-light': '#E63946',        // Romantic red
+                        'blue-dark': '#1D3557',         // Royal blue
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'Poppins', 'system-ui', 'sans-serif'],
+                        'heading': ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
-    
-    {% block head %}{% endblock %}
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <style>
+        [x-cloak] { display: none !important; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+        }
+        .fade-in-section {
+            animation: fadeIn 0.6s ease-out;
+        }
+        .slide-in-section {
+            animation: slideIn 0.4s ease-out;
+        }
+        .sidebar-transition {
+            transition: transform 0.3s ease-in-out;
+        }
+        /* Dropdown menu styles */
+        .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            margin-top: 0.5rem;
+            z-index: 1000;
+        }
+        /* Ensure dropdown appears above other content */
+        header {
+            position: relative;
+            z-index: 50;
+        }
+        /* Fix for dropdown positioning */
+        .relative[x-data] {
+            position: relative;
+        }
+        /* Responsive improvements */
+        @media (max-width: 640px) {
+            .container {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+        }
+        /* Touch target improvements */
+        button, a, input, select, textarea {
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        }
+        /* Better scrolling on mobile */
+        @media (max-width: 768px) {
+            body {
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+        /* Prevent text size adjustment on iOS */
+        @media screen and (max-width: 768px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+    </style>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
-    
+<body class="bg-light-blue-50 min-h-screen font-sans text-warm-slate" 
+      x-data="{ sidebarOpen: window.innerWidth >= 1024, loginModalOpen: false, admissionModalOpen: false, employeeModalOpen: false, teamMemberModalOpen: false, selectedMember: null, roleSelectionModalOpen: false, parentLoginModalOpen: false, studentLoginModalOpen: false }"
+      @open-admission-modal.window="admissionModalOpen = true"
+      @open-login-modal.window="loginModalOpen = true"
+      x-init="window.addEventListener('open-login-modal', () => { loginModalOpen = true; })">
     <!-- Header -->
-    <header class="sticky top-0 z-50 bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
-        <nav class="px-4 py-3">
-            <div class="flex items-center justify-between">
-                <!-- Logo and School Name -->
-                <div class="flex items-center space-x-3">
-                    <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-graduation-cap text-white text-xl"></i>
-                    </div>
-                    <div>
-                        <h1 class="text-lg font-bold text-gray-900 dark:text-white">Modern School</h1>
-                        <p class="text-xs text-gray-600 dark:text-gray-400 font-medium">Excellence in Education</p>
+    <header class="bg-brand-primary shadow-xl sticky top-0 z-50 border-b-2 border-brand-primary/20 backdrop-blur-sm header-modern relative">
+        <!-- Animated Background Pattern -->
+        <div class="absolute inset-0 opacity-5 pointer-events-none">
+            <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, #F97316 1px, transparent 0); background-size: 40px 40px;"></div>
+        </div>
+        
+        <div class="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 relative z-10">
+            <div class="flex items-center justify-between h-14 sm:h-16 md:h-18">
+                <!-- Logo -->
+                <div class="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
+                    <button @click="sidebarOpen = !sidebarOpen" class="text-white hover:text-brand-secondary transition-all transform hover:scale-110 active:scale-95 duration-300 p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-light-blue/30 border border-white/20 shadow-sm touch-manipulation flex-shrink-0">
+                        <i class="fas fa-bars text-lg sm:text-xl" x-show="!sidebarOpen"></i>
+                        <i class="fas fa-times text-lg sm:text-xl" x-show="sidebarOpen"></i>
+                    </button>
+                    <div class="flex items-center space-x-2 sm:space-x-3 group min-w-0 flex-1">
+                        <div class="flex items-center space-x-2 sm:space-x-3 cursor-pointer min-w-0 flex-1" @click="roleSelectionModalOpen = true">
+                            <div class="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-light-blue rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 border-2 border-light-blue/50 overflow-hidden flex-shrink-0">
+                                {% if school_settings.school_logo %}
+                                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                                     alt="{{ school_settings.school_name or 'School Logo' }}" 
+                                     class="w-full h-full object-cover">
+                                {% else %}
+                                <i class="fas fa-graduation-cap text-white text-base sm:text-lg md:text-xl"></i>
+                                {% endif %}
+                            </div>
+                            <div class="flex flex-col min-w-0 flex-1">
+                                <span class="text-base sm:text-lg md:text-xl lg:text-2xl font-heading font-bold text-white group-hover:text-brand-secondary transition-colors truncate">{{ school_settings.school_name or 'Modern School' }}</span>
+                                <span class="text-[10px] sm:text-xs text-white/80 -mt-0.5 sm:-mt-1 font-medium hidden xs:block">NGO Sponsored Education</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Desktop Header Actions -->
-                <div class="hidden lg:flex items-center space-x-4">
-                    <!-- Theme Toggle -->
-                    <button id="theme-toggle" class="p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all shadow-md">
-                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
-                        <i class="fas fa-sun hidden dark:inline text-yellow-400"></i>
-                    </button>
-                    
-                    {% if session.user_id %}
-                        <!-- User Menu -->
-                        <div class="relative group">
-                            <button class="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
-                                <i class="fas fa-user-circle text-primary"></i>
-                                <span class="font-medium text-gray-900 dark:text-white">{{ session.full_name }}</span>
-                                <i class="fas fa-chevron-down text-xs text-gray-600 dark:text-gray-400"></i>
+                <!-- Right Side: Calendar and Login -->
+                <div class="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 lg:space-x-4 flex-shrink-0">
+                    <!-- Calendar Widget (Desktop/Tablet) -->
+                    <div class="hidden sm:flex items-center header-datetime">
+                        <div class="calendar-widget-modern bg-light-blue border-2 border-brand-secondary rounded-lg sm:rounded-xl shadow-xl overflow-hidden transform hover:shadow-2xl hover:border-brand-secondary transition-all duration-300 flex-shrink-0">
+                            <div class="bg-gradient-to-r from-brand-secondary to-brand-secondary px-2 sm:px-2.5 py-1 sm:py-1.5 text-center">
+                                <div class="text-white text-[8px] sm:text-[9px] font-bold uppercase tracking-wide" id="calendar-month-header">January</div>
+                            </div>
+                            <div class="px-1.5 sm:px-2 py-1 sm:py-1.5 text-center bg-light-blue">
+                                <div class="text-base sm:text-lg font-bold text-brand-secondary leading-none" id="calendar-day">01</div>
+                                <div class="text-[7px] sm:text-[8px] text-brand-primary mt-0.5 font-semibold leading-tight" id="calendar-weekday">Mon</div>
+                                <div class="text-[6px] sm:text-[7px] text-gray-500 mt-0.5" id="calendar-year">2025</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Calendar Widget (Mobile) -->
+                    <div class="sm:hidden flex items-center header-datetime-mobile">
+                        <div class="calendar-widget-mobile-modern bg-light-blue border-2 border-brand-secondary rounded-lg shadow-lg px-1.5 sm:px-2 py-1 sm:py-1.5">
+                            <div class="text-[9px] sm:text-[10px] text-brand-secondary font-semibold" id="mobile-date">Jan 01</div>
+                        </div>
+                    </div>
+
+                    <!-- Login Button / User Menu -->
+                    <div class="flex items-center">
+                        {% if session.get('user_id') %}
+                        <div class="relative" x-data="{ open: false }" x-cloak>
+                            <button @click.stop="open = !open" type="button" class="user-menu-button-modern group relative flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl bg-brand-secondary text-white font-semibold shadow-xl overflow-hidden transition-all duration-300 transform hover:scale-105 hover:shadow-2xl active:scale-95 border-2 border-brand-secondary/50 z-50 touch-manipulation">
+                                <span class="relative z-10 flex items-center space-x-1.5 sm:space-x-2">
+                                    <div class="w-7 h-7 sm:w-8 sm:h-8 bg-white/30 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+                                        <i class="fas fa-user-circle text-sm sm:text-base md:text-lg transform group-hover:scale-110 transition-transform duration-300"></i>
+                                    </div>
+                                    <span class="hidden lg:inline font-bold text-sm md:text-base">{{ session.get('full_name', 'User') }}</span>
+                                    <i class="fas fa-chevron-down text-[10px] sm:text-xs transform transition-transform duration-300" :class="open ? 'rotate-180' : ''"></i>
+                                </span>
+                                <span class="login-button-shine absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
                             </button>
-                            <div class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 border border-gray-200 dark:border-gray-700">
-                                <a href="#" class="block px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-xl transition-colors">
-                                    <i class="fas fa-user mr-2 text-primary"></i>Profile
+                            <div x-show="open" 
+                                 @click.away="open = false" 
+                                 @keydown.escape.window="open = false"
+                                 x-transition:enter="transition ease-out duration-200"
+                                 x-transition:enter-start="opacity-0 scale-95"
+                                 x-transition:enter-end="opacity-100 scale-100"
+                                 x-transition:leave="transition ease-in duration-150"
+                                 x-transition:leave-start="opacity-100 scale-100"
+                                 x-transition:leave-end="opacity-0 scale-95"
+                                 style="display: none;"
+                                 class="absolute right-0 mt-2 w-48 sm:w-56 md:w-64 bg-light-blue rounded-lg sm:rounded-xl shadow-2xl border-2 border-light-blue-100 py-2 z-[100] overflow-hidden"
+                                 x-cloak>
+                                <div class="px-3 sm:px-4 py-2 sm:py-3 border-b border-light-blue-100 bg-gradient-to-r from-light-blue to-light-blue-50">
+                                    <p class="text-xs sm:text-sm font-semibold text-gray-900 truncate">{{ session.get('full_name', 'User') }}</p>
+                                    <p class="text-[10px] sm:text-xs text-gray-600 mt-0.5 truncate">{{ session.get('email', '') }}</p>
+                                </div>
+                                <a href="/dashboard/{{ session.get('role') }}" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
+                                    <i class="fas fa-tachometer-alt w-4 sm:w-5 text-brand-secondary"></i>
+                                    <span>Dashboard</span>
                                 </a>
-                                <a href="{{ url_for('logout') }}" class="block px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-xl transition-colors">
-                                    <i class="fas fa-sign-out-alt mr-2 text-red-500"></i>Logout
+                                <a href="/profile" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
+                                    <i class="fas fa-user-circle w-4 sm:w-5 text-brand-secondary"></i>
+                                    <span>Profile</span>
+                                </a>
+                                <a href="/settings" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
+                                    <i class="fas fa-cog w-4 sm:w-5 text-brand-secondary"></i>
+                                    <span>Settings</span>
+                                </a>
+                                <div class="border-t border-gray-200 my-1"></div>
+                                <a href="/logout" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
+                                    <i class="fas fa-sign-out-alt w-4 sm:w-5 text-red-600"></i>
+                                    <span>Logout</span>
                                 </a>
                             </div>
                         </div>
-                    {% else %}
-                        <!-- Login/Register Buttons -->
-                        <a href="{{ url_for('login') }}" class="px-4 py-2 text-gray-700 dark:text-gray-300 hover:text-primary dark:hover:text-primary transition-colors font-medium">
-                            Login
-                        </a>
-                        <a href="{{ url_for('register') }}" class="px-6 py-2.5 bg-primary text-white rounded-lg hover:bg-blue-700 transition-all shadow-md hover:shadow-lg font-semibold">
-                            Register
-                        </a>
-                    {% endif %}
+                        {% else %}
+                        <button @click="loginModalOpen = true" class="login-button-modern-advanced group relative px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl bg-brand-secondary text-white font-bold shadow-xl overflow-hidden transition-all duration-300 transform hover:scale-105 hover:shadow-2xl active:scale-95 whitespace-nowrap border-2 border-brand-secondary/50 touch-manipulation">
+                            <span class="relative z-10 flex items-center space-x-1.5 sm:space-x-2">
+                                <div class="w-7 h-7 sm:w-8 sm:h-8 bg-white/30 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+                                    <i class="fas fa-user-circle text-sm sm:text-base md:text-lg transform group-hover:rotate-12 transition-transform duration-300"></i>
+                                </div>
+                                <span class="hidden sm:inline text-sm md:text-base">Login</span>
+                                <i class="fas fa-arrow-right text-xs sm:text-sm transform group-hover:translate-x-1 transition-transform duration-300 sm:hidden"></i>
+                            </span>
+                            <span class="login-button-shine absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
+                        </button>
+                        {% endif %}
+                    </div>
                 </div>
-
-                <!-- Mobile Menu Button -->
-                <button id="mobile-menu-btn" class="lg:hidden p-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-all">
-                    <i class="fas fa-bars text-xl text-gray-700 dark:text-gray-300"></i>
-                </button>
             </div>
-        </nav>
+        </div>
     </header>
 
-    <!-- Sidebar Overlay (Mobile) -->
-    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden hidden transition-opacity duration-300"></div>
-
-    <!-- Sidebar -->
-    <aside id="sidebar" class="fixed lg:sticky top-16 left-0 h-[calc(100vh-4rem)] w-64 bg-white dark:bg-gray-800 shadow-xl border-r border-gray-200 dark:border-gray-700 z-50 transform -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out">
-        <div class="h-full flex flex-col">
-            <!-- Sidebar Header -->
-            <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-                {% if session.user_id %}
-                    <div class="flex items-center space-x-3 mb-4">
-                        <div class="w-12 h-12 bg-gradient-to-br from-primary to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-                            <i class="fas fa-user text-white"></i>
-                        </div>
-                        <div>
-                            <h3 class="font-bold text-gray-900 dark:text-white text-sm">{{ session.full_name }}</h3>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 capitalize">{{ session.user_role }}</p>
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="fixed left-0 z-40 w-64 sm:w-72 md:w-80 bg-brand-primary shadow-lg sidebar-transition transform border-r border-brand-primary/20 sidebar-position" 
+               :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+               x-transition:enter="transition-transform duration-300 ease-out"
+               x-transition:enter-start="-translate-x-full"
+               x-transition:enter-end="translate-x-0"
+               x-transition:leave="transition-transform duration-300 ease-in"
+               x-transition:leave-start="translate-x-0"
+               x-transition:leave-end="-translate-x-full">
+            <div class="h-full flex flex-col" style="max-height: calc(100vh - 4rem);">
+                <!-- Sidebar Header (Mobile) -->
+                <div class="p-4 border-b border-white/20 lg:hidden flex items-center justify-between bg-brand-primary">
+                    <span class="font-heading font-bold text-white flex items-center space-x-2">
+                        <i class="fas fa-bars text-white"></i>
+                        <span>Menu</span>
+                    </span>
+                    <button @click="sidebarOpen = false" class="text-white hover:text-brand-secondary transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <!-- Navigation Menu -->
+                <nav class="flex-1 p-2 sm:p-3 md:p-4 space-y-1.5 sm:space-y-2 overflow-y-auto sidebar-nav">
+                    <a href="/" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'home' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-home text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'home' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">Home</span>
+                        {% if request.endpoint == 'home' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/about" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'about' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-info-circle text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'about' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">About</span>
+                        {% if request.endpoint == 'about' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/programs" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'programs' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-book text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'programs' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">Programs</span>
+                        {% if request.endpoint == 'programs' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/news" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'news' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-newspaper text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'news' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">News/Events</span>
+                        {% if request.endpoint == 'news' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/gallery" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'gallery' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-images text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'gallery' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">Gallery</span>
+                        {% if request.endpoint == 'gallery' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/team" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'team' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-users text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'team' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">Our Team</span>
+                        {% if request.endpoint == 'team' %}
+                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <a href="/contact" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'contact' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
+                        <i class="fas fa-envelope text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'contact' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
+                        <span class="flex-1 font-semibold text-sm sm:text-base">Contact</span>
+                        {% if request.endpoint == 'contact' %}
+                        <div class="w-2 h-2 bg-brand-primary rounded-full"></div>
+                        {% endif %}
+                    </a>
+                    
+                    <button @click="admissionModalOpen = true" class="sidebar-link group flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-white hover:text-brand-primary transition-all duration-200 font-medium w-full text-left">
+                        <i class="fas fa-file-alt text-lg w-5 text-center text-gray-600 group-hover:text-brand-primary"></i>
+                        <span class="flex-1 font-semibold">Admission</span>
+                    </button>
+                </nav>
+                
+                <!-- Sidebar Footer -->
+                <div class="p-4 border-t border-gray-300 bg-gray-100">
+                    <div class="ngo-badge bg-light-blue rounded-lg p-3 border border-light-blue-100 shadow-sm">
+                        <div class="flex items-center justify-center space-x-2">
+                            <i class="fas fa-heart text-brand-secondary text-sm"></i>
+                            <span class="text-gray-700 font-semibold text-sm">NGO Sponsored</span>
                         </div>
                     </div>
-                {% else %}
-                    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Navigation</h2>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Explore our website</p>
-                {% endif %}
+                </div>
             </div>
+        </aside>
 
-            <!-- Sidebar Navigation -->
-            <nav class="flex-1 overflow-y-auto p-4 space-y-1">
-                {% if session.user_id %}
-                    <!-- Logged-in Navigation -->
-                    {% if session.user_role == 'student' %}
-                        <a href="{{ url_for('student_dashboard') }}" class="sidebar-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}">
-                            <i class="fas fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>Timetable</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-tasks"></i>
-                            <span>Assignments</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-chart-line"></i>
-                            <span>Results</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-money-bill-wave"></i>
-                            <span>Fees</span>
-                        </a>
-                    {% elif session.user_role == 'parent' %}
-                        <a href="{{ url_for('parent_dashboard') }}" class="sidebar-link {% if request.endpoint == 'parent_dashboard' %}active{% endif %}">
-                            <i class="fas fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-child"></i>
-                            <span>My Children</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-calendar-check"></i>
-                            <span>Attendance</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-graduation-cap"></i>
-                            <span>Grades</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-money-bill-wave"></i>
-                            <span>Fee Status</span>
-                        </a>
-                    {% elif session.user_role == 'teacher' %}
-                        <a href="{{ url_for('teacher_dashboard') }}" class="sidebar-link {% if request.endpoint == 'teacher_dashboard' %}active{% endif %}">
-                            <i class="fas fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-users"></i>
-                            <span>My Classes</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-clipboard-list"></i>
-                            <span>Grading</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-tasks"></i>
-                            <span>Assignments</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-calendar-alt"></i>
-                            <span>Schedule</span>
-                        </a>
-                    {% elif session.user_role == 'admin' %}
-                        <a href="{{ url_for('admin_dashboard') }}" class="sidebar-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
-                            <i class="fas fa-home"></i>
-                            <span>Dashboard</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-users"></i>
-                            <span>Students</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-chalkboard-teacher"></i>
-                            <span>Staff</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-file-alt"></i>
-                            <span>Reports</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-dollar-sign"></i>
-                            <span>Finance</span>
-                        </a>
-                        <a href="#" class="sidebar-link">
-                            <i class="fas fa-cog"></i>
-                            <span>Settings</span>
-                        </a>
-                    {% endif %}
-                    
-                    <div class="border-t border-gray-200 dark:border-gray-700 my-4"></div>
-                    
-                    <a href="{{ url_for('index') }}" class="sidebar-link">
-                        <i class="fas fa-home"></i>
-                        <span>Home</span>
-                    </a>
-                {% else %}
-                    <!-- Public Navigation -->
-                    <a href="{{ url_for('index') }}" class="sidebar-link {% if request.endpoint == 'index' %}active{% endif %}">
-                        <i class="fas fa-home"></i>
-                        <span>Home</span>
-                    </a>
-                    <a href="{{ url_for('about') }}" class="sidebar-link {% if request.endpoint == 'about' %}active{% endif %}">
-                        <i class="fas fa-info-circle"></i>
-                        <span>About Us</span>
-                    </a>
-                    <a href="{{ url_for('programs') }}" class="sidebar-link {% if request.endpoint == 'programs' %}active{% endif %}">
-                        <i class="fas fa-book"></i>
-                        <span>Programs</span>
-                    </a>
-                    <a href="{{ url_for('admissions') }}" class="sidebar-link {% if request.endpoint == 'admissions' %}active{% endif %}">
-                        <i class="fas fa-graduation-cap"></i>
-                        <span>Admissions</span>
-                    </a>
-                    <a href="{{ url_for('news') }}" class="sidebar-link {% if request.endpoint == 'news' %}active{% endif %}">
-                        <i class="fas fa-newspaper"></i>
-                        <span>News & Events</span>
-                    </a>
-                    <a href="{{ url_for('gallery') }}" class="sidebar-link {% if request.endpoint == 'gallery' %}active{% endif %}">
-                        <i class="fas fa-images"></i>
-                        <span>Gallery</span>
-                    </a>
-                    <a href="{{ url_for('contact') }}" class="sidebar-link {% if request.endpoint == 'contact' %}active{% endif %}">
-                        <i class="fas fa-envelope"></i>
-                        <span>Contact</span>
-                    </a>
-                    <a href="{{ url_for('ngo') }}" class="sidebar-link {% if request.endpoint == 'ngo' %}active{% endif %}">
-                        <i class="fas fa-handshake"></i>
-                        <span>NGO Partners</span>
-                    </a>
-                    <a href="{{ url_for('donate') }}" class="sidebar-link {% if request.endpoint == 'donate' %}active{% endif %}">
-                        <i class="fas fa-heart"></i>
-                        <span>Donate</span>
-                    </a>
-                    <a href="{{ url_for('staff') }}" class="sidebar-link {% if request.endpoint == 'staff' %}active{% endif %}">
-                        <i class="fas fa-users"></i>
-                        <span>Staff</span>
-                    </a>
-                {% endif %}
-            </nav>
+        <!-- Sidebar Overlay (Mobile) -->
+        <div x-show="sidebarOpen" 
+             @click="sidebarOpen = false" 
+             x-transition:enter="transition-opacity ease-out duration-300" 
+             x-transition:enter-start="opacity-0" 
+             x-transition:enter-end="opacity-100" 
+             x-transition:leave="transition-opacity ease-in duration-200" 
+             x-transition:leave-start="opacity-100" 
+             x-transition:leave-end="opacity-0" 
+             class="fixed top-16 left-0 right-0 bottom-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-opacity-75 backdrop-blur-sm z-30 lg:hidden cursor-pointer"
+             style="display: none;"></div>
 
-            <!-- Sidebar Footer -->
-            <div class="p-4 border-t border-gray-200 dark:border-gray-700">
-                <button id="theme-toggle-sidebar" class="w-full flex items-center justify-between px-4 py-3 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                    <div class="flex items-center space-x-3">
-                        <i class="fas fa-moon dark:hidden text-gray-700"></i>
-                        <i class="fas fa-sun hidden dark:inline text-yellow-400"></i>
-                        <span class="font-medium text-gray-900 dark:text-white">Theme</span>
+        <!-- Main Content -->
+        <main class="flex-1 transition-all duration-300" 
+              :class="{'lg:ml-64 md:ml-72 xl:ml-80': sidebarOpen, 'lg:ml-0': !sidebarOpen}"
+              x-transition:enter="transition-all duration-300"
+              x-transition:enter-start="opacity-0"
+              x-transition:enter-end="opacity-100">
+            <!-- Flash Messages - Top Right Popup -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                    <div x-data="{ show: true }" 
+                         x-show="show"
+                         x-init="
+                            $nextTick(() => {
+                                setTimeout(() => {
+                                    show = false;
+                                    setTimeout(() => {
+                                        if ($el && $el.parentNode) {
+                                            $el.parentNode.removeChild($el);
+                                        }
+                                    }, 300);
+                                }, 5000);
+                            });
+                         "
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 translate-x-full"
+                         x-transition:enter-end="opacity-100 translate-x-0"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100 translate-x-0"
+                         x-transition:leave-end="opacity-0 translate-x-full"
+                         class="fixed top-4 right-4 z-[100] max-w-sm w-full pointer-events-auto"
+                         style="display: block;"
+                         x-cloak>
+                        <!-- Notification Popup -->
+                        <div class="bg-light-blue rounded-lg shadow-xl border-l-4 overflow-hidden
+                            {% if category == 'error' %}border-red-500
+                            {% elif category == 'success' %}border-brand-primary
+                            {% else %}border-brand-primary{% endif %}">
+                            <div class="p-4 flex items-start gap-3">
+                                <!-- Icon -->
+                                <div class="flex-shrink-0">
+                                    <div class="w-10 h-10 rounded-full flex items-center justify-center
+                                        {% if category == 'error' %}bg-red-100 text-red-600
+                                        {% elif category == 'success' %}bg-red-100 text-brand-primary
+                                        {% else %}bg-red-100 text-brand-primary{% endif %}">
+                                        {% if category == 'error' %}
+                                            <i class="fas fa-exclamation-circle text-lg"></i>
+                                        {% elif category == 'success' %}
+                                            <i class="fas fa-check-circle text-lg"></i>
+                                        {% else %}
+                                            <i class="fas fa-info-circle text-lg"></i>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <!-- Content -->
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-900 leading-relaxed">
+                                        {{ message }}
+                                    </p>
+                                </div>
+                                
+                                <!-- Close Button -->
+                                <button @click="show = false" 
+                                        class="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100">
+                                    <i class="fas fa-times text-sm"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- Progress Bar -->
+                            <div class="h-1 bg-gray-100">
+                                <div class="h-full
+                                    {% if category == 'error' %}bg-red-500
+                                    {% elif category == 'success' %}bg-brand-primary
+                                    {% else %}bg-brand-primary{% endif %}
+                                    animate-progress"></div>
+                            </div>
+                        </div>
                     </div>
-                    <span class="text-sm text-gray-600 dark:text-gray-400" id="theme-text">Light</span>
-                </button>
-            </div>
-        </div>
-    </aside>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-    <!-- Main Content -->
-    <main class="min-h-screen lg:ml-64 transition-all duration-300">
-        <div class="w-full">
             {% block content %}{% endblock %}
-        </div>
-    </main>
+        </main>
+    </div>
 
     <!-- Footer -->
-    <footer class="bg-gray-800 dark:bg-gray-900 text-gray-300 py-12 mt-16 lg:ml-64">
-        <div class="container mx-auto px-4 lg:px-8">
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <!-- About Section -->
-                <div>
-                    <h3 class="text-white text-lg font-bold mb-4">About Us</h3>
-                    <p class="text-sm mb-6 text-gray-400 leading-relaxed">
-                        Excellence in education, empowering students for a brighter future through innovative learning and holistic development.
-                    </p>
-                    <div class="flex space-x-3">
-                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-600 rounded-lg flex items-center justify-center text-white transition-colors">
-                            <i class="fab fa-facebook"></i>
-                        </a>
-                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-400 rounded-lg flex items-center justify-center text-white transition-colors">
-                            <i class="fab fa-twitter"></i>
-                        </a>
-                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-pink-600 rounded-lg flex items-center justify-center text-white transition-colors">
-                            <i class="fab fa-instagram"></i>
-                        </a>
-                        <a href="#" class="w-10 h-10 bg-gray-700 hover:bg-blue-700 rounded-lg flex items-center justify-center text-white transition-colors">
-                            <i class="fab fa-linkedin"></i>
-                        </a>
+    <footer class="footer-modern bg-brand-primary text-white border-t border-brand-primary/30 backdrop-blur-xl relative overflow-hidden transition-all duration-300" 
+            :class="{'lg:ml-64': sidebarOpen, 'lg:ml-0': !sidebarOpen}"
+            x-transition:enter="transition-all duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100">
+        <!-- Animated Background Pattern -->
+        <div class="absolute inset-0 opacity-5 pointer-events-none">
+            <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 40px 40px;"></div>
+        </div>
+        <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none"></div>
+        
+        <div class="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 relative z-10">
+            <div class="py-3 sm:py-4 md:py-5 flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0 gap-3 sm:gap-4">
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fas fa-heart text-brand-secondary animate-pulse"></i>
+                        <span class="text-sm text-gray-300 font-medium">NGO Sponsored Education Initiative</span>
                     </div>
                 </div>
-
-                <!-- Quick Links -->
-                <div>
-                    <h3 class="text-white text-lg font-bold mb-4">Quick Links</h3>
-                    <ul class="space-y-3">
-                        <li><a href="{{ url_for('about') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-                            <i class="fas fa-chevron-right text-xs"></i> About Us
-                        </a></li>
-                        <li><a href="{{ url_for('programs') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-                            <i class="fas fa-chevron-right text-xs"></i> Programs
-                        </a></li>
-                        <li><a href="{{ url_for('admissions') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-                            <i class="fas fa-chevron-right text-xs"></i> Admissions
-                        </a></li>
-                        <li><a href="{{ url_for('news') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-                            <i class="fas fa-chevron-right text-xs"></i> News & Events
-                        </a></li>
-                        {% if session.user_id %}
-                            <li><a href="{{ url_for('dashboard') }}" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
-                                <i class="fas fa-chevron-right text-xs"></i> Dashboard
-                            </a></li>
-                        {% endif %}
-                    </ul>
+                <div class="flex items-center space-x-6">
+                    <a href="/about" class="text-gray-300 hover:text-brand-secondary transition-colors text-sm font-medium flex items-center space-x-1 group">
+                        <i class="fas fa-info-circle text-xs"></i>
+                        <span>About Us</span>
+                    </a>
+                    <a href="/contact" class="text-gray-300 hover:text-brand-secondary transition-colors text-sm font-medium flex items-center space-x-1 group">
+                        <i class="fas fa-envelope text-xs"></i>
+                        <span>Contact</span>
+                    </a>
+                    <div class="text-sm text-gray-400">
+                        &copy; 2025 {{ school_settings.school_name or 'Modern School' }}. All rights reserved.
+                    </div>
                 </div>
-
-                <!-- Contact Info -->
-                <div>
-                    <h3 class="text-white text-lg font-bold mb-4">Contact Us</h3>
-                    <ul class="space-y-3 text-sm text-gray-400">
-                        <li class="flex items-start gap-3">
-                            <i class="fas fa-map-marker-alt mt-1 text-primary"></i>
-                            <span>123 Education Street, City, State 12345</span>
-                        </li>
-                        <li class="flex items-center gap-3">
-                            <i class="fas fa-phone text-primary"></i>
-                            <span>+1 (555) 123-4567</span>
-                        </li>
-                        <li class="flex items-center gap-3">
-                            <i class="fas fa-envelope text-primary"></i>
-                            <span>info@school.com</span>
-                        </li>
-                        <li class="flex items-center gap-3">
-                            <i class="fas fa-clock text-primary"></i>
-                            <span>Mon-Fri: 8:00 AM - 5:00 PM</span>
-                        </li>
-                    </ul>
-                </div>
-
-                <!-- Newsletter -->
-                <div>
-                    <h3 class="text-white text-lg font-bold mb-4">Newsletter</h3>
-                    <p class="text-sm mb-4 text-gray-400">
-                        Subscribe to our newsletter for updates and announcements.
-                    </p>
-                    <form class="flex flex-col space-y-3">
-                        <input type="email" placeholder="Your email address" class="px-4 py-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary transition-all">
-                        <button type="submit" class="bg-primary text-white px-4 py-3 rounded-lg hover:bg-blue-700 transition-colors shadow-lg flex items-center justify-center gap-2 font-semibold">
-                            <span>Subscribe</span>
-                            <i class="fas fa-paper-plane"></i>
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-sm">
-                <p>&copy; 2024 Modern School. All rights reserved.</p>
             </div>
         </div>
     </footer>
 
-    <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <div id="flash-messages" class="fixed top-20 right-4 z-50 space-y-2">
-                {% for category, message in messages %}
-                    <div class="flash-message flash-{{ category }} bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 min-w-[300px] border-l-4 animate-slide-in">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center">
-                                {% if category == 'success' %}
-                                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                                {% elif category == 'danger' %}
-                                    <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
-                                {% elif category == 'warning' %}
-                                    <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
-                                {% else %}
-                                    <i class="fas fa-info-circle text-blue-500 mr-3"></i>
-                                {% endif %}
-                                <span>{{ message }}</span>
-                            </div>
-                            <button class="ml-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick="this.parentElement.parentElement.remove()">
-                                <i class="fas fa-times"></i>
+    <!-- Login Modal -->
+    <div x-show="loginModalOpen" 
+         @click.away="loginModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+         style="display: none;">
+        
+        <div @click.stop
+             x-transition:enter="transition-all ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition-all ease-in duration-200"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="login-modal bg-light-blue rounded-lg sm:rounded-xl md:rounded-2xl shadow-2xl w-full max-w-[90vw] sm:max-w-md md:max-w-lg max-h-[98vh] sm:max-h-[95vh] md:max-h-[90vh] overflow-y-auto">
+            
+            <!-- Modal Header with Logo -->
+            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
+                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
+                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
+                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">NGO Sponsored Education</span>
+                        </div>
+                    </div>
+                    <button @click="loginModalOpen = false" class="text-white hover:text-red-300 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
+                        <i class="fas fa-times text-lg sm:text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
+                <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-gray-800 mb-1 sm:mb-1.5 md:mb-2 text-center">Employee Login</h2>
+                <p class="text-xs sm:text-sm md:text-base text-gray-600 text-center mb-3 sm:mb-4 md:mb-6">Enter your credentials to continue</p>
+
+                <form method="POST" action="/login" id="loginForm" class="space-y-3 sm:space-y-4 md:space-y-5" @submit="
+                        // Ensure employee_id is captured
+                        const empIdField = document.getElementById('employee_id');
+                        const fallbackField = document.getElementById('employee_id_fallback');
+                        if(empIdField && fallbackField) {
+                            fallbackField.value = empIdField.value;
+                    }
+                ">
+                    <!-- Hidden role field - always employee -->
+                    <input type="hidden" name="role" value="employee" required>
+
+                    <!-- Employee Fields -->
+                    <div>
+                        <label for="employee_id" class="block text-xs sm:text-sm font-semibold mb-1 sm:mb-1.5 md:mb-2 text-gray-700">
+                            6-Digit Employee Code <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="text" 
+                                   id="employee_id" 
+                                   name="employee_id" 
+                                   required
+                                   maxlength="6"
+                                   pattern="[0-9]{6}"
+                                   inputmode="numeric"
+                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 md:py-3.5 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation min-h-[44px]"
+                                   placeholder="Enter 6-digit code"
+                                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6)"
+                                   autocomplete="off">
+                        </div>
+                        <p class="text-[10px] sm:text-xs text-gray-500 mt-1 sm:mt-1.5 md:mt-2">Enter your 6-digit employee identification code</p>
+                    </div>
+                    
+                    <!-- Hidden employee_id field to ensure it's always in form (for form submission) -->
+                    <input type="hidden" 
+                           name="employee_id_fallback" 
+                           id="employee_id_fallback"
+                           value="">
+
+                    <!-- Password Field -->
+                    <div>
+                        <label for="password" class="block text-xs sm:text-sm font-semibold mb-1 sm:mb-1.5 md:mb-2 text-gray-700">
+                            Password <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative" x-data="{ showPassword: false }">
+                            <input :type="showPassword ? 'text' : 'password'" 
+                                   id="password" 
+                                   name="password" 
+                                   required
+                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 md:py-3.5 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation min-h-[44px]"
+                                   placeholder="Enter your password"
+                                   autocomplete="current-password">
+                            <button type="button" 
+                                    @click="showPassword = !showPassword"
+                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation min-w-[44px] justify-center">
+                                <i class="fas text-sm sm:text-base" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
                             </button>
                         </div>
                     </div>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
 
-    <!-- JavaScript -->
+                    <!-- Remember Me -->
+                    <div class="flex items-center pt-1 sm:pt-1.5">
+                        <input type="checkbox" id="remember" name="remember"
+                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer touch-manipulation min-w-[20px] min-h-[20px]">
+                        <label for="remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none touch-manipulation">Remember me</label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" 
+                            class="w-full px-4 sm:px-6 py-3 sm:py-3.5 md:py-4 bg-brand-secondary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base md:text-lg shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation min-h-[48px] sm:min-h-[52px]">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                    </button>
+                </form>
+
+                <div class="mt-3 sm:mt-4 md:mt-6 text-center pt-3 sm:pt-4 md:pt-6 border-t border-gray-200">
+                    <p class="text-[10px] sm:text-xs md:text-sm text-gray-600">
+                        Don't have an account? 
+                        <button @click="loginModalOpen = false; employeeModalOpen = true" class="text-brand-secondary font-semibold hover:text-brand-secondary/80 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Employee Registration Portal</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Role Selection Modal -->
+    <div x-show="roleSelectionModalOpen" 
+         @click.away="roleSelectionModalOpen = false"
+         @keydown.escape.window="roleSelectionModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+         style="display: none;">
+        
+        <div @click.stop
+                         x-transition:enter="transition-all ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition-all ease-in duration-200"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            
+            <!-- Modal Header with Logo -->
+            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
+                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
+                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
+                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">NGO Sponsored Education</span>
+                        </div>
+                    </div>
+                    <button @click="roleSelectionModalOpen = false" class="text-white hover:text-red-300 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
+                        <i class="fas fa-times text-lg sm:text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
+                <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-gray-800 mb-1 sm:mb-1.5 md:mb-2 text-center">Select Your Role</h2>
+                <p class="text-xs sm:text-sm md:text-base text-gray-600 text-center mb-3 sm:mb-4 md:mb-6">Choose how you want to login</p>
+
+                <div class="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
+                    <!-- Parent Login Option -->
+                    <button @click="roleSelectionModalOpen = false; parentLoginModalOpen = true" 
+                            class="p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl md:rounded-2xl bg-gradient-to-br from-brand-secondary to-brand-primary text-white transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl border-2 border-brand-primary touch-manipulation min-h-[120px] sm:min-h-[140px] md:min-h-[160px]">
+                        <div class="flex flex-col items-center space-y-1.5 sm:space-y-2 md:space-y-3">
+                            <i class="fas fa-users text-2xl sm:text-3xl md:text-4xl"></i>
+                            <span class="text-sm sm:text-base md:text-lg font-heading font-bold">Parent</span>
+                            <span class="text-[10px] sm:text-xs md:text-sm text-red-100 text-center">Login as a parent</span>
+                        </div>
+                    </button>
+
+                    <!-- Student Login Option -->
+                    <button @click="roleSelectionModalOpen = false; studentLoginModalOpen = true" 
+                            class="p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl md:rounded-2xl bg-brand-primary text-white transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl border-2 border-brand-primary touch-manipulation min-h-[120px] sm:min-h-[140px] md:min-h-[160px]">
+                        <div class="flex flex-col items-center space-y-1.5 sm:space-y-2 md:space-y-3">
+                            <i class="fas fa-user-graduate text-2xl sm:text-3xl md:text-4xl"></i>
+                            <span class="text-sm sm:text-base md:text-lg font-heading font-bold">Student</span>
+                            <span class="text-[10px] sm:text-xs md:text-sm text-red-100 text-center">Login as a student</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Parent Login Modal -->
+    <div x-show="parentLoginModalOpen" 
+         @click.away="parentLoginModalOpen = false"
+         @keydown.escape.window="parentLoginModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-300"
+                         x-transition:enter-start="opacity-0"
+                         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+                         style="display: none;">
+        
+        <div @click.stop
+             x-transition:enter="transition-all ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition-all ease-in duration-200"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            
+            <!-- Modal Header with Logo -->
+            <div class="bg-gradient-to-r from-brand-secondary to-brand-primary p-4 sm:p-5 md:p-6 rounded-t-xl sm:rounded-t-2xl">
+                <div class="flex items-center justify-between mb-3 sm:mb-4">
+                    <div class="flex items-center space-x-2 sm:space-x-3">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-graduation-cap text-brand-secondary text-lg sm:text-2xl"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
+                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">Parent Login</span>
+                        </div>
+                    </div>
+                    <button @click="parentLoginModalOpen = false" class="text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
+                        <i class="fas fa-times text-lg sm:text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
+                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-800 mb-1.5 sm:mb-2 text-center">Parent Login</h2>
+                <p class="text-sm sm:text-base text-gray-600 text-center mb-4 sm:mb-6">Enter your credentials to continue</p>
+
+                <form method="POST" action="/login" id="parentLoginForm" class="space-y-4 sm:space-y-5">
+                    <!-- Hidden role field - always parent -->
+                    <input type="hidden" name="role" value="parent" required>
+
+                    <!-- Admission Number Field -->
+                    <div>
+                        <label for="parent_admission_number" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
+                            Student Admission Number <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="text" 
+                                   id="parent_admission_number" 
+                                   name="admission_number" 
+                                   required
+                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-secondary focus:border-brand-secondary transition-all touch-manipulation"
+                                   placeholder="Enter admission number"
+                                   autocomplete="off">
+                            </div>
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label for="parent_password" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
+                            Password <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative" x-data="{ showPassword: false }">
+                            <input :type="showPassword ? 'text' : 'password'" 
+                                   id="parent_password" 
+                                   name="password" 
+                                   required
+                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-secondary focus:border-brand-secondary transition-all touch-manipulation"
+                                   placeholder="Enter your password"
+                                   autocomplete="current-password">
+                            <button type="button" 
+                                    @click="showPassword = !showPassword"
+                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation">
+                                <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Remember Me -->
+                    <div class="flex items-center pt-1">
+                        <input type="checkbox" id="parent_remember" name="remember"
+                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-secondary border-gray-300 rounded focus:ring-brand-secondary cursor-pointer touch-manipulation">
+                        <label for="parent_remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none">Remember me</label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" 
+                            class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-brand-secondary to-brand-primary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                    </button>
+                </form>
+
+                <div class="mt-4 sm:mt-6 text-center pt-4 sm:pt-6 border-t border-gray-200">
+                    <p class="text-xs sm:text-sm text-gray-600">
+                        Don't have an account? 
+                        <button @click="parentLoginModalOpen = false; admissionModalOpen = true" class="text-brand-secondary font-semibold hover:text-brand-secondary/80 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Apply for Admission</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Student Login Modal -->
+    <div x-show="studentLoginModalOpen" 
+         @click.away="studentLoginModalOpen = false"
+         @keydown.escape.window="studentLoginModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+                         style="display: none;">
+        
+        <div @click.stop
+             x-transition:enter="transition-all ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition-all ease-in duration-200"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            
+            <!-- Modal Header with Logo -->
+            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
+                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
+                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
+                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">Student Login</span>
+                        </div>
+                    </div>
+                    <button @click="studentLoginModalOpen = false" class="text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
+                        <i class="fas fa-times text-lg sm:text-xl"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
+                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-800 mb-1.5 sm:mb-2 text-center">Student Login</h2>
+                <p class="text-sm sm:text-base text-gray-600 text-center mb-4 sm:mb-6">Enter your credentials to continue</p>
+
+                <form method="POST" action="/login" id="studentLoginForm" class="space-y-4 sm:space-y-5">
+                    <!-- Hidden role field - always student -->
+                    <input type="hidden" name="role" value="student" required>
+
+                    <!-- Admission Number Field -->
+                    <div>
+                        <label for="student_admission_number" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
+                            Student Admission Number <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <input type="text" 
+                                   id="student_admission_number" 
+                                   name="admission_number" 
+                                   required
+                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all touch-manipulation"
+                                   placeholder="Enter admission number"
+                                   autocomplete="off">
+                        </div>
+                    </div>
+
+                    <!-- Password Field -->
+                    <div>
+                        <label for="student_password" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
+                            Password <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative" x-data="{ showPassword: false }">
+                            <input :type="showPassword ? 'text' : 'password'" 
+                                   id="student_password" 
+                                   name="password" 
+                                   required
+                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation"
+                                   placeholder="Enter your password"
+                                   autocomplete="current-password">
+                            <button type="button" 
+                                    @click="showPassword = !showPassword"
+                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation">
+                                <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Remember Me -->
+                    <div class="flex items-center pt-1">
+                        <input type="checkbox" id="student_remember" name="remember"
+                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer touch-manipulation">
+                        <label for="student_remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none">Remember me</label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" 
+                            class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-brand-primary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+                    </button>
+                </form>
+
+                <div class="mt-4 sm:mt-6 text-center pt-4 sm:pt-6 border-t border-gray-200">
+                    <p class="text-xs sm:text-sm text-gray-600">
+                        Don't have an account? 
+                        <button @click="studentLoginModalOpen = false; admissionModalOpen = true" class="text-brand-primary font-semibold hover:text-warm-navy hover:underline focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Apply for Admission</button>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admission Modal -->
+    <div x-show="admissionModalOpen" 
+         @click.away="admissionModalOpen = false"
+         @keydown.escape.window="admissionModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+         style="display: none;">
+        
+        <div @click.stop
+             x-transition:enter="transition-all ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+             x-transition:leave="transition-all ease-in duration-200"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
+             class="admission-modal bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-4xl max-h-[98vh] sm:max-h-[95vh] overflow-hidden flex flex-col">
+            
+            <!-- Modal Header -->
+            <div class="bg-brand-primary px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between sticky top-0 z-20">
+                <div class="flex items-center space-x-3 sm:space-x-4 min-w-0 flex-1">
+                    <div class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center flex-shrink-0">
+                        {% if school_settings.school_logo %}
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                             alt="{{ school_settings.school_name or 'School Logo' }}" 
+                             class="w-full h-full object-cover rounded-xl">
+                        {% else %}
+                        <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
+                        {% endif %}
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-white truncate">Admission Application</h2>
+                        <p class="text-xs sm:text-sm text-blue-100 truncate">{{ school_settings.school_name or 'Modern School' }}</p>
+                    </div>
+                </div>
+                <button @click="admissionModalOpen = false" 
+                        class="ml-3 text-white/90 hover:text-white hover:bg-white/10 transition-all p-2 rounded-lg flex-shrink-0">
+                    <i class="fas fa-times text-lg sm:text-xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1 bg-gray-50/50">
+                <form method="POST" action="/admission" id="admissionForm" class="space-y-6 sm:space-y-8">
+                    <!-- Student Information -->
+                    <div class="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow-sm">
+                        <h3 class="text-base sm:text-lg font-bold text-gray-900 mb-5 sm:mb-6 flex items-center">
+                            <i class="fas fa-user-graduate text-brand-primary mr-2 sm:mr-3 text-sm sm:text-base"></i>
+                            <span>Student Information</span>
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
+                            <div class="sm:col-span-2">
+                                <label for="student_full_name" class="block text-sm font-semibold text-gray-700 mb-2">
+                                    Student Full Name <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="student_full_name" name="student_full_name" required
+                                       class="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all text-sm sm:text-base">
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="date_of_birth" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-calendar-alt text-brand-primary mr-2 text-xs"></i>
+                                    Date of Birth <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-calendar text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="date" id="date_of_birth" name="date_of_birth" required
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="gender" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-venus-mars text-brand-primary mr-2 text-xs"></i>Gender
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-venus-mars text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <select id="gender" name="gender"
+                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
+                                        <option value="">Select Gender</option>
+                                        <option value="Male">Male</option>
+                                        <option value="Female">Female</option>
+                                        <option value="Other">Other</option>
+                                        <option value="Prefer not to say">Prefer not to say</option>
+                                    </select>
+                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-chevron-down text-gray-400"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="current_grade" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-graduation-cap text-brand-primary mr-2 text-xs"></i>Current Grade
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-graduation-cap text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <select id="current_grade" name="current_grade"
+                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
+                                        <option value="">Select Academic Level</option>
+                                        {% if academic_levels %}
+                                            {% for level in academic_levels %}
+                                            <option value="{{ level.level_name }}">{{ level.level_name }}{% if level.level_category %} - {{ level.level_category }}{% endif %}</option>
+                                            {% endfor %}
+                                        {% else %}
+                                            <!-- Fallback options if no academic levels in database -->
+                                            <option value="Kindergarten">Kindergarten</option>
+                                            <option value="Grade 1">Grade 1</option>
+                                            <option value="Grade 2">Grade 2</option>
+                                            <option value="Grade 3">Grade 3</option>
+                                            <option value="Grade 4">Grade 4</option>
+                                            <option value="Grade 5">Grade 5</option>
+                                            <option value="Grade 6">Grade 6</option>
+                                            <option value="Grade 7">Grade 7</option>
+                                            <option value="Grade 8">Grade 8</option>
+                                            <option value="Grade 9">Grade 9</option>
+                                            <option value="Grade 10">Grade 10</option>
+                                            <option value="Grade 11">Grade 11</option>
+                                            <option value="Grade 12">Grade 12</option>
+                                        {% endif %}
+                                    </select>
+                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-chevron-down text-gray-400"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="previous_school" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-school text-brand-primary mr-2 text-xs"></i>Previous School
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-school text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="text" id="previous_school" name="previous_school"
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Student Category Section -->
+                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md"
+                         x-data="{ 
+                             studentCategory: '',
+                             clearSponsor() {
+                                 if (this.studentCategory !== 'sponsored') {
+                                     const sponsorNameField = document.getElementById('sponsor_name');
+                                     const sponsorPhoneField = document.getElementById('sponsor_phone');
+                                     const sponsorEmailField = document.getElementById('sponsor_email');
+                                     if (sponsorNameField) sponsorNameField.value = '';
+                                     if (sponsorPhoneField) sponsorPhoneField.value = '';
+                                     if (sponsorEmailField) sponsorEmailField.value = '';
+                                 }
+                             }
+                         }"
+                         x-init="$watch('studentCategory', () => clearSponsor())">
+                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
+                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
+                                <i class="fas fa-tag text-white text-lg"></i>
+                            </div>
+                            <span>Student Category</span>
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                            <div class="md:col-span-2 form-field-wrapper">
+                                <label for="student_category" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-tag text-brand-primary mr-2 text-xs"></i>
+                                    Student Category <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-tag text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <select id="student_category" name="student_category" required
+                                            x-model="studentCategory"
+                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
+                                        <option value="">Select Category</option>
+                                        <option value="self_sponsored">Self Sponsored</option>
+                                        <option value="sponsored">Sponsored</option>
+                                    </select>
+                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-chevron-down text-gray-400"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="md:col-span-2"
+                                 x-show="studentCategory === 'sponsored'"
+                                 x-transition:enter="transition-all ease-out duration-300"
+                                 x-transition:enter-start="opacity-0 height-0"
+                                 x-transition:enter-end="opacity-100"
+                                 x-transition:leave="transition-all ease-in duration-200"
+                                 x-transition:leave-start="opacity-100"
+                                 x-transition:leave-end="opacity-0 height-0"
+                                 style="display: none;">
+                                <div class="space-y-4 sm:space-y-5">
+                                    <div class="form-field-wrapper">
+                                        <label for="sponsor_name" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                            <i class="fas fa-handshake text-brand-primary mr-2 text-xs"></i>
+                                            Sponsored By (Name/Company) <span class="text-red-500 ml-1">*</span>
+                                        </label>
+                                        <div class="relative group">
+                                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                <i class="fas fa-handshake text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                            </div>
+                                            <input type="text" id="sponsor_name" name="sponsor_name"
+                                                   x-bind:required="studentCategory === 'sponsored'"
+                                                   class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
+                                                   placeholder="Enter sponsor name or company name">
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1.5 flex items-center">
+                                            <i class="fas fa-info-circle mr-1"></i>
+                                            Please provide the name of the person or company sponsoring the student
+                                        </p>
+                                    </div>
+                                    
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                                        <div class="form-field-wrapper">
+                                            <label for="sponsor_phone" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                                <i class="fas fa-phone text-brand-primary mr-2 text-xs"></i>
+                                                Sponsor Phone <span class="text-gray-400 text-xs ml-1">(Optional)</span>
+                                            </label>
+                                            <div class="relative group">
+                                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                    <i class="fas fa-phone text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                                </div>
+                                                <input type="tel" id="sponsor_phone" name="sponsor_phone"
+                                                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
+                                                       placeholder="Enter sponsor phone number">
+                                            </div>
+                                        </div>
+                                        <div class="form-field-wrapper">
+                                            <label for="sponsor_email" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                                <i class="fas fa-envelope text-brand-primary mr-2 text-xs"></i>
+                                                Sponsor Email <span class="text-gray-400 text-xs ml-1">(Optional)</span>
+                                            </label>
+                                            <div class="relative group">
+                                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                                    <i class="fas fa-envelope text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                                </div>
+                                                <input type="email" id="sponsor_email" name="sponsor_email"
+                                                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
+                                                       placeholder="Enter sponsor email address">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Parent/Guardian Information -->
+                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md">
+                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
+                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
+                                <i class="fas fa-users text-white text-lg"></i>
+                            </div>
+                            <span>Parent/Guardian Information</span>
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                            <div class="form-field-wrapper">
+                                <label for="parent_name" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-user-friends text-brand-primary mr-2 text-xs"></i>
+                                    Parent/Guardian Name <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-user-friends text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="text" id="parent_name" name="parent_name" required
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="relationship" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-heart text-brand-primary mr-2 text-xs"></i>
+                                    Relationship <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-heart text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <select id="relationship" name="relationship" required
+                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
+                                        <option value="">Select Relationship</option>
+                                        <option value="PARENT">Parent</option>
+                                        <option value="GUARDIAN">Guardian</option>
+                                    </select>
+                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-chevron-down text-gray-400"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-phone text-brand-primary mr-2 text-xs"></i>
+                                    Parent Phone <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-phone text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="tel" id="parent_phone" name="parent_phone" required
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                            <div class="md:col-span-2 form-field-wrapper">
+                                <label for="parent_email" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-envelope text-brand-primary mr-2 text-xs"></i>
+                                    Parent Email <span class="text-red-500 ml-1">*</span>
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-envelope text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="email" id="parent_email" name="parent_email" required
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Additional Information -->
+                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md">
+                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
+                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
+                                <i class="fas fa-info-circle text-white text-lg"></i>
+                            </div>
+                            <span>Additional Information</span>
+                        </h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                            <div class="md:col-span-2 form-field-wrapper">
+                                <label for="address" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-map-marker-alt text-brand-primary mr-2 text-xs"></i>Home Address
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute top-3 left-4 pointer-events-none">
+                                        <i class="fas fa-map-marker-alt text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <textarea id="address" name="address" rows="3"
+                                              class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all resize-none"></textarea>
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="emergency_contact" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-phone-alt text-brand-primary mr-2 text-xs"></i>Emergency Contact
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-phone-alt text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="text" id="emergency_contact" name="emergency_contact"
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                            <div class="form-field-wrapper">
+                                <label for="medical_conditions" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-heartbeat text-brand-primary mr-2 text-xs"></i>Medical Conditions
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                        <i class="fas fa-heartbeat text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <input type="text" id="medical_conditions" name="medical_conditions"
+                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                                </div>
+                            </div>
+                            <div class="md:col-span-2 form-field-wrapper">
+                                <label for="special_needs" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
+                                    <i class="fas fa-wheelchair text-brand-primary mr-2 text-xs"></i>Special Needs
+                                </label>
+                                <div class="relative group">
+                                    <div class="absolute top-3 left-4 pointer-events-none">
+                                        <i class="fas fa-wheelchair text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
+                                    </div>
+                                    <textarea id="special_needs" name="special_needs" rows="3"
+                                              class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all resize-none"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Consent -->
+                    <div class="admission-section">
+                        <div class="flex items-start space-x-4 p-5 bg-gray-50 rounded-lg border border-gray-200">
+                            <div class="flex-shrink-0 mt-1">
+                                <input type="checkbox" id="consent" name="consent" required
+                                       class="w-5 h-5 text-brand-primary border border-gray-300 rounded focus:ring-brand-primary focus:ring-2 cursor-pointer transition-all">
+                            </div>
+                            <label for="consent" class="text-sm text-gray-700 cursor-pointer flex-1">
+                                <span class="text-red-500 font-bold">*</span> I hereby confirm that all information provided is accurate and I consent to the processing of this application. I understand that providing false information may result in the rejection of this application.
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="flex flex-col sm:flex-row gap-4 pt-4">
+                        <button type="submit" class="flex-1 px-6 py-4 bg-brand-secondary text-white rounded-lg font-semibold hover:bg-red-700 transition-all shadow-lg">
+                            <span class="flex items-center justify-center">
+                                <i class="fas fa-paper-plane mr-2"></i>
+                                Submit Application
+                            </span>
+                        </button>
+                        <button type="button" @click="document.getElementById('admissionForm').reset()" class="px-6 py-4 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all border border-gray-200">
+                            <i class="fas fa-redo mr-2"></i>Reset Form
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employee Registration Modal -->
+    <div x-show="employeeModalOpen" 
+         @click.away="employeeModalOpen = false"
+         x-transition:enter="transition-opacity ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-gradient-to-br from-gray-900/80 via-gray-800/80 to-gray-900/80 backdrop-blur-md"
+         style="display: none;">
+        <div @click.stop
+             x-transition:enter="transition-all ease-out duration-500"
+             x-transition:enter-start="opacity-0 scale-90 translate-y-8 rotate-2"
+             x-transition:enter-end="opacity-100 scale-100 translate-y-0 rotate-0"
+             x-transition:leave="transition-all ease-in duration-300"
+             x-transition:leave-start="opacity-100 scale-100 translate-y-0 rotate-0"
+             x-transition:leave-end="opacity-0 scale-90 translate-y-8 -rotate-2"
+             class="bg-gradient-to-br from-white via-gray-50 to-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col employee-modal border-4 border-green-100/50 employee-modal-container">
+            <!-- Modal Header -->
+            <div class="relative bg-gradient-to-br from-brand-primary via-red-700 to-warm-navy text-white p-6 sm:p-8 flex items-center justify-between shadow-2xl overflow-hidden">
+                <!-- Animated Background Pattern -->
+                <div class="absolute inset-0 opacity-10">
+                    <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 40px 40px;"></div>
+                </div>
+                <div class="relative z-10 flex items-center space-x-4 sm:space-x-6 w-full">
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-xl transform hover:scale-110 transition-transform duration-300 border-2 border-white/30">
+                        <i class="fas fa-user-tie text-2xl sm:text-3xl"></i>
+                    </div>
+                    <div class="flex-1">
+                        <h2 class="text-2xl sm:text-3xl font-bold mb-1 drop-shadow-lg">Join Our Team</h2>
+                        <p class="text-red-50 text-sm sm:text-base font-medium">Employee Registration Portal</p>
+                    </div>
+                </div>
+                <button @click="employeeModalOpen = false" class="relative z-10 text-white hover:text-red-100 transition-all transform hover:rotate-90 hover:scale-110 active:scale-95 duration-300 p-2 sm:p-3 rounded-xl hover:bg-white/20 backdrop-blur-sm border border-white/20">
+                    <i class="fas fa-times text-xl sm:text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Body -->
+            <div class="p-4 sm:p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-b from-white to-gray-50/50">
+                <form method="POST" action="/register-employee" id="employeeForm" enctype="multipart/form-data" class="space-y-6 sm:space-y-8">
+                    <!-- Welcome Message -->
+                    <div class="bg-gradient-to-r from-red-50 via-red-50 to-red-50 rounded-2xl p-4 sm:p-6 border-l-4 border-brand-primary shadow-md mb-6">
+                        <div class="flex items-start space-x-3">
+                            <div class="flex-shrink-0 w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center">
+                                <i class="fas fa-info-circle text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm sm:text-base font-bold text-gray-800 mb-1">Welcome to {{ school_settings.school_name or 'Modern School' }}</h3>
+                                <p class="text-xs sm:text-sm text-gray-600">Fill in all required fields to complete your employee registration. All information will be kept confidential.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+                        <!-- Full Name -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_full_name" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-user text-brand-primary mr-2 text-sm"></i>
+                                Full Name <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="text" id="emp_full_name" name="full_name" required
+                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                            </div>
+                        </div>
+
+                        <!-- Email -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_email" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-envelope text-brand-primary mr-2 text-sm"></i>
+                                Email <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="email" id="emp_email" name="email" required
+                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                            </div>
+                        </div>
+
+                        <!-- Phone Number -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_phone" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-phone text-brand-primary mr-2 text-sm"></i>
+                                Phone Number <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="tel" id="emp_phone" name="phone" required
+                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                            </div>
+                        </div>
+
+                        <!-- ID Number or Passport -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_id_number" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-id-card text-brand-primary mr-2 text-sm"></i>
+                                Kenyan ID / Passport <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="text" id="emp_id_number" name="id_number" required
+                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                            </div>
+                        </div>
+
+                        <!-- Employee ID -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_employee_id" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-barcode text-brand-primary mr-2 text-sm"></i>
+                                Employee ID (6 digits) <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="text" id="emp_employee_id" name="employee_id" required maxlength="6" pattern="[0-9]{6}"
+                                       placeholder="000000"
+                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400 font-mono text-lg tracking-wider">
+                                <div id="employee_id_validation" class="absolute right-4 top-1/2 transform -translate-y-1/2 hidden">
+                                    <i id="employee_id_icon" class="text-xl"></i>
+                                </div>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1 flex items-center">
+                                <i class="fas fa-info-circle mr-1"></i>Must be exactly 6 digits
+                            </p>
+                            <div id="employee_id_message" class="mt-2 text-sm font-medium hidden flex items-center space-x-2">
+                                <i class="text-xs"></i>
+                                <span></span>
+                            </div>
+                        </div>
+
+                        <!-- Profile Picture -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_profile_picture" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-image text-brand-primary mr-2 text-sm"></i>
+                                Profile Picture <span class="text-gray-400 text-xs ml-1">(Optional)</span>
+                            </label>
+                            <div class="relative group">
+                                <input type="file" id="emp_profile_picture" name="profile_picture" accept="image/*"
+                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-red-50 file:to-red-50 file:text-brand-primary hover:file:from-red-100 hover:file:to-red-100 file:transition-all">
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1 flex items-center">
+                                <i class="fas fa-info-circle mr-1"></i>Max 5MB (PNG, JPG, JPEG, GIF)
+                            </p>
+                        </div>
+
+                        <!-- Password -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_password" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-lock text-brand-primary mr-2 text-sm"></i>
+                                Password <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group" x-data="{ showPassword: false }">
+                                <input :type="showPassword ? 'text' : 'password'" id="emp_password" name="password" required minlength="6"
+                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                                <button type="button" 
+                                        @click="showPassword = !showPassword"
+                                        class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-brand-primary transition-colors touch-manipulation">
+                                    <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1 flex items-center">
+                                <i class="fas fa-shield-alt mr-1"></i>Minimum 6 characters
+                            </p>
+                        </div>
+
+                        <!-- Confirm Password -->
+                        <div class="form-field-wrapper group">
+                            <label for="emp_confirm_password" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
+                                <i class="fas fa-lock text-brand-primary mr-2 text-sm"></i>
+                                Confirm Password <span class="text-red-500 ml-1">*</span>
+                            </label>
+                            <div class="relative group" x-data="{ showPassword: false }">
+                                <input :type="showPassword ? 'text' : 'password'" id="emp_confirm_password" name="confirm_password" required minlength="6"
+                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
+                                <button type="button" 
+                                        @click="showPassword = !showPassword"
+                                        class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-brand-primary transition-colors touch-manipulation">
+                                    <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="flex flex-col sm:flex-row gap-4 pt-6 border-t-2 border-gray-100">
+                        <button type="submit" class="flex-1 px-8 py-4 bg-gradient-to-r from-brand-primary via-red-700 to-warm-navy text-white rounded-xl font-bold text-base sm:text-lg hover:shadow-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-xl group relative overflow-hidden border-2 border-red-400/50">
+                            <span class="relative z-10 flex items-center justify-center">
+                                <i class="fas fa-user-plus mr-3 transform group-hover:translate-x-2 transition-transform duration-300 text-lg"></i>
+                                <span>Register as Employee</span>
+                            </span>
+                            <span class="absolute inset-0 bg-gradient-to-r from-warm-navy via-red-700 to-brand-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+                            <span class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"></span>
+                        </button>
+                        <button type="button" @click="document.getElementById('employeeForm').reset(); employeeModalOpen = false" class="px-6 sm:px-8 py-4 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-xl font-semibold hover:from-gray-200 hover:to-gray-300 transition-all transform hover:scale-[1.02] active:scale-[0.98] border-2 border-gray-300 shadow-md hover:shadow-lg">
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    {% block scripts %}{% endblock %}
+    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    
+    <!-- Input Formatting Script: Uppercase conversion and spacing normalization -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Function to normalize text: uppercase and single spacing
+            function normalizeText(value) {
+                if (!value) return value;
+                // Replace multiple spaces with single space, trim, then uppercase
+                return value.replace(/\s+/g, ' ').trim().toUpperCase();
+            }
+            
+            // Function to handle input formatting
+            function formatInput(input) {
+                // Skip if it's an email field or password field
+                const fieldType = input.type.toLowerCase();
+                const fieldName = (input.name || '').toLowerCase();
+                const fieldId = (input.id || '').toLowerCase();
+                
+                if (fieldType === 'email' || 
+                    fieldType === 'password' || 
+                    fieldName.includes('email') || 
+                    fieldId.includes('email') ||
+                    fieldName.includes('password') ||
+                    fieldId.includes('password')) {
+                    return; // Skip email and password fields
+                }
+                
+                // Handle input event (as user types)
+                input.addEventListener('input', function(e) {
+                    const cursorPosition = e.target.selectionStart;
+                    const originalValue = e.target.value;
+                    const normalizedValue = normalizeText(originalValue);
+                    
+                    if (originalValue !== normalizedValue) {
+                        e.target.value = normalizedValue;
+                        // Restore cursor position (adjust for length change)
+                        const lengthDiff = normalizedValue.length - originalValue.length;
+                        e.target.setSelectionRange(
+                            Math.max(0, cursorPosition + lengthDiff),
+                            Math.max(0, cursorPosition + lengthDiff)
+                        );
+                    }
+                });
+                
+                // Handle blur event (when field loses focus) - final normalization
+                input.addEventListener('blur', function(e) {
+                    const normalizedValue = normalizeText(e.target.value);
+                    if (e.target.value !== normalizedValue) {
+                        e.target.value = normalizedValue;
+                    }
+                });
+            }
+            
+            // Apply to all text inputs and textareas in admission form
+            const admissionForm = document.getElementById('admissionForm');
+            if (admissionForm) {
+                const textInputs = admissionForm.querySelectorAll('input[type="text"], input[type="tel"], textarea');
+                textInputs.forEach(formatInput);
+            }
+            
+            // Apply to all text inputs in employee form
+            const employeeForm = document.getElementById('employeeForm');
+            if (employeeForm) {
+                const textInputs = employeeForm.querySelectorAll('input[type="text"], input[type="tel"], textarea');
+                textInputs.forEach(formatInput);
+            }
+            
+            // Apply to login form (admission number field)
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                const admissionNumberField = loginForm.querySelector('#admission_number');
+                if (admissionNumberField) {
+                    formatInput(admissionNumberField);
+                }
+            }
+            
+            // Also apply to any dynamically added inputs (for future-proofing)
+            const observer = new MutationObserver(function(mutations) {
+                mutations.forEach(function(mutation) {
+                    mutation.addedNodes.forEach(function(node) {
+                        if (node.nodeType === 1) { // Element node
+                            if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') {
+                                formatInput(node);
+                            } else {
+                                const inputs = node.querySelectorAll && node.querySelectorAll('input[type="text"], input[type="tel"], textarea');
+                                if (inputs) {
+                                    inputs.forEach(formatInput);
+                                }
+                            }
+                        }
+                    });
+                });
+            });
+            
+            // Observe the document body for dynamically added elements
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        });
+    </script>
 </body>
 </html>

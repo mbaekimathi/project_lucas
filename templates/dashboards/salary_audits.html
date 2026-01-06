@@ -1,0 +1,198 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Salary Audits - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<!-- Staff and Salaries Links -->
+<a href="/dashboard/employee/staff-and-salaries" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Staff and Salaries</span>
+</a>
+
+<button type="button" 
+        @click="$store.salaryModal.open()"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 w-full text-left">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Register Salary</span>
+</button>
+
+<a href="/dashboard/employee/staff-and-salaries/salary-records" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-file-invoice-dollar w-5"></i>
+    <span>Salary Records</span>
+</a>
+
+<a href="/dashboard/employee/staff-and-salaries/salary-audits" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-history w-5"></i>
+    <span>Salary Audits</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8">
+    <!-- Header -->
+    <div class="mb-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+                    <i class="fas fa-history text-green-600 dark:text-green-400"></i>
+                    <span>Salary Audits</span>
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400">
+                    Track all salary changes and modifications
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Total Changes: <span class="font-bold text-green-600 dark:text-green-400">{{ audits|length }}</span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audit Records Table -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <i class="fas fa-list text-green-600 dark:text-green-400"></i>
+                    <span>Audit Trail</span>
+                </h2>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <input type="text" 
+                           id="searchAudits" 
+                           placeholder="Search audits..."
+                           class="w-full sm:w-64 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Field</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Old Value</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">New Value</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Edited By</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="auditsTableBody">
+                    {% if audits %}
+                        {% for audit in audits %}
+                        <tr class="audit-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-3">
+                                        <i class="fas fa-user text-white text-sm"></i>
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            {{ audit.employee_name }}
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                            ID: {{ audit.employee_code }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                    {{ audit.field_name|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4">
+                                <div class="text-sm text-gray-900 dark:text-white">
+                                    {% if audit.field_name in ['basic_salary', 'house_allowance', 'transport_allowance', 'medical_allowance', 'overtime', 'bonus', 'paye', 'nssf', 'nhif', 'sacco', 'staff_loans', 'absenteeism', 'total_earnings', 'total_deductions', 'net_salary'] %}
+                                        KES {{ "{:,.2f}".format(audit.old_value|float) }}
+                                    {% else %}
+                                        {{ audit.old_value }}
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4">
+                                <div class="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    {% if audit.field_name in ['basic_salary', 'house_allowance', 'transport_allowance', 'medical_allowance', 'overtime', 'bonus', 'paye', 'nssf', 'nhif', 'sacco', 'staff_loans', 'absenteeism', 'total_earnings', 'total_deductions', 'net_salary'] %}
+                                        KES {{ "{:,.2f}".format(audit.new_value|float) }}
+                                    {% else %}
+                                        {{ audit.new_value }}
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 dark:text-white">
+                                    <i class="fas fa-user-edit text-xs mr-1 text-purple-500"></i>
+                                    {{ audit.edited_by_name or 'Unknown' }}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-500 dark:text-gray-400">
+                                    {% if audit.edited_at %}
+                                        {% if audit.edited_at is string %}
+                                            {{ audit.edited_at }}
+                                        {% else %}
+                                            {{ audit.edited_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                        {% endif %}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                <i class="fas fa-history text-4xl mb-3 opacity-50"></i>
+                                <p>No audit records found</p>
+                                <p class="text-sm mt-1">Salary edits will appear here</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Search functionality
+    const searchInput = document.getElementById('searchAudits');
+    const tableBody = document.getElementById('auditsTableBody');
+    const rows = tableBody.querySelectorAll('.audit-row');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase().trim();
+            
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+});
+</script>
+{% endblock %}
+
+
+
+
+

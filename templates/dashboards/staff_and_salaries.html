@@ -1,0 +1,2450 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Staff and Salaries - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<!-- Staff and Salaries Links -->
+<a href="/dashboard/employee/staff-and-salaries" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Staff and Salaries</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<button type="button" 
+        @click="$store.salaryModal.open()"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 w-full text-left">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Register Salary</span>
+</button>
+
+<button type="button" 
+        @click="$store.paySalaryModal.open()"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 w-full text-left">
+    <i class="fas fa-hand-holding-usd w-5"></i>
+    <span>Pay Salary</span>
+</button>
+
+<a href="/dashboard/employee/staff-and-salaries/salary-records" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-file-invoice-dollar w-5"></i>
+    <span>Salary Records</span>
+</a>
+
+<a href="/dashboard/employee/staff-and-salaries/salary-audits" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-history w-5"></i>
+    <span>Salary Audits</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="{ activeTab: 'employees' }">
+    <!-- Header -->
+    <div class="mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <div>
+                <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2 sm:gap-3">
+                    <i class="fas fa-users-cog text-green-600 dark:text-green-400"></i>
+                    <span>Payroll Management</span>
+                </h1>
+                <p class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">
+                    Manage staff members, salary records, and audit trails
+                </p>
+            </div>
+        </div>
+        
+        <!-- Tabs Navigation -->
+        <div class="border-b border-gray-200 dark:border-gray-700 mb-4 sm:mb-6">
+            <nav class="flex space-x-1 sm:space-x-2 overflow-x-auto" aria-label="Tabs">
+                <button @click="activeTab = 'employees'" 
+                        :class="activeTab === 'employees' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
+                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
+                    <i class="fas fa-users"></i>
+                    <span>Employees & Payrolls</span>
+                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ employees|length }}</span>
+                </button>
+                <button @click="activeTab = 'records'" 
+                        :class="activeTab === 'records' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
+                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    <span>Salary Records</span>
+                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ salary_records|length }}</span>
+                </button>
+                <button @click="activeTab = 'audits'" 
+                        :class="activeTab === 'audits' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
+                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
+                    <i class="fas fa-history"></i>
+                    <span>Salary Audits</span>
+                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ audits|length }}</span>
+                </button>
+            </nav>
+        </div>
+    </div>
+
+    <!-- Tab 1: Employees & Payrolls -->
+    <div x-show="activeTab === 'employees'" x-cloak>
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm sm:text-base opacity-90 mb-1">Active Staff</p>
+                    <p class="text-2xl sm:text-3xl font-bold">{{ active_count }}</p>
+                </div>
+                <i class="fas fa-user-check text-3xl sm:text-4xl opacity-80"></i>
+            </div>
+        </div>
+        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm sm:text-base opacity-90 mb-1">Pending Approval</p>
+                    <p class="text-2xl sm:text-3xl font-bold">{{ pending_count }}</p>
+                </div>
+                <i class="fas fa-clock text-3xl sm:text-4xl opacity-80"></i>
+            </div>
+        </div>
+        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm sm:text-base opacity-90 mb-1">Suspended</p>
+                    <p class="text-2xl sm:text-3xl font-bold">{{ suspended_count }}</p>
+                </div>
+                <i class="fas fa-user-slash text-3xl sm:text-4xl opacity-80"></i>
+            </div>
+        </div>
+        <div class="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm sm:text-base opacity-90 mb-1">Total Roles</p>
+                    <p class="text-2xl sm:text-3xl font-bold">{{ roles_count }}</p>
+                </div>
+                <i class="fas fa-user-tag text-3xl sm:text-4xl opacity-80"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employees Table -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    <i class="fas fa-list text-green-600 dark:text-green-400"></i>
+                    <span>All Employees</span>
+                </h2>
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <input type="text" 
+                           id="searchEmployees" 
+                           placeholder="Search employees..."
+                           class="w-full sm:w-64 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee ID</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Role</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Contact</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                        <th class="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="employeesTableBody">
+                    {% if employees %}
+                        {% for employee in employees %}
+                        <tr class="employee-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-3">
+                                        {% if employee.get('profile_picture') %}
+                                        <img src="{{ url_for('static', filename=employee.profile_picture) }}" 
+                                             alt="{{ employee.full_name }}" 
+                                             class="w-full h-full object-cover">
+                                        {% else %}
+                                        <i class="fas fa-user text-white text-sm"></i>
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                            {{ employee.full_name }}
+                                        </div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ employee.email }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 dark:text-white font-mono">
+                                    {{ employee.employee_id }}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                    {{ employee.role|title }}
+                                </span>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 dark:text-white">
+                                    <i class="fas fa-phone text-xs mr-1"></i>{{ employee.phone }}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                {% if employee.status == 'active' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                                    Active
+                                </span>
+                                {% elif employee.status == 'pending approval' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                                    Pending
+                                </span>
+                                {% elif employee.status == 'suspended' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+                                    Suspended
+                                </span>
+                                {% elif employee.status == 'fired' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+                                    Fired
+                                </span>
+                                {% elif employee.status == 'retired' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                                    Retired
+                                </span>
+                                {% else %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                                    {{ employee.status|title }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <div class="flex items-center justify-end gap-2">
+                                    {% if employee.get('salary_edited') %}
+                                    <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1" title="Salary has been edited">
+                                        <i class="fas fa-pencil-alt"></i>
+                                        <span class="hidden sm:inline">Edited</span>
+                                    </span>
+                                    {% endif %}
+                                    {% if employee.get('salary_id') %}
+                                    <button type="button" 
+                                            onclick="window.openViewSalaryModal({{ employee.id }}, {{ employee.salary_id }})"
+                                            class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            title="View Salary Details">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    {% else %}
+                                    <button type="button" 
+                                            class="text-gray-400 dark:text-gray-600 transition-colors p-2 rounded-lg cursor-not-allowed"
+                                            title="No salary registered"
+                                            disabled>
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    {% endif %}
+                                    {% if employee.get('salary_id') %}
+                                    <button type="button" 
+                                            onclick="window.openEditSalaryModal({{ employee.id }}, {{ employee.salary_id }})"
+                                            class="text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 transition-colors p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                                            title="Edit Salary">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% else %}
+                                    <button type="button" 
+                                            @click="$store.salaryModal.open()"
+                                            class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
+                                            title="Register Salary">
+                                        <i class="fas fa-money-bill-wave"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                <i class="fas fa-users text-4xl mb-3 opacity-50"></i>
+                                <p>No employees found</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+    
+    <!-- Tab 2: Salary Records -->
+    <div x-show="activeTab === 'records'" x-cloak x-data="filterData()">
+        <!-- Period Filter -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-4 sm:mb-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-filter text-green-600 dark:text-green-400"></i>
+                    <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Period:</span>
+                </div>
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-1">
+                    <div class="flex items-center gap-2">
+                        <input type="radio" id="filterAll" name="filterType" value="all"
+                               x-model="filterType"
+                               @change="applyFilter()"
+                               class="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300 dark:border-gray-600">
+                        <label for="filterAll" class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 cursor-pointer">All Records</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="radio" id="filterMonth" name="filterType" value="month"
+                               x-model="filterType"
+                               @change="applyFilter()"
+                               class="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300 dark:border-gray-600">
+                        <label for="filterMonth" class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 cursor-pointer">Month</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="radio" id="filterYear" name="filterType" value="year"
+                               x-model="filterType"
+                               @change="applyFilter()"
+                               class="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300 dark:border-gray-600">
+                        <label for="filterYear" class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 cursor-pointer">Year</label>
+                    </div>
+                    <div x-show="filterType === 'month'" x-cloak class="flex items-center gap-2">
+                        <label for="monthPicker" class="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Select Month:</label>
+                        <input type="month" id="monthPicker" x-model="selectedMonth"
+                               @change="applyFilter()"
+                               class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    </div>
+                    <div x-show="filterType === 'year'" x-cloak class="flex items-center gap-2">
+                        <label for="yearPicker" class="text-xs sm:text-sm text-gray-700 dark:text-gray-300">Select Year:</label>
+                        <input type="number" id="yearPicker" x-model="selectedYear"
+                               @change="applyFilter()"
+                               min="2020" max="2099" step="1"
+                               placeholder="YYYY"
+                               class="px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all w-24 sm:w-32">
+                    </div>
+                    <button type="button" 
+                            @click="clearFilter()"
+                            x-show="filterType !== 'all'"
+                            x-cloak
+                            class="ml-auto px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">
+                        <i class="fas fa-times mr-1"></i> Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
+            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Amount to Pay</p>
+                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalAmountToPay">KES 0.00</p>
+                    </div>
+                    <i class="fas fa-money-bill-wave text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
+                </div>
+            </div>
+            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Paid</p>
+                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalPaid">KES 0.00</p>
+                    </div>
+                    <i class="fas fa-check-circle text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
+                </div>
+            </div>
+            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Balance</p>
+                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalBalance">KES 0.00</p>
+                    </div>
+                    <i class="fas fa-balance-scale text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Salary Records Table -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="p-3 sm:p-4 md:p-6 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                    <h2 class="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-list text-green-600 dark:text-green-400"></i>
+                        <span>Employee Salary Records</span>
+                    </h2>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <input type="text" 
+                               id="searchRecords" 
+                               placeholder="Search employees..."
+                               class="w-full sm:w-64 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Phone</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Amount to be Paid</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Paid</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Balance</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="recordsTableBody">
+                        {% if salary_records %}
+                            {% for record in salary_records %}
+                            <tr class="record-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
+                                            <i class="fas fa-user text-white text-xs sm:text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                {{ record.employee_name }}
+                                            </div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                                ID: {{ record.employee_code }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <div class="text-xs sm:text-sm text-gray-900 dark:text-white">
+                                        <i class="fas fa-phone text-xs mr-1"></i>{{ record.phone }}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
+                                    <div class="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white">
+                                        KES {{ "{:,.2f}".format(record.amount_to_be_paid) }}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
+                                    <div class="text-xs sm:text-sm font-medium text-green-600 dark:text-green-400">
+                                        KES {{ "{:,.2f}".format(record.total_paid) }}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap text-right">
+                                    {% if record.balance > 0 %}
+                                    <div class="text-xs sm:text-sm font-bold text-red-600 dark:text-red-400">
+                                        KES {{ "{:,.2f}".format(record.balance) }}
+                                    </div>
+                                    {% elif record.balance == 0 %}
+                                    <div class="text-xs sm:text-sm font-bold text-green-600 dark:text-green-400">
+                                        KES {{ "{:,.2f}".format(record.balance) }}
+                                    </div>
+                                    {% else %}
+                                    <div class="text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400">
+                                        KES {{ "{:,.2f}".format(record.balance) }}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    {% if record.balance == 0 %}
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                                        Paid
+                                    </span>
+                                    {% elif record.balance > 0 %}
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                                        Pending
+                                    </span>
+                                    {% else %}
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                        Overpaid
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap text-right text-xs sm:text-sm font-medium">
+                                    <div class="flex items-center justify-end gap-1 sm:gap-2">
+                                        <button type="button" 
+                                                onclick="window.openPaymentHistoryModal({{ record.employee_id }}, {{ record.salary_id }})"
+                                                class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                                title="View Payment History">
+                                            <i class="fas fa-eye text-xs sm:text-sm"></i>
+                                        </button>
+                                        <button type="button" 
+                                                class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
+                                                title="Record Payment">
+                                            <i class="fas fa-money-bill-wave text-xs sm:text-sm"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="7" class="px-3 sm:px-4 md:px-6 py-6 sm:py-8 text-center text-gray-500 dark:text-gray-400">
+                                    <i class="fas fa-file-invoice-dollar text-3xl sm:text-4xl mb-3 opacity-50"></i>
+                                    <p class="text-sm sm:text-base">No salary records found</p>
+                                    <p class="text-xs sm:text-sm mt-1">Register salaries to see records here</p>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tab 3: Salary Audits -->
+    <div x-show="activeTab === 'audits'" x-cloak>
+        <!-- Audit Records Table -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="p-3 sm:p-4 md:p-6 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+                    <h2 class="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-list text-green-600 dark:text-green-400"></i>
+                        <span>Audit Trail</span>
+                    </h2>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <input type="text" 
+                               id="searchAudits" 
+                               placeholder="Search audits..."
+                               class="w-full sm:w-64 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Field</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Old Value</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">New Value</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Edited By</th>
+                            <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="auditsTableBody">
+                        {% if audits %}
+                            {% for audit in audits %}
+                            <tr class="audit-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
+                                            <i class="fas fa-user text-white text-xs sm:text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <div class="text-xs sm:text-sm font-medium text-gray-900 dark:text-white">
+                                                {{ audit.employee_name }}
+                                            </div>
+                                            <div class="text-xs text-gray-500 dark:text-gray-400 font-mono">
+                                                ID: {{ audit.employee_code }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                        {{ audit.field_name|replace('_', ' ')|title }}
+                                    </span>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+                                    <div class="text-xs sm:text-sm text-gray-900 dark:text-white">
+                                        {% if audit.field_name in ['basic_salary', 'house_allowance', 'transport_allowance', 'medical_allowance', 'overtime', 'bonus', 'paye', 'nssf', 'nhif', 'sacco', 'staff_loans', 'absenteeism', 'total_earnings', 'total_deductions', 'net_salary'] %}
+                                            KES {{ "{:,.2f}".format(audit.old_value|float) }}
+                                        {% else %}
+                                            {{ audit.old_value }}
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+                                    <div class="text-xs sm:text-sm font-semibold text-green-600 dark:text-green-400">
+                                        {% if audit.field_name in ['basic_salary', 'house_allowance', 'transport_allowance', 'medical_allowance', 'overtime', 'bonus', 'paye', 'nssf', 'nhif', 'sacco', 'staff_loans', 'absenteeism', 'total_earnings', 'total_deductions', 'net_salary'] %}
+                                            KES {{ "{:,.2f}".format(audit.new_value|float) }}
+                                        {% else %}
+                                            {{ audit.new_value }}
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <div class="text-xs sm:text-sm text-gray-900 dark:text-white">
+                                        <i class="fas fa-user-edit text-xs mr-1 text-purple-500"></i>
+                                        {{ audit.edited_by_name or 'Unknown' }}
+                                    </div>
+                                </td>
+                                <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
+                                    <div class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                                        {% if audit.edited_at %}
+                                            {% if audit.edited_at is string %}
+                                                {{ audit.edited_at }}
+                                            {% else %}
+                                                {{ audit.edited_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                            {% endif %}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="6" class="px-3 sm:px-4 md:px-6 py-6 sm:py-8 text-center text-gray-500 dark:text-gray-400">
+                                    <i class="fas fa-history text-3xl sm:text-4xl mb-3 opacity-50"></i>
+                                    <p class="text-sm sm:text-base">No audit records found</p>
+                                    <p class="text-xs sm:text-sm mt-1">Salary edits will appear here</p>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Register Salary Modal -->
+<div x-data="salaryModalData()"
+     x-show="$store.salaryModal.isOpen"
+     x-cloak
+     @keydown.escape.window="$store.salaryModal.close()"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;"
+     x-transition:enter="ease-out duration-300"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="ease-in duration-200"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+         @click="$store.salaryModal.close()"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-money-bill-wave text-white text-xl sm:text-2xl"></i>
+                    <h2 class="text-lg sm:text-xl font-bold text-white">Register Salary</h2>
+                </div>
+                <button @click="$store.salaryModal.close()" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <form @submit.prevent="submitSalaryForm()" class="p-4 sm:p-6 space-y-6">
+                <!-- Error/Success Messages -->
+                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2">
+                    <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400"></i>
+                    <span class="text-sm text-red-600 dark:text-red-400" x-text="error"></span>
+                </div>
+                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+                    <i class="fas fa-check-circle text-green-600 dark:text-green-400"></i>
+                    <span class="text-sm text-green-600 dark:text-green-400" x-text="success"></span>
+                </div>
+
+                <!-- Employee Selection -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Select Employee <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="employeeId" required
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        <option value="">Select Employee</option>
+                        {% for employee in employees %}
+                        <option value="{{ employee.id }}">{{ employee.full_name }} ({{ employee.employee_id }}) - {{ employee.role|title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Effective Date -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Effective Date <span class="text-red-500">*</span>
+                    </label>
+                    <input type="date" x-model="effectiveDate" required
+                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+
+                <!-- Payment Period -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Payment Period <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="paymentPeriod" required
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        <option value="">-- Select Payment Period --</option>
+                        <option value="Daily">Daily</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                        <option value="Semi-Annual">Semi-Annual</option>
+                        <option value="3/4 Annual">3/4 Annual</option>
+                        <option value="Annually">Annually</option>
+                    </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Select how often the salary is paid</p>
+                </div>
+
+                <!-- Earnings Section -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <i class="fas fa-arrow-up text-green-600 dark:text-green-400"></i>
+                        <span>Earnings</span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- Basic Salary -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Basic Salary <span class="text-red-500">*</span>
+                            </label>
+                            <input type="number" x-model="basicSalary" required
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- House Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                House Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="houseAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Transport Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Transport Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="transportAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Medical Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Medical Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="medicalAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Overtime -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Overtime <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="overtime"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Bonus -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Bonus <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="bonus"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+                    </div>
+
+                    <!-- Total Earnings -->
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-semibold text-gray-900 dark:text-white">Total Earnings:</span>
+                            <span class="text-lg font-bold text-green-600 dark:text-green-400" x-text="'KES ' + formatCurrency(totalEarnings)"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Deductions Section -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <i class="fas fa-arrow-down text-red-600 dark:text-red-400"></i>
+                        <span>Deductions <span class="text-gray-500 text-sm font-normal">(All Optional)</span></span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- PAYE -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                PAYE <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="paye"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- NSSF -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                NSSF <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="nssf"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- NHIF / SHIF -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                NHIF / SHIF <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="nhif"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- SACCO -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                SACCO <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="sacco"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Staff Loans -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Staff Loans <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="staffLoans"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+
+                        <!-- Absenteeism / Penalties -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Absenteeism / Penalties <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="absenteeism"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        </div>
+                    </div>
+
+                    <!-- Total Deductions -->
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-semibold text-gray-900 dark:text-white">Total Deductions:</span>
+                            <span class="text-lg font-bold text-red-600 dark:text-red-400" x-text="'KES ' + formatCurrency(totalDeductions)"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Net Salary Summary -->
+                <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 sm:p-5 text-white">
+                    <div class="flex justify-between items-center">
+                        <span class="text-lg font-semibold">Net Salary:</span>
+                        <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" 
+                            @click="$store.salaryModal.close()"
+                            class="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                            :disabled="loading"
+                            class="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!loading">Register Salary</span>
+                        <span x-show="loading" class="flex items-center justify-center gap-2">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>Processing...</span>
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Salary Modal Alpine.js Component
+function salaryModalData() {
+    return {
+        employeeId: '',
+        effectiveDate: '',
+        basicSalary: '',
+        houseAllowance: '',
+        transportAllowance: '',
+        medicalAllowance: '',
+        overtime: '',
+        bonus: '',
+        paye: '',
+        nssf: '',
+        nhif: '',
+        sacco: '',
+        staffLoans: '',
+        absenteeism: '',
+        loading: false,
+        error: '',
+        success: '',
+        
+        get totalEarnings() {
+            const basic = parseFloat(this.basicSalary) || 0;
+            const house = parseFloat(this.houseAllowance) || 0;
+            const transport = parseFloat(this.transportAllowance) || 0;
+            const medical = parseFloat(this.medicalAllowance) || 0;
+            const ot = parseFloat(this.overtime) || 0;
+            const bonusAmt = parseFloat(this.bonus) || 0;
+            return basic + house + transport + medical + ot + bonusAmt;
+        },
+        
+        get totalDeductions() {
+            const payeAmt = parseFloat(this.paye) || 0;
+            const nssfAmt = parseFloat(this.nssf) || 0;
+            const nhifAmt = parseFloat(this.nhif) || 0;
+            const saccoAmt = parseFloat(this.sacco) || 0;
+            const loans = parseFloat(this.staffLoans) || 0;
+            const absent = parseFloat(this.absenteeism) || 0;
+            return payeAmt + nssfAmt + nhifAmt + saccoAmt + loans + absent;
+        },
+        
+        get netSalary() {
+            return this.totalEarnings - this.totalDeductions;
+        },
+        
+        calculateTotal() {
+            // This is reactive, so it will update automatically
+            // But we can add any additional logic here if needed
+        },
+        
+        formatCurrency(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        },
+        
+        submitSalaryForm() {
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            
+            // Validation
+            if (!this.employeeId) {
+                this.error = 'Please select an employee';
+                this.loading = false;
+                return;
+            }
+            
+            if (!this.effectiveDate) {
+                this.error = 'Please select an effective date';
+                this.loading = false;
+                return;
+            }
+            
+            if (!this.basicSalary || parseFloat(this.basicSalary) <= 0) {
+                this.error = 'Basic salary is required and must be greater than 0';
+                this.loading = false;
+                return;
+            }
+            
+            // Prepare data
+            const salaryData = {
+                employee_id: this.employeeId,
+                effective_date: this.effectiveDate,
+                payment_period: this.paymentPeriod,
+                basic_salary: parseFloat(this.basicSalary) || 0,
+                house_allowance: parseFloat(this.houseAllowance) || 0,
+                transport_allowance: parseFloat(this.transportAllowance) || 0,
+                medical_allowance: parseFloat(this.medicalAllowance) || 0,
+                overtime: parseFloat(this.overtime) || 0,
+                bonus: parseFloat(this.bonus) || 0,
+                paye: parseFloat(this.paye) || 0,
+                nssf: parseFloat(this.nssf) || 0,
+                nhif: parseFloat(this.nhif) || 0,
+                sacco: parseFloat(this.sacco) || 0,
+                staff_loans: parseFloat(this.staffLoans) || 0,
+                absenteeism: parseFloat(this.absenteeism) || 0,
+                total_earnings: this.totalEarnings,
+                total_deductions: this.totalDeductions,
+                net_salary: this.netSalary
+            };
+            
+            // Submit to backend
+            fetch('/dashboard/employee/staff-and-salaries/register-salary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(salaryData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.loading = false;
+                if (data.success) {
+                    this.success = data.message || 'Salary registered successfully!';
+                    // Reset form
+                    this.resetForm();
+                    // Redirect to salary records page
+                    setTimeout(() => {
+                        $store.salaryModal.close();
+                        if (data.redirect_url) {
+                            window.location.href = data.redirect_url;
+                        } else {
+                            window.location.href = '/dashboard/employee/staff-and-salaries/salary-records';
+                        }
+                    }, 1000);
+                } else {
+                    this.error = data.message || 'Failed to register salary. Please try again.';
+                }
+            })
+            .catch(error => {
+                this.loading = false;
+                this.error = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+            });
+        },
+        
+        resetForm() {
+            this.employeeId = '';
+            this.effectiveDate = '';
+            this.basicSalary = '';
+            this.houseAllowance = '';
+            this.transportAllowance = '';
+            this.medicalAllowance = '';
+            this.overtime = '';
+            this.bonus = '';
+            this.paye = '';
+            this.nssf = '';
+            this.nhif = '';
+            this.sacco = '';
+            this.staffLoans = '';
+            this.absenteeism = '';
+            this.error = '';
+            this.success = '';
+        }
+    };
+}
+
+// View Salary Modal Alpine.js Component
+function viewSalaryModalData() {
+    return {
+        viewModalOpen: false,
+        employeeId: '',
+        salaryId: '',
+        employeeName: '',
+        employeeCode: '',
+        effectiveDate: '',
+        basicSalary: 0,
+        houseAllowance: 0,
+        transportAllowance: 0,
+        medicalAllowance: 0,
+        overtime: 0,
+        bonus: 0,
+        paye: 0,
+        nssf: 0,
+        nhif: 0,
+        sacco: 0,
+        staffLoans: 0,
+        absenteeism: 0,
+        loading: false,
+        error: '',
+        salaryDetails: null,
+        
+        get totalEarnings() {
+            return (this.basicSalary || 0) + (this.houseAllowance || 0) + 
+                   (this.transportAllowance || 0) + (this.medicalAllowance || 0) + 
+                   (this.overtime || 0) + (this.bonus || 0);
+        },
+        
+        get totalDeductions() {
+            return (this.paye || 0) + (this.nssf || 0) + (this.nhif || 0) + 
+                   (this.sacco || 0) + (this.staffLoans || 0) + (this.absenteeism || 0);
+        },
+        
+        get netSalary() {
+            return this.totalEarnings - this.totalDeductions;
+        },
+        
+        formatCurrency(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        },
+        
+        formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            } catch {
+                return dateStr;
+            }
+        },
+        
+        async openViewModal(empId, salId) {
+            this.employeeId = empId;
+            this.salaryId = salId;
+            this.loading = true;
+            this.error = '';
+            this.viewModalOpen = true;
+            
+            try {
+                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-salary/${salId}`);
+                const data = await response.json();
+                
+                if (data.success && data.salary) {
+                    const sal = data.salary;
+                    this.employeeName = sal.employee_name || '';
+                    this.employeeCode = sal.employee_code || '';
+                    this.effectiveDate = sal.effective_date || '';
+                    this.basicSalary = parseFloat(sal.basic_salary || 0);
+                    this.houseAllowance = parseFloat(sal.house_allowance || 0);
+                    this.transportAllowance = parseFloat(sal.transport_allowance || 0);
+                    this.medicalAllowance = parseFloat(sal.medical_allowance || 0);
+                    this.overtime = parseFloat(sal.overtime || 0);
+                    this.bonus = parseFloat(sal.bonus || 0);
+                    this.paye = parseFloat(sal.paye || 0);
+                    this.nssf = parseFloat(sal.nssf || 0);
+                    this.nhif = parseFloat(sal.nhif || 0);
+                    this.sacco = parseFloat(sal.sacco || 0);
+                    this.staffLoans = parseFloat(sal.staff_loans || 0);
+                    this.absenteeism = parseFloat(sal.absenteeism || 0);
+                    this.salaryDetails = sal;
+                } else {
+                    this.error = data.message || 'Failed to load salary details';
+                }
+            } catch (error) {
+                this.error = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        openEditModal() {
+            this.closeModal();
+            // Open edit modal after a short delay
+            setTimeout(() => {
+                if (window.openEditSalaryModal) {
+                    window.openEditSalaryModal(this.employeeId, this.salaryId);
+                }
+            }, 300);
+        },
+        
+        closeModal() {
+            this.viewModalOpen = false;
+            this.resetForm();
+        },
+        
+        resetForm() {
+            this.employeeId = '';
+            this.salaryId = '';
+            this.employeeName = '';
+            this.employeeCode = '';
+            this.effectiveDate = '';
+            this.basicSalary = 0;
+            this.houseAllowance = 0;
+            this.transportAllowance = 0;
+            this.medicalAllowance = 0;
+            this.overtime = 0;
+            this.bonus = 0;
+            this.paye = 0;
+            this.nssf = 0;
+            this.nhif = 0;
+            this.sacco = 0;
+            this.staffLoans = 0;
+            this.absenteeism = 0;
+            this.error = '';
+            this.salaryDetails = null;
+        }
+    };
+}
+
+// Edit Salary Modal Alpine.js Component
+function editSalaryModalData() {
+    return {
+        editModalOpen: false,
+        employeeId: '',
+        salaryId: '',
+        employeeName: '',
+        effectiveDate: '',
+        paymentPeriod: '',
+        basicSalary: '',
+        houseAllowance: '',
+        transportAllowance: '',
+        medicalAllowance: '',
+        overtime: '',
+        bonus: '',
+        paye: '',
+        nssf: '',
+        nhif: '',
+        sacco: '',
+        staffLoans: '',
+        absenteeism: '',
+        loading: false,
+        error: '',
+        success: '',
+        
+        get totalEarnings() {
+            const basic = parseFloat(this.basicSalary) || 0;
+            const house = parseFloat(this.houseAllowance) || 0;
+            const transport = parseFloat(this.transportAllowance) || 0;
+            const medical = parseFloat(this.medicalAllowance) || 0;
+            const ot = parseFloat(this.overtime) || 0;
+            const bonusAmt = parseFloat(this.bonus) || 0;
+            return basic + house + transport + medical + ot + bonusAmt;
+        },
+        
+        get totalDeductions() {
+            const payeAmt = parseFloat(this.paye) || 0;
+            const nssfAmt = parseFloat(this.nssf) || 0;
+            const nhifAmt = parseFloat(this.nhif) || 0;
+            const saccoAmt = parseFloat(this.sacco) || 0;
+            const loans = parseFloat(this.staffLoans) || 0;
+            const absent = parseFloat(this.absenteeism) || 0;
+            return payeAmt + nssfAmt + nhifAmt + saccoAmt + loans + absent;
+        },
+        
+        get netSalary() {
+            return this.totalEarnings - this.totalDeductions;
+        },
+        
+        calculateTotal() {
+            // Reactive calculation
+        },
+        
+        formatCurrency(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        },
+        
+        async openEditSalaryModal(empId, salId) {
+            this.employeeId = empId;
+            this.salaryId = salId;
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            
+            try {
+                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-salary/${salId}`);
+                const data = await response.json();
+                
+                if (data.success && data.salary) {
+                    const sal = data.salary;
+                    this.employeeName = sal.employee_name || '';
+                    this.effectiveDate = sal.effective_date ? sal.effective_date.split('T')[0] : '';
+                    this.paymentPeriod = sal.payment_period || 'Monthly';
+                    this.basicSalary = sal.basic_salary || '';
+                    this.houseAllowance = sal.house_allowance || '';
+                    this.transportAllowance = sal.transport_allowance || '';
+                    this.medicalAllowance = sal.medical_allowance || '';
+                    this.overtime = sal.overtime || '';
+                    this.bonus = sal.bonus || '';
+                    this.paye = sal.paye || '';
+                    this.nssf = sal.nssf || '';
+                    this.nhif = sal.nhif || '';
+                    this.sacco = sal.sacco || '';
+                    this.staffLoans = sal.staff_loans || '';
+                    this.absenteeism = sal.absenteeism || '';
+                    this.editModalOpen = true;
+                } else {
+                    this.error = data.message || 'Failed to load salary details';
+                }
+            } catch (error) {
+                this.error = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        submitEditForm() {
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            
+            // Validation
+            if (!this.effectiveDate) {
+                this.error = 'Please select an effective date';
+                this.loading = false;
+                return;
+            }
+            
+            if (!this.basicSalary || parseFloat(this.basicSalary) <= 0) {
+                this.error = 'Basic salary is required and must be greater than 0';
+                this.loading = false;
+                return;
+            }
+            
+            // Prepare data
+            const salaryData = {
+                salary_id: this.salaryId,
+                employee_id: this.employeeId,
+                effective_date: this.effectiveDate,
+                payment_period: this.paymentPeriod,
+                basic_salary: parseFloat(this.basicSalary) || 0,
+                house_allowance: parseFloat(this.houseAllowance) || 0,
+                transport_allowance: parseFloat(this.transportAllowance) || 0,
+                medical_allowance: parseFloat(this.medicalAllowance) || 0,
+                overtime: parseFloat(this.overtime) || 0,
+                bonus: parseFloat(this.bonus) || 0,
+                paye: parseFloat(this.paye) || 0,
+                nssf: parseFloat(this.nssf) || 0,
+                nhif: parseFloat(this.nhif) || 0,
+                sacco: parseFloat(this.sacco) || 0,
+                staff_loans: parseFloat(this.staffLoans) || 0,
+                absenteeism: parseFloat(this.absenteeism) || 0,
+                total_earnings: this.totalEarnings,
+                total_deductions: this.totalDeductions,
+                net_salary: this.netSalary
+            };
+            
+            // Submit to backend
+            fetch('/dashboard/employee/staff-and-salaries/update-salary', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(salaryData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                this.loading = false;
+                if (data.success) {
+                    this.success = data.message || 'Salary updated successfully!';
+                    setTimeout(() => {
+                        this.editModalOpen = false;
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    this.error = data.message || 'Failed to update salary. Please try again.';
+                }
+            })
+            .catch(error => {
+                this.loading = false;
+                this.error = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+            });
+        },
+        
+        closeModal() {
+            this.editModalOpen = false;
+            this.resetForm();
+        },
+        
+        resetForm() {
+            this.employeeId = '';
+            this.salaryId = '';
+            this.employeeName = '';
+            this.effectiveDate = '';
+            this.paymentPeriod = '';
+            this.basicSalary = '';
+            this.houseAllowance = '';
+            this.transportAllowance = '';
+            this.medicalAllowance = '';
+            this.overtime = '';
+            this.bonus = '';
+            this.paye = '';
+            this.nssf = '';
+            this.nhif = '';
+            this.sacco = '';
+            this.staffLoans = '';
+            this.absenteeism = '';
+            this.error = '';
+            this.success = '';
+        }
+    };
+}
+
+// Initialize Alpine store for salary modal
+document.addEventListener('alpine:init', () => {
+    Alpine.store('salaryModal', {
+        isOpen: false,
+        open() {
+            this.isOpen = true;
+        },
+        close() {
+            this.isOpen = false;
+        }
+    });
+    
+    // Initialize Alpine store for pay salary modal
+    Alpine.store('paySalaryModal', {
+        isOpen: false,
+        open() {
+            this.isOpen = true;
+        },
+        close() {
+            this.isOpen = false;
+        }
+    });
+    
+    // Make edit modal function globally accessible
+    window.openEditSalaryModal = function(empId, salId) {
+        // Wait for Alpine to be ready
+        if (typeof Alpine !== 'undefined') {
+            Alpine.nextTick(() => {
+                const modalElement = document.querySelector('[x-data="editSalaryModalData()"]');
+                if (modalElement && modalElement._x_dataStack && modalElement._x_dataStack[0]) {
+                    modalElement._x_dataStack[0].openEditSalaryModal(empId, salId);
+                } else {
+                    // Retry after a short delay
+                    setTimeout(() => {
+                        const retryElement = document.querySelector('[x-data="editSalaryModalData()"]');
+                        if (retryElement && retryElement._x_dataStack && retryElement._x_dataStack[0]) {
+                            retryElement._x_dataStack[0].openEditSalaryModal(empId, salId);
+                        }
+                    }, 200);
+                }
+            });
+        }
+    };
+    
+    // Make view modal function globally accessible
+    window.openViewSalaryModal = function(empId, salId) {
+        if (typeof Alpine !== 'undefined') {
+            Alpine.nextTick(() => {
+                const modalElement = document.querySelector('[x-data="viewSalaryModalData()"]');
+                if (modalElement && modalElement._x_dataStack && modalElement._x_dataStack[0]) {
+                    modalElement._x_dataStack[0].openViewModal(empId, salId);
+                } else {
+                    setTimeout(() => {
+                        const retryElement = document.querySelector('[x-data="viewSalaryModalData()"]');
+                        if (retryElement && retryElement._x_dataStack && retryElement._x_dataStack[0]) {
+                            retryElement._x_dataStack[0].openViewModal(empId, salId);
+                        }
+                    }, 200);
+                }
+            });
+        }
+    };
+});
+
+// Pay Salary Modal Alpine.js Component
+function paySalaryModalData() {
+    return {
+        employees: [],
+        employeeId: '',
+        salaryId: '',
+        selectedSalary: null,
+        amountPaid: '',
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: '',
+        referenceNumber: '',
+        notes: '',
+        totalPaid: 0,
+        loading: false,
+        error: '',
+        success: '',
+        
+        get balance() {
+            if (!this.selectedSalary) return 0;
+            const amountToBePaid = parseFloat(this.selectedSalary.amount_to_be_paid || this.selectedSalary.net_salary || 0);
+            return Math.max(0, amountToBePaid - this.totalPaid);
+        },
+        
+        formatCurrency(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        },
+        
+        formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            try {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            } catch {
+                return dateStr;
+            }
+        },
+        
+        async init() {
+            await this.loadEmployees();
+        },
+        
+        async loadEmployees() {
+            try {
+                const response = await fetch('/dashboard/employee/staff-and-salaries/get-employees-with-salaries');
+                const data = await response.json();
+                
+                if (data.success && data.employees) {
+                    this.employees = data.employees;
+                } else {
+                    this.error = data.message || 'Failed to load employees';
+                }
+            } catch (error) {
+                this.error = 'An error occurred while loading employees';
+                console.error('Error:', error);
+            }
+        },
+        
+        async loadEmployeeSalary() {
+            if (!this.employeeId) {
+                this.selectedSalary = null;
+                this.totalPaid = 0;
+                return;
+            }
+            
+            this.loading = true;
+            this.error = '';
+            
+            try {
+                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-employee-salary/${this.employeeId}`);
+                const data = await response.json();
+                
+                if (data.success && data.salary) {
+                    this.selectedSalary = data.salary;
+                    this.salaryId = data.salary.id;
+                    this.totalPaid = parseFloat(data.salary.total_paid || 0);
+                    // Ensure amount_to_be_paid is set (includes carry_forward)
+                    if (!this.selectedSalary.amount_to_be_paid) {
+                        this.selectedSalary.amount_to_be_paid = parseFloat(this.selectedSalary.net_salary || 0) + parseFloat(this.selectedSalary.carry_forward || 0);
+                    }
+                } else {
+                    this.error = data.message || 'Failed to load salary information';
+                    this.selectedSalary = null;
+                }
+            } catch (error) {
+                this.error = 'An error occurred while loading salary information';
+                console.error('Error:', error);
+                this.selectedSalary = null;
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        async submitPayment() {
+            if (!this.employeeId || !this.salaryId || !this.amountPaid || !this.paymentDate || !this.paymentMethod) {
+                this.error = 'Please fill in all required fields';
+                return;
+            }
+            
+            const amount = parseFloat(this.amountPaid);
+            if (amount <= 0) {
+                this.error = 'Payment amount must be greater than 0';
+                return;
+            }
+            
+            if (amount > this.balance) {
+                this.error = 'Payment amount cannot exceed the balance';
+                return;
+            }
+            
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            
+            try {
+                const response = await fetch('/dashboard/employee/staff-and-salaries/record-salary-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        employee_id: this.employeeId,
+                        salary_id: this.salaryId,
+                        amount_paid: amount,
+                        payment_date: this.paymentDate,
+                        payment_method: this.paymentMethod,
+                        reference_number: this.referenceNumber || null,
+                        notes: this.notes || null
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.success = data.message || 'Payment recorded successfully';
+                    // Reset form
+                    setTimeout(() => {
+                        this.resetForm();
+                        $store.paySalaryModal.close();
+                        // Reload page to update records
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    this.error = data.message || 'Failed to record payment';
+                }
+            } catch (error) {
+                this.error = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        
+        resetForm() {
+            this.employeeId = '';
+            this.salaryId = '';
+            this.selectedSalary = null;
+            this.amountPaid = '';
+            this.paymentDate = new Date().toISOString().split('T')[0];
+            this.paymentMethod = '';
+            this.referenceNumber = '';
+            this.notes = '';
+            this.totalPaid = 0;
+            this.error = '';
+            this.success = '';
+        }
+    };
+}
+
+// Filter Data Alpine.js Component
+function filterData() {
+    return {
+        filterType: 'all',
+        selectedMonth: '',
+        selectedYear: new Date().getFullYear(),
+        
+        init() {
+            // Get filter params from URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const filter = urlParams.get('filter');
+            const month = urlParams.get('month');
+            const year = urlParams.get('year');
+            
+            if (filter === 'month' && month) {
+                this.filterType = 'month';
+                this.selectedMonth = month;
+            } else if (filter === 'year' && year) {
+                this.filterType = 'year';
+                this.selectedYear = parseInt(year);
+            } else {
+                // Set default to current month
+                const now = new Date();
+                this.selectedMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+                this.selectedYear = now.getFullYear();
+            }
+        },
+        
+        applyFilter() {
+            let url = '/dashboard/employee/staff-and-salaries';
+            const params = new URLSearchParams();
+            
+            if (this.filterType === 'month' && this.selectedMonth) {
+                params.append('filter', 'month');
+                params.append('month', this.selectedMonth);
+            } else if (this.filterType === 'year' && this.selectedYear) {
+                params.append('filter', 'year');
+                params.append('year', this.selectedYear.toString());
+            }
+            
+            if (params.toString()) {
+                url += '?' + params.toString();
+            }
+            
+            window.location.href = url;
+        },
+        
+        clearFilter() {
+            this.filterType = 'all';
+            this.selectedMonth = '';
+            this.selectedYear = new Date().getFullYear();
+            window.location.href = '/dashboard/employee/staff-and-salaries';
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Search functionality for employees
+    const searchInput = document.getElementById('searchEmployees');
+    const tableBody = document.getElementById('employeesTableBody');
+    if (tableBody) {
+        const rows = tableBody.querySelectorAll('.employee-row');
+        
+        if (searchInput) {
+            searchInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        }
+    }
+    
+    // Search functionality for salary records
+    const searchRecordsInput = document.getElementById('searchRecords');
+    const recordsTableBody = document.getElementById('recordsTableBody');
+    if (recordsTableBody) {
+        const recordRows = recordsTableBody.querySelectorAll('.record-row');
+        
+        if (searchRecordsInput) {
+            searchRecordsInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                
+                recordRows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        }
+    }
+    
+    // Search functionality for audits
+    const searchAuditsInput = document.getElementById('searchAudits');
+    const auditsTableBody = document.getElementById('auditsTableBody');
+    if (auditsTableBody) {
+        const auditRows = auditsTableBody.querySelectorAll('.audit-row');
+        
+        if (searchAuditsInput) {
+            searchAuditsInput.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase().trim();
+                
+                auditRows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    if (text.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+            });
+        }
+    }
+    
+    // Calculate totals for salary records
+    const records = {{ salary_records|tojson|safe }};
+    if (records && records.length > 0) {
+        let totalAmountToPay = 0;
+        let totalPaid = 0;
+        let totalBalance = 0;
+        
+        records.forEach(record => {
+            totalAmountToPay += parseFloat(record.amount_to_be_paid || 0);
+            totalPaid += parseFloat(record.total_paid || 0);
+            totalBalance += parseFloat(record.balance || 0);
+        });
+        
+        // Update summary cards
+        const totalAmountEl = document.getElementById('totalAmountToPay');
+        const totalPaidEl = document.getElementById('totalPaid');
+        const totalBalanceEl = document.getElementById('totalBalance');
+        
+        if (totalAmountEl) {
+            totalAmountEl.textContent = 'KES ' + totalAmountToPay.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+        if (totalPaidEl) {
+            totalPaidEl.textContent = 'KES ' + totalPaid.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+        if (totalBalanceEl) {
+            totalBalanceEl.textContent = 'KES ' + totalBalance.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+    }
+});
+</script>
+
+<!-- Edit Salary Modal -->
+<div x-data="editSalaryModalData()"
+     x-show="editModalOpen"
+     x-cloak
+     @keydown.escape.window="closeModal()"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+         @click="closeModal()"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-purple-500 to-purple-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-edit text-white text-xl sm:text-2xl"></i>
+                    <h2 class="text-lg sm:text-xl font-bold text-white">Edit Salary - <span x-text="employeeName"></span></h2>
+                </div>
+                <button @click="closeModal()" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <form @submit.prevent="submitEditForm()" class="p-4 sm:p-6 space-y-6">
+                <!-- Error/Success Messages -->
+                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2">
+                    <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400"></i>
+                    <span class="text-sm text-red-600 dark:text-red-400" x-text="error"></span>
+                </div>
+                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+                    <i class="fas fa-check-circle text-green-600 dark:text-green-400"></i>
+                    <span class="text-sm text-green-600 dark:text-green-400" x-text="success"></span>
+                </div>
+
+                <!-- Loading State -->
+                <div x-show="loading && !editModalOpen" x-cloak class="text-center py-8">
+                    <i class="fas fa-spinner fa-spin text-3xl text-gray-400"></i>
+                    <p class="text-gray-500 mt-2">Loading salary details...</p>
+                </div>
+
+                <!-- Effective Date -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Effective Date <span class="text-red-500">*</span>
+                    </label>
+                    <input type="date" x-model="effectiveDate" required
+                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                </div>
+
+                <!-- Payment Period -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Payment Period <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="paymentPeriod" required
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        <option value="">-- Select Payment Period --</option>
+                        <option value="Daily">Daily</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                        <option value="Semi-Annual">Semi-Annual</option>
+                        <option value="3/4 Annual">3/4 Annual</option>
+                        <option value="Annually">Annually</option>
+                    </select>
+                </div>
+
+                <!-- Earnings Section -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <i class="fas fa-arrow-up text-green-600 dark:text-green-400"></i>
+                        <span>Earnings</span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- Basic Salary -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Basic Salary <span class="text-red-500">*</span>
+                            </label>
+                            <input type="number" x-model="basicSalary" required
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- House Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                House Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="houseAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Transport Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Transport Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="transportAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Medical Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Medical Allowance <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="medicalAllowance"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Overtime -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Overtime <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="overtime"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Bonus -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Bonus <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="bonus"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+                    </div>
+
+                    <!-- Total Earnings -->
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-semibold text-gray-900 dark:text-white">Total Earnings:</span>
+                            <span class="text-lg font-bold text-green-600 dark:text-green-400" x-text="'KES ' + formatCurrency(totalEarnings)"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Deductions Section -->
+                <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <i class="fas fa-arrow-down text-red-600 dark:text-red-400"></i>
+                        <span>Deductions <span class="text-gray-500 text-sm font-normal">(All Optional)</span></span>
+                    </h3>
+                    
+                    <div class="space-y-4">
+                        <!-- PAYE -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                PAYE <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="paye"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- NSSF -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                NSSF <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="nssf"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- NHIF / SHIF -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                NHIF / SHIF <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="nhif"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- SACCO -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                SACCO <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="sacco"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Staff Loans -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Staff Loans <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="staffLoans"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+
+                        <!-- Absenteeism / Penalties -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Absenteeism / Penalties <span class="text-gray-500 text-xs">(Optional)</span>
+                            </label>
+                            <input type="number" x-model="absenteeism"
+                                   @input="calculateTotal()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                        </div>
+                    </div>
+
+                    <!-- Total Deductions -->
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <div class="flex justify-between items-center">
+                            <span class="text-base font-semibold text-gray-900 dark:text-white">Total Deductions:</span>
+                            <span class="text-lg font-bold text-red-600 dark:text-red-400" x-text="'KES ' + formatCurrency(totalDeductions)"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Net Salary Summary -->
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-4 sm:p-5 text-white">
+                    <div class="flex justify-between items-center">
+                        <span class="text-lg font-semibold">Net Salary:</span>
+                        <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" 
+                            @click="closeModal()"
+                            class="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" 
+                            :disabled="loading"
+                            class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-show="!loading">Update Salary</span>
+                        <span x-show="loading" class="flex items-center justify-center gap-2">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <span>Updating...</span>
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Salary Details Modal -->
+<div x-data="viewSalaryModalData()"
+     x-show="viewModalOpen"
+     x-cloak
+     @keydown.escape.window="closeModal()"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;"
+     x-transition:enter="ease-out duration-300"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="ease-in duration-200"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+         @click="closeModal()"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-eye text-white text-xl sm:text-2xl"></i>
+                    <h2 class="text-lg sm:text-xl font-bold text-white">Salary Details - <span x-text="employeeName"></span></h2>
+                </div>
+                <button @click="closeModal()" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-4 sm:p-6 space-y-6">
+                <!-- Loading State -->
+                <div x-show="loading" x-cloak class="text-center py-8">
+                    <i class="fas fa-spinner fa-spin text-3xl text-gray-400"></i>
+                    <p class="text-gray-500 mt-2">Loading salary details...</p>
+                </div>
+
+                <!-- Error Message -->
+                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2">
+                    <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400"></i>
+                    <span class="text-sm text-red-600 dark:text-red-400" x-text="error"></span>
+                </div>
+
+                <!-- Salary Details -->
+                <div x-show="!loading && !error && salaryDetails" x-cloak>
+                    <!-- Employee Info -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-lg p-4 mb-6 border border-blue-200 dark:border-blue-800">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Employee</p>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="employeeName"></p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="'ID: ' + employeeCode"></p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm text-gray-600 dark:text-gray-400">Effective Date</p>
+                                <p class="text-lg font-semibold text-gray-900 dark:text-white" x-text="formatDate(effectiveDate)"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Earnings Section -->
+                    <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                            <i class="fas fa-arrow-up text-green-600 dark:text-green-400"></i>
+                            <span>Earnings</span>
+                        </h3>
+                        
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Basic Salary</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(basicSalary)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="houseAllowance > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">House Allowance</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(houseAllowance)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="transportAllowance > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Transport Allowance</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(transportAllowance)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="medicalAllowance > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Medical Allowance</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(medicalAllowance)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="overtime > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Overtime</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(overtime)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="bonus > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Bonus</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(bonus)"></span>
+                            </div>
+                        </div>
+
+                        <!-- Total Earnings -->
+                        <div class="mt-4 pt-4 border-t-2 border-gray-300 dark:border-gray-600">
+                            <div class="flex justify-between items-center">
+                                <span class="text-base font-semibold text-gray-900 dark:text-white">Total Earnings:</span>
+                                <span class="text-lg font-bold text-green-600 dark:text-green-400" x-text="'KES ' + formatCurrency(totalEarnings)"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Deductions Section -->
+                    <div class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 sm:p-5 bg-gray-50 dark:bg-gray-900/50">
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                            <i class="fas fa-arrow-down text-red-600 dark:text-red-400"></i>
+                            <span>Deductions</span>
+                        </h3>
+                        
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="paye > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">PAYE</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(paye)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="nssf > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">NSSF</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(nssf)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="nhif > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">NHIF / SHIF</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(nhif)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="sacco > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">SACCO</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(sacco)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="staffLoans > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Staff Loans</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(staffLoans)"></span>
+                            </div>
+                            <div class="flex justify-between items-center py-2 border-b border-gray-200 dark:border-gray-700" x-show="absenteeism > 0">
+                                <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Absenteeism / Penalties</span>
+                                <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="'KES ' + formatCurrency(absenteeism)"></span>
+                            </div>
+                            <div x-show="totalDeductions === 0" class="text-center py-4 text-sm text-gray-500 dark:text-gray-400">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                No deductions applied
+                            </div>
+                        </div>
+
+                        <!-- Total Deductions -->
+                        <div class="mt-4 pt-4 border-t-2 border-gray-300 dark:border-gray-600">
+                            <div class="flex justify-between items-center">
+                                <span class="text-base font-semibold text-gray-900 dark:text-white">Total Deductions:</span>
+                                <span class="text-lg font-bold text-red-600 dark:text-red-400" x-text="'KES ' + formatCurrency(totalDeductions)"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Net Salary Summary -->
+                    <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 sm:p-5 text-white">
+                        <div class="flex justify-between items-center">
+                            <span class="text-lg font-semibold">Net Salary:</span>
+                            <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button type="button" 
+                                @click="closeModal()"
+                                class="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                            Close
+                        </button>
+                        <button type="button" 
+                                @click="openEditModal()"
+                                class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-medium">
+                            <i class="fas fa-edit mr-2"></i>
+                            Edit Salary
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pay Salary Modal -->
+<div x-data="paySalaryModalData()"
+     x-init="init()"
+     x-show="$store.paySalaryModal.isOpen"
+     x-cloak
+     @keydown.escape.window="$store.paySalaryModal.close()"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;"
+     x-transition:enter="ease-out duration-300"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="ease-in duration-200"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+         @click="$store.paySalaryModal.close()"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-hand-holding-usd text-white text-xl sm:text-2xl"></i>
+                    <h2 class="text-lg sm:text-xl font-bold text-white">Pay Salary</h2>
+                </div>
+                <button @click="$store.paySalaryModal.close()" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-4 sm:p-6">
+                <form @submit.prevent="submitPayment()">
+                    <!-- Error Message -->
+                    <div x-show="error" x-cloak class="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-center gap-2">
+                        <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400"></i>
+                        <span class="text-sm text-red-600 dark:text-red-400" x-text="error"></span>
+                    </div>
+
+                    <!-- Success Message -->
+                    <div x-show="success" x-cloak class="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-green-600 dark:text-green-400"></i>
+                        <span class="text-sm text-green-600 dark:text-green-400" x-text="success"></span>
+                    </div>
+
+                    <!-- Employee Selection -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Select Employee <span class="text-red-500">*</span>
+                        </label>
+                        <select x-model="employeeId" 
+                                @change="loadEmployeeSalary()"
+                                required
+                                class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                            <option value="">-- Select Employee --</option>
+                            <template x-for="emp in employees" :key="emp.id">
+                                <option :value="emp.id" x-text="emp.full_name + ' (' + emp.employee_id + ')'"></option>
+                            </template>
+                        </select>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Only employees with active salaries are shown</p>
+                    </div>
+
+                    <!-- Salary Information (shown after employee selection) -->
+                    <div x-show="selectedSalary" x-cloak class="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Salary Information</h3>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-400">Net Salary:</span>
+                                <span class="font-semibold text-gray-900 dark:text-white ml-2" x-text="'KES ' + formatCurrency(selectedSalary.net_salary)"></span>
+                            </div>
+                            <div x-show="selectedSalary.carry_forward > 0">
+                                <span class="text-gray-600 dark:text-gray-400">Carry Forward:</span>
+                                <span class="font-semibold text-orange-600 dark:text-orange-400 ml-2" x-text="'KES ' + formatCurrency(selectedSalary.carry_forward)"></span>
+                            </div>
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-400">Amount to Pay:</span>
+                                <span class="font-semibold text-blue-600 dark:text-blue-400 ml-2" x-text="'KES ' + formatCurrency(selectedSalary.amount_to_be_paid || selectedSalary.net_salary)"></span>
+                            </div>
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-400">Total Paid:</span>
+                                <span class="font-semibold text-gray-900 dark:text-white ml-2" x-text="'KES ' + formatCurrency(totalPaid)"></span>
+                            </div>
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-400">Balance:</span>
+                                <span class="font-semibold text-gray-900 dark:text-white ml-2" x-text="'KES ' + formatCurrency(balance)"></span>
+                            </div>
+                            <div>
+                                <span class="text-gray-600 dark:text-gray-400">Effective Date:</span>
+                                <span class="font-semibold text-gray-900 dark:text-white ml-2" x-text="formatDate(selectedSalary.effective_date)"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Amount -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Amount to Pay <span class="text-red-500">*</span>
+                        </label>
+                        <input type="number" 
+                               x-model="amountPaid"
+                               step="0.01" 
+                               min="0.01"
+                               :max="balance"
+                               required
+                               placeholder="0.00"
+                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Maximum: <span class="font-semibold" x-text="'KES ' + formatCurrency(balance)"></span>
+                        </p>
+                    </div>
+
+                    <!-- Payment Date -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Payment Date <span class="text-red-500">*</span>
+                        </label>
+                        <input type="date" 
+                               x-model="paymentDate"
+                               required
+                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    </div>
+
+                    <!-- Payment Method -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Payment Method <span class="text-red-500">*</span>
+                        </label>
+                        <select x-model="paymentMethod" 
+                                required
+                                class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                            <option value="">-- Select Method --</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank Transfer">Bank Transfer</option>
+                            <option value="Cheque">Cheque</option>
+                            <option value="Mobile Money">Mobile Money</option>
+                            <option value="Credit/Debit Card">Credit/Debit Card</option>
+                        </select>
+                    </div>
+
+                    <!-- Reference Number -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Reference Number <span class="text-gray-500 text-xs">(Optional)</span>
+                        </label>
+                        <input type="text" 
+                               x-model="referenceNumber"
+                               placeholder="Transaction ID, Cheque Number, etc."
+                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    </div>
+
+                    <!-- Notes -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Notes <span class="text-gray-500 text-xs">(Optional)</span>
+                        </label>
+                        <textarea x-model="notes"
+                                  rows="3"
+                                  placeholder="Additional payment notes..."
+                                  class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all resize-none"></textarea>
+                    </div>
+
+                    <!-- Form Actions -->
+                    <div class="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <button type="button" 
+                                @click="$store.paySalaryModal.close()"
+                                class="flex-1 px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                :disabled="loading || !employeeId || !amountPaid || !paymentDate || !paymentMethod"
+                                class="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-show="!loading">Record Payment</span>
+                            <span x-show="loading" class="flex items-center justify-center gap-2">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>Processing...</span>
+                            </span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

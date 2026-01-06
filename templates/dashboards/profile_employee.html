@@ -1,0 +1,144 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Profile - Employee - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block role_display %}{{ role|title }}{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a href="/profile/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4" style="border-color: var(--role-primary);">
+    <i class="fas fa-user w-5"></i>
+    <span>Profile</span>
+</a>
+<a href="/settings/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-cog w-5"></i>
+    <span>Settings</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">My Profile</h1>
+        <p class="text-gray-600 dark:text-gray-400">Manage your personal information and account details</p>
+    </div>
+
+    <!-- Profile Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8">
+            <!-- Profile Picture -->
+            <div class="relative">
+                {% if user_data.get('profile_picture') %}
+                <img src="{{ url_for('static', filename=user_data.profile_picture) }}" 
+                     alt="Profile" 
+                     class="w-32 h-32 rounded-full border-4 border-gray-200 dark:border-gray-700 object-cover shadow-lg">
+                {% else %}
+                <div class="w-32 h-32 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center border-4 border-gray-200 dark:border-gray-700 shadow-lg">
+                    <i class="fas fa-user text-white text-5xl"></i>
+                </div>
+                {% endif %}
+                <button class="absolute bottom-0 right-0 w-10 h-10 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-all">
+                    <i class="fas fa-camera text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Profile Info -->
+            <div class="flex-1 text-center md:text-left">
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{{ user_data.get('full_name', session.get('full_name', 'User')) }}</h2>
+                <p class="text-gray-600 dark:text-gray-400 mb-4">{{ role|title }}</p>
+                <div class="flex flex-wrap gap-4 justify-center md:justify-start">
+                    <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-envelope"></i>
+                        <span>{{ user_data.get('email', session.get('email', 'N/A')) }}</span>
+                    </div>
+                    <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-phone"></i>
+                        <span>{{ user_data.get('phone', 'N/A') }}</span>
+                    </div>
+                    <div class="flex items-center space-x-2 text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-id-card"></i>
+                        <span>ID: {{ user_data.get('employee_id', 'N/A') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Profile Form -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Edit Profile Information</h3>
+        
+        <form method="POST" action="/profile/employee/update" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Full Name -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        Full Name <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" 
+                           name="full_name" 
+                           value="{{ user_data.get('full_name', '') }}"
+                           required
+                           class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        Email <span class="text-red-500">*</span>
+                    </label>
+                    <input type="email" 
+                           name="email" 
+                           value="{{ user_data.get('email', '') }}"
+                           required
+                           class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+
+                <!-- Phone -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        Phone Number <span class="text-red-500">*</span>
+                    </label>
+                    <input type="tel" 
+                           name="phone" 
+                           value="{{ user_data.get('phone', '') }}"
+                           required
+                           class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+
+                <!-- ID Number -->
+                <div>
+                    <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                        Kenyan ID/Passport
+                    </label>
+                    <input type="text" 
+                           name="id_number" 
+                           value="{{ user_data.get('id_number', '') }}"
+                           class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="flex justify-end space-x-4 pt-4">
+                <a href="/dashboard/employee" class="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                    Cancel
+                </a>
+                <button type="submit" class="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-lg transform hover:scale-105">
+                    <i class="fas fa-save mr-2"></i>Save Changes
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

@@ -1,0 +1,742 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Fee Structures - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <!-- Add Fee Structure Link -->
+    <a href="/dashboard/employee/student-fees" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+        <i class="fas fa-arrow-left w-5"></i>
+        <span class="font-medium">Back to Fees</span>
+    </a>
+    
+    <!-- View Fee Structures Link -->
+    <a href="/dashboard/employee/student-fees/fee-structures" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+       style="border-color: var(--role-primary);">
+        <i class="fas fa-list-alt w-5"></i>
+        <span class="font-semibold">Fee Structures</span>
+        <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<script>
+// Store structures globally for modal access
+window.feeStructuresData = {{ fee_structures|tojson|safe }};
+</script>
+
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.store('feeModals', {
+        editModal: null,
+        viewModal: null,
+        deleteModal: null
+    });
+});
+</script>
+
+<div class="p-4 lg:p-6" x-data="{
+    openEditModal(structureId) {
+        const structure = window.feeStructuresData.find(s => s.id === structureId);
+        if (structure && $store.feeModals.editModal) {
+            $store.feeModals.editModal.openEditModal(structure);
+        }
+    },
+    openViewModal(structureId) {
+        const structure = window.feeStructuresData.find(s => s.id === structureId);
+        if (structure && $store.feeModals.viewModal) {
+            $store.feeModals.viewModal.openViewModal(structure);
+        }
+    },
+    confirmDelete(id, name) {
+        if ($store.feeModals.deleteModal) {
+            $store.feeModals.deleteModal.confirmDelete(id, name);
+        }
+    }
+}">
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-list-alt text-green-600 mr-3"></i>
+            Fee Structures
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">View and manage all fee structures</p>
+    </div>
+
+    <!-- Fee Structures Table -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Period</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Payment Deadline</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                        <th class="px-4 sm:px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% if fee_structures %}
+                        {% for structure in fee_structures %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900 dark:text-white">{{ structure.fee_name }}</div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">{{ structure['items']|length }} item(s)</div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                    {{ structure.level_name }}
+                                </span>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 dark:text-white">
+                                    {% if structure.start_date %}
+                                        {% if structure.start_date is string %}
+                                            {{ structure.start_date[:10] if structure.start_date|length > 10 else structure.start_date }}
+                                        {% else %}
+                                            {{ structure.start_date.strftime('%d/%m/%Y') }}
+                                        {% endif %}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </div>
+                                <div class="text-xs text-gray-500 dark:text-gray-400">
+                                    to {% if structure.end_date %}
+                                        {% if structure.end_date is string %}
+                                            {{ structure.end_date[:10] if structure.end_date|length > 10 else structure.end_date }}
+                                        {% else %}
+                                            {{ structure.end_date.strftime('%d/%m/%Y') }}
+                                        {% endif %}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm text-gray-900 dark:text-white">
+                                    {% if structure.payment_deadline %}
+                                        {% if structure.payment_deadline is string %}
+                                            {{ structure.payment_deadline[:10] if structure.payment_deadline|length > 10 else structure.payment_deadline }}
+                                        {% else %}
+                                            {{ structure.payment_deadline.strftime('%d/%m/%Y') }}
+                                        {% endif %}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                                    KES {{ "{:,.2f}".format(structure.total_amount) }}
+                                </div>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full {% if structure.status == 'active' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300{% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
+                                    {{ structure.status|title }}
+                                </span>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                <div class="flex items-center justify-center space-x-2">
+                                    <button @click="openViewModal({{ structure.id }})" 
+                                            class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
+                                            title="View Details">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    <button @click="openEditModal({{ structure.id }})" 
+                                            class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            title="Edit">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button @click="confirmDelete({{ structure.id }}, '{{ structure.fee_name|replace("'", "\\'")|replace('"', '&quot;') }}')" 
+                                            class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            title="Delete">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                                <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
+                                <p class="text-lg font-medium">No fee structures found</p>
+                                <p class="text-sm mt-1">Create your first fee structure to get started</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- View Fee Structure Details Modal -->
+<div x-data="{ 
+    viewModalOpen: false,
+    structure: null,
+    getItemName(item) {
+        if (!item) return 'N/A';
+        return item.item_name || item['item_name'] || 'N/A';
+    },
+    getItemDescription(item) {
+        if (!item) return 'No description';
+        const desc = item.item_description || item['item_description'] || '';
+        return desc || 'No description';
+    },
+    getItemAmount(item) {
+        if (!item) return 0;
+        return item.amount || item['amount'] || 0;
+    },
+    formatAmount(amount) {
+        return parseFloat(amount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    },
+    openViewModal(structureData) {
+        this.structure = structureData;
+        this.viewModalOpen = true;
+    },
+    init() {
+        // Wait for store to be available
+        if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
+            Alpine.store('feeModals').viewModal = this;
+        } else {
+            // Fallback: try again after a short delay
+            setTimeout(() => {
+                if (Alpine.store && Alpine.store('feeModals')) {
+                    Alpine.store('feeModals').viewModal = this;
+                }
+            }, 100);
+        }
+    }
+}"
+     x-show="viewModalOpen"
+     x-cloak
+     @keydown.escape.window="viewModalOpen = false"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
+         @click="viewModalOpen = false"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-eye text-white text-2xl"></i>
+                    <h2 class="text-xl font-bold text-white">Fee Structure Details</h2>
+                </div>
+                <button @click="viewModalOpen = false" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6 space-y-6" x-show="structure">
+                <!-- Basic Information -->
+                <div class="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-800/50 p-5 rounded-xl border border-gray-200 dark:border-gray-600">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                        <i class="fas fa-info-circle text-green-600 mr-2"></i>
+                        Basic Information
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Fee Name</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.fee_name || 'N/A'"></p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Academic Level</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.level_name || 'N/A'"></p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Status</label>
+                            <span class="inline-block px-3 py-1 text-sm font-semibold rounded-full"
+                                  :class="structure?.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
+                                  x-text="(structure?.status || 'N/A').charAt(0).toUpperCase() + (structure?.status || 'N/A').slice(1)"></span>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Amount</label>
+                            <p class="text-base font-semibold text-green-600 dark:text-green-400" 
+                               x-text="'KES ' + (structure?.total_amount ? parseFloat(structure.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00')"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Date Information -->
+                <div class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-5 rounded-xl border border-blue-200 dark:border-blue-700">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                        <i class="fas fa-calendar-alt text-blue-600 mr-2"></i>
+                        Date Information
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Start Date</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white" 
+                               x-text="structure?.start_date ? new Date(structure.start_date).toLocaleDateString('en-GB') : 'N/A'"></p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">End Date</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white" 
+                               x-text="structure?.end_date ? new Date(structure.end_date).toLocaleDateString('en-GB') : 'N/A'"></p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Payment Deadline</label>
+                            <p class="text-base font-semibold text-red-600 dark:text-red-400" 
+                               x-text="structure?.payment_deadline ? new Date(structure.payment_deadline).toLocaleDateString('en-GB') : 'N/A'"></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Fee Items -->
+                <div class="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 p-5 rounded-xl border border-purple-200 dark:border-purple-700">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                        <i class="fas fa-list-ul text-purple-600 mr-2"></i>
+                        Fee Items (<span x-text="(structure?.items || structure?.['items'] || []).length"></span>)
+                    </h3>
+                    <div class="space-y-3" x-show="(structure?.items || structure?.['items'] || []).length > 0">
+                        <template x-for="(item, index) in (structure?.items || structure?.['items'] || [])" :key="index">
+                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start justify-between">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2 mb-2">
+                                            <span class="text-sm font-medium text-gray-500 dark:text-gray-400">#<span x-text="index + 1"></span></span>
+                                            <h4 class="text-base font-bold text-gray-900 dark:text-white" x-text="getItemName(item)"></h4>
+                                        </div>
+                                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-2" x-text="getItemDescription(item)"></p>
+                                        <p class="text-lg font-bold text-purple-600 dark:text-purple-400" x-text="'KES ' + formatAmount(getItemAmount(item))"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <div x-show="(structure?.items || structure?.['items'] || []).length === 0" 
+                         class="text-center py-8 text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-inbox text-4xl mb-2 opacity-50"></i>
+                        <p>No fee items found</p>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" @click="viewModalOpen = false"
+                            class="px-6 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Fee Structure Modal -->
+<script>
+function editModalData() {
+    return {
+        editModalOpen: false,
+        structureId: null,
+        academicLevelId: '',
+        feeName: '',
+        startDate: '',
+        endDate: '',
+        paymentDeadline: '',
+        feeItems: [{ itemName: '', itemDescription: '', amount: '' }],
+        totalAmount: 0,
+        loading: false,
+        error: '',
+        success: '',
+        calculateTotal() {
+            this.totalAmount = this.feeItems.reduce((sum, item) => {
+                return sum + (parseFloat(item.amount) || 0);
+            }, 0);
+        },
+        init() {
+            if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
+                Alpine.store('feeModals').editModal = this;
+            } else {
+                setTimeout(() => {
+                    if (Alpine.store && Alpine.store('feeModals')) {
+                        Alpine.store('feeModals').editModal = this;
+                    }
+                }, 100);
+            }
+        },
+        submitEditForm() {
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            fetch('/dashboard/employee/student-fees/fee-structure/' + this.structureId + '/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    academic_level_id: this.academicLevelId,
+                    fee_name: this.feeName,
+                    start_date: this.startDate,
+                    end_date: this.endDate,
+                    payment_deadline: this.paymentDeadline,
+                    fee_items: this.feeItems
+                        .filter(item => item.itemName && item.amount)
+                        .map(item => ({
+                            item_name: item.itemName.toUpperCase().trim(),
+                            item_description: item.itemDescription ? item.itemDescription.trim() : '',
+                            amount: parseFloat(item.amount) || 0
+                        }))
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                this.loading = false;
+                if (data.success) {
+                    this.success = data.message;
+                    setTimeout(() => {
+                        this.editModalOpen = false;
+                        location.reload();
+                    }, 1500);
+                } else {
+                    this.error = data.message || 'Failed to update fee structure';
+                }
+            })
+            .catch(err => {
+                this.loading = false;
+                this.error = 'An error occurred. Please try again.';
+            });
+        },
+        openEditModal(structureData) {
+            const structure = structureData;
+            this.structureId = structure.id;
+            this.academicLevelId = structure.academic_level_id;
+            this.feeName = structure.fee_name;
+            
+            let startDate = structure.start_date;
+            if (startDate && typeof startDate === 'string') {
+                this.startDate = startDate.split(' ')[0];
+            } else if (startDate) {
+                this.startDate = startDate.toISOString().split('T')[0];
+            } else {
+                this.startDate = '';
+            }
+            
+            let endDate = structure.end_date;
+            if (endDate && typeof endDate === 'string') {
+                this.endDate = endDate.split(' ')[0];
+            } else if (endDate) {
+                this.endDate = endDate.toISOString().split('T')[0];
+            } else {
+                this.endDate = '';
+            }
+            
+            let paymentDeadline = structure.payment_deadline;
+            if (paymentDeadline && typeof paymentDeadline === 'string') {
+                this.paymentDeadline = paymentDeadline.split(' ')[0];
+            } else if (paymentDeadline) {
+                this.paymentDeadline = paymentDeadline.toISOString().split('T')[0];
+            } else {
+                this.paymentDeadline = '';
+            }
+            
+            const items = structure.items || structure['items'] || [];
+            this.feeItems = items.length > 0 
+                ? items.map(item => ({
+                    itemName: item.item_name || '',
+                    itemDescription: item.item_description || '',
+                    amount: item.amount || ''
+                }))
+                : [{ itemName: '', itemDescription: '', amount: '' }];
+            this.error = '';
+            this.success = '';
+            this.editModalOpen = true;
+            this.$nextTick(() => {
+                this.calculateTotal();
+            });
+        }
+    };
+}
+</script>
+<div x-data="editModalData()"
+     x-show="editModalOpen"
+     x-cloak
+     @keydown.escape.window="editModalOpen = false"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
+         @click="editModalOpen = false"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-edit text-white text-2xl"></i>
+                    <h2 class="text-xl font-bold text-white">Edit Fee Structure</h2>
+                </div>
+                <button @click="editModalOpen = false" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <form @submit.prevent="submitEditForm()" class="p-6 space-y-6">
+                
+                <!-- Error/Success Messages -->
+                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <span x-text="error"></span>
+                </div>
+                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg">
+                    <i class="fas fa-check-circle mr-2"></i>
+                    <span x-text="success"></span>
+                </div>
+                
+                <!-- Academic Level -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Academic Level <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="academicLevelId" required
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                        <option value="">Select Academic Level</option>
+                        {% for level in academic_levels %}
+                        <option value="{{ level.id }}">{{ level.level_name }} ({{ level.level_category }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Fee Name -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Fee Name <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" x-model="feeName" required
+                           placeholder="e.g., TERM 1 FEES 2024"
+                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
+                           style="text-transform: uppercase;">
+                </div>
+                
+                <!-- Date Range -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Start Date <span class="text-red-500">*</span>
+                        </label>
+                        <input type="date" x-model="startDate" required
+                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            End Date <span class="text-red-500">*</span>
+                        </label>
+                        <input type="date" x-model="endDate" required
+                               :min="startDate"
+                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                    </div>
+                </div>
+                
+                <!-- Payment Deadline -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Payment Deadline <span class="text-red-500">*</span>
+                    </label>
+                    <input type="date" x-model="paymentDeadline" required
+                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                </div>
+                
+                <!-- Fee Items -->
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Fee Items <span class="text-red-500">*</span>
+                        </label>
+                        <button type="button" @click="feeItems.push({ itemName: '', itemDescription: '', amount: '' }); calculateTotal()"
+                                class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm flex items-center space-x-1">
+                            <i class="fas fa-plus"></i>
+                            <span>Add Item</span>
+                        </button>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <template x-for="(item, index) in feeItems" :key="index">
+                            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start justify-between mb-3">
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Item <span x-text="index + 1"></span></span>
+                                    <button type="button" @click="feeItems.splice(index, 1); calculateTotal()"
+                                            x-show="feeItems.length > 1"
+                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div class="md:col-span-2">
+                                        <input type="text" x-model="item.itemName" 
+                                               @input="item.itemName = item.itemName.toUpperCase()"
+                                               placeholder="Item Name (e.g., TUITION FEE)"
+                                               required
+                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
+                                               style="text-transform: uppercase;">
+                                    </div>
+                                    <div>
+                                        <input type="number" x-model="item.amount" 
+                                               @input="calculateTotal()"
+                                               placeholder="Amount (KES)"
+                                               step="0.01" min="0"
+                                               required
+                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                                    </div>
+                                </div>
+                                <div class="mt-2">
+                                    <input type="text" x-model="item.itemDescription"
+                                           placeholder="Description (optional)"
+                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm">
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                
+                <!-- Total Amount -->
+                <div class="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700">
+                    <div class="flex items-center justify-between">
+                        <span class="text-lg font-bold text-gray-900 dark:text-white">Total Amount:</span>
+                        <span class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="'KES ' + totalAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                    </div>
+                </div>
+                
+                <!-- Actions -->
+                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <button type="button" @click="editModalOpen = false"
+                            class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" :disabled="loading"
+                            class="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                        <span x-text="loading ? 'Updating...' : 'Update Fee Structure'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div x-data="{ 
+    deleteModalOpen: false,
+    structureId: null,
+    structureName: '',
+    loading: false,
+    error: '',
+    init() {
+        // Wait for store to be available
+        if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
+            Alpine.store('feeModals').deleteModal = this;
+        } else {
+            // Fallback: try again after a short delay
+            setTimeout(() => {
+                if (Alpine.store && Alpine.store('feeModals')) {
+                    Alpine.store('feeModals').deleteModal = this;
+                }
+            }, 100);
+        }
+    },
+    confirmDelete(id, name) {
+        this.structureId = id;
+        this.structureName = name;
+        this.error = '';
+        this.deleteModalOpen = true;
+    },
+    deleteStructure() {
+        this.loading = true;
+        this.error = '';
+        fetch('/dashboard/employee/student-fees/fee-structure/' + this.structureId + '/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            this.loading = false;
+            if (data.success) {
+                this.deleteModalOpen = false;
+                location.reload();
+            } else {
+                this.error = data.message || 'Failed to delete fee structure';
+            }
+        })
+        .catch(err => {
+            this.loading = false;
+            this.error = 'An error occurred. Please try again.';
+        });
+    }
+}"
+     x-show="deleteModalOpen"
+     x-cloak
+     @keydown.escape.window="deleteModalOpen = false"
+     class="fixed inset-0 z-50 overflow-y-auto"
+     style="display: none;">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
+         @click="deleteModalOpen = false"></div>
+    
+    <!-- Modal -->
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md"
+             @click.stop>
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4 rounded-t-2xl flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <i class="fas fa-exclamation-triangle text-white text-2xl"></i>
+                    <h2 class="text-xl font-bold text-white">Delete Fee Structure</h2>
+                </div>
+                <button @click="deleteModalOpen = false" 
+                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content -->
+            <div class="p-6">
+                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4">
+                    <i class="fas fa-exclamation-circle mr-2"></i>
+                    <span x-text="error"></span>
+                </div>
+                
+                <p class="text-gray-700 dark:text-gray-300 mb-4">
+                    Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>? 
+                    This action cannot be undone and will also delete all associated fee items.
+                </p>
+                
+                <div class="flex items-center justify-end space-x-3">
+                    <button type="button" @click="deleteModalOpen = false"
+                            class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
+                        Cancel
+                    </button>
+                    <button type="button" @click="deleteStructure()" :disabled="loading"
+                            class="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
+                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                        <span x-text="loading ? 'Deleting...' : 'Delete'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+{% endblock %}
+

@@ -1,0 +1,290 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Student Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#2563eb{% endblock %}
+{% block role_secondary %}#3b82f6{% endblock %}
+{% block role_accent %}#1e40af{% endblock %}
+{% block role_gradient_start %}#2563eb{% endblock %}
+{% block role_gradient_end %}#1e40af{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/role-switch" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2 border-b border-gray-700/50 pb-4">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+{% endif %}
+
+<!-- Student Links -->
+<a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-chart-pie w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'My Timetable / Classes'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>My Timetable</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-tasks w-5"></i>
+    <span>Assignments</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Exam Results / Grades'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam Results</span>
+</a>
+<a href="/dashboard/student/fees" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payment</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Library'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-book w-5"></i>
+    <span>Library</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Technician Student Selector -->
+    {% if is_technician and current_view_role == 'student' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their perspective</p>
+                </div>
+            </div>
+            <form method="GET" action="/dashboard/student" class="flex items-center gap-3">
+                <select name="student_id" 
+                        onchange="this.form.submit()"
+                        class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[250px]">
+                    <option value="">-- Select a Student --</option>
+                    {% for student in all_students %}
+                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}" 
+                            {% if (selected_student_id and (student.get('student_id', '') or student[1] if student else '') == selected_student_id) %}selected{% endif %}>
+                        {{ student.get('full_name', '') or student[2] if student else '' }} - {{ student.get('student_id', '') or student[1] if student else '' }}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if selected_student_id %}
+                <a href="/dashboard/student" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all">
+                    <i class="fas fa-times mr-2"></i>Clear Selection
+                </a>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Page Header -->
+    <div class="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-white mb-2">My Fees & Payments</h1>
+                {% if student_info %}
+                <p class="text-blue-100">{{ student_info.full_name }} - {{ student_info.student_id }}</p>
+                {% else %}
+                <p class="text-blue-100">View your fee details and payment history</p>
+                {% endif %}
+            </div>
+            <div class="hidden sm:block">
+                <i class="fas fa-money-bill-wave text-white text-5xl opacity-20"></i>
+            </div>
+        </div>
+    </div>
+
+    {% if student_info %}
+    <!-- Student Info Card -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-user-graduate text-blue-500"></i>
+            Student Information
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Full Name:</span>
+                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.full_name }}</p>
+            </div>
+            <div>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Student ID:</span>
+                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.student_id }}</p>
+            </div>
+            <div>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Grade:</span>
+                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ student_info.current_grade or 'N/A' }}</p>
+            </div>
+            <div>
+                <span class="text-sm text-gray-600 dark:text-gray-400">Status:</span>
+                <span class="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-sm font-semibold">
+                    {{ student_info.status|title }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    {% if fee_structure %}
+    <!-- Fee Structure Summary -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-file-invoice-dollar text-blue-500"></i>
+            Fee Structure: {{ fee_structure.fee_name }}
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 border border-blue-200 dark:border-blue-800">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Amount</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(fee_structure.total_amount) }}</p>
+            </div>
+            <div class="bg-green-50 dark:bg-green-900/20 rounded-lg p-4 border border-green-200 dark:border-green-800">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Paid</p>
+                <p class="text-2xl font-bold text-green-600 dark:text-green-400">KES {{ "{:,.2f}".format(total_paid) }}</p>
+            </div>
+            <div class="bg-{% if balance > 0 %}red{% else %}green{% endif %}-50 dark:bg-{% if balance > 0 %}red{% else %}green{% endif %}-900/20 rounded-lg p-4 border border-{% if balance > 0 %}red{% else %}green{% endif %}-200 dark:border-{% if balance > 0 %}red{% else %}green{% endif %}-800">
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Balance</p>
+                <p class="text-2xl font-bold text-{% if balance > 0 %}red{% else %}green{% endif %}-600 dark:text-{% if balance > 0 %}red{% else %}green{% endif %}-400">
+                    KES {{ "{:,.2f}".format(balance) }}
+                </p>
+            </div>
+        </div>
+        
+        {% if fee_structure.payment_deadline_formatted %}
+        <div class="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                <i class="fas fa-calendar-alt mr-2"></i>
+                <strong>Payment Deadline:</strong> 
+                <span class="font-semibold">{{ fee_structure.payment_deadline_formatted }}</span>
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Fee Items Breakdown -->
+    {% if fee_items %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-list text-blue-500"></i>
+            Fee Items Breakdown
+        </h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Item Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Description</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for item in fee_items %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
+                            {{ item.item_name }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                            {{ item.item_description or 'N/A' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white text-right">
+                            KES {{ "{:,.2f}".format(item.amount) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="bg-gray-50 dark:bg-gray-900 font-bold">
+                        <td colspan="2" class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">Total:</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900 dark:text-white text-right">
+                            KES {{ "{:,.2f}".format(fee_structure.total_amount) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Payment History -->
+    {% if payments %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-history text-blue-500"></i>
+            Payment History
+        </h2>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Method</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Reference</th>
+                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Amount</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for payment in payments %}
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {{ payment.payment_date_formatted if payment.payment_date_formatted else (payment.payment_date if payment.payment_date else 'N/A') }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            {{ payment.payment_method or 'N/A' }}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                            {{ payment.reference_number or 'N/A' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400 text-right">
+                            KES {{ "{:,.2f}".format(payment.amount_paid) }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="bg-gray-50 dark:bg-gray-900 font-bold">
+                        <td colspan="3" class="px-6 py-4 text-right text-sm text-gray-900 dark:text-white">Total Paid:</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-600 dark:text-green-400 text-right">
+                            KES {{ "{:,.2f}".format(total_paid) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
+        <i class="fas fa-info-circle text-gray-400 text-2xl mb-2"></i>
+        <p class="text-sm text-gray-600 dark:text-gray-400">No payment history available</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <!-- No Fee Structure -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
+        <i class="fas fa-info-circle text-gray-400 text-2xl mb-2"></i>
+        <p class="text-sm text-gray-600 dark:text-gray-400">No fee structure assigned or student not found</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <!-- No Student Selected -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 text-center">
+        <div class="w-24 h-24 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
+            <i class="fas fa-user-graduate text-white text-4xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Welcome to Your Dashboard</h2>
+        <p class="text-gray-600 dark:text-gray-400">{% if is_technician and current_view_role == 'student' %}Please select a student to view their fees{% else %}Content will be added here soon{% endif %}</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

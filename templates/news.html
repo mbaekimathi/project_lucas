@@ -1,75 +1,183 @@
 {% extends "base.html" %}
 
-{% block title %}News & Events - Modern School{% endblock %}
+{% block title %}News & Events - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block content %}
 <!-- Hero Section -->
-<section class="bg-gradient-to-r from-primary to-blue-600 text-white py-20 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-10">
-        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
-    </div>
-    <div class="container mx-auto px-4 lg:px-8 text-center relative z-10">
-        <div class="mb-8">
-            <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
-                <i class="fas fa-newspaper text-6xl text-white"></i>
-            </div>
-        </div>
-        <h1 class="text-4xl md:text-6xl font-bold mb-6 fade-in-section">News & Updates</h1>
-        <div class="w-24 h-1 bg-white mx-auto mb-6"></div>
-        <p class="text-xl text-gray-100 fade-in-section max-w-3xl mx-auto">
-            Stay Informed About School Activities
-        </p>
+<section class="hero-parallax text-white py-12 md:py-16 fade-in-section relative overflow-hidden min-h-[350px] md:min-h-[450px] lg:min-h-[500px] flex items-center">
+    <!-- Background Image with Parallax -->
+    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
+    <!-- Overlay Gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/90 via-blue-800/90 to-indigo-900/90 z-10"></div>
+    <!-- Floating Elements -->
+    <div class="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-float z-20"></div>
+    <div class="absolute bottom-10 right-10 w-24 h-24 bg-white/10 rounded-full blur-2xl animate-float-delayed z-20"></div>
+    
+    <div class="container mx-auto px-4 lg:px-8 relative z-30 floating-content">
+        <h1 class="text-4xl md:text-5xl font-heading font-bold mb-4 text-white animate-slide-up drop-shadow-2xl">News & Events</h1>
+        <p class="text-xl text-white/95 font-medium animate-slide-up-delayed drop-shadow-lg">Stay updated with the latest happenings at {{ school_settings.school_name or 'Modern School' }}</p>
     </div>
 </section>
 
-<!-- News Posts -->
-<section class="py-16">
+<!-- News Section -->
+<section class="py-16 bg-white section-padding">
     <div class="container mx-auto px-4 lg:px-8">
-        {% if posts %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {% for post in posts %}
-            <article class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 fade-in-section overflow-hidden">
-                <div class="bg-gray-200 dark:bg-gray-700 h-48 flex items-center justify-center">
-                    {% if post.image_url %}
-                    <img src="{{ post.image_url }}" alt="{{ post.title }}" class="w-full h-full object-cover">
-                    {% else %}
-                    <i class="fas fa-newspaper text-5xl text-gray-400"></i>
-                    {% endif %}
-                </div>
-                <div class="p-6">
-                    <div class="flex items-center gap-3 mb-4">
-                        {% if post.category %}
-                        <span class="px-3 py-1 bg-primary text-white rounded-lg text-xs font-semibold">{{ post.category }}</span>
-                        {% endif %}
-                        <span class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ post.created_at.strftime('%B %d, %Y') if post.created_at else '' }}
-                        </span>
+            {% if news_items %}
+                {% for item in news_items %}
+                <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all border border-gray-200 fade-in-section group relative">
+                    {% if item.image_url %}
+                    <div class="w-full h-48 overflow-hidden">
+                        <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-500">
                     </div>
-                    <h2 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">{{ post.title }}</h2>
-                    <p class="text-gray-600 dark:text-gray-400 mb-6 line-clamp-3 leading-relaxed">
-                        {{ post.content[:150] }}...
-                    </p>
-                    <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
-                        <span class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                            <i class="fas fa-user"></i>{{ post.author_name or 'Admin' }}
-                        </span>
-                        <a href="#" class="text-primary font-semibold hover:underline inline-flex items-center gap-2">
-                            Read More
-                            <i class="fas fa-arrow-right text-sm"></i>
+                    {% else %}
+                    <div class="w-full h-48 bg-gradient-to-br from-brand-primary to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                        <i class="fas fa-newspaper text-white text-6xl group-hover:rotate-12 transition-transform duration-300"></i>
+                    </div>
+                    {% endif %}
+                    <div class="p-6 relative z-10">
+                        <div class="flex items-center text-sm text-gray-500 mb-2">
+                            <i class="fas fa-calendar mr-2 text-brand-primary"></i>
+                            <span>{{ item.date.strftime('%B %d, %Y') if item.date else 'Recent' }}</span>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900 group-hover:text-brand-primary transition-colors">{{ item.title }}</h3>
+                        <p class="text-gray-600 mb-4">{{ item.summary[:150] }}...</p>
+                        <a href="#" class="text-brand-primary font-semibold hover:underline inline-flex items-center group-hover:translate-x-2 transition-transform">
+                            Read More <i class="fas fa-arrow-right ml-1"></i>
                         </a>
                     </div>
                 </div>
-            </article>
-            {% endfor %}
+                {% endfor %}
+            {% else %}
+                <!-- Default News Items -->
+                <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                    <div class="w-full h-48 bg-brand-primary flex items-center justify-center">
+                        <i class="fas fa-graduation-cap text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            <i class="fas fa-calendar mr-2"></i>
+                            <span>January 15, 2025</span>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">New Semester Begins</h3>
+                        <p class="text-gray-600 dark:text-gray-400 mb-4">We're excited to welcome students back for the spring semester with new programs and opportunities.</p>
+                        <a href="#" class="text-brand-primary font-semibold hover:underline">
+                            Read More <i class="fas fa-arrow-right ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all transform hover:-translate-y-2 fade-in-section">
+                    <div class="w-full h-48 bg-brand-primary flex items-center justify-center">
+                        <i class="fas fa-trophy text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            <i class="fas fa-calendar mr-2"></i>
+                            <span>January 10, 2025</span>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Science Fair Winners</h3>
+                        <p class="text-gray-600 dark:text-gray-400 mb-4">Congratulations to our students who excelled at the regional science fair competition.</p>
+                        <a href="#" class="text-brand-primary font-semibold hover:underline">
+                            Read More <i class="fas fa-arrow-right ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all transform hover:-translate-y-2 fade-in-section">
+                    <div class="w-full h-48 bg-brand-primary flex items-center justify-center">
+                        <i class="fas fa-users text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-2">
+                            <i class="fas fa-calendar mr-2"></i>
+                            <span>January 5, 2025</span>
+                        </div>
+                        <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Parent-Teacher Conference</h3>
+                        <p class="text-gray-600 dark:text-gray-400 mb-4">Join us for the upcoming parent-teacher conference to discuss your child's progress.</p>
+                        <a href="#" class="text-brand-primary font-semibold hover:underline">
+                            Read More <i class="fas fa-arrow-right ml-1"></i>
+                        </a>
+                    </div>
+                </div>
+            {% endif %}
         </div>
-        {% else %}
-        <div class="text-center py-16 fade-in-section">
-            <i class="fas fa-newspaper text-6xl text-gray-400 mb-4"></i>
-            <h2 class="text-2xl font-bold mb-2">No News Posts Yet</h2>
-            <p class="text-gray-600 dark:text-gray-400">Check back soon for updates!</p>
-        </div>
-        {% endif %}
     </div>
 </section>
+
+<!-- Events Section -->
+<section class="py-16 bg-gray-50 section-padding">
+    <div class="container mx-auto px-4 lg:px-8">
+        <h2 class="text-3xl font-bold text-center mb-12 text-gray-900 dark:text-white">Upcoming Events</h2>
+        <div class="max-w-3xl mx-auto space-y-6">
+            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
+                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-lg flex flex-col items-center justify-center text-white">
+                            <span class="text-2xl font-bold">15</span>
+                            <span class="text-xs">FEB</span>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Open House Day</h3>
+                            <p class="text-gray-600 dark:text-gray-400">Join us for a tour of our facilities and meet our faculty.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
+                        <i class="fas fa-clock"></i>
+                        <span>10:00 AM - 2:00 PM</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
+                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-lg flex flex-col items-center justify-center text-white">
+                            <span class="text-2xl font-bold">22</span>
+                            <span class="text-xs">FEB</span>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Sports Day</h3>
+                            <p class="text-gray-600 dark:text-gray-400">Annual inter-school sports competition and celebration.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
+                        <i class="fas fa-clock"></i>
+                        <span>9:00 AM - 4:00 PM</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg p-6 shadow-md hover:shadow-lg transition-all fade-in-section border border-gray-200">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-start space-x-4 mb-4 md:mb-0">
+                        <div class="flex-shrink-0 w-20 h-20 bg-brand-primary rounded-lg flex flex-col items-center justify-center text-white">
+                            <span class="text-2xl font-bold">28</span>
+                            <span class="text-xs">FEB</span>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold mb-2 text-gray-900 dark:text-white">Science Exhibition</h3>
+                            <p class="text-gray-600 dark:text-gray-400">Student projects showcase and interactive demonstrations.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
+                        <i class="fas fa-clock"></i>
+                        <span>1:00 PM - 5:00 PM</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Next Button -->
+<div class="container mx-auto px-4 lg:px-8 py-8 bg-white">
+    <div class="flex justify-end">
+        <a href="/gallery" class="inline-flex items-center space-x-2 px-6 py-3 bg-brand-primary text-white rounded-lg font-semibold hover:bg-blue-800 transition-all shadow-md">
+            <span>Next</span>
+            <i class="fas fa-arrow-right"></i>
+        </a>
+    </div>
+</div>
 {% endblock %}
 

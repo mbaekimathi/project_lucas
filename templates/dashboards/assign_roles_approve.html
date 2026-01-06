@@ -1,0 +1,616 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Assign Roles & Approve - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<!-- Staff Management Links -->
+<a href="/staff-management" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-user-tie w-5"></i>
+    <span>Staff Management</span>
+</a>
+
+<a href="/assign-roles-approve" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Assign Roles & Approve</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-calendar-times w-5"></i>
+    <span>Leave Management</span>
+</a>
+
+<a href="/dashboard/employee/staff-and-salaries" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-money-check-alt w-5"></i>
+    <span>Payroll Management</span>
+</a>
+
+<a @click.prevent="comingSoonTitle = 'Job Attendance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-clock w-5"></i>
+    <span>Job Attendance</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="assignRolesApprove()">
+    <!-- Header -->
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">Assign Roles & Approve Employees</h1>
+        <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Pending Approval: {{ employees|length }} employees</p>
+    </div>
+
+    <!-- Success/Error Messages -->
+    <div x-show="message.show" 
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-2"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         :class="message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200'"
+         class="mb-4 p-3 sm:p-4 rounded-lg border text-sm sm:text-base">
+        <div class="flex items-center justify-between gap-2">
+            <span class="flex-1" x-text="message.text"></span>
+            <button @click="message.show = false" class="ml-2 sm:ml-4 text-current hover:opacity-75 flex-shrink-0 p-1 min-w-[44px] min-h-[44px] flex items-center justify-center">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Employees List -->
+    <div class="space-y-3 sm:space-y-4">
+        {% if employees %}
+            {% for employee in employees %}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-5 transition-all hover:shadow-md"
+                 :id="'employee-' + {{ employee.id }}">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 sm:gap-5">
+                    <!-- Employee Info -->
+                    <div class="flex items-start sm:items-center space-x-3 sm:space-x-4 flex-1 min-w-0">
+                        <div class="w-14 h-14 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
+                            {% if employee.get('profile_picture') %}
+                            <img src="{{ url_for('static', filename=employee.profile_picture) }}" 
+                                 alt="{{ employee.full_name }}" 
+                                 class="w-full h-full object-cover">
+                            {% else %}
+                            <i class="fas fa-user text-white text-base sm:text-lg"></i>
+                            {% endif %}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-white truncate">{{ employee.full_name }}</p>
+                            <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ employee.email }}</p>
+                            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
+                                <span class="text-xs text-gray-600 dark:text-gray-400">ID: <span class="font-mono">{{ employee.employee_id }}</span></span>
+                                <span class="text-xs text-gray-400 hidden sm:inline">•</span>
+                                <span class="text-xs text-gray-600 dark:text-gray-400 break-all">{{ employee.phone }}</span>
+                            </div>
+                            {% if employee.get('id_number') %}
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 sm:mt-1.5">ID Number: {{ employee.id_number }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Approval Section -->
+                    <div class="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch sm:items-end lg:items-end xl:items-end gap-3 sm:gap-4 lg:gap-3 xl:gap-4">
+                        <!-- Status Badge -->
+                        <div class="flex justify-start sm:justify-end lg:justify-end">
+                            <span class="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 whitespace-nowrap">
+                                Pending Approval
+                            </span>
+                        </div>
+                        
+                        <!-- Role Selection and Approve -->
+                        <div class="flex flex-col space-y-2 sm:space-y-3 w-full sm:w-auto lg:w-64 xl:w-72">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                Assign Role:
+                            </label>
+                            <select :id="'role-select-' + {{ employee.id }}"
+                                    class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                                <option value="">Select a role...</option>
+                                <option value="employee">Employee</option>
+                                <option value="super admin">Super Admin</option>
+                                <option value="principal">Principal</option>
+                                <option value="deputy principal">Deputy Principal</option>
+                                <option value="academic coordinator">Academic Coordinator</option>
+                                <option value="teachers">Teachers</option>
+                                <option value="accountant">Accountant</option>
+                                <option value="librarian">Librarian</option>
+                                <option value="warden">Warden</option>
+                                <option value="transport manager">Transport Manager</option>
+                                <option value="technician">Technician</option>
+                            </select>
+                            <button @click="approveEmployee({{ employee.id }}, '{{ employee.full_name }}')" 
+                                    class="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-all flex items-center justify-center gap-2 sm:gap-2.5 min-h-[44px] text-sm sm:text-base shadow-sm hover:shadow-md">
+                                <i class="fas fa-check-circle text-base sm:text-lg"></i>
+                                <span>Approve & Assign Role</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 sm:p-12 md:p-16 text-center">
+                <i class="fas fa-check-circle text-green-400 text-3xl sm:text-4xl md:text-5xl mb-3 sm:mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400 text-base sm:text-lg md:text-xl font-medium">No employees pending approval</p>
+                <p class="text-xs sm:text-sm text-gray-400 dark:text-gray-500 mt-2 sm:mt-3">All employees have been approved and assigned roles.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Payroll Registration Modal -->
+    <div x-show="payrollModal.open" 
+         x-cloak
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6"
+         @click.self="payrollModal.open = false"
+         style="backdrop-filter: blur(4px);">
+        <div x-show="payrollModal.open"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 transform scale-95"
+             x-transition:enter-end="opacity-100 transform scale-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100 transform scale-100"
+             x-transition:leave-end="opacity-0 transform scale-95"
+             class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-2xl max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
+            <div class="p-4 sm:p-5 md:p-6">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between mb-4 sm:mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                    <div>
+                        <h3 class="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 dark:text-white">Register Payroll</h3>
+                        <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1" x-text="'For: ' + payrollModal.employeeName"></p>
+                    </div>
+                    <button @click="payrollModal.open = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+                
+                <!-- Error/Success Messages -->
+                <div x-show="payrollModal.error" 
+                     x-cloak
+                     class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 text-sm">
+                    <span x-text="payrollModal.error"></span>
+                </div>
+                
+                <div x-show="payrollModal.success" 
+                     x-cloak
+                     class="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 text-sm">
+                    <span x-text="payrollModal.success"></span>
+                </div>
+                
+                <!-- Payroll Form -->
+                <form @submit.prevent="submitPayroll()" class="space-y-4 sm:space-y-5">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                        <!-- Effective Date -->
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Effective Date <span class="text-red-500">*</span></label>
+                            <input type="date" 
+                                   x-model="payrollModal.effectiveDate"
+                                   required
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- Payment Period -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Payment Period</label>
+                            <select x-model="payrollModal.paymentPeriod"
+                                    class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                                <option value="Monthly">Monthly</option>
+                                <option value="Weekly">Weekly</option>
+                                <option value="Daily">Daily</option>
+                                <option value="Quarterly">Quarterly</option>
+                                <option value="Semi-Annual">Semi-Annual</option>
+                                <option value="3/4 Annual">3/4 Annual</option>
+                                <option value="Annually">Annually</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Basic Salary -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Basic Salary <span class="text-red-500">*</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.basicSalary"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   required
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- House Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">House Allowance <span class="text-gray-500 text-xs">(Optional)</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.houseAllowance"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- Transport Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Transport Allowance <span class="text-gray-500 text-xs">(Optional)</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.transportAllowance"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- Medical Allowance -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Medical Allowance <span class="text-gray-500 text-xs">(Optional)</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.medicalAllowance"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- Overtime -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Overtime <span class="text-gray-500 text-xs">(Optional)</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.overtime"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                        
+                        <!-- Bonus -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Bonus <span class="text-gray-500 text-xs">(Optional)</span></label>
+                            <input type="number" 
+                                   x-model="payrollModal.bonus"
+                                   @input="calculatePayrollTotals()"
+                                   step="0.01" min="0"
+                                   placeholder="0.00"
+                                   class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                        </div>
+                    </div>
+                    
+                    <!-- Deductions Section -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <h4 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4">Deductions</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                            <!-- PAYE -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">PAYE <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.paye"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                            
+                            <!-- NSSF -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">NSSF <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.nssf"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                            
+                            <!-- NHIF -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">NHIF <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.nhif"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                            
+                            <!-- SACCO -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">SACCO <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.sacco"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                            
+                            <!-- Staff Loans -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Staff Loans <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.staffLoans"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                            
+                            <!-- Absenteeism -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Absenteeism <span class="text-gray-500 text-xs">(Optional)</span></label>
+                                <input type="number" 
+                                       x-model="payrollModal.absenteeism"
+                                       @input="calculatePayrollTotals()"
+                                       step="0.01" min="0"
+                                       placeholder="0.00"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Summary Section -->
+                    <div class="pt-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 sm:p-5">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                            <div>
+                                <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Total Earnings</p>
+                                <p class="text-lg sm:text-xl font-bold text-green-600 dark:text-green-400" x-text="formatCurrency(totalEarnings)"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Total Deductions</p>
+                                <p class="text-lg sm:text-xl font-bold text-red-600 dark:text-red-400" x-text="formatCurrency(totalDeductions)"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1">Net Salary</p>
+                                <p class="text-lg sm:text-xl font-bold text-blue-600 dark:text-blue-400" x-text="formatCurrency(netSalary)"></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 sm:pt-6">
+                        <button type="submit" 
+                                :disabled="payrollModal.loading"
+                                class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center justify-center gap-2 text-sm sm:text-base">
+                            <span x-show="!payrollModal.loading">Register Payroll</span>
+                            <span x-show="payrollModal.loading" class="flex items-center gap-2">
+                                <i class="fas fa-spinner fa-spin"></i>
+                                <span>Registering...</span>
+                            </span>
+                        </button>
+                        <button type="button" 
+                                @click="payrollModal.open = false"
+                                class="flex-1 sm:flex-none sm:min-w-[100px] bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors min-h-[44px] text-sm sm:text-base">
+                            Skip for Now
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function assignRolesApprove() {
+    return {
+        message: {
+            show: false,
+            text: '',
+            type: 'success'
+        },
+        payrollModal: {
+            open: false,
+            employeeId: null,
+            employeeName: '',
+            effectiveDate: new Date().toISOString().split('T')[0],
+            paymentPeriod: 'Monthly',
+            basicSalary: '',
+            houseAllowance: '',
+            transportAllowance: '',
+            medicalAllowance: '',
+            overtime: '',
+            bonus: '',
+            paye: '',
+            nssf: '',
+            nhif: '',
+            sacco: '',
+            staffLoans: '',
+            absenteeism: '',
+            loading: false,
+            error: '',
+            success: ''
+        },
+        
+        get totalEarnings() {
+            const basic = parseFloat(this.payrollModal.basicSalary) || 0;
+            const house = parseFloat(this.payrollModal.houseAllowance) || 0;
+            const transport = parseFloat(this.payrollModal.transportAllowance) || 0;
+            const medical = parseFloat(this.payrollModal.medicalAllowance) || 0;
+            const ot = parseFloat(this.payrollModal.overtime) || 0;
+            const bonusAmt = parseFloat(this.payrollModal.bonus) || 0;
+            return basic + house + transport + medical + ot + bonusAmt;
+        },
+        
+        get totalDeductions() {
+            const payeAmt = parseFloat(this.payrollModal.paye) || 0;
+            const nssfAmt = parseFloat(this.payrollModal.nssf) || 0;
+            const nhifAmt = parseFloat(this.payrollModal.nhif) || 0;
+            const saccoAmt = parseFloat(this.payrollModal.sacco) || 0;
+            const loans = parseFloat(this.payrollModal.staffLoans) || 0;
+            const absent = parseFloat(this.payrollModal.absenteeism) || 0;
+            return payeAmt + nssfAmt + nhifAmt + saccoAmt + loans + absent;
+        },
+        
+        get netSalary() {
+            return this.totalEarnings - this.totalDeductions;
+        },
+        
+        toTitleCase(str) {
+            return str.replace(/\w\S*/g, function(txt) {
+                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+            });
+        },
+        
+        formatCurrency(amount) {
+            return parseFloat(amount || 0).toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        },
+        
+        calculatePayrollTotals() {
+            // Reactive calculation - totals update automatically via getters
+        },
+        
+        showMessage(text, type = 'success') {
+            this.message.text = text;
+            this.message.type = type;
+            this.message.show = true;
+            setTimeout(() => {
+                this.message.show = false;
+            }, 5000);
+        },
+        
+        openPayrollModal(employeeId, employeeName) {
+            this.payrollModal.employeeId = employeeId;
+            this.payrollModal.employeeName = employeeName;
+            this.payrollModal.effectiveDate = new Date().toISOString().split('T')[0];
+            this.payrollModal.error = '';
+            this.payrollModal.success = '';
+            this.payrollModal.open = true;
+        },
+        
+        async submitPayroll() {
+            this.payrollModal.loading = true;
+            this.payrollModal.error = '';
+            this.payrollModal.success = '';
+            
+            // Validation
+            if (!this.payrollModal.effectiveDate) {
+                this.payrollModal.error = 'Please select an effective date';
+                this.payrollModal.loading = false;
+                return;
+            }
+            
+            if (!this.payrollModal.basicSalary || parseFloat(this.payrollModal.basicSalary) <= 0) {
+                this.payrollModal.error = 'Basic salary is required and must be greater than 0';
+                this.payrollModal.loading = false;
+                return;
+            }
+            
+            try {
+                const salaryData = {
+                    employee_id: this.payrollModal.employeeId,
+                    effective_date: this.payrollModal.effectiveDate,
+                    payment_period: this.payrollModal.paymentPeriod,
+                    basic_salary: parseFloat(this.payrollModal.basicSalary) || 0,
+                    house_allowance: parseFloat(this.payrollModal.houseAllowance) || 0,
+                    transport_allowance: parseFloat(this.payrollModal.transportAllowance) || 0,
+                    medical_allowance: parseFloat(this.payrollModal.medicalAllowance) || 0,
+                    overtime: parseFloat(this.payrollModal.overtime) || 0,
+                    bonus: parseFloat(this.payrollModal.bonus) || 0,
+                    paye: parseFloat(this.payrollModal.paye) || 0,
+                    nssf: parseFloat(this.payrollModal.nssf) || 0,
+                    nhif: parseFloat(this.payrollModal.nhif) || 0,
+                    sacco: parseFloat(this.payrollModal.sacco) || 0,
+                    staff_loans: parseFloat(this.payrollModal.staffLoans) || 0,
+                    absenteeism: parseFloat(this.payrollModal.absenteeism) || 0,
+                    total_earnings: this.totalEarnings,
+                    total_deductions: this.totalDeductions,
+                    net_salary: this.netSalary
+                };
+                
+                const response = await fetch('/dashboard/employee/staff-and-salaries/register-salary', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(salaryData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.payrollModal.success = result.message;
+                    setTimeout(() => {
+                        this.payrollModal.open = false;
+                        this.showMessage('Payroll registered successfully!', 'success');
+                    }, 1500);
+                } else {
+                    this.payrollModal.error = result.message || 'Failed to register payroll. Please try again.';
+                }
+            } catch (error) {
+                console.error('Error registering payroll:', error);
+                this.payrollModal.error = 'An error occurred. Please try again.';
+            } finally {
+                this.payrollModal.loading = false;
+            }
+        },
+        
+        async approveEmployee(employeeId, employeeName) {
+            const roleSelect = document.getElementById(`role-select-${employeeId}`);
+            const selectedRole = roleSelect.value;
+            
+            if (!selectedRole) {
+                this.showMessage('Please select a role for the employee before approving.', 'error');
+                roleSelect.focus();
+                return;
+            }
+            
+            const roleTitle = this.toTitleCase(selectedRole);
+            if (!confirm(`Are you sure you want to approve ${employeeName} and assign them the role of ${roleTitle}? An email notification will be sent to their email address.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/approve-employee/${employeeId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ role: selectedRole })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.showMessage(result.message, 'success');
+                    const employeeElement = document.getElementById(`employee-${employeeId}`);
+                    if (employeeElement) {
+                        employeeElement.style.transition = 'opacity 0.3s';
+                        employeeElement.style.opacity = '0';
+                        setTimeout(() => {
+                            employeeElement.remove();
+                            // Open payroll modal after removing employee card
+                            this.openPayrollModal(employeeId, employeeName);
+                        }, 300);
+                    } else {
+                        // If element not found, open modal immediately
+                        this.openPayrollModal(employeeId, employeeName);
+                    }
+                } else {
+                    this.showMessage(result.message || 'Failed to approve employee', 'error');
+                }
+            } catch (error) {
+                console.error('Error approving employee:', error);
+                this.showMessage('Error approving employee. Please try again.', 'error');
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
+

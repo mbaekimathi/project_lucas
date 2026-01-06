@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Admission Form - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-gradient-to-br from-brand-blue to-blue-dark text-white py-16 fade-in-section">
+    <div class="container mx-auto px-4 lg:px-8">
+        <h1 class="text-4xl md:text-5xl font-heading font-bold mb-4">Admission Form</h1>
+        <p class="text-xl text-blue-100">Start your journey with {{ school_settings.school_name or 'Modern School' }}</p>
+    </div>
+</section>
+
+<!-- Admission Form Section -->
+<section class="py-16 bg-gray-50 section-padding">
+    <div class="container mx-auto px-4 lg:px-8 max-w-4xl">
+        <div class="bg-white rounded-2xl shadow-lg p-8 md:p-12 fade-in-section border-2 border-gray-100">
+            <form method="POST" action="/admission" class="space-y-8">
+                <!-- Student Information -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white border-b-2 border-blue-600 pb-2">
+                        <i class="fas fa-user-graduate mr-2"></i>Student Information
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="md:col-span-2">
+                            <label for="student_full_name" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Student Full Name <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="student_full_name" name="student_full_name" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div>
+                            <label for="date_of_birth" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Date of Birth <span class="text-red-500">*</span>
+                            </label>
+                            <input type="date" id="date_of_birth" name="date_of_birth" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div>
+                            <label for="gender" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Gender</label>
+                            <select id="gender" name="gender"
+                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                                <option value="">Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                                <option value="Prefer not to say">Prefer not to say</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="current_grade" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Current Grade Applying For</label>
+                            <select id="current_grade" name="current_grade"
+                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                                <option value="">Select Grade</option>
+                                <option value="Kindergarten">Kindergarten</option>
+                                <option value="Grade 1">Grade 1</option>
+                                <option value="Grade 2">Grade 2</option>
+                                <option value="Grade 3">Grade 3</option>
+                                <option value="Grade 4">Grade 4</option>
+                                <option value="Grade 5">Grade 5</option>
+                                <option value="Grade 6">Grade 6</option>
+                                <option value="Grade 7">Grade 7</option>
+                                <option value="Grade 8">Grade 8</option>
+                                <option value="Grade 9">Grade 9</option>
+                                <option value="Grade 10">Grade 10</option>
+                                <option value="Grade 11">Grade 11</option>
+                                <option value="Grade 12">Grade 12</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="previous_school" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Previous School</label>
+                            <input type="text" id="previous_school" name="previous_school"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parent/Guardian Information -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white border-b-2 border-blue-600 pb-2">
+                        <i class="fas fa-users mr-2"></i>Parent/Guardian Information
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="parent_name" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Parent/Guardian Name <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="parent_name" name="parent_name" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div>
+                            <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Parent Phone <span class="text-red-500">*</span>
+                            </label>
+                            <input type="tel" id="parent_phone" name="parent_phone" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="parent_email" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Parent Email <span class="text-red-500">*</span>
+                            </label>
+                            <input type="email" id="parent_email" name="parent_email" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Additional Information -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white border-b-2 border-blue-600 pb-2">
+                        <i class="fas fa-info-circle mr-2"></i>Additional Information
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="md:col-span-2">
+                            <label for="address" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Home Address</label>
+                            <textarea id="address" name="address" rows="3"
+                                      class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue"></textarea>
+                        </div>
+                        <div>
+                            <label for="emergency_contact" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Emergency Contact</label>
+                            <input type="text" id="emergency_contact" name="emergency_contact"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div>
+                            <label for="medical_conditions" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Medical Conditions</label>
+                            <input type="text" id="medical_conditions" name="medical_conditions"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="special_needs" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Special Needs</label>
+                            <textarea id="special_needs" name="special_needs" rows="3"
+                                      class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Consent -->
+                <div>
+                    <div class="flex items-start space-x-3 p-4 bg-blue-50 rounded-lg border-2 border-brand-blue">
+                        <input type="checkbox" id="consent" name="consent" required
+                               class="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                        <label for="consent" class="text-sm text-gray-700 dark:text-gray-300">
+                            <span class="text-red-500">*</span> I hereby confirm that all information provided is accurate and I consent to the processing of this application. I understand that providing false information may result in the rejection of this application.
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-4">
+                    <button type="submit" class="flex-1 px-8 py-4 bg-brand-blue text-white rounded-lg font-semibold hover:bg-blue-dark transition-all transform hover:scale-105 shadow-lg">
+                        <i class="fas fa-paper-plane mr-2"></i>Submit Application
+                    </button>
+                    <button type="reset" class="px-8 py-4 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                        <i class="fas fa-redo mr-2"></i>Reset Form
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+

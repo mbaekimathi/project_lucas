@@ -1,65 +1,168 @@
 {% extends "base.html" %}
 
-{% block title %}Gallery - Modern School{% endblock %}
+{% block title %}Gallery - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block content %}
 <!-- Hero Section -->
-<section class="bg-gradient-to-r from-primary to-blue-600 text-white py-20 relative overflow-hidden">
-    <div class="absolute inset-0 opacity-10">
-        <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.1\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
-    </div>
-    <div class="container mx-auto px-4 lg:px-8 text-center relative z-10">
-        <div class="mb-8">
-            <div class="inline-block p-4 bg-white bg-opacity-10 rounded-2xl backdrop-blur-sm mb-6">
-                <i class="fas fa-images text-6xl text-white"></i>
-            </div>
-        </div>
-        <h1 class="text-4xl md:text-6xl font-bold mb-6 fade-in-section">Photo Gallery</h1>
-        <div class="w-24 h-1 bg-white mx-auto mb-6"></div>
-        <p class="text-xl text-gray-100 fade-in-section max-w-3xl mx-auto">
-            Capturing Moments of Excellence
-        </p>
+<section class="hero-parallax text-white py-12 md:py-16 fade-in-section relative overflow-hidden min-h-[350px] md:min-h-[450px] lg:min-h-[500px] flex items-center">
+    <!-- Background Image with Parallax -->
+    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
+    <!-- Overlay Gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/90 via-blue-800/90 to-indigo-900/90 z-10"></div>
+    <!-- Floating Elements -->
+    <div class="absolute top-10 left-10 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-float z-20"></div>
+    <div class="absolute bottom-10 right-10 w-24 h-24 bg-white/10 rounded-full blur-2xl animate-float-delayed z-20"></div>
+    
+    <div class="container mx-auto px-4 lg:px-8 relative z-30 floating-content">
+        <h1 class="text-4xl md:text-5xl font-heading font-bold mb-4 text-white animate-slide-up drop-shadow-2xl">Gallery</h1>
+        <p class="text-xl text-white/95 font-medium animate-slide-up-delayed drop-shadow-lg">Explore our school life through photos</p>
     </div>
 </section>
 
-<!-- Gallery -->
-<section class="py-16">
+<!-- Gallery Section -->
+<section class="py-16 bg-white section-padding">
     <div class="container mx-auto px-4 lg:px-8">
         {% if gallery_items %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for item in gallery_items %}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 border border-gray-100 dark:border-gray-700 transform hover:-translate-y-2 overflow-hidden fade-in-section group cursor-pointer">
-                <div class="relative h-64 bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                    {% if item.image_url %}
-                    <img src="{{ item.image_url }}" alt="{{ item.title or 'Gallery Image' }}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300">
-                    {% else %}
-                    <div class="w-full h-full flex items-center justify-center">
-                        <i class="fas fa-image text-5xl text-gray-400"></i>
-                    </div>
-                    {% endif %}
-                    <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-opacity duration-300 flex items-center justify-center">
-                        <i class="fas fa-search-plus text-white text-4xl opacity-0 group-hover:opacity-100 transition-opacity"></i>
-                    </div>
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-2xl hover:-translate-y-2 transition-all border border-gray-200 fade-in-section group relative">
+                {% if item.image_url %}
+                <div class="w-full h-64 overflow-hidden">
+                    <img src="{{ item.image_url }}" alt="{{ item.title }}" class="w-full h-64 object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
-                {% if item.title %}
-                <div class="p-6">
-                    <h3 class="font-bold text-lg text-gray-900 dark:text-white mb-2">{{ item.title }}</h3>
-                    {% if item.category %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ item.category }}</p>
-                    {% endif %}
+                {% else %}
+                <div class="w-full h-64 bg-gradient-to-br from-brand-primary to-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <i class="fas fa-image text-white text-6xl group-hover:rotate-12 transition-transform duration-300"></i>
                 </div>
                 {% endif %}
+                <div class="p-6 relative z-10">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-primary group-hover:text-blue-700 transition-colors">{{ item.title }}</h3>
+                    {% if item.description %}
+                    <p class="text-gray-600 mb-4">{{ item.description }}</p>
+                    {% endif %}
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2 text-brand-primary"></i>
+                        <span>{{ item.created_at.strftime('%B %d, %Y') if item.created_at else 'Recent' }}</span>
+                    </div>
+                </div>
             </div>
             {% endfor %}
         </div>
         {% else %}
-        <div class="text-center py-16 fade-in-section">
-            <i class="fas fa-images text-6xl text-gray-400 mb-4"></i>
-            <h2 class="text-2xl font-bold mb-2">Gallery Coming Soon</h2>
-            <p class="text-gray-600 dark:text-gray-400">Photos and videos will be added soon!</p>
+        <!-- Default Gallery Items -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-brand-primary flex items-center justify-center">
+                    <i class="fas fa-graduation-cap text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-primary">Graduation Ceremony</h3>
+                    <p class="text-gray-600 mb-4">Celebrating our students' achievements and milestones.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>January 2025</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-brand-secondary flex items-center justify-center">
+                    <i class="fas fa-flask text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Science Fair</h3>
+                    <p class="text-gray-600 mb-4">Students showcasing their innovative science projects.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>January 2025</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                    <i class="fas fa-running text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Sports Day</h3>
+                    <p class="text-gray-600 mb-4">Annual sports competition and team spirit celebration.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>December 2024</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                    <i class="fas fa-palette text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Art Exhibition</h3>
+                    <p class="text-gray-600 mb-4">Showcasing students' creative talents and artwork.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>December 2024</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                    <i class="fas fa-music text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Music Concert</h3>
+                    <p class="text-gray-600 mb-4">Students performing in our annual music concert.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>November 2024</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-all border border-gray-200 fade-in-section">
+                <div class="w-full h-64 bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center">
+                    <i class="fas fa-book-reader text-white text-6xl"></i>
+                </div>
+                <div class="p-6">
+                    <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Library Activities</h3>
+                    <p class="text-gray-600 mb-4">Students engaged in reading and learning activities.</p>
+                    <div class="flex items-center text-sm text-gray-500">
+                        <i class="fas fa-calendar mr-2"></i>
+                        <span>November 2024</span>
+                    </div>
+                </div>
+            </div>
         </div>
         {% endif %}
     </div>
 </section>
+
+<!-- CTA Section -->
+<section class="py-16 section-padding relative overflow-hidden min-h-[400px] flex items-center">
+    <!-- Background Image with Parallax -->
+    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
+    <!-- Overlay Gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-indigo-600/85 via-purple-600/85 to-pink-600/85 z-10"></div>
+    
+    <div class="container mx-auto px-4 lg:px-8 text-center relative z-20 floating-content">
+        <h2 class="text-3xl md:text-4xl font-heading font-bold mb-4 text-white drop-shadow-2xl">Want to See More?</h2>
+        <p class="text-xl mb-8 text-white/95 font-medium drop-shadow-lg">Visit our school to experience the vibrant learning environment</p>
+        <a href="/contact" class="inline-block px-8 py-4 bg-white/20 backdrop-blur-md text-white rounded-lg font-semibold hover:bg-white/30 hover:scale-110 transition-all shadow-xl hover:shadow-2xl transform border border-white/30">
+            <i class="fas fa-envelope mr-2"></i>Contact Us
+        </a>
+    </div>
+</section>
+
+<!-- Next Button -->
+<div class="container mx-auto px-4 lg:px-8 py-8 bg-white">
+    <div class="flex justify-end">
+        <a href="/contact" class="inline-flex items-center space-x-2 px-6 py-3 bg-brand-primary text-white rounded-lg font-semibold hover:bg-blue-800 transition-all shadow-md">
+            <span>Next</span>
+            <i class="fas fa-arrow-right"></i>
+        </a>
+    </div>
+</div>
 {% endblock %}
 
