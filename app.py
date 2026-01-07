@@ -139,8 +139,13 @@ def validate_env_vars():
         print("This is insecure and should be changed immediately.")
         print("Generate a secure key using: python -c 'import secrets; print(secrets.token_hex(32))'")
         print("=" * 60)
-        if os.environ.get('FLASK_ENV') == 'production':
-            raise ValueError("SECRET_KEY must be set to a secure value in production!")
+        # Check if we're in production or hosted environment
+        is_production = os.environ.get('FLASK_ENV') == 'production'
+        is_hosted = not is_localhost()
+        if is_production or is_hosted:
+            print("ERROR: SECRET_KEY must be set to a secure value in production/hosted environment!")
+            print("Please set SECRET_KEY in your environment variables or .env file.")
+            raise ValueError("SECRET_KEY must be set to a secure value in production/hosted environment!")
     
     # Database config will use defaults if env vars not set, so we just log the detected environment
     is_local = is_localhost()
