@@ -181,6 +181,18 @@
             <p class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">Manage and monitor all student records</p>
         </div>
 
+        <!-- Action Buttons -->
+        {% set user_role = session.get('role', '')|lower %}
+        {% if user_role == 'technician' or user_role == 'principal' %}
+        <div class="mb-4 sm:mb-5 md:mb-6 flex flex-wrap gap-2 sm:gap-3">
+            <a href="/bulk-import-students" 
+               class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2 text-sm sm:text-base">
+                <i class="fas fa-upload"></i>
+                <span>Bulk Import Students</span>
+            </a>
+        </div>
+        {% endif %}
+
         <!-- Statistics Cards -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-5 md:mb-6">
             <div class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">

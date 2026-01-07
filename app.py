@@ -10325,8 +10325,36 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
-# Bulk Import Students Route
-@app.route('/bulk-import-students', methods=['POST'])
+# Bulk Import Students Page
+@app.route('/bulk-import-students')
+@login_required
+def bulk_import_students_page():
+    """Bulk import students page"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians and principals can bulk import
+    if user_role not in ['technician', 'principal']:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    return render_template('dashboards/bulk_import_students.html')
+
+# Bulk Import Students Page
+@app.route('/bulk-import-students', methods=['GET'])
+@login_required
+def bulk_import_students_page():
+    """Bulk import students page"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians and principals can bulk import
+    if user_role not in ['technician', 'principal']:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    return render_template('dashboards/bulk_import_students.html')
+
+# Bulk Import Students API Route
+@app.route('/api/bulk-import-students', methods=['POST'])
 @login_required
 def bulk_import_students():
     """Bulk import students from provided data"""
@@ -10348,6 +10376,7 @@ def bulk_import_students():
     
     imported = []
     errors = []
+    skipped = []
     
     try:
         with connection.cursor() as cursor:
@@ -10358,6 +10387,13 @@ def bulk_import_students():
                     
                     if not full_name:
                         errors.append({'name': full_name or 'Unknown', 'error': 'Missing full name'})
+                        continue
+                    
+                    # Check if student already exists
+                    cursor.execute("SELECT student_id FROM students WHERE full_name = %s", (full_name,))
+                    existing = cursor.fetchone()
+                    if existing:
+                        skipped.append({'name': full_name, 'grade': current_grade})
                         continue
                     
                     # Generate unique student ID
@@ -10371,7 +10407,6 @@ def bulk_import_students():
                     """, (student_id, full_name, current_grade))
                     
                     # Create placeholder parent record (to be updated later)
-                    # Use student's name with "Parent of" prefix for now
                     placeholder_parent_name = f"PARENT OF {full_name}"
                     placeholder_email = f"parent.{student_id.lower()}@school.local"
                     
@@ -10397,6 +10432,7 @@ def bulk_import_students():
                 'success': True,
                 'message': f'Successfully imported {len(imported)} students',
                 'imported': imported,
+                'skipped': skipped,
                 'errors': errors,
                 'total': len(students_data)
             })

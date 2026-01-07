@@ -1,0 +1,462 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Bulk Import Students - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="/student-management" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student Management</span>
+</a>
+<a href="/bulk-import-students" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-upload w-5"></i>
+    <span>Bulk Import Students</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 md:p-6" x-data="bulkImportData()">
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                <i class="fas fa-upload text-white"></i>
+            </div>
+            <span>Bulk Import Students</span>
+        </h1>
+        <p class="text-gray-600 dark:text-gray-400">Import multiple students at once into the system</p>
+    </div>
+
+    <!-- Instructions -->
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+        <h3 class="font-semibold text-blue-900 dark:text-blue-200 mb-2 flex items-center">
+            <i class="fas fa-info-circle mr-2"></i>
+            Instructions
+        </h3>
+        <ul class="text-sm text-blue-800 dark:text-blue-300 space-y-1 list-disc list-inside">
+            <li>Paste student data in the format: "Student Name" on each line, grouped by grade</li>
+            <li>Or use the pre-filled template below with all students</li>
+            <li>Each student will be assigned a unique Student ID automatically</li>
+            <li>Placeholder parent records will be created (update them later in Student Management)</li>
+        </ul>
+    </div>
+
+    <!-- Import Form -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Student Data</h2>
+        
+        <div class="mb-4">
+            <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                Paste student data here (one student per line, format: "Full Name" or "Full Name | Grade")
+            </label>
+            <textarea 
+                x-model="studentData"
+                rows="15"
+                class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 font-mono text-sm"
+                placeholder="Abigael Mutanu&#10;Adasha Kawai&#10;Angel Wangari&#10;..."></textarea>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3">
+            <button 
+                @click="loadTemplate()"
+                class="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all flex items-center justify-center">
+                <i class="fas fa-file-alt mr-2"></i>
+                Load Template
+            </button>
+            <button 
+                @click="importStudents()"
+                :disabled="importing || !studentData.trim()"
+                class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fas fa-upload mr-2" x-show="!importing"></i>
+                <i class="fas fa-spinner fa-spin mr-2" x-show="importing"></i>
+                <span x-text="importing ? 'Importing...' : 'Import Students'"></span>
+            </button>
+            <button 
+                @click="studentData = ''"
+                class="px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                <i class="fas fa-redo mr-2"></i>
+                Clear
+            </button>
+        </div>
+    </div>
+
+    <!-- Results -->
+    <div x-show="importResult" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">Import Results</h2>
+        <div x-html="importResult"></div>
+    </div>
+</div>
+
+<script>
+function bulkImportData() {
+    return {
+        studentData: '',
+        importing: false,
+        importResult: '',
+        
+        loadTemplate() {
+            const template = `PLAYGROUP
+Abigael Mutanu
+Adasha Kawai
+Angel Wangari
+Ariel Mulongo
+Aziel Maina
+Bicks Wandabwa
+Brighton Musili
+Clive Andrew
+Crescencia Njeri
+Derrick Mutuku
+Divine Akinyi
+Faith Wanjiru
+Gift Muthoni
+Ivy Muthoni
+Jayden Mwangi
+Joy Chepkemoi
+Junior Kiplagat
+Keith Kimani
+Liam Mwenda
+Mercy Kavengi
+Mitchell Mutua
+Naomi Wanjiku
+Prince Otieno
+Rayan Hassan
+Ryan Muthee
+Samantha Njeri
+Sheila Atieno
+Tyler Mwiti
+Victor Kiptoo
+
+PP1
+Abigail Muthoni
+Alex Kiprotich
+Angel Mumo
+Ann Wairimu
+Brian Mutua
+Caleb Mwangi
+Cathy Njeri
+Clinton Otieno
+Daisy Chebet
+David Mutiso
+Derrick Mbugua
+Faith Chepkirui
+Felix Maina
+Gift Akinyi
+Grace Wambui
+Ian Mwenda
+Ivy Atieno
+James Kamau
+Jeff Kibet
+Joyline Wanjiru
+Kevin Mutuku
+Leah Njeri
+Leon Mwangi
+Lydia Chepkemoi
+Mark Otieno
+Mercy Wanjiku
+Mitchell Kiplagat
+
+PP2
+Allan Mutiso
+Angel Jepchirchir
+Brian Mwangi
+Calvin Mutua
+Dennis Kiptoo
+Diana Wanjiru
+Emmanuel Otieno
+Faith Kendi
+Frank Kibet
+Grace Chebet
+Ian Kimani
+Ivy Wairimu
+Jason Muthee
+Jeff Maina
+John Mwenda
+Joy Chepngeno
+Kelvin Mutuku
+Leah Atieno
+Liam Kiprop
+Mercy Njeri
+Mike Otieno
+Moses Kamau
+Nathan Kiplagat
+Peter Mwangi
+Ryan Mutiso
+
+GRADE 1
+Allan Kiprotich
+Angel Wambui
+Brian Otieno
+Caleb Mutua
+Cynthia Wanjiru
+Daniel Kibet
+Derrick Mwangi
+Diana Chepkemoi
+Emmanuel Mutiso
+Faith Njeri
+Frank Mwenda
+Grace Akinyi
+Ian Kamau
+Ivy Chebet
+James Muthee
+Jeff Kiptoo
+Joyline Wanjiku
+Kelvin Maina
+Leah Wairimu
+Leon Otieno
+Mercy Chepngeno
+Mike Mutua
+
+GRADE 2
+Allan Mwangi
+Angel Chebet
+Brian Mutiso
+Caleb Kiptoo
+Daisy Wanjiru
+Daniel Kamau
+Dennis Otieno
+Diana Akinyi
+Emmanuel Mwenda
+Faith Chepkirui
+Felix Mutua
+Grace Njeri
+Ian Kiprotich
+Ivy Wambui
+James Maina
+Jeff Mutiso
+Joy Chepngeno
+Kelvin Mwangi
+Leah Atieno
+Leon Kibet
+Mercy Wairimu
+
+GRADE 3
+Allan Mutua
+Angel Wanjiru
+Brian Kiptoo
+Caleb Mwenda
+Cynthia Njeri
+Daniel Otieno
+Dennis Kamau
+Diana Chebet
+Emmanuel Mwangi
+Faith Akinyi
+Frank Mutiso
+Grace Wambui
+Ian Kiplagat
+Ivy Njeri
+James Kiprotich
+Jeff Maina
+Joyline Chepkemoi
+Kelvin Muthee
+Leah Wairimu
+
+GRADE 4
+Allan Kamau
+Angel Chepngeno
+Brian Mwenda
+Caleb Otieno
+Daisy Njeri
+Daniel Mutiso
+Dennis Mwangi
+Diana Wairimu
+Emmanuel Kiptoo
+Faith Wanjiku
+Frank Maina
+Grace Chebet
+Ian Mutua
+Ivy Atieno
+James Kibet
+Jeff Mwangi
+Joy Chepkirui
+Kelvin Kamau
+
+GRADE 5
+Allan Mwenda
+Angel Njeri
+Brian Kiprotich
+Caleb Mutiso
+Daisy Wambui
+Daniel Mwangi
+Dennis Otieno
+Diana Chepngeno
+Emmanuel Kamau
+Faith Chebet
+Frank Muthee
+Grace Wairimu
+Ian Maina
+Ivy Njeri
+James Kiptoo
+Jeff Otieno
+
+GRADE 6
+Allan Otieno
+Angel Wanjiku
+Brian Mwangi
+Caleb Kamau
+Daisy Chepkirui
+Daniel Maina
+Dennis Mutiso
+Diana Wambui
+Emmanuel Kiprotich
+Faith Njeri
+Frank Otieno
+Grace Mwenda
+Ian Kibet
+Ivy Wairimu
+James Mwangi`;
+            this.studentData = template;
+        },
+        
+        async importStudents() {
+            if (!this.studentData.trim()) {
+                alert('Please enter student data');
+                return;
+            }
+            
+            this.importing = true;
+            this.importResult = '';
+            
+            try {
+                // Parse the student data
+                const lines = this.studentData.split('\n').map(l => l.trim()).filter(l => l);
+                const students = [];
+                let currentGrade = '';
+                
+                for (const line of lines) {
+                    // Check if line is a grade header
+                    const gradeMatch = line.match(/^(PLAYGROUP|PP1|PP2|GRADE\s+\d+)$/i);
+                    if (gradeMatch) {
+                        currentGrade = gradeMatch[1].toUpperCase();
+                        continue;
+                    }
+                    
+                    // Skip empty lines
+                    if (!line) continue;
+                    
+                    // Parse student name
+                    const name = line.trim();
+                    if (name && currentGrade) {
+                        students.push({
+                            full_name: name,
+                            grade: currentGrade
+                        });
+                    }
+                }
+                
+                if (students.length === 0) {
+                    alert('No valid student data found. Please check the format.');
+                    this.importing = false;
+                    return;
+                }
+                
+                // Send to server
+                const response = await fetch('/api/bulk-import-students', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ students: students })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let resultHtml = `
+                        <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4">
+                            <h3 class="font-semibold text-green-900 dark:text-green-200 mb-2">
+                                <i class="fas fa-check-circle mr-2"></i>
+                                Import Successful!
+                            </h3>
+                            <p class="text-green-800 dark:text-green-300">
+                                ${data.message}<br>
+                                Total processed: ${data.total} | Imported: ${data.imported.length} | Skipped: ${data.skipped.length} | Errors: ${data.errors.length}
+                            </p>
+                        </div>
+                    `;
+                    
+                    if (data.imported.length > 0) {
+                        resultHtml += `
+                            <div class="mb-4">
+                                <h4 class="font-semibold text-gray-900 dark:text-white mb-2">Imported Students (${data.imported.length}):</h4>
+                                <div class="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        `;
+                        data.imported.forEach(s => {
+                            resultHtml += `<div class="text-gray-700 dark:text-gray-300"><span class="font-mono font-semibold">${s.student_id}</span>: ${s.full_name} (${s.grade})</div>`;
+                        });
+                        resultHtml += `</div></div></div>`;
+                    }
+                    
+                    if (data.skipped.length > 0) {
+                        resultHtml += `
+                            <div class="mb-4">
+                                <h4 class="font-semibold text-yellow-900 dark:text-yellow-200 mb-2">Skipped (Already Exist) (${data.skipped.length}):</h4>
+                                <div class="max-h-40 overflow-y-auto border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+                                    <div class="text-sm text-yellow-800 dark:text-yellow-300">
+                        `;
+                        data.skipped.forEach(s => {
+                            resultHtml += `<div>${s.name} (${s.grade})</div>`;
+                        });
+                        resultHtml += `</div></div></div>`;
+                    }
+                    
+                    if (data.errors.length > 0) {
+                        resultHtml += `
+                            <div class="mb-4">
+                                <h4 class="font-semibold text-red-900 dark:text-red-200 mb-2">Errors (${data.errors.length}):</h4>
+                                <div class="max-h-40 overflow-y-auto border border-red-200 dark:border-red-800 rounded-lg p-3">
+                                    <div class="text-sm text-red-800 dark:text-red-300">
+                        `;
+                        data.errors.forEach(e => {
+                            resultHtml += `<div>${e.name}: ${e.error}</div>`;
+                        });
+                        resultHtml += `</div></div></div>`;
+                    }
+                    
+                    this.importResult = resultHtml;
+                    
+                    // Clear form after successful import
+                    setTimeout(() => {
+                        this.studentData = '';
+                    }, 3000);
+                    
+                } else {
+                    this.importResult = `
+                        <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                            <h3 class="font-semibold text-red-900 dark:text-red-200 mb-2">
+                                <i class="fas fa-exclamation-circle mr-2"></i>
+                                Import Failed
+                            </h3>
+                            <p class="text-red-800 dark:text-red-300">${data.message}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                this.importResult = `
+                    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                        <h3 class="font-semibold text-red-900 dark:text-red-200 mb-2">
+                            <i class="fas fa-exclamation-circle mr-2"></i>
+                            Error
+                        </h3>
+                        <p class="text-red-800 dark:text-red-300">An error occurred: ${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                this.importing = false;
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
+
