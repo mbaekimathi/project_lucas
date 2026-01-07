@@ -9198,6 +9198,22 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
+# Error Handlers
+@app.errorhandler(404)
+def page_not_found(e):
+    """Custom 404 error page"""
+    return render_template('errors/404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    """Custom 500 error page"""
+    return render_template('errors/500.html'), 500
+
+@app.errorhandler(403)
+def forbidden(e):
+    """Custom 403 error page"""
+    return render_template('errors/403.html'), 403
+
 # Passenger (cPanel) compatibility
 # Passenger handles running the app, so we don't use app.run()
 # The app variable is exported for Passenger to import

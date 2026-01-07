@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}500 - Server Error - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8 text-center">
+        <div>
+            <h1 class="text-9xl font-bold text-red-500">500</h1>
+            <h2 class="mt-6 text-3xl font-extrabold text-gray-900 dark:text-white">
+                Internal Server Error
+            </h2>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                Something went wrong on our end. We're working to fix it.
+            </p>
+        </div>
+        <div class="space-y-4">
+            <a href="/" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand-primary hover:bg-brand-secondary focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors">
+                <i class="fas fa-home mr-2"></i>Go to Homepage
+            </a>
+            <button onclick="location.reload()" class="w-full flex justify-center py-3 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-primary transition-colors">
+                <i class="fas fa-redo mr-2"></i>Try Again
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
