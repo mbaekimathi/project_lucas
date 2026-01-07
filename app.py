@@ -10326,20 +10326,6 @@ def toggle_term_lock(term_id):
         connection.close()
 
 # Bulk Import Students Page
-@app.route('/bulk-import-students')
-@login_required
-def bulk_import_students_page():
-    """Bulk import students page"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians and principals can bulk import
-    if user_role not in ['technician', 'principal']:
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-    
-    return render_template('dashboards/bulk_import_students.html')
-
-# Bulk Import Students Page
 @app.route('/bulk-import-students', methods=['GET'])
 @login_required
 def bulk_import_students_page():
