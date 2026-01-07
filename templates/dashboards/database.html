@@ -1,0 +1,64 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Database - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/role-switch" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-3 border-b border-gray-700/50 pb-3">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+
+<a href="/system-settings" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-cog w-5"></i>
+    <span>System Settings</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Users & Roles'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Users & Roles</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Security'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-shield-alt w-5"></i>
+    <span>Security</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Integrations'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-plug w-5"></i>
+    <span>Integrations</span>
+</a>
+<a href="/dashboard/employee/database" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-database w-5"></i>
+    <span>Database</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a @click.prevent="comingSoonTitle = 'Audit Logs'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-history w-5"></i>
+    <span>Audit Logs</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'System Modules'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-puzzle-piece w-5"></i>
+    <span>System Modules</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <!-- Empty page content -->
+</div>
+{% endblock %}
+

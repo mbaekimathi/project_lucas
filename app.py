@@ -7605,6 +7605,20 @@ def reset_role():
     flash('Switched back to your technician role.', 'success')
     return redirect(url_for('role_switch_page'))
 
+# Database Route (for technicians)
+@app.route('/dashboard/employee/database')
+@login_required
+def database_page():
+    """Database management page for technicians"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    return render_template('dashboards/database.html')
+
 # System Settings Route (for technicians)
 @app.route('/system-settings')
 @login_required
