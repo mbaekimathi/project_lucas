@@ -1,0 +1,465 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Users & Roles - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/system-settings" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-cog w-5"></i>
+    <span>System Settings</span>
+</a>
+<a href="{{ url_for('users_roles') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Users & Roles</span>
+</a>
+<a href="{{ url_for('database_management') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-database w-5"></i>
+    <span>Database</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-6 sm:mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                    <i class="fas fa-users-cog text-blue-600 dark:text-blue-400 mr-2"></i>
+                    Users & Roles
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+                    View and manage all employees categorized by their roles
+                </p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="location.reload()" 
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Employees</span>
+                <i class="fas fa-users text-blue-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ summary.total_employees }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Active</span>
+                <i class="fas fa-check-circle text-green-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ summary.active_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Pending</span>
+                <i class="fas fa-clock text-yellow-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ summary.pending_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Roles</span>
+                <i class="fas fa-user-tag text-purple-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ summary.total_roles }}</p>
+        </div>
+    </div>
+
+    <!-- Role Categories -->
+    {% for role, employees in employees_by_role.items() %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center">
+                    <i class="fas fa-user-tie text-white text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ role|title }}</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ employees|length }} employee{{ 's' if employees|length != 1 else '' }}</p>
+                </div>
+            </div>
+            <button onclick="toggleRoleSection('{{ role }}')" 
+                    class="px-3 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <i class="fas fa-chevron-down" id="icon-{{ role }}"></i>
+            </button>
+        </div>
+
+        <div id="section-{{ role }}" class="role-section">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Employee ID</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Name</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Phone</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Joined</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for employee in employees %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors cursor-pointer" 
+                            onclick="handleRowClick(this)"
+                            data-employee-id="{{ employee.id }}"
+                            data-employee-name="{{ employee.full_name }}"
+                            data-employee-code="{{ employee.employee_id }}"
+                            data-employee-role="{{ employee.role }}">
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ employee.employee_id }}</span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    {% if employee.profile_picture %}
+                                    <img src="{{ url_for('static', filename=employee.profile_picture) }}" 
+                                         alt="{{ employee.full_name }}" 
+                                         class="w-10 h-10 rounded-full mr-3 object-cover">
+                                    {% else %}
+                                    <div class="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center mr-3">
+                                        <span class="text-white font-semibold">{{ employee.full_name[0].upper() }}</span>
+                                    </div>
+                                    {% endif %}
+                                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ employee.full_name }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="text-sm text-gray-900 dark:text-white">{{ employee.email }}</span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="text-sm text-gray-900 dark:text-white">{{ employee.phone }}</span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if employee.status == 'active' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                    <i class="fas fa-check-circle mr-1"></i>Active
+                                </span>
+                                {% elif employee.status == 'pending approval' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                                    <i class="fas fa-clock mr-1"></i>Pending
+                                </span>
+                                {% elif employee.status == 'suspended' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                    <i class="fas fa-ban mr-1"></i>Suspended
+                                </span>
+                                {% elif employee.status == 'fired' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                    <i class="fas fa-times-circle mr-1"></i>Fired
+                                </span>
+                                {% elif employee.status == 'retired' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                                    <i class="fas fa-user-slash mr-1"></i>Retired
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                                    {{ employee.status|title }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if employee.created_at %}
+                                    {% if employee.created_at is string %}
+                                        {{ employee.created_at.split(' ')[0] }}
+                                    {% else %}
+                                        {{ employee.created_at.strftime('%Y-%m-%d') }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+    <!-- Empty State -->
+    {% if not employees_by_role %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 border border-gray-200 dark:border-gray-700 text-center">
+        <i class="fas fa-users text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+        <p class="text-gray-500 dark:text-gray-400 text-lg">No employees found</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Permissions Modal -->
+<div id="permissionsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" style="display: none;">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white" id="modalEmployeeName">Employee Permissions</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400" id="modalEmployeeInfo">ID: <span id="modalEmployeeId"></span> | Role: <span id="modalEmployeeRole"></span></p>
+            </div>
+            <button onclick="closePermissionsModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <i class="fas fa-times text-2xl"></i>
+            </button>
+        </div>
+        
+        <div class="p-6">
+            <div id="permissionsContent" class="space-y-4">
+                <!-- Permissions will be loaded here -->
+                <div class="text-center py-8">
+                    <i class="fas fa-spinner fa-spin text-3xl text-gray-400 mb-4"></i>
+                    <p class="text-gray-500 dark:text-gray-400">Loading permissions...</p>
+                </div>
+            </div>
+            
+            <div class="mt-6 flex justify-end space-x-3">
+                <button onclick="closePermissionsModal()" 
+                        class="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
+                    Cancel
+                </button>
+                <button onclick="savePermissions()" 
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
+                    <i class="fas fa-save"></i>
+                    <span>Save Permissions</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentEmployeeId = null;
+
+function handleRowClick(rowElement) {
+    // If clicked on a cell, get the row
+    const row = rowElement.tagName === 'TR' ? rowElement : rowElement.closest('tr');
+    
+    if (!row) {
+        console.error('Row not found');
+        return;
+    }
+    
+    const employeeId = row.getAttribute('data-employee-id');
+    const employeeName = row.getAttribute('data-employee-name');
+    const employeeCode = row.getAttribute('data-employee-code');
+    const employeeRole = row.getAttribute('data-employee-role');
+    
+    console.log('Row clicked:', { employeeId, employeeName, employeeCode, employeeRole });
+    
+    if (employeeId) {
+        openPermissionsModal(
+            parseInt(employeeId),
+            employeeName || 'Unknown',
+            employeeCode || 'N/A',
+            employeeRole || 'N/A'
+        );
+    } else {
+        console.error('Employee ID not found');
+    }
+}
+
+function toggleRoleSection(role) {
+    const section = document.getElementById('section-' + role);
+    const icon = document.getElementById('icon-' + role);
+    
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+    } else {
+        section.style.display = 'none';
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    }
+}
+
+function openPermissionsModal(employeeId, employeeName, employeeCode, employeeRole) {
+    console.log('Opening modal for employee:', employeeId, employeeName);
+    currentEmployeeId = employeeId;
+    document.getElementById('modalEmployeeName').textContent = employeeName + ' - Permissions';
+    document.getElementById('modalEmployeeId').textContent = employeeCode;
+    document.getElementById('modalEmployeeRole').textContent = employeeRole;
+    
+    // Show modal
+    const modal = document.getElementById('permissionsModal');
+    modal.style.display = 'flex';
+    
+    // Load permissions
+    loadEmployeePermissions(employeeId);
+}
+
+function closePermissionsModal() {
+    const modal = document.getElementById('permissionsModal');
+    modal.style.display = 'none';
+    currentEmployeeId = null;
+}
+
+function loadEmployeePermissions(employeeId) {
+    fetch(`/users-roles/get-permissions/${employeeId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                renderPermissions(data.permissions, data.employee_permissions);
+            } else {
+                document.getElementById('permissionsContent').innerHTML = 
+                    `<div class="text-center py-8 text-red-500">Error loading permissions: ${data.message}</div>`;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            document.getElementById('permissionsContent').innerHTML = 
+                `<div class="text-center py-8 text-red-500">Error loading permissions</div>`;
+        });
+}
+
+function renderPermissions(allPermissions, employeePermissions) {
+    const permissionsContent = document.getElementById('permissionsContent');
+    // employeePermissions is now an array of permission keys (strings)
+    const enabledPermissions = new Set(employeePermissions);
+    
+    // Group permissions by category based on what's available
+    const categories = {
+        'Student Management': ['view_students', 'add_students', 'edit_students', 'delete_students', 'view_student_fees', 'view_fee_structure_details'],
+        'Staff Management': ['view_staff', 'add_staff', 'edit_staff', 'delete_staff', 'manage_salaries'],
+        'Financial Management': ['view_fees', 'manage_fees', 'view_financial_reports', 'generate_invoices', 'process_payments', 'add_fee_structure', 'edit_fee_structure', 'delete_fee_structure'],
+        'Academic Management': ['view_academic_levels', 'manage_academic_levels', 'view_exams', 'manage_exams', 'view_results'],
+        'System Administration': ['view_database', 'manage_backups', 'system_settings', 'manage_users', 'view_audit_logs'],
+        'Reports & Analytics': ['view_reports', 'generate_reports', 'export_data', 'view_analytics']
+    };
+    
+    let html = '';
+    let hasAnyPermissions = false;
+    
+    for (const [category, permissionKeys] of Object.entries(categories)) {
+        // Filter to only show permissions that exist in allPermissions (role-filtered)
+        const availablePermissions = permissionKeys.filter(key => 
+            allPermissions.some(p => p.key === key)
+        );
+        
+        if (availablePermissions.length === 0) {
+            continue; // Skip empty categories
+        }
+        
+        hasAnyPermissions = true;
+        
+        html += `
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 mb-4">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                    <i class="fas fa-folder-open text-blue-500 mr-2"></i>
+                    ${category}
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        `;
+        
+        for (const permKey of availablePermissions) {
+            const permission = allPermissions.find(p => p.key === permKey);
+            if (permission) {
+                const isEnabled = enabledPermissions.has(permKey);
+                html += `
+                    <div class="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-shadow">
+                        <div class="flex-1">
+                            <p class="font-medium text-gray-900 dark:text-white">${permission.name}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">${permission.description || ''}</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer ml-4">
+                            <input type="checkbox" 
+                                   class="sr-only peer" 
+                                   data-permission="${permKey}"
+                                   ${isEnabled ? 'checked' : ''}
+                                   onchange="updatePermissionToggle('${permKey}', this.checked)">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                        </label>
+                    </div>
+                `;
+            }
+        }
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    if (!hasAnyPermissions) {
+        html = `
+            <div class="text-center py-8">
+                <i class="fas fa-info-circle text-3xl text-gray-400 mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400">No permissions available for this role.</p>
+                <p class="text-sm text-gray-400 dark:text-gray-500 mt-2">Permissions are filtered based on the employee's role.</p>
+            </div>
+        `;
+    }
+    
+    permissionsContent.innerHTML = html;
+}
+
+function updatePermissionToggle(permissionKey, isChecked) {
+    // This function is called when a toggle is changed
+    // The actual save happens when "Save Permissions" is clicked
+    console.log(`Permission ${permissionKey} toggled to ${isChecked}`);
+}
+
+function savePermissions() {
+    if (!currentEmployeeId) return;
+    
+    const checkboxes = document.querySelectorAll('#permissionsContent input[type="checkbox"]');
+    const permissions = [];
+    
+    checkboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+            permissions.push(checkbox.getAttribute('data-permission'));
+        }
+    });
+    
+    fetch(`/users-roles/update-permissions/${currentEmployeeId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ permissions: permissions })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Permissions updated successfully!');
+            closePermissionsModal();
+        } else {
+            alert('Error updating permissions: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error updating permissions');
+    });
+}
+
+// Initialize all sections as expanded
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.role-section').forEach(section => {
+        section.style.display = 'block';
+    });
+    
+    // Close modal on outside click
+    document.getElementById('permissionsModal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closePermissionsModal();
+        }
+    });
+});
+</script>
+{% endblock %}
+

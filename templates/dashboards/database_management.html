@@ -84,14 +84,16 @@ function viewTableDetails(tableName) {
         <span>Data Integrity & Maintenance</span>
     </a>
     
-    <a @click.prevent="comingSoonTitle = 'Database Health & Status'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2">
+    <a href="{{ url_for('database_health_status') }}" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'database_health_status' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-heartbeat w-5"></i>
         <span>Database Health & Status</span>
     </a>
     
-    <a @click.prevent="comingSoonTitle = 'Logs & Audit Trails'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2">
+    <a href="{{ url_for('logs_audit_trails') }}" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'logs_audit_trails' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-history w-5"></i>
         <span>Logs & Audit Trails</span>
     </a>

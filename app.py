@@ -503,6 +503,22 @@ def init_db():
                 )
             """)
             
+            # Create employee_permissions table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS employee_permissions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    permission_key VARCHAR(100) NOT NULL,
+                    granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    granted_by INT,
+                    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                    FOREIGN KEY (granted_by) REFERENCES employees(id) ON DELETE SET NULL,
+                    UNIQUE KEY unique_employee_permission (employee_id, permission_key),
+                    INDEX idx_employee_id (employee_id),
+                    INDEX idx_permission_key (permission_key)
+                )
+            """)
+            
             # Create school_settings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS school_settings (
@@ -942,6 +958,176 @@ def role_required(role):
                 flash('You do not have permission to access this page.', 'error')
                 return redirect(url_for('home'))
             return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def has_permission(employee_id, permission_key):
+    """Check if an employee has a specific permission"""
+    if not employee_id:
+        return False
+    
+    connection = get_db_connection()
+    if not connection:
+        return False
+    
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*) as count 
+                FROM employee_permissions 
+                WHERE employee_id = %s AND permission_key = %s
+            """, (employee_id, permission_key))
+            result = cursor.fetchone()
+            if result:
+                count = result.get('count', 0) if isinstance(result, dict) else result[0] if isinstance(result, tuple) else 0
+                return count > 0
+            return False
+    except Exception as e:
+        print(f"Error checking permission: {e}")
+        return False
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
+
+def check_permission_or_role(permission_key, allowed_roles=None):
+    """Check if user has permission OR is in allowed roles (for backward compatibility)
+    
+    Priority:
+    1. Technicians always have access
+    2. If employee has specific permission, grant access
+    3. If employee has ANY permissions assigned but not this one, deny access (permission-based mode)
+    4. If employee has NO permissions assigned, fall back to role-based access
+    """
+    user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Technicians have all permissions
+    if user_role == 'technician':
+        return True
+    
+    # First, get the actual employee ID from database (handle both id and employee_id fields)
+    actual_employee_id = None
+    if employee_id:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    # Try to find employee by id or employee_id field
+                    cursor.execute("""
+                        SELECT id 
+                        FROM employees 
+                        WHERE id = %s OR employee_id = %s
+                        LIMIT 1
+                    """, (employee_id, employee_id))
+                    result = cursor.fetchone()
+                    if result:
+                        actual_employee_id = result.get('id') if isinstance(result, dict) else result[0]
+            except Exception as e:
+                print(f"Error finding employee ID: {e}")
+            finally:
+                if connection:
+                    try:
+                        connection.close()
+                    except:
+                        pass
+    
+    # Check if employee has specific permission assigned
+    if actual_employee_id:
+        has_specific_permission = has_permission(actual_employee_id, permission_key)
+        if has_specific_permission:
+            return True
+        
+        # Check if employee has ANY permissions assigned
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT COUNT(*) as count 
+                        FROM employee_permissions 
+                        WHERE employee_id = %s
+                    """, (actual_employee_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        total_permissions = result.get('count', 0) if isinstance(result, dict) else result[0] if isinstance(result, tuple) else 0
+                        # If employee has any permissions assigned, we're in permission-based mode
+                        # So if they don't have this specific permission, deny access
+                        if total_permissions > 0:
+                            return False  # Permission-based mode: no permission = no access
+            except Exception as e:
+                print(f"Error checking total permissions: {e}")
+            finally:
+                if connection:
+                    try:
+                        connection.close()
+                    except:
+                        pass
+    
+    # Fall back to role-based access only if no permissions are assigned (backward compatibility)
+    if allowed_roles and user_role in allowed_roles:
+        return True
+    
+    return False
+
+def get_employee_permissions_list(employee_id):
+    """Get list of all permissions for an employee"""
+    connection = get_db_connection()
+    permissions = []
+    
+    if not connection:
+        return permissions
+    
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT permission_key 
+                FROM employee_permissions 
+                WHERE employee_id = %s
+            """, (employee_id,))
+            results = cursor.fetchall()
+            for result in results:
+                if isinstance(result, dict):
+                    permissions.append(result.get('permission_key'))
+                else:
+                    permissions.append(result[0] if result else '')
+    except Exception as e:
+        print(f"Error fetching employee permissions: {e}")
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
+    
+    return permissions
+
+def permission_required(permission_key):
+    """Decorator to require specific permission"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                flash('Please login to access this page.', 'error')
+                return redirect(url_for('login'))
+            
+            user_role = session.get('role', '').lower()
+            employee_id = session.get('employee_id') or session.get('user_id')
+            
+            # Technicians have all permissions
+            if user_role == 'technician':
+                return f(*args, **kwargs)
+            
+            # Check if employee has the permission
+            if employee_id and has_permission(employee_id, permission_key):
+                return f(*args, **kwargs)
+            
+            # Fallback to role-based check for backward compatibility
+            # This allows existing role-based access to still work
+            flash('You do not have permission to access this page.', 'error')
+            return redirect(url_for('dashboard_employee'))
         return decorated_function
     return decorator
 
@@ -2982,10 +3168,23 @@ def student_fees():
             finally:
                 connection.close()
     
-    # Allow accountants, principals, and technicians (for role switching) to access
-    if not is_accountant and not is_principal and not is_technician:
+    # Check permission-based access
+    employee_id = session.get('employee_id') or session.get('user_id')
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    # Check specific permissions for accountant features
+    can_view_students = check_permission_or_role('view_students', ['accountant', 'principal', 'deputy principal'])
+    can_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'principal'])
+    can_record_payments = check_permission_or_role('process_payments', ['accountant', 'principal'])
+    can_add_fee_structure = check_permission_or_role('add_fee_structure', ['accountant', 'principal'])
+    can_edit_fee_structure = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
+    can_delete_fee_structure = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
+    
+    # Allow access if: has role-based access OR has permission-based access
+    if not (is_accountant or is_principal or is_technician or has_view_fees_permission or has_manage_fees_permission):
         print(f"  - Access DENIED: user_role={user_role}, viewing_as_role={viewing_as_role}, is_accountant={is_accountant}, is_technician={is_technician}")
-        flash('You do not have permission to access this page. Only accountants and principals can access Student Fees.', 'error')
+        flash('You do not have permission to access this page. Only accountants, principals, or users with fee viewing permissions can access Student Fees.', 'error')
         return redirect(url_for('dashboard_employee'))
     
     print(f"  - Access GRANTED: Rendering student fees page")
@@ -3314,7 +3513,13 @@ def student_fees():
                          academic_years=academic_years,
                          terms=terms,
                          today=today,
-                         current_employee=current_employee)
+                         current_employee=current_employee,
+                         can_view_students=can_view_students,
+                         can_view_fee_structure_details=can_view_fee_structure_details,
+                         can_record_payments=can_record_payments,
+                         can_add_fee_structure=can_add_fee_structure,
+                         can_edit_fee_structure=can_edit_fee_structure,
+                         can_delete_fee_structure=can_delete_fee_structure)
 
 @app.route('/dashboard/employee/student-fees/generate-invoice/<student_id>')
 @login_required
@@ -3322,12 +3527,16 @@ def generate_invoice(student_id):
     """Generate a professional PDF invoice for a student"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check if user is accountant or viewing as accountant
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
+    # Check permission-based access
+    has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
+    
+    if not (is_accountant or is_technician or has_generate_invoices_permission):
         flash('You do not have permission to generate invoices.', 'error')
         return redirect(url_for('student_fees'))
     
@@ -4383,6 +4592,19 @@ def get_fee_items():
 @login_required
 def check_fee_structure():
     """Check if a fee structure exists for the given academic year, term, and academic level combination"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check permission to view fee structure details
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    has_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'principal'])
+    has_view_fees = check_permission_or_role('view_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_view_fee_structure_details or has_view_fees):
+        return jsonify({'success': False, 'message': 'You do not have permission to view fee structure details. Please contact your administrator.'}), 403
+    
     academic_year_id = request.args.get('academic_year_id')
     term_id = request.args.get('term_id')
     academic_level_id = request.args.get('academic_level_id')
@@ -4466,13 +4688,18 @@ def create_fee_structure():
     """Create a new fee structure"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check if user is accountant or viewing as accountant
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    # Check permission-based access - specific permission for adding fee structures
+    has_add_fee_structure_permission = check_permission_or_role('add_fee_structure', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_add_fee_structure_permission or has_manage_fees_permission):
+        return jsonify({'success': False, 'message': 'You do not have permission to add fee structures. Please contact your administrator.'}), 403
     
     try:
         data = request.get_json()
@@ -4610,12 +4837,17 @@ def fee_structures():
     """Display all fee structures"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check if user is accountant or viewing as accountant
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
+    # Check permission-based access
+    has_view_fees_permission = check_permission_or_role('view_fees', ['accountant'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant'])
+    
+    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -4718,12 +4950,16 @@ def record_payment():
     """Record a payment for a student"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
+    # Check permission-based access
+    has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
+    
+    if not (is_accountant or is_technician or has_process_payments_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to record payments.'}), 403
     
     try:
@@ -4914,12 +5150,17 @@ def update_fee_structure(structure_id):
     """Update a fee structure"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    # Check permission-based access - specific permission for editing fee structures
+    has_edit_fee_structure_permission = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_edit_fee_structure_permission or has_manage_fees_permission):
+        return jsonify({'success': False, 'message': 'You do not have permission to edit fee structures. Please contact your administrator.'}), 403
     
     try:
         data = request.get_json()
@@ -5031,12 +5272,17 @@ def delete_fee_structure(structure_id):
     """Delete a fee structure"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not is_accountant and not is_technician:
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    # Check permission-based access - specific permission for deleting fee structures
+    has_delete_fee_structure_permission = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_delete_fee_structure_permission or has_manage_fees_permission):
+        return jsonify({'success': False, 'message': 'You do not have permission to delete fee structures. Please contact your administrator.'}), 403
     
     connection = get_db_connection()
     if not connection:
@@ -5061,6 +5307,7 @@ def staff_and_salaries():
     """Staff and Salaries page for employees - unified with tabs"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check permissions - accountant, principal, super admin, technician can access
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
@@ -5068,7 +5315,11 @@ def staff_and_salaries():
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
-    if not (is_accountant or is_principal or is_super_admin or is_technician):
+    # Check permission-based access
+    has_salary_permission = check_permission_or_role('manage_salaries', 
+                                                     ['accountant', 'principal', 'super admin'])
+    
+    if not (is_accountant or is_principal or is_super_admin or is_technician or has_salary_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -6439,14 +6690,22 @@ def salary_audits():
 def staff_management():
     """Staff management page for employees"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('view_staff', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
     
-    if user_role not in employee_roles:
+    if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard_employee'))
+    
+    # Check what actions the user can perform
+    can_add = check_permission_or_role('add_staff', ['principal', 'deputy principal'])
+    can_edit = check_permission_or_role('edit_staff', ['principal', 'deputy principal', 'academic coordinator'])
+    can_delete = check_permission_or_role('delete_staff', ['principal'])
     
     # Fetch all employees
     connection = get_db_connection()
@@ -6471,7 +6730,11 @@ def staff_management():
                 except:
                     pass  # Connection might already be closed
     
-    return render_template('dashboards/staff_management.html', employees=employees)
+    return render_template('dashboards/staff_management.html', 
+                         employees=employees,
+                         can_add=can_add,
+                         can_edit=can_edit,
+                         can_delete=can_delete)
 
 @app.route('/assign-roles-approve')
 @login_required
@@ -6590,12 +6853,15 @@ def approve_employee(employee_id):
 def update_employee(employee_id):
     """Update employee details"""
     user_role = session.get('role', '').lower()
+    current_employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('edit_staff', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
     
-    if user_role not in employee_roles:
+    if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update employees.'}), 403
     
     data = request.get_json()
@@ -6646,12 +6912,15 @@ def update_employee(employee_id):
 def delete_employee(employee_id):
     """Delete an employee"""
     user_role = session.get('role', '').lower()
+    current_employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('delete_staff', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
     
-    if user_role not in employee_roles:
+    if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to delete employees.'}), 403
     
     connection = get_db_connection()
@@ -6773,14 +7042,22 @@ def get_employee(employee_id):
 def student_management():
     """Student management page for employees"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('view_students', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
     
-    if user_role not in employee_roles:
+    if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard_employee'))
+    
+    # Check what actions the user can perform
+    can_add = check_permission_or_role('add_students', ['principal', 'deputy principal', 'academic coordinator'])
+    can_edit = check_permission_or_role('edit_students', ['principal', 'deputy principal', 'academic coordinator', 'teachers'])
+    can_delete = check_permission_or_role('delete_students', ['principal', 'deputy principal'])
     
     # Fetch all students with parent information
     connection = get_db_connection()
@@ -6809,17 +7086,26 @@ def student_management():
                 except:
                     pass  # Connection might already be closed
     
-    return render_template('dashboards/student_management.html', students=students)
+    return render_template('dashboards/student_management.html', 
+                         students=students,
+                         can_add=can_add,
+                         can_edit=can_edit,
+                         can_delete=can_delete)
 
 @app.route('/get-student/<student_id>', methods=['GET'])
 @login_required
 def get_student(student_id):
     """Get student details by student_id"""
     user_role = session.get('role', '').lower()
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    if user_role not in employee_roles:
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('view_students', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
+    
+    if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
     
     connection = get_db_connection()
@@ -6908,10 +7194,15 @@ def check_student_id(student_id):
 def update_student(student_id):
     """Update student details"""
     user_role = session.get('role', '').lower()
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    if user_role not in employee_roles:
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('edit_students', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
+    
+    if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update students.'}), 403
     
     data = request.get_json()
@@ -7029,10 +7320,15 @@ def update_student(student_id):
 def delete_student(student_id):
     """Delete a student"""
     user_role = session.get('role', '').lower()
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    if user_role not in employee_roles:
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('delete_students', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
+    
+    if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to delete students.'}), 403
     
     connection = get_db_connection()
@@ -7065,12 +7361,15 @@ def delete_student(student_id):
 def approve_student(student_id):
     """Approve student admission and send congratulations email to parent"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check if user is an employee (any employee role) - principal and other admins can approve
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+    # Check permission OR role-based access (approve requires edit permission)
+    has_access = check_permission_or_role('edit_students', 
+                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
+                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                                       'warden', 'transport manager', 'technician'])
     
-    if user_role not in employee_roles:
+    if not has_access:
         flash('You do not have permission to approve students.', 'error')
         return redirect(url_for('student_management'))
     
@@ -7206,10 +7505,19 @@ def profile(role):
 def settings(role):
     """Settings page for each role"""
     user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
     
     # Validate role access
-    if role == 'employee':
-        employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
+    if role == 'principal':
+        # Allow principals and technicians to access
+        if user_role != 'principal' and not is_technician:
+            flash('You do not have permission to access this page.', 'error')
+            return redirect(url_for('home'))
+        
+        return render_template('dashboards/settings_principal.html', role=user_role)
+    
+    elif role == 'employee':
+        employee_roles = ['employee', 'super admin', 'deputy principal', 'academic coordinator', 
                          'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
         if user_role not in employee_roles:
             flash('You do not have permission to access this page.', 'error')
@@ -7285,8 +7593,62 @@ def update_password(role):
     """Update user password"""
     user_role = session.get('role', '').lower()
     
-    if role == 'employee':
-        employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
+    if role == 'principal':
+        is_technician = user_role == 'technician'
+        # Allow principals and technicians to update password
+        if user_role != 'principal' and not is_technician:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('home'))
+        
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if not all([current_password, new_password, confirm_password]):
+            flash('Please fill in all password fields.', 'error')
+            return redirect(url_for('settings', role='principal'))
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return redirect(url_for('settings', role='principal'))
+        
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return redirect(url_for('settings', role='principal'))
+        
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    employee_id = session.get('employee_id') or session.get('user_id')
+                    cursor.execute("SELECT password_hash FROM employees WHERE id = %s OR employee_id = %s", 
+                                 (employee_id, employee_id))
+                    employee = cursor.fetchone()
+                    
+                    if employee and check_password_hash(employee['password_hash'], current_password):
+                        new_password_hash = generate_password_hash(new_password)
+                        cursor.execute("""
+                            UPDATE employees 
+                            SET password_hash = %s
+                            WHERE id = %s OR employee_id = %s
+                        """, (new_password_hash, employee_id, employee_id))
+                        connection.commit()
+                        flash('Password updated successfully!', 'success')
+                    else:
+                        flash('Current password is incorrect.', 'error')
+            except Exception as e:
+                print(f"Error updating password: {e}")
+                connection.rollback()
+                flash('An error occurred while updating your password. Please try again.', 'error')
+            finally:
+                connection.close()
+        else:
+            flash('Database connection error. Please try again later.', 'error')
+        
+        return redirect(url_for('settings', role='principal'))
+    
+    elif role == 'employee':
+        employee_roles = ['employee', 'super admin', 'deputy principal', 'academic coordinator', 
                          'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
         if user_role not in employee_roles:
             flash('You do not have permission to perform this action.', 'error')
@@ -7460,9 +7822,13 @@ def reset_role():
 def system_settings():
     """System settings page for technicians"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Only technicians can access this page
-    if user_role != 'technician':
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('system_settings', 
+                                         allowed_roles=['technician'])
+    
+    if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -7769,11 +8135,15 @@ def system_settings():
 @app.route('/database')
 @login_required
 def database_management():
-    """Database management page for technicians"""
+    """Database management page for technicians and principals"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Only technicians can access this page
-    if user_role != 'technician':
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('view_database', 
+                                         allowed_roles=['technician', 'principal'])
+    
+    if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -8058,11 +8428,11 @@ def database_management():
 @app.route('/database/backup-restore')
 @login_required
 def database_backup_restore():
-    """Database backup and restore page for technicians"""
+    """Database backup and restore page for technicians and principals"""
     user_role = session.get('role', '').lower()
     
-    # Only technicians can access this page
-    if user_role != 'technician':
+    # Only technicians and principals can access this page
+    if user_role not in ['technician', 'principal']:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -8170,9 +8540,13 @@ def database_backup_restore():
 def database_backup_export():
     """Export database to Excel format"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Only technicians can access this page
-    if user_role != 'technician':
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('manage_backups', 
+                                         allowed_roles=['technician', 'principal'])
+    
+    if not has_access:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -8339,9 +8713,13 @@ def database_backup_export():
 def database_backup_settings():
     """Update backup settings"""
     user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Only technicians can access this page
-    if user_role != 'technician':
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('manage_backups', 
+                                         allowed_roles=['technician', 'principal'])
+    
+    if not has_access:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -8413,6 +8791,566 @@ def database_backup_settings():
                 pass
     
     return redirect(url_for('database_backup_restore'))
+
+# Database Health & Status Route
+@app.route('/database/health-status')
+@login_required
+def database_health_status():
+    """Database health and status analysis page for technicians and principals"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians and principals can access this page
+    if user_role not in ['technician', 'principal']:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    connection = get_db_connection()
+    health_status = {
+        'connection_status': False,
+        'overall_status': 'critical',
+        'db_name': '',
+        'mysql_version': 'Unknown',
+        'character_set': 'Unknown',
+        'collation': 'Unknown',
+        'uptime': 'Unknown',
+        'last_checked': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'database_size_mb': 0,
+        'data_size_mb': 0,
+        'index_size_mb': 0,
+        'total_tables': 0,
+        'total_records': 0,
+        'tables': [],
+        'largest_tables': [],
+        'recommendations': []
+    }
+    
+    if connection:
+        try:
+            health_status['connection_status'] = True
+            with connection.cursor() as cursor:
+                # Get database name
+                cursor.execute("SELECT DATABASE() as db_name")
+                db_result = cursor.fetchone()
+                health_status['db_name'] = db_result.get('db_name', 'Unknown') if db_result else 'Unknown'
+                
+                # Get MySQL version
+                cursor.execute("SELECT VERSION() as version")
+                version_result = cursor.fetchone()
+                health_status['mysql_version'] = version_result.get('version', 'Unknown') if version_result else 'Unknown'
+                
+                # Get character set and collation
+                cursor.execute("""
+                    SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME 
+                    FROM information_schema.SCHEMATA 
+                    WHERE SCHEMA_NAME = DATABASE()
+                """)
+                charset_result = cursor.fetchone()
+                if charset_result:
+                    health_status['character_set'] = charset_result.get('DEFAULT_CHARACTER_SET_NAME', 'Unknown')
+                    health_status['collation'] = charset_result.get('DEFAULT_COLLATION_NAME', 'Unknown')
+                
+                # Get uptime
+                try:
+                    cursor.execute("SHOW STATUS LIKE 'Uptime'")
+                    uptime_result = cursor.fetchone()
+                    if uptime_result:
+                        if isinstance(uptime_result, dict):
+                            uptime_seconds = int(uptime_result.get('Value', 0))
+                        elif isinstance(uptime_result, tuple):
+                            uptime_seconds = int(uptime_result[1] if len(uptime_result) > 1 else 0)
+                        else:
+                            uptime_seconds = 0
+                        days = uptime_seconds // 86400
+                        hours = (uptime_seconds % 86400) // 3600
+                        minutes = (uptime_seconds % 3600) // 60
+                        health_status['uptime'] = f"{days}d {hours}h {minutes}m"
+                except:
+                    health_status['uptime'] = 'Unknown'
+                
+                # Get database size
+                cursor.execute("""
+                    SELECT 
+                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb,
+                        ROUND(SUM(data_length) / 1024 / 1024, 2) AS data_size_mb,
+                        ROUND(SUM(index_length) / 1024 / 1024, 2) AS index_size_mb
+                    FROM information_schema.TABLES 
+                    WHERE table_schema = DATABASE()
+                """)
+                size_result = cursor.fetchone()
+                if size_result:
+                    health_status['database_size_mb'] = size_result.get('total_size_mb', 0) or 0
+                    health_status['data_size_mb'] = size_result.get('data_size_mb', 0) or 0
+                    health_status['index_size_mb'] = size_result.get('index_size_mb', 0) or 0
+                
+                # Get all tables
+                cursor.execute("SHOW TABLES")
+                table_results = cursor.fetchall()
+                health_status['total_tables'] = len(table_results)
+                
+                table_list = []
+                largest_tables = []
+                
+                # Analyze each table
+                for table_result in table_results:
+                    table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
+                    
+                    # Get row count
+                    try:
+                        cursor.execute(f"SELECT COUNT(*) as count FROM `{table_name}`")
+                        count_result = cursor.fetchone()
+                        row_count = count_result.get('count', 0) if count_result else 0
+                        health_status['total_records'] += row_count
+                    except:
+                        row_count = 0
+                    
+                    # Get table size and index count
+                    cursor.execute("""
+                        SELECT 
+                            ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb,
+                            ROUND((data_length / 1024 / 1024), 2) AS data_mb,
+                            ROUND((index_length / 1024 / 1024), 2) AS index_mb
+                        FROM information_schema.TABLES 
+                        WHERE table_schema = DATABASE() 
+                        AND table_name = %s
+                    """, (table_name,))
+                    size_result = cursor.fetchone()
+                    size_mb = size_result.get('size_mb', 0) or 0 if size_result else 0
+                    
+                    # Get index count
+                    cursor.execute(f"SHOW INDEX FROM `{table_name}`")
+                    indexes = cursor.fetchall()
+                    index_count = len(set([idx.get('Key_name', '') if isinstance(idx, dict) else idx[2] if isinstance(idx, tuple) else '' for idx in indexes]))
+                    
+                    # Determine table status
+                    table_status = 'healthy'
+                    if size_mb > 100:  # Large table warning
+                        table_status = 'warning'
+                    if row_count == 0 and size_mb > 0:  # Empty but has size (possible issue)
+                        table_status = 'warning'
+                    
+                    table_info = {
+                        'name': table_name,
+                        'rows': row_count,
+                        'size_mb': size_mb,
+                        'index_count': index_count,
+                        'status': table_status
+                    }
+                    table_list.append(table_info)
+                    largest_tables.append(table_info)
+                
+                # Sort by size
+                largest_tables.sort(key=lambda x: x['size_mb'], reverse=True)
+                health_status['tables'] = sorted(table_list, key=lambda x: x['size_mb'], reverse=True)
+                health_status['largest_tables'] = largest_tables
+                
+                # Determine overall health status
+                issues = 0
+                warnings = 0
+                
+                # Check for large database
+                if health_status['database_size_mb'] > 1000:
+                    warnings += 1
+                    health_status['recommendations'].append(f"Database size is {health_status['database_size_mb']:.2f} MB. Consider archiving old data.")
+                
+                # Check for tables without indexes
+                tables_without_indexes = [t for t in table_list if t['index_count'] == 0 and t['rows'] > 100]
+                if tables_without_indexes:
+                    warnings += 1
+                    health_status['recommendations'].append(f"{len(tables_without_indexes)} table(s) with >100 rows have no indexes. Consider adding indexes for better performance.")
+                
+                # Check for very large tables
+                very_large_tables = [t for t in table_list if t['size_mb'] > 500]
+                if very_large_tables:
+                    warnings += 1
+                    health_status['recommendations'].append(f"{len(very_large_tables)} table(s) exceed 500 MB. Consider partitioning or archiving.")
+                
+                # Determine overall status
+                if issues > 0:
+                    health_status['overall_status'] = 'critical'
+                elif warnings > 0:
+                    health_status['overall_status'] = 'warning'
+                else:
+                    health_status['overall_status'] = 'healthy'
+                
+        except Exception as e:
+            print(f"Error analyzing database health: {e}")
+            import traceback
+            traceback.print_exc()
+            health_status['connection_status'] = False
+            health_status['overall_status'] = 'critical'
+            health_status['recommendations'].append(f"Error analyzing database: {str(e)}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    else:
+        health_status['connection_status'] = False
+        health_status['overall_status'] = 'critical'
+        health_status['recommendations'].append("Unable to connect to database. Check database configuration.")
+    
+    return render_template('dashboards/database_health_status.html', health_status=health_status)
+
+# Logs & Audit Trails Route
+@app.route('/database/logs-audit-trails')
+@login_required
+def logs_audit_trails():
+    """Logs and audit trails page for technicians and principals"""
+    user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check permission OR role-based access
+    has_access = check_permission_or_role('view_audit_logs', 
+                                         allowed_roles=['technician', 'principal'])
+    
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    connection = get_db_connection()
+    salary_audits = []
+    migrations = []
+    backups = []
+    audit_summary = {
+        'salary_audits_count': 0,
+        'migrations_count': 0,
+        'backups_count': 0,
+        'total_records': 0
+    }
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get salary audits
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            esa.id,
+                            esa.salary_id,
+                            esa.employee_id,
+                            esa.field_name,
+                            esa.old_value,
+                            esa.new_value,
+                            esa.edited_by,
+                            esa.edited_by_name,
+                            esa.edited_at,
+                            e.full_name as employee_name,
+                            e.employee_id as employee_code
+                        FROM employee_salary_audits esa
+                        LEFT JOIN employees e ON esa.employee_id = e.id
+                        ORDER BY esa.edited_at DESC
+                        LIMIT 500
+                    """)
+                    salary_audits = cursor.fetchall()
+                    audit_summary['salary_audits_count'] = len(salary_audits)
+                except Exception as e:
+                    print(f"Error fetching salary audits: {e}")
+                    salary_audits = []
+                
+                # Get migrations
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            id,
+                            migration_name,
+                            status,
+                            applied_at,
+                            execution_time_ms,
+                            applied_by,
+                            error_message
+                        FROM migrations
+                        ORDER BY applied_at DESC
+                        LIMIT 100
+                    """)
+                    migrations = cursor.fetchall()
+                    audit_summary['migrations_count'] = len(migrations)
+                except Exception as e:
+                    print(f"Error fetching migrations: {e}")
+                    migrations = []
+                
+                # Get backup history
+                try:
+                    cursor.execute("""
+                        SELECT 
+                            id,
+                            filename,
+                            file_path,
+                            file_size,
+                            table_count,
+                            record_count,
+                            created_at,
+                            created_by
+                        FROM backup_history
+                        ORDER BY created_at DESC
+                        LIMIT 50
+                    """)
+                    backups = cursor.fetchall()
+                    audit_summary['backups_count'] = len(backups)
+                except Exception as e:
+                    print(f"Error fetching backup history: {e}")
+                    backups = []
+                
+                audit_summary['total_records'] = len(salary_audits) + len(migrations) + len(backups)
+                
+        except Exception as e:
+            print(f"Error fetching audit trails: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    
+    return render_template('dashboards/logs_audit_trails.html', 
+                         salary_audits=salary_audits,
+                         migrations=migrations,
+                         backups=backups,
+                         audit_summary=audit_summary)
+
+# Users & Roles Route
+@app.route('/users-roles')
+@login_required
+def users_roles():
+    """Users and roles management page for technicians"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    connection = get_db_connection()
+    employees_by_role = {}
+    summary = {
+        'total_employees': 0,
+        'active_count': 0,
+        'pending_count': 0,
+        'total_roles': 0
+    }
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Fetch all employees
+                cursor.execute("""
+                    SELECT 
+                        id, employee_id, full_name, email, phone, id_number, 
+                        role, status, profile_picture, created_at, updated_at
+                    FROM employees
+                    ORDER BY role ASC, full_name ASC
+                """)
+                employees = cursor.fetchall()
+                
+                # Group employees by role
+                for employee in employees:
+                    role = employee.get('role', 'employee')
+                    if role not in employees_by_role:
+                        employees_by_role[role] = []
+                    employees_by_role[role].append(employee)
+                    
+                    # Update summary
+                    summary['total_employees'] += 1
+                    if employee.get('status') == 'active':
+                        summary['active_count'] += 1
+                    elif employee.get('status') == 'pending approval':
+                        summary['pending_count'] += 1
+                
+                summary['total_roles'] = len(employees_by_role)
+                
+        except Exception as e:
+            print(f"Error fetching users and roles: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    
+    return render_template('dashboards/users_roles.html', 
+                         employees_by_role=employees_by_role,
+                         summary=summary)
+
+# Get Employee Permissions Route
+@app.route('/users-roles/get-permissions/<int:employee_id>')
+@login_required
+def get_employee_permissions(employee_id):
+    """Get permissions for a specific employee filtered by their role"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this
+    if user_role != 'technician':
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    # Define all available permissions
+    all_permissions = [
+        {'key': 'view_students', 'name': 'View Students', 'description': 'View student information and records', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager']},
+        {'key': 'add_students', 'name': 'Add Students', 'description': 'Add new students to the system', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
+        {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
+        {'key': 'delete_students', 'name': 'Delete Students', 'description': 'Remove students from the system', 'roles': ['principal', 'deputy principal']},
+        {'key': 'view_student_fees', 'name': 'View Student Fees', 'description': 'View student fee information', 'roles': ['principal', 'accountant', 'deputy principal']},
+        {'key': 'view_fee_structure_details', 'name': 'View Fee Structure Details', 'description': 'View detailed fee structure information', 'roles': ['principal', 'accountant', 'deputy principal']},
+        {'key': 'process_payments', 'name': 'Record Payments', 'description': 'Record and process student payments', 'roles': ['principal', 'accountant']},
+        {'key': 'view_staff', 'name': 'View Staff', 'description': 'View staff member information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'add_staff', 'name': 'Add Staff', 'description': 'Add new staff members', 'roles': ['principal', 'deputy principal']},
+        {'key': 'edit_staff', 'name': 'Edit Staff', 'description': 'Edit staff member information', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
+        {'key': 'delete_staff', 'name': 'Delete Staff', 'description': 'Remove staff members', 'roles': ['principal']},
+        {'key': 'manage_salaries', 'name': 'Manage Salaries', 'description': 'View and manage staff salaries', 'roles': ['principal', 'accountant', 'deputy principal']},
+        {'key': 'view_fees', 'name': 'View Fees', 'description': 'View fee structures and information', 'roles': ['principal', 'accountant', 'deputy principal']},
+        {'key': 'manage_fees', 'name': 'Manage Fees', 'description': 'Create and edit fee structures', 'roles': ['principal', 'accountant']},
+        {'key': 'add_fee_structure', 'name': 'Add Fee Structure', 'description': 'Create new fee structures', 'roles': ['principal', 'accountant']},
+        {'key': 'edit_fee_structure', 'name': 'Edit Fee Structure', 'description': 'Edit existing fee structures', 'roles': ['principal', 'accountant']},
+        {'key': 'delete_fee_structure', 'name': 'Delete Fee Structure', 'description': 'Delete fee structures', 'roles': ['principal', 'accountant']},
+        {'key': 'view_financial_reports', 'name': 'View Financial Reports', 'description': 'Access financial reports and analytics', 'roles': ['principal', 'accountant', 'deputy principal']},
+        {'key': 'generate_invoices', 'name': 'Generate Invoices', 'description': 'Create and generate invoices', 'roles': ['principal', 'accountant']},
+        {'key': 'view_academic_levels', 'name': 'View Academic Levels', 'description': 'View academic levels and grades', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
+        {'key': 'manage_academic_levels', 'name': 'Manage Academic Levels', 'description': 'Create and edit academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
+        {'key': 'view_exams', 'name': 'View Exams', 'description': 'View exam information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
+        {'key': 'manage_exams', 'name': 'Manage Exams', 'description': 'Create and edit exams', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
+        {'key': 'view_results', 'name': 'View Results', 'description': 'View exam and academic results', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
+        {'key': 'view_database', 'name': 'View Database', 'description': 'Access database management tools', 'roles': ['principal']},
+        {'key': 'manage_backups', 'name': 'Manage Backups', 'description': 'Create and restore database backups', 'roles': ['principal']},
+        {'key': 'system_settings', 'name': 'System Settings', 'description': 'Access and modify system settings', 'roles': []},  # Only technicians
+        {'key': 'manage_users', 'name': 'Manage Users', 'description': 'Manage user accounts and permissions', 'roles': []},  # Only technicians
+        {'key': 'view_audit_logs', 'name': 'View Audit Logs', 'description': 'View system audit trails and logs', 'roles': ['principal']},
+        {'key': 'view_reports', 'name': 'View Reports', 'description': 'View system reports', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'generate_reports', 'name': 'Generate Reports', 'description': 'Generate custom reports', 'roles': ['principal', 'deputy principal', 'accountant']},
+        {'key': 'export_data', 'name': 'Export Data', 'description': 'Export data to various formats', 'roles': ['principal', 'deputy principal', 'accountant']},
+        {'key': 'view_analytics', 'name': 'View Analytics', 'description': 'Access analytics and insights', 'roles': ['principal', 'deputy principal', 'accountant']}
+    ]
+    
+    connection = get_db_connection()
+    employee_role = None
+    employee_permissions = []
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get employee's role
+                cursor.execute("""
+                    SELECT role 
+                    FROM employees 
+                    WHERE id = %s
+                """, (employee_id,))
+                result = cursor.fetchone()
+                if result:
+                    employee_role = result.get('role') if isinstance(result, dict) else result[0]
+                    if employee_role:
+                        employee_role = employee_role.lower()
+                
+                # Get employee's current permissions
+                cursor.execute("""
+                    SELECT permission_key 
+                    FROM employee_permissions 
+                    WHERE employee_id = %s
+                """, (employee_id,))
+                employee_permissions = cursor.fetchall()
+        except Exception as e:
+            print(f"Error fetching employee permissions: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    
+    # Filter permissions based on employee's role
+    if employee_role:
+        # Filter permissions that are relevant to this role
+        # Include permissions where the role is in the allowed roles list
+        # Permissions with empty roles list are technician-only, so exclude them for non-technicians
+        filtered_permissions = []
+        for perm in all_permissions:
+            perm_roles = perm.get('roles', [])
+            # Normalize role names for comparison
+            perm_roles_lower = [r.lower().strip() for r in perm_roles]
+            if employee_role in perm_roles_lower:
+                filtered_permissions.append(perm)
+        
+        print(f"DEBUG: Filtered {len(filtered_permissions)} permissions for role '{employee_role}' out of {len(all_permissions)} total")
+    else:
+        # If role not found, show all permissions (fallback)
+        print(f"DEBUG: Employee role not found, showing all permissions")
+        filtered_permissions = all_permissions
+    
+    # Convert employee_permissions to list of permission keys
+    employee_permission_keys = []
+    for perm in employee_permissions:
+        if isinstance(perm, dict):
+            employee_permission_keys.append(perm.get('permission_key', ''))
+        else:
+            employee_permission_keys.append(perm[0] if perm else '')
+    
+    return jsonify({
+        'success': True,
+        'permissions': filtered_permissions,
+        'employee_permissions': employee_permission_keys,
+        'employee_role': employee_role
+    })
+
+# Update Employee Permissions Route
+@app.route('/users-roles/update-permissions/<int:employee_id>', methods=['POST'])
+@login_required
+def update_employee_permissions(employee_id):
+    """Update permissions for a specific employee"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this
+    if user_role != 'technician':
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    data = request.get_json()
+    permissions = data.get('permissions', [])
+    
+    # Get the current user's employee ID from session
+    current_user_employee_id = session.get('employee_id') or session.get('user_id')
+    
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection error'}), 500
+    
+    try:
+        with connection.cursor() as cursor:
+            # Verify that the current user's employee ID exists in the employees table
+            granted_by = None
+            if current_user_employee_id:
+                cursor.execute("SELECT id FROM employees WHERE id = %s OR employee_id = %s", 
+                             (current_user_employee_id, current_user_employee_id))
+                employee_check = cursor.fetchone()
+                if employee_check:
+                    # Get the actual employee ID (not employee_id field)
+                    granted_by = employee_check.get('id') if isinstance(employee_check, dict) else employee_check[0]
+            
+            # Delete all existing permissions for this employee
+            cursor.execute("DELETE FROM employee_permissions WHERE employee_id = %s", (employee_id,))
+            
+            # Insert new permissions
+            if permissions:
+                for permission_key in permissions:
+                    cursor.execute("""
+                        INSERT INTO employee_permissions (employee_id, permission_key, granted_by)
+                        VALUES (%s, %s, %s)
+                    """, (employee_id, permission_key, granted_by))
+            
+            connection.commit()
+            return jsonify({'success': True, 'message': 'Permissions updated successfully'})
+            
+    except Exception as e:
+        print(f"Error updating permissions: {e}")
+        import traceback
+        traceback.print_exc()
+        connection.rollback()
+        return jsonify({'success': False, 'message': f'Error updating permissions: {str(e)}'}), 500
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
 
 # School Profile Update Route
 @app.route('/system-settings/school-profile', methods=['POST'])

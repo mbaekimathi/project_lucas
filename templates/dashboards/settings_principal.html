@@ -1,0 +1,168 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Settings - Principal - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block role_display %}Principal{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a href="/profile/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+    <i class="fas fa-user w-5"></i>
+    <span>Profile</span>
+</a>
+<a href="/settings/principal" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4" style="border-color: var(--role-primary);">
+    <i class="fas fa-cog w-5"></i>
+    <span>Settings</span>
+</a>
+<a href="{{ url_for('database_backup_restore') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'database_backup_restore' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'database_backup_restore' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-download w-5"></i>
+    <span>Backup & Restore</span>
+</a>
+<a href="{{ url_for('database_health_status') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'database_health_status' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Health & Status</span>
+</a>
+<a href="{{ url_for('logs_audit_trails') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'logs_audit_trails' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-history w-5"></i>
+    <span>Logs & Audit Trails</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">Settings</h1>
+        <p class="text-gray-600 dark:text-gray-400">Manage your account settings and preferences</p>
+    </div>
+
+    <!-- Notification Preferences -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Notification Preferences</h3>
+        
+        <form method="POST" action="/settings/principal/notifications" class="space-y-4">
+            <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">Email Notifications</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Receive email updates about your account and school activities</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="email_notifications" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">SMS Notifications</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Receive SMS updates on your phone</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="sms_notifications" class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">Staff Management Alerts</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Get notified about staff-related updates and changes</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="staff_alerts" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">Student Management Alerts</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Get notified about student-related updates and changes</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="student_alerts" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <div class="flex items-center justify-between py-3">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">Financial Reports Alerts</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Get notified about financial reports and salary updates</p>
+                </div>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" name="financial_alerts" class="sr-only peer" checked>
+                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                </label>
+            </div>
+
+            <div class="flex justify-end pt-4">
+                <button type="submit" class="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-lg transform hover:scale-105">
+                    <i class="fas fa-bell mr-2"></i>Save Preferences
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Account Preferences -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Account Preferences</h3>
+        
+        <form method="POST" action="/settings/principal/preferences" class="space-y-4">
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                    Language Preference
+                </label>
+                <select name="language" class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <option value="en">English</option>
+                    <option value="sw">Swahili</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                    Time Zone
+                </label>
+                <select name="timezone" class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <option value="Africa/Nairobi" selected>Africa/Nairobi (EAT)</option>
+                    <option value="UTC">UTC</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                    Dashboard Default View
+                </label>
+                <select name="dashboard_view" class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <option value="overview" selected>Overview</option>
+                    <option value="staff">Staff Focus</option>
+                    <option value="students">Students Focus</option>
+                    <option value="finance">Finance Focus</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end pt-4">
+                <button type="submit" class="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition-all shadow-lg transform hover:scale-105">
+                    <i class="fas fa-save mr-2"></i>Save Preferences
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+

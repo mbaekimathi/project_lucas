@@ -1,0 +1,380 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Logs & Audit Trails - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() in ['technician', 'principal'] %}
+<a href="{{ url_for('database_management') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2">
+    <i class="fas fa-database w-5"></i>
+    <span>Database Management</span>
+</a>
+<a href="{{ url_for('database_backup_restore') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2">
+    <i class="fas fa-download w-5"></i>
+    <span>Backup & Restore</span>
+</a>
+<a href="{{ url_for('database_health_status') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-2">
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Health & Status</span>
+</a>
+<a href="{{ url_for('logs_audit_trails') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-history w-5"></i>
+    <span>Logs & Audit Trails</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-6 sm:mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                    <i class="fas fa-history text-blue-600 dark:text-blue-400 mr-2"></i>
+                    Logs & Audit Trails
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+                    View system logs, audit trails, and activity history
+                </p>
+            </div>
+            <div class="flex space-x-2">
+                <button onclick="location.reload()" 
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Salary Audits</span>
+                <i class="fas fa-money-bill-wave text-green-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ audit_summary.salary_audits_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Migrations</span>
+                <i class="fas fa-database text-blue-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ audit_summary.migrations_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Backups</span>
+                <i class="fas fa-download text-purple-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ audit_summary.backups_count }}</p>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">
+            <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Records</span>
+                <i class="fas fa-list text-indigo-500"></i>
+            </div>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ "{:,}".format(audit_summary.total_records) }}</p>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
+        <div class="border-b border-gray-200 dark:border-gray-700">
+            <nav class="flex -mb-px">
+                <button onclick="showTab('salary-audits')" 
+                        id="tab-salary-audits"
+                        class="tab-button active px-6 py-3 text-sm font-medium border-b-2 border-green-500 text-green-600 dark:text-green-400">
+                    <i class="fas fa-money-bill-wave mr-2"></i>Salary Audits
+                </button>
+                <button onclick="showTab('migrations')" 
+                        id="tab-migrations"
+                        class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300">
+                    <i class="fas fa-database mr-2"></i>Database Migrations
+                </button>
+                <button onclick="showTab('backups')" 
+                        id="tab-backups"
+                        class="tab-button px-6 py-3 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300">
+                    <i class="fas fa-download mr-2"></i>Backup History
+                </button>
+            </nav>
+        </div>
+
+        <!-- Salary Audits Tab -->
+        <div id="content-salary-audits" class="tab-content p-6">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Salary Modification Audit Trail</h2>
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ salary_audits|length }} records</span>
+            </div>
+            
+            {% if salary_audits %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date & Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Employee</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Field</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Old Value</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">New Value</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Edited By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for audit in salary_audits %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if audit.edited_at %}
+                                    {% if audit.edited_at is string %}
+                                        {{ audit.edited_at }}
+                                    {% else %}
+                                        {{ audit.edited_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <i class="fas fa-user-tie text-blue-500 mr-2"></i>
+                                    <div>
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ audit.employee_name or audit.employee_code or 'N/A' }}</div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400">ID: {{ audit.employee_code or audit.employee_id }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                                    {{ audit.field_name|replace('_', ' ')|title }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                                <span class="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded">
+                                    {{ audit.old_value or 'N/A' }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-900 dark:text-white">
+                                <span class="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded">
+                                    {{ audit.new_value or 'N/A' }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {{ audit.edited_by_name or 'System' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <i class="fas fa-inbox text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400">No salary audit records found</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Migrations Tab -->
+        <div id="content-migrations" class="tab-content p-6 hidden">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Database Migration History</h2>
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ migrations|length }} migrations</span>
+            </div>
+            
+            {% if migrations %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Migration Name</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied At</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Execution Time</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Applied By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for migration in migrations %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <i class="fas fa-code-branch text-purple-500 mr-2"></i>
+                                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ migration.migration_name }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if migration.status == 'success' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                    <i class="fas fa-check-circle mr-1"></i>Success
+                                </span>
+                                {% elif migration.status == 'failed' %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                    <i class="fas fa-times-circle mr-1"></i>Failed
+                                </span>
+                                {% else %}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>Partial
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if migration.applied_at %}
+                                    {% if migration.applied_at is string %}
+                                        {{ migration.applied_at }}
+                                    {% else %}
+                                        {{ migration.applied_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if migration.execution_time_ms %}
+                                    {{ migration.execution_time_ms }} ms
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {{ migration.applied_by or 'System' }}
+                            </td>
+                        </tr>
+                        {% if migration.error_message %}
+                        <tr>
+                            <td colspan="5" class="px-4 py-2 bg-red-50 dark:bg-red-900/20">
+                                <div class="flex items-start">
+                                    <i class="fas fa-exclamation-circle text-red-500 mr-2 mt-1"></i>
+                                    <p class="text-xs text-red-800 dark:text-red-200">{{ migration.error_message }}</p>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <i class="fas fa-inbox text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400">No migration records found</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Backups Tab -->
+        <div id="content-backups" class="tab-content p-6 hidden">
+            <div class="mb-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Database Backup History</h2>
+                <span class="text-sm text-gray-500 dark:text-gray-400">{{ backups|length }} backups</span>
+            </div>
+            
+            {% if backups %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead class="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filename</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tables</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Records</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created At</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created By</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for backup in backups %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                <div class="flex items-center">
+                                    <i class="fas fa-file-excel text-green-600 dark:text-green-400 mr-2"></i>
+                                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ backup.filename or 'N/A' }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if backup.file_size %}
+                                    {% if backup.file_size < 1024 %}
+                                        {{ backup.file_size }} B
+                                    {% elif backup.file_size < 1048576 %}
+                                        {{ "%.2f"|format(backup.file_size / 1024) }} KB
+                                    {% else %}
+                                        {{ "%.2f"|format(backup.file_size / 1048576) }} MB
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {{ backup.table_count or 'N/A' }}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if backup.record_count %}
+                                    {{ "{:,}".format(backup.record_count) }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {% if backup.created_at %}
+                                    {% if backup.created_at is string %}
+                                        {{ backup.created_at }}
+                                    {% else %}
+                                        {{ backup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                                {{ backup.created_by or 'System' }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-12">
+                <i class="fas fa-inbox text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400">No backup records found</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function showTab(tabName) {
+    // Hide all tab contents
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active', 'border-green-500', 'text-green-600', 'dark:text-green-400');
+        button.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+    });
+    
+    // Show selected tab content
+    document.getElementById('content-' + tabName).classList.remove('hidden');
+    
+    // Add active class to selected tab
+    const activeButton = document.getElementById('tab-' + tabName);
+    activeButton.classList.add('active', 'border-green-500', 'text-green-600', 'dark:text-green-400');
+    activeButton.classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+}
+</script>
+{% endblock %}
+
