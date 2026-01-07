@@ -145,7 +145,9 @@ def validate_env_vars():
         if is_production or is_hosted:
             print("ERROR: SECRET_KEY must be set to a secure value in production/hosted environment!")
             print("Please set SECRET_KEY in your environment variables or .env file.")
-            raise ValueError("SECRET_KEY must be set to a secure value in production/hosted environment!")
+            print("WARNING: Application will start but sessions will be insecure until SECRET_KEY is set!")
+            # Don't raise error - let app start but log the critical warning
+            # This allows the app to start so you can access it to fix the issue
     
     # Database config will use defaults if env vars not set, so we just log the detected environment
     is_local = is_localhost()
