@@ -1,0 +1,292 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Database Backup & Restore - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/role-switch" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-3 border-b border-gray-700/50 pb-3">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+
+<a href="/system-settings" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-cog w-5"></i>
+    <span>System Settings</span>
+</a>
+<a href="/dashboard/employee/database" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-database w-5"></i>
+    <span>Database</span>
+</a>
+<a href="/dashboard/employee/database/backup-restore" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-database w-5"></i>
+    <span>Database Backup & Restore (Core)</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-shield-alt w-5"></i>
+    <span>Data Integrity & Maintenance</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Database Health & Status'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Database Health & Status</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Logs & Audit Trails'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-history w-5"></i>
+    <span>Logs & Audit Trails</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-lock w-5"></i>
+    <span>Access Control (Very Important)</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Emergency & Reset Tools'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-exclamation-triangle w-5"></i>
+    <span>Emergency & Reset Tools (Use Carefully)</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8" x-data="backupRestore()" x-init="loadTables()">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-white mb-2">Database Backup & Restore</h1>
+            <p class="text-gray-600 dark:text-gray-400">Export database tables to Excel format for backup purposes</p>
+        </div>
+
+        <!-- Info Alert -->
+        <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+            <div class="flex items-start">
+                <i class="fas fa-info-circle text-blue-500 mt-1 mr-3"></i>
+                <div>
+                    <h3 class="font-semibold text-blue-800 dark:text-blue-200 mb-1">Backup Instructions</h3>
+                    <p class="text-sm text-blue-700 dark:text-blue-300">
+                        Select the tables you want to backup. Each table will be exported as a separate sheet in the Excel file. 
+                        The backup file will be downloaded automatically when ready.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selection Controls -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-4">
+                    <button @click="selectAll()" 
+                            class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors">
+                        <i class="fas fa-check-square mr-2"></i>Select All
+                    </button>
+                    <button @click="deselectAll()" 
+                            class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors">
+                        <i class="fas fa-square mr-2"></i>Deselect All
+                    </button>
+                </div>
+                <div class="text-sm text-gray-600 dark:text-gray-400">
+                    <span x-text="selectedCount"></span> of <span x-text="tables.length"></span> tables selected
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="text-center py-12">
+            <i class="fas fa-spinner fa-spin text-4xl text-gray-400 mb-4"></i>
+            <p class="text-gray-600 dark:text-gray-400">Loading tables...</p>
+        </div>
+
+        <!-- Error State -->
+        <div x-show="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+            <p class="text-red-800 dark:text-red-200" x-text="error"></p>
+        </div>
+
+        <!-- Success Message -->
+        <div x-show="success" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-6">
+            <p class="text-green-800 dark:text-green-200" x-text="success"></p>
+        </div>
+
+        <!-- Tables List -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden" x-show="!loading && !error">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 dark:bg-gray-700">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <input type="checkbox" @change="toggleAll($event)" :checked="allSelected" class="rounded">
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Table Name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Columns</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Indexes</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        <template x-for="table in tables" :key="table.name">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <input type="checkbox" 
+                                           :value="table.name" 
+                                           x-model="selectedTables"
+                                           class="rounded">
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900 dark:text-white capitalize" x-text="table.name.replace(/_/g, ' ')"></div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-500 dark:text-gray-400" x-text="table.column_count"></div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-500 dark:text-gray-400" x-text="table.index_count"></div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Export Button -->
+        <div class="mt-6 flex justify-end" x-show="!loading && !error">
+            <button @click="exportToExcel()" 
+                    :disabled="selectedTables.length === 0 || exporting"
+                    class="px-6 py-3 bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold flex items-center">
+                <i class="fas fa-file-excel mr-2" x-show="!exporting"></i>
+                <i class="fas fa-spinner fa-spin mr-2" x-show="exporting"></i>
+                <span x-text="exporting ? 'Exporting...' : 'Export to Excel'"></span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function backupRestore() {
+            return {
+                tables: [],
+                selectedTables: [],
+                loading: true,
+                error: null,
+                success: null,
+                exporting: false,
+                
+                get selectedCount() {
+                    return this.selectedTables.length;
+                },
+                
+                get allSelected() {
+                    return this.tables.length > 0 && this.selectedTables.length === this.tables.length;
+                },
+                
+                loadTables() {
+                    this.loading = true;
+                    this.error = null;
+                    
+                    fetch('/api/database/tables')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                this.tables = data.tables;
+                            } else {
+                                this.error = data.message || 'Failed to load tables';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error loading tables:', error);
+                            this.error = 'Failed to load database tables. Please try again.';
+                        })
+                        .finally(() => {
+                            this.loading = false;
+                        });
+                },
+                
+                selectAll() {
+                    this.selectedTables = this.tables.map(t => t.name);
+                },
+                
+                deselectAll() {
+                    this.selectedTables = [];
+                },
+                
+                toggleAll(event) {
+                    if (event.target.checked) {
+                        this.selectAll();
+                    } else {
+                        this.deselectAll();
+                    }
+                },
+                
+                exportToExcel() {
+                    if (this.selectedTables.length === 0) {
+                        this.error = 'Please select at least one table to export';
+                        return;
+                    }
+                    
+                    this.exporting = true;
+                    this.error = null;
+                    this.success = null;
+                    
+                    fetch('/api/database/backup/excel', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            tables: this.selectedTables
+                        })
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            // Get filename from Content-Disposition header
+                            const contentDisposition = response.headers.get('Content-Disposition');
+                            let filename = 'database_backup.xlsx';
+                            if (contentDisposition) {
+                                const filenameMatch = contentDisposition.match(/filename=(.+)/);
+                                if (filenameMatch) {
+                                    filename = filenameMatch[1];
+                                }
+                            }
+                            
+                            // Download the file
+                            return response.blob().then(blob => {
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = filename;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                
+                                this.success = `Successfully exported ${this.selectedTables.length} table(s) to Excel file: ${filename}`;
+                            });
+                        } else {
+                            return response.json().then(data => {
+                                this.error = data.message || 'Failed to export tables';
+                            });
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error exporting to Excel:', error);
+                        this.error = 'Failed to export tables. Please try again.';
+                    })
+                    .finally(() => {
+                        this.exporting = false;
+                    });
+                }
+            }
+        }
+    </script>
+</div>
+{% endblock %}
+

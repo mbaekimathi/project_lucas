@@ -740,7 +740,7 @@ def init_db():
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE academic_levels ADD INDEX idx_level_status (level_status)")
                     connection.commit()
-                    print("✓ Migrated academic_levels.status to level_status")
+                    print("[OK] Migrated academic_levels.status to level_status")
             except Exception as e:
                 # Column might not exist or already renamed
                 print(f"Migration note: {e}")
@@ -807,7 +807,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER is_current")
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
-                    print("✓ Added is_locked and locked_at columns to academic_years table")
+                    print("[OK] Added is_locked and locked_at columns to academic_years table")
             except Exception as e:
                 print(f"Migration note for academic_years.is_locked: {e}")
                 pass
@@ -818,7 +818,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("✓ Updated academic_years.status enum to include 'suspended'")
+                    print("[OK] Updated academic_years.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for academic_years.status enum: {e}")
                 pass
@@ -853,7 +853,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
-                    print("✓ Added is_locked and locked_at columns to terms table")
+                    print("[OK] Added is_locked and locked_at columns to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_locked: {e}")
                 pass
@@ -864,7 +864,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("✓ Updated terms.status enum to include 'suspended'")
+                    print("[OK] Updated terms.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for terms.status enum: {e}")
                 pass
@@ -875,7 +875,7 @@ def init_db():
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_current BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
-                    print("✓ Added is_current column to terms table")
+                    print("[OK] Added is_current column to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_current: {e}")
                 pass
@@ -906,7 +906,7 @@ def init_db():
                     cursor.execute("ALTER TABLE fee_structures ADD FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_term (term_id)")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_academic_year (academic_year_id)")
-                    print("✓ Added term_id and academic_year_id to fee_structures")
+                    print("[OK] Added term_id and academic_year_id to fee_structures")
             except Exception as e:
                 print(f"Migration note for fee_structures: {e}")
                 pass
@@ -923,7 +923,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN student_category VARCHAR(50) NULL AFTER special_needs")
-                    print("✓ Added student_category column to students table")
+                    print("[OK] Added student_category column to students table")
             except Exception as e:
                 print(f"Migration note for student_category: {e}")
                 pass
@@ -939,7 +939,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_name VARCHAR(255) NULL AFTER student_category")
-                    print("✓ Added sponsor_name column to students table")
+                    print("[OK] Added sponsor_name column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_name: {e}")
                 pass
@@ -956,7 +956,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_phone VARCHAR(50) NULL AFTER sponsor_name")
-                    print("✓ Added sponsor_phone column to students table")
+                    print("[OK] Added sponsor_phone column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_phone: {e}")
                 pass
@@ -973,7 +973,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_email VARCHAR(255) NULL AFTER sponsor_phone")
-                    print("✓ Added sponsor_email column to students table")
+                    print("[OK] Added sponsor_email column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_email: {e}")
                 pass
@@ -7619,6 +7619,294 @@ def database_page():
     
     return render_template('dashboards/database.html')
 
+# Database Analytics API (for technicians)
+@app.route('/api/database/analytics')
+@login_required
+def database_analytics():
+    """Get analytics for all database tables"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this
+    if user_role != 'technician':
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+    
+    try:
+        with connection.cursor() as cursor:
+            # List of all tables to analyze
+            tables = [
+                'users', 'students', 'parents', 'admissions', 'employees',
+                'employee_salaries', 'employee_salary_payments', 'employee_salary_audits',
+                'news', 'gallery', 'school_settings', 'academic_levels',
+                'fee_structures', 'fee_items', 'student_payments', 'academic_years', 'terms',
+                'term_academic_levels'
+            ]
+            
+            analytics = {}
+            
+            for table in tables:
+                try:
+                    # Get row count
+                    cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
+                    count_result = cursor.fetchone()
+                    row_count = count_result.get('count', 0) if count_result else 0
+                    
+                    # Get table size (approximate)
+                    cursor.execute(f"""
+                        SELECT 
+                            ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb
+                        FROM information_schema.TABLES 
+                        WHERE table_schema = DATABASE() 
+                        AND table_name = %s
+                    """, (table,))
+                    size_result = cursor.fetchone()
+                    size_mb = size_result.get('size_mb', 0) if size_result else 0
+                    
+                    # Get additional stats based on table type
+                    stats = {'row_count': row_count, 'size_mb': size_mb}
+                    
+                    # Table-specific analytics
+                    if table == 'students':
+                        cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'in session'")
+                        active = cursor.fetchone()
+                        stats['active_students'] = active.get('count', 0) if active else 0
+                        
+                        cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'pending approval'")
+                        pending = cursor.fetchone()
+                        stats['pending_students'] = pending.get('count', 0) if pending else 0
+                    
+                    elif table == 'employees':
+                        cursor.execute("SELECT COUNT(*) as count FROM employees WHERE status = 'active'")
+                        active = cursor.fetchone()
+                        stats['active_employees'] = active.get('count', 0) if active else 0
+                        
+                        cursor.execute("SELECT COUNT(*) as count FROM employees WHERE status = 'pending approval'")
+                        pending = cursor.fetchone()
+                        stats['pending_employees'] = pending.get('count', 0) if pending else 0
+                    
+                    elif table == 'users':
+                        cursor.execute("SELECT role, COUNT(*) as count FROM users GROUP BY role")
+                        roles = cursor.fetchall()
+                        stats['by_role'] = {r.get('role'): r.get('count', 0) for r in roles}
+                    
+                    elif table == 'student_payments':
+                        cursor.execute("SELECT SUM(amount_paid) as total FROM student_payments")
+                        total = cursor.fetchone()
+                        stats['total_payments'] = float(total.get('total', 0)) if total and total.get('total') else 0
+                    
+                    elif table == 'employee_salary_payments':
+                        cursor.execute("SELECT SUM(amount_paid) as total FROM employee_salary_payments")
+                        total = cursor.fetchone()
+                        stats['total_salary_payments'] = float(total.get('total', 0)) if total and total.get('total') else 0
+                    
+                    analytics[table] = stats
+                    
+                except Exception as e:
+                    # Table might not exist or have issues
+                    analytics[table] = {'row_count': 0, 'size_mb': 0, 'error': str(e)}
+            
+            # Get database total size
+            cursor.execute("""
+                SELECT 
+                    ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb
+                FROM information_schema.TABLES 
+                WHERE table_schema = DATABASE()
+            """)
+            db_size = cursor.fetchone()
+            total_db_size = db_size.get('total_size_mb', 0) if db_size else 0
+            
+            return jsonify({
+                'success': True,
+                'analytics': analytics,
+                'total_database_size_mb': total_db_size
+            })
+            
+    except Exception as e:
+        print(f"Error fetching database analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+# Database Backup & Restore Route (for technicians)
+@app.route('/dashboard/employee/database/backup-restore')
+@login_required
+def database_backup_restore():
+    """Database backup and restore page for technicians"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    return render_template('dashboards/database_backup_restore.html')
+
+# Database Backup to Excel API (for technicians)
+@app.route('/api/database/backup/excel', methods=['POST'])
+@login_required
+def backup_to_excel():
+    """Export database tables to Excel file"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this
+    if user_role != 'technician':
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return jsonify({'success': False, 'message': 'openpyxl library not installed. Please install it using: pip install openpyxl'}), 500
+    
+    data = request.get_json()
+    tables = data.get('tables', [])  # List of table names to export
+    
+    if not tables:
+        return jsonify({'success': False, 'message': 'No tables selected'}), 400
+    
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+    
+    try:
+        # Create Excel workbook
+        wb = Workbook()
+        wb.remove(wb.active)  # Remove default sheet
+        
+        with connection.cursor() as cursor:
+            for table_name in tables:
+                try:
+                    # Get all data from table
+                    cursor.execute(f"SELECT * FROM {table_name}")
+                    rows = cursor.fetchall()
+                    
+                    if not rows:
+                        continue  # Skip empty tables
+                    
+                    # Create worksheet for this table
+                    ws = wb.create_sheet(title=table_name[:31])  # Excel sheet name limit is 31 chars
+                    
+                    # Get column names from first row
+                    if rows:
+                        column_names = list(rows[0].keys())
+                        
+                        # Write header row with styling
+                        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                        header_font = Font(bold=True, color="FFFFFF")
+                        
+                        for col_num, column_name in enumerate(column_names, 1):
+                            cell = ws.cell(row=1, column=col_num, value=column_name)
+                            cell.fill = header_fill
+                            cell.font = header_font
+                            cell.alignment = Alignment(horizontal="center", vertical="center")
+                        
+                        # Write data rows
+                        for row_num, row_data in enumerate(rows, 2):
+                            for col_num, column_name in enumerate(column_names, 1):
+                                value = row_data.get(column_name, '')
+                                # Handle None values and dates
+                                if value is None:
+                                    value = ''
+                                elif isinstance(value, datetime):
+                                    value = value.strftime('%Y-%m-%d %H:%M:%S')
+                                elif isinstance(value, (bytes, bytearray)):
+                                    value = str(value)
+                                ws.cell(row=row_num, column=col_num, value=value)
+                        
+                        # Auto-adjust column widths
+                        for col_num, column_name in enumerate(column_names, 1):
+                            max_length = len(str(column_name))
+                            for row in ws.iter_rows(min_row=2, max_row=min(len(rows) + 1, 100)):  # Check first 100 rows
+                                cell_value = str(row[col_num - 1].value or '')
+                                if len(cell_value) > max_length:
+                                    max_length = len(cell_value)
+                            adjusted_width = min(max_length + 2, 50)  # Cap at 50
+                            ws.column_dimensions[get_column_letter(col_num)].width = adjusted_width
+                    
+                except Exception as e:
+                    print(f"Error exporting table {table_name}: {e}")
+                    continue  # Skip tables that fail
+        
+        # Save to BytesIO
+        from io import BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Create response
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"database_backup_{timestamp}.xlsx"
+        
+        response = make_response(output.getvalue())
+        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error creating Excel backup: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+# Get list of tables API (for technicians)
+@app.route('/api/database/tables')
+@login_required
+def get_database_tables():
+    """Get list of all database tables"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this
+    if user_role != 'technician':
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+    
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT table_name, 
+                       (SELECT COUNT(*) FROM information_schema.columns 
+                        WHERE table_schema = DATABASE() 
+                        AND table_name = t.table_name) as column_count,
+                       (SELECT COUNT(*) FROM information_schema.statistics 
+                        WHERE table_schema = DATABASE() 
+                        AND table_name = t.table_name) as index_count
+                FROM information_schema.tables t
+                WHERE table_schema = DATABASE()
+                AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """)
+            tables = cursor.fetchall()
+            
+            return jsonify({
+                'success': True,
+                'tables': [
+                    {
+                        'name': t.get('table_name'),
+                        'column_count': t.get('column_count', 0),
+                        'index_count': t.get('index_count', 0)
+                    }
+                    for t in tables
+                ]
+            })
+            
+    except Exception as e:
+        print(f"Error fetching tables: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
 # System Settings Route (for technicians)
 @app.route('/system-settings')
 @login_required
@@ -7699,20 +7987,20 @@ def system_settings():
                                 'updated_at': row.get('updated_at')
                             }
                             academic_levels.append(level_data)
-                        print(f"✓ Successfully fetched {len(academic_levels)} academic level(s)")
+                        print(f"[OK] Successfully fetched {len(academic_levels)} academic level(s)")
                     else:
-                        print("ℹ No academic levels found in database (table exists but is empty)")
+                        print("[INFO] No academic levels found in database (table exists but is empty)")
                 except pymysql.err.ProgrammingError as e:
                     # Table doesn't exist (error 1146)
                     error_code = e.args[0] if e.args else 0
                     if error_code == 1146 or "doesn't exist" in str(e).lower():
-                        print("⚠ Academic levels table does not exist yet")
+                        print("[WARNING] Academic levels table does not exist yet")
                     else:
-                        print(f"⚠ SQL Error: {e}")
+                        print(f"[WARNING] SQL Error: {e}")
                         import traceback
                         traceback.print_exc()
                 except Exception as e:
-                    print(f"⚠ Error fetching academic levels: {e}")
+                    print(f"[WARNING] Error fetching academic levels: {e}")
                     import traceback
                     traceback.print_exc()
                 
@@ -7728,7 +8016,7 @@ def system_settings():
                     """, (today,))
                     if cursor.rowcount > 0:
                         connection.commit()
-                        print(f"✓ Auto-locked {cursor.rowcount} academic year(s) that have ended")
+                        print(f"[OK] Auto-locked {cursor.rowcount} academic year(s) that have ended")
                     
                     cursor.execute("""
                         SELECT id, year_name, start_date, end_date, status, is_current, is_locked, locked_at
@@ -7847,7 +8135,7 @@ def system_settings():
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
         except Exception as e:
-            print(f"❌ Error fetching data: {e}")
+            print(f"[ERROR] Error fetching data: {e}")
             print(f"Error type: {type(e).__name__}")
             print(f"Error args: {e.args}")
             import traceback

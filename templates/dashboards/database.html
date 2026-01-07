@@ -21,21 +21,6 @@
     <i class="fas fa-cog w-5"></i>
     <span>System Settings</span>
 </a>
-<a @click.prevent="comingSoonTitle = 'Users & Roles'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
-    <i class="fas fa-users-cog w-5"></i>
-    <span>Users & Roles</span>
-</a>
-<a @click.prevent="comingSoonTitle = 'Security'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
-    <i class="fas fa-shield-alt w-5"></i>
-    <span>Security</span>
-</a>
-<a @click.prevent="comingSoonTitle = 'Integrations'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
-    <i class="fas fa-plug w-5"></i>
-    <span>Integrations</span>
-</a>
 <a href="/dashboard/employee/database" 
    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
    style="border-color: var(--role-primary);">
@@ -43,22 +28,223 @@
     <span>Database</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a @click.prevent="comingSoonTitle = 'Audit Logs'; comingSoonModalOpen = true" 
+<a href="/dashboard/employee/database/backup-restore" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-database w-5"></i>
+    <span>Database Backup & Restore (Core)</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-shield-alt w-5"></i>
+    <span>Data Integrity & Maintenance</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Database Health & Status'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Database Health & Status</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Logs & Audit Trails'; comingSoonModalOpen = true" 
    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
     <i class="fas fa-history w-5"></i>
-    <span>Audit Logs</span>
+    <span>Logs & Audit Trails</span>
 </a>
-<a @click.prevent="comingSoonTitle = 'System Modules'; comingSoonModalOpen = true" 
+<a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true" 
    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
-    <i class="fas fa-puzzle-piece w-5"></i>
-    <span>System Modules</span>
+    <i class="fas fa-lock w-5"></i>
+    <span>Access Control (Very Important)</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Emergency & Reset Tools'; comingSoonModalOpen = true" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <i class="fas fa-exclamation-triangle w-5"></i>
+    <span>Emergency & Reset Tools (Use Carefully)</span>
 </a>
 {% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
-    <!-- Empty page content -->
+<div class="container mx-auto px-4 py-8" x-data="databaseAnalytics()" x-init="loadAnalytics()">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 dark:text-white mb-2">Database Analytics</h1>
+            <p class="text-gray-600 dark:text-gray-400">Overview of all database tables and their statistics</p>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8" x-show="!loading">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border-l-4 border-blue-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Tables</p>
+                        <p class="text-2xl font-bold text-gray-800 dark:text-white" x-text="Object.keys(analytics).length"></p>
+                    </div>
+                    <i class="fas fa-table text-blue-500 text-3xl"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border-l-4 border-green-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Total Records</p>
+                        <p class="text-2xl font-bold text-gray-800 dark:text-white" x-text="totalRecords.toLocaleString()"></p>
+                    </div>
+                    <i class="fas fa-database text-green-500 text-3xl"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border-l-4 border-purple-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Database Size</p>
+                        <p class="text-2xl font-bold text-gray-800 dark:text-white" x-text="totalSize + ' MB'"></p>
+                    </div>
+                    <i class="fas fa-hdd text-purple-500 text-3xl"></i>
+                </div>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border-l-4 border-yellow-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Last Updated</p>
+                        <p class="text-lg font-bold text-gray-800 dark:text-white" x-text="lastUpdated"></p>
+                    </div>
+                    <i class="fas fa-clock text-yellow-500 text-3xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div x-show="loading" class="text-center py-12">
+            <i class="fas fa-spinner fa-spin text-4xl text-gray-400 mb-4"></i>
+            <p class="text-gray-600 dark:text-gray-400">Loading analytics...</p>
+        </div>
+
+        <!-- Error State -->
+        <div x-show="error" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+            <p class="text-red-800 dark:text-red-200" x-text="error"></p>
+        </div>
+
+        <!-- Tables Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" x-show="!loading && !error">
+            <template x-for="(stats, tableName) in analytics" :key="tableName">
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-white capitalize" x-text="tableName.replace(/_/g, ' ')"></h3>
+                        <i class="fas fa-table text-gray-400"></i>
+                    </div>
+                    
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Records:</span>
+                            <span class="font-semibold text-gray-800 dark:text-white" x-text="(stats.row_count || 0).toLocaleString()"></span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm text-gray-600 dark:text-gray-400">Size:</span>
+                            <span class="font-semibold text-gray-800 dark:text-white" x-text="(stats.size_mb || 0).toFixed(2) + ' MB'"></span>
+                        </div>
+                        
+                        <!-- Table-specific stats -->
+                        <template x-if="stats.active_students !== undefined">
+                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Active:</span>
+                                    <span class="text-sm font-semibold text-green-600" x-text="stats.active_students"></span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Pending:</span>
+                                    <span class="text-sm font-semibold text-yellow-600" x-text="stats.pending_students"></span>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <template x-if="stats.active_employees !== undefined">
+                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Active:</span>
+                                    <span class="text-sm font-semibold text-green-600" x-text="stats.active_employees"></span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Pending:</span>
+                                    <span class="text-sm font-semibold text-yellow-600" x-text="stats.pending_employees"></span>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <template x-if="stats.by_role">
+                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <template x-for="(count, role) in stats.by_role" :key="role">
+                                    <div class="flex justify-between items-center mb-1">
+                                        <span class="text-xs text-gray-600 dark:text-gray-400 capitalize" x-text="role + ':'"></span>
+                                        <span class="text-sm font-semibold text-gray-800 dark:text-white" x-text="count"></span>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                        
+                        <template x-if="stats.total_payments !== undefined">
+                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Total Payments:</span>
+                                    <span class="text-sm font-semibold text-green-600" x-text="'$' + (stats.total_payments || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                                </div>
+                            </div>
+                        </template>
+                        
+                        <template x-if="stats.total_salary_payments !== undefined">
+                            <div class="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs text-gray-600 dark:text-gray-400">Total Salaries:</span>
+                                    <span class="text-sm font-semibold text-green-600" x-text="'$' + (stats.total_salary_payments || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+        function databaseAnalytics() {
+            return {
+                analytics: {},
+                loading: true,
+                error: null,
+                totalRecords: 0,
+                totalSize: 0,
+                lastUpdated: '',
+                
+                loadAnalytics() {
+                    this.loading = true;
+                    this.error = null;
+                    
+                    fetch('/api/database/analytics')
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                this.analytics = data.analytics;
+                                this.totalSize = data.total_database_size_mb || 0;
+                                
+                                // Calculate total records
+                                this.totalRecords = Object.values(this.analytics).reduce((sum, stats) => {
+                                    return sum + (stats.row_count || 0);
+                                }, 0);
+                                
+                                // Set last updated time
+                                const now = new Date();
+                                this.lastUpdated = now.toLocaleTimeString();
+                            } else {
+                                this.error = data.message || 'Failed to load analytics';
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error loading analytics:', error);
+                            this.error = 'Failed to load database analytics. Please try again.';
+                        })
+                        .finally(() => {
+                            this.loading = false;
+                        });
+                }
+            }
+        }
+    </script>
 </div>
 {% endblock %}
 
