@@ -1,0 +1,21 @@
+# Passenger configuration for Flask application
+PassengerEnabled On
+PassengerAppRoot /home1/projectl/project_lucas
+PassengerBaseURI /
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+PassengerPython /usr/bin/python3
+
+# Enable Passenger
+PassengerFriendlyErrorPages On
+
+# Set environment variables (if needed)
+# SetEnv SECRET_KEY your-secret-key-here
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
