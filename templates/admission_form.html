@@ -89,6 +89,19 @@
                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
                         </div>
                         <div>
+                            <label for="relationship" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Relationship to Student <span class="text-red-500">*</span>
+                            </label>
+                            <select id="relationship" name="relationship" required
+                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                                <option value="">Select Relationship</option>
+                                <option value="Father">Father</option>
+                                <option value="Mother">Mother</option>
+                                <option value="Guardian">Guardian</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div>
                             <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                                 Parent Phone <span class="text-red-500">*</span>
                             </label>
@@ -100,6 +113,49 @@
                                 Parent Email <span class="text-red-500">*</span>
                             </label>
                             <input type="email" id="parent_email" name="parent_email" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Student Category -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 dark:text-white border-b-2 border-blue-600 pb-2">
+                        <i class="fas fa-tag mr-2"></i>Student Category
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="student_category" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Student Category <span class="text-red-500">*</span>
+                            </label>
+                            <select id="student_category" name="student_category" required
+                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue"
+                                    onchange="toggleSponsorFields(this.value)">
+                                <option value="">Select Category</option>
+                                <option value="regular">Regular</option>
+                                <option value="sponsored">Sponsored</option>
+                                <option value="scholarship">Scholarship</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Sponsor Information (shown only if category is sponsored) -->
+                    <div id="sponsor_fields" class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6" style="display: none;">
+                        <div>
+                            <label for="sponsor_name" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
+                                Sponsor Name/Company <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="sponsor_name" name="sponsor_name"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div>
+                            <label for="sponsor_phone" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Sponsor Phone</label>
+                            <input type="tel" id="sponsor_phone" name="sponsor_phone"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label for="sponsor_email" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Sponsor Email</label>
+                            <input type="email" id="sponsor_email" name="sponsor_email"
                                    class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue">
                         </div>
                     </div>
@@ -158,5 +214,24 @@
         </div>
     </div>
 </section>
+
+<script>
+function toggleSponsorFields(category) {
+    const sponsorFields = document.getElementById('sponsor_fields');
+    const sponsorName = document.getElementById('sponsor_name');
+    
+    if (category === 'sponsored') {
+        sponsorFields.style.display = 'grid';
+        sponsorName.setAttribute('required', 'required');
+    } else {
+        sponsorFields.style.display = 'none';
+        sponsorName.removeAttribute('required');
+        // Clear sponsor fields when hidden
+        document.getElementById('sponsor_name').value = '';
+        document.getElementById('sponsor_phone').value = '';
+        document.getElementById('sponsor_email').value = '';
+    }
+}
+</script>
 {% endblock %}
 

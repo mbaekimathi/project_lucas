@@ -10325,6 +10325,95 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
+# Bulk Import Students Route
+@app.route('/bulk-import-students', methods=['POST'])
+@login_required
+def bulk_import_students():
+    """Bulk import students from provided data"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians and principals can bulk import
+    if user_role not in ['technician', 'principal']:
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+    
+    data = request.get_json()
+    students_data = data.get('students', [])
+    
+    if not students_data:
+        return jsonify({'success': False, 'message': 'No student data provided'}), 400
+    
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection error'}), 500
+    
+    imported = []
+    errors = []
+    
+    try:
+        with connection.cursor() as cursor:
+            for student_info in students_data:
+                try:
+                    full_name = student_info.get('full_name', '').strip().upper()
+                    current_grade = student_info.get('grade', '').strip().upper()
+                    
+                    if not full_name:
+                        errors.append({'name': full_name or 'Unknown', 'error': 'Missing full name'})
+                        continue
+                    
+                    # Generate unique student ID
+                    student_id = generate_student_id(connection)
+                    
+                    # Insert student
+                    cursor.execute("""
+                        INSERT INTO students 
+                        (student_id, full_name, current_grade, status, student_category)
+                        VALUES (%s, %s, %s, 'in session', 'regular')
+                    """, (student_id, full_name, current_grade))
+                    
+                    # Create placeholder parent record (to be updated later)
+                    # Use student's name with "Parent of" prefix for now
+                    placeholder_parent_name = f"PARENT OF {full_name}"
+                    placeholder_email = f"parent.{student_id.lower()}@school.local"
+                    
+                    cursor.execute("""
+                        INSERT INTO parents 
+                        (student_id, full_name, phone, email, relationship)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (student_id, placeholder_parent_name, '0000000000', placeholder_email, 'Guardian'))
+                    
+                    imported.append({
+                        'student_id': student_id,
+                        'full_name': full_name,
+                        'grade': current_grade
+                    })
+                    
+                except Exception as e:
+                    errors.append({'name': student_info.get('full_name', 'Unknown'), 'error': str(e)})
+                    print(f"Error importing student {student_info.get('full_name')}: {e}")
+            
+            connection.commit()
+            
+            return jsonify({
+                'success': True,
+                'message': f'Successfully imported {len(imported)} students',
+                'imported': imported,
+                'errors': errors,
+                'total': len(students_data)
+            })
+            
+    except Exception as e:
+        connection.rollback()
+        print(f"Error in bulk import: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': f'Error importing students: {str(e)}'}), 500
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
+
 if __name__ == '__main__':
     # Initialize database on startup
     print("Initializing database...")
