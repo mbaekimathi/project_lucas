@@ -26,6 +26,13 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 from io import BytesIO
+import csv
+try:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    EXCEL_AVAILABLE = True
+except ImportError:
+    EXCEL_AVAILABLE = False
 
 # Load environment variables from .env file
 load_dotenv()
@@ -47,7 +54,11 @@ mail = Mail(app)
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads/profiles'
 PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
+BACKUP_FOLDER = 'static/uploads/backups'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+# Create backup folder if it doesn't exist
+os.makedirs(BACKUP_FOLDER, exist_ok=True)
 ALLOWED_PAYMENT_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PAYMENT_PROOF_FOLDER'] = PAYMENT_PROOF_FOLDER
@@ -7754,6 +7765,655 @@ def system_settings():
                          current_academic_year=current_academic_year,
                          today=today)
 
+# Database Management Route (for technicians)
+@app.route('/database')
+@login_required
+def database_management():
+    """Database management page for technicians"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    # Get database information and data analysis
+    connection = get_db_connection()
+    tables = []
+    db_info = {}
+    data_analysis = {
+        'total_tables': 0,
+        'total_records': 0,
+        'total_size_mb': 0,
+        'largest_table': {'name': '', 'rows': 0, 'size_mb': 0},
+        'most_active_tables': [],
+        'database_size_mb': 0,
+        # Business metrics
+        'total_students': 0,
+        'students_by_status': {},
+        'total_employees': 0,
+        'employees_by_role': {},
+        'employees_by_status': {},
+        'total_parents': 0,
+        'total_academic_levels': 0,
+        'active_academic_levels': 0,
+        'total_fee_structures': 0,
+        'active_fee_structures': 0,
+        'total_fee_items': 0,
+        'total_fee_amount': 0,
+        'total_student_fees': 0,
+        'paid_fees': 0,
+        'pending_fees': 0,
+        'total_fee_revenue': 0
+    }
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get database name
+                cursor.execute("SELECT DATABASE() as db_name")
+                db_result = cursor.fetchone()
+                db_info['name'] = db_result.get('db_name', DB_CONFIG['database']) if db_result else DB_CONFIG['database']
+                
+                # Get total database size
+                cursor.execute("""
+                    SELECT 
+                        ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb
+                    FROM information_schema.TABLES 
+                    WHERE table_schema = DATABASE()
+                """)
+                db_size_result = cursor.fetchone()
+                data_analysis['database_size_mb'] = db_size_result.get('total_size_mb', 0) if db_size_result else 0
+                
+                # Get all tables
+                cursor.execute("SHOW TABLES")
+                table_results = cursor.fetchall()
+                data_analysis['total_tables'] = len(table_results)
+                
+                table_stats = []
+                
+                # Get table information
+                for table_result in table_results:
+                    table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
+                    
+                    # Get row count
+                    cursor.execute(f"SELECT COUNT(*) as count FROM `{table_name}`")
+                    count_result = cursor.fetchone()
+                    row_count = count_result.get('count', 0) if count_result else 0
+                    data_analysis['total_records'] += row_count
+                    
+                    # Get table size
+                    cursor.execute(f"""
+                        SELECT 
+                            ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb
+                        FROM information_schema.TABLES 
+                        WHERE table_schema = DATABASE() 
+                        AND table_name = %s
+                    """, (table_name,))
+                    size_result = cursor.fetchone()
+                    size_mb = size_result.get('size_mb', 0) if size_result else 0
+                    data_analysis['total_size_mb'] += size_mb
+                    
+                    # Track largest table
+                    if row_count > data_analysis['largest_table']['rows']:
+                        data_analysis['largest_table'] = {
+                            'name': table_name,
+                            'rows': row_count,
+                            'size_mb': size_mb
+                        }
+                    
+                    # Store table stats for most active tables
+                    table_stats.append({
+                        'name': table_name,
+                        'rows': row_count,
+                        'size_mb': size_mb
+                    })
+                    
+                    # Get table structure
+                    cursor.execute(f"DESCRIBE `{table_name}`")
+                    columns_result = cursor.fetchall()
+                    
+                    # Convert columns to list of dicts if needed
+                    columns = []
+                    for col in columns_result:
+                        if isinstance(col, dict):
+                            columns.append(col)
+                        else:
+                            # Handle tuple results
+                            columns.append({
+                                'Field': col[0] if len(col) > 0 else '',
+                                'Type': col[1] if len(col) > 1 else '',
+                                'Null': col[2] if len(col) > 2 else '',
+                                'Key': col[3] if len(col) > 3 else '',
+                                'Default': col[4] if len(col) > 4 else None,
+                                'Extra': col[5] if len(col) > 5 else ''
+                            })
+                    
+                    tables.append({
+                        'name': table_name,
+                        'row_count': row_count,
+                        'size_mb': size_mb,
+                        'columns': columns
+                    })
+                
+                # Get top 5 most active tables by row count
+                table_stats_sorted = sorted(table_stats, key=lambda x: x['rows'], reverse=True)
+                data_analysis['most_active_tables'] = table_stats_sorted[:5]
+                
+                # Business Metrics - Students
+                try:
+                    cursor.execute("SELECT COUNT(*) as count FROM students")
+                    result = cursor.fetchone()
+                    data_analysis['total_students'] = result.get('count', 0) if result else 0
+                    
+                    # Students by status
+                    cursor.execute("""
+                        SELECT status, COUNT(*) as count 
+                        FROM students 
+                        GROUP BY status
+                    """)
+                    status_results = cursor.fetchall()
+                    for row in status_results:
+                        status = row.get('status', 'unknown') if isinstance(row, dict) else row[0]
+                        count = row.get('count', 0) if isinstance(row, dict) else row[1]
+                        data_analysis['students_by_status'][status] = count
+                except Exception as e:
+                    print(f"Error fetching students data: {e}")
+                
+                # Business Metrics - Employees
+                try:
+                    cursor.execute("SELECT COUNT(*) as count FROM employees")
+                    result = cursor.fetchone()
+                    data_analysis['total_employees'] = result.get('count', 0) if result else 0
+                    
+                    # Employees by role
+                    cursor.execute("""
+                        SELECT role, COUNT(*) as count 
+                        FROM employees 
+                        GROUP BY role
+                    """)
+                    role_results = cursor.fetchall()
+                    for row in role_results:
+                        role = row.get('role', 'unknown') if isinstance(row, dict) else row[0]
+                        count = row.get('count', 0) if isinstance(row, dict) else row[1]
+                        data_analysis['employees_by_role'][role] = count
+                    
+                    # Employees by status
+                    cursor.execute("""
+                        SELECT status, COUNT(*) as count 
+                        FROM employees 
+                        GROUP BY status
+                    """)
+                    status_results = cursor.fetchall()
+                    for row in status_results:
+                        status = row.get('status', 'unknown') if isinstance(row, dict) else row[0]
+                        count = row.get('count', 0) if isinstance(row, dict) else row[1]
+                        data_analysis['employees_by_status'][status] = count
+                except Exception as e:
+                    print(f"Error fetching employees data: {e}")
+                
+                # Business Metrics - Parents
+                try:
+                    cursor.execute("SELECT COUNT(*) as count FROM parents")
+                    result = cursor.fetchone()
+                    data_analysis['total_parents'] = result.get('count', 0) if result else 0
+                except Exception as e:
+                    print(f"Error fetching parents data: {e}")
+                
+                # Business Metrics - Academic Levels (Classes)
+                try:
+                    cursor.execute("SELECT COUNT(*) as count FROM academic_levels")
+                    result = cursor.fetchone()
+                    data_analysis['total_academic_levels'] = result.get('count', 0) if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COUNT(*) as count 
+                        FROM academic_levels 
+                        WHERE level_status = 'active'
+                    """)
+                    result = cursor.fetchone()
+                    data_analysis['active_academic_levels'] = result.get('count', 0) if result else 0
+                except Exception as e:
+                    print(f"Error fetching academic levels data: {e}")
+                
+                # Business Metrics - Fees
+                try:
+                    # Fee Structures
+                    cursor.execute("SELECT COUNT(*) as count FROM fee_structures")
+                    result = cursor.fetchone()
+                    data_analysis['total_fee_structures'] = result.get('count', 0) if result else 0
+                    
+                    cursor.execute("""
+                        SELECT COUNT(*) as count 
+                        FROM fee_structures 
+                        WHERE status = 'active'
+                    """)
+                    result = cursor.fetchone()
+                    data_analysis['active_fee_structures'] = result.get('count', 0) if result else 0
+                    
+                    # Fee Items
+                    cursor.execute("SELECT COUNT(*) as count FROM fee_items")
+                    result = cursor.fetchone()
+                    data_analysis['total_fee_items'] = result.get('count', 0) if result else 0
+                    
+                    # Total fee amount from fee structures
+                    cursor.execute("""
+                        SELECT SUM(total_amount) as total 
+                        FROM fee_structures 
+                        WHERE status = 'active'
+                    """)
+                    result = cursor.fetchone()
+                    data_analysis['total_fee_amount'] = float(result.get('total', 0) or 0) if result else 0
+                    
+                    # Student Fees (if table exists)
+                    try:
+                        cursor.execute("SELECT COUNT(*) as count FROM student_fees")
+                        result = cursor.fetchone()
+                        data_analysis['total_student_fees'] = result.get('count', 0) if result else 0
+                        
+                        cursor.execute("""
+                            SELECT COUNT(*) as count 
+                            FROM student_fees 
+                            WHERE payment_status = 'paid'
+                        """)
+                        result = cursor.fetchone()
+                        data_analysis['paid_fees'] = result.get('count', 0) if result else 0
+                        
+                        cursor.execute("""
+                            SELECT COUNT(*) as count 
+                            FROM student_fees 
+                            WHERE payment_status = 'pending' OR payment_status = 'overdue'
+                        """)
+                        result = cursor.fetchone()
+                        data_analysis['pending_fees'] = result.get('count', 0) if result else 0
+                        
+                        cursor.execute("""
+                            SELECT SUM(amount_paid) as total 
+                            FROM student_fees 
+                            WHERE payment_status = 'paid'
+                        """)
+                        result = cursor.fetchone()
+                        data_analysis['total_fee_revenue'] = float(result.get('total', 0) or 0) if result else 0
+                    except Exception as e:
+                        # student_fees table might not exist
+                        pass
+                except Exception as e:
+                    print(f"Error fetching fees data: {e}")
+        except Exception as e:
+            print(f"Error fetching database information: {e}")
+            flash('Error loading database information. Please try again.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    
+    return render_template('dashboards/database_management.html', 
+                         tables=tables,
+                         db_info=db_info,
+                         data_analysis=data_analysis)
+
+# Database Backup & Restore Route
+@app.route('/database/backup-restore')
+@login_required
+def database_backup_restore():
+    """Database backup and restore page for technicians"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    # Get backup settings and history
+    connection = get_db_connection()
+    backup_settings = {
+        'auto_backup_enabled': False,
+        'backup_frequency': 'daily',
+        'last_backup': None,
+        'next_backup': None
+    }
+    backup_history = []
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Check if backup_settings table exists
+                cursor.execute("""
+                    SELECT COUNT(*) as count 
+                    FROM information_schema.tables 
+                    WHERE table_schema = DATABASE() 
+                    AND table_name = 'backup_settings'
+                """)
+                table_exists = cursor.fetchone()
+                
+                if table_exists and table_exists.get('count', 0) > 0:
+                    cursor.execute("SELECT * FROM backup_settings ORDER BY id DESC LIMIT 1")
+                    settings_result = cursor.fetchone()
+                    if settings_result:
+                        backup_settings = {
+                            'auto_backup_enabled': bool(settings_result.get('auto_backup_enabled', 0)),
+                            'backup_frequency': settings_result.get('backup_frequency', 'daily'),
+                            'last_backup': settings_result.get('last_backup'),
+                            'next_backup': settings_result.get('next_backup')
+                        }
+                    
+                    # Get backup history
+                    try:
+                        cursor.execute("""
+                            SELECT * FROM backup_history 
+                            ORDER BY created_at DESC 
+                            LIMIT 10
+                        """)
+                        backup_history = cursor.fetchall()
+                    except:
+                        backup_history = []
+        except Exception as e:
+            print(f"Error fetching backup settings: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+    
+    # Check if backup file exists and get its info
+    backup_file_info = None
+    backup_filename = 'database_backup.xlsx' if EXCEL_AVAILABLE else 'database_backup.zip'
+    backup_file_path = os.path.join(BACKUP_FOLDER, backup_filename)
+    if os.path.exists(backup_file_path):
+        file_stat = os.stat(backup_file_path)
+        # Get absolute file path for direct file link
+        abs_file_path = os.path.abspath(backup_file_path)
+        # Convert to file:// URL format for direct file access
+        file_url = f"file:///{abs_file_path.replace(os.sep, '/')}"
+        backup_file_info = {
+            'exists': True,
+            'size': file_stat.st_size,
+            'modified': datetime.fromtimestamp(file_stat.st_mtime),
+            'url': file_url,
+            'file_path': abs_file_path,
+            'filename': backup_filename
+        }
+        
+        # Check if file is up to date based on backup settings
+        if backup_settings.get('last_backup'):
+            last_backup = backup_settings['last_backup']
+            if isinstance(last_backup, str):
+                try:
+                    last_backup = datetime.strptime(last_backup, '%Y-%m-%d %H:%M:%S')
+                except:
+                    last_backup = None
+            
+            if last_backup:
+                file_modified = datetime.fromtimestamp(file_stat.st_mtime)
+                # Check if file was modified within the last hour of last_backup
+                time_diff = abs((file_modified - last_backup).total_seconds())
+                backup_file_info['is_up_to_date'] = time_diff < 3600  # Within 1 hour
+            else:
+                backup_file_info['is_up_to_date'] = False
+        else:
+            backup_file_info['is_up_to_date'] = False
+    else:
+        backup_file_info = {'exists': False}
+    
+    return render_template('dashboards/database_backup_restore.html', 
+                         backup_settings=backup_settings,
+                         backup_history=backup_history,
+                         excel_available=EXCEL_AVAILABLE,
+                         backup_file_info=backup_file_info)
+
+# Database Backup Export Route
+@app.route('/database/backup-export', methods=['POST'])
+@login_required
+def database_backup_export():
+    """Export database to Excel format"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('database_backup_restore'))
+    
+    try:
+        with connection.cursor() as cursor:
+            # Get all tables
+            cursor.execute("SHOW TABLES")
+            table_results = cursor.fetchall()
+            total_tables = len(table_results)
+            total_records = 0
+            
+            if EXCEL_AVAILABLE:
+                # Create Excel workbook
+                wb = Workbook()
+                wb.remove(wb.active)  # Remove default sheet
+                
+                # Export each table to a separate sheet
+                for table_result in table_results:
+                    table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
+                    
+                    # Create sheet for this table
+                    ws = wb.create_sheet(title=table_name[:31])  # Excel sheet name limit
+                    
+                    # Get table data
+                    cursor.execute(f"SELECT * FROM `{table_name}`")
+                    columns = [desc[0] for desc in cursor.description]
+                    rows = cursor.fetchall()
+                    total_records += len(rows)
+                    
+                    # Write headers
+                    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                    header_font = Font(bold=True, color="FFFFFF")
+                    
+                    for col_idx, col_name in enumerate(columns, 1):
+                        cell = ws.cell(row=1, column=col_idx, value=col_name)
+                        cell.fill = header_fill
+                        cell.font = header_font
+                        cell.alignment = Alignment(horizontal="center", vertical="center")
+                    
+                    # Write data rows
+                    for row_idx, row_data in enumerate(rows, 2):
+                        for col_idx, value in enumerate(row_data, 1):
+                            if isinstance(value, datetime):
+                                value = value.strftime('%Y-%m-%d %H:%M:%S')
+                            elif value is None:
+                                value = ''
+                            ws.cell(row=row_idx, column=col_idx, value=value)
+                    
+                    # Auto-adjust column widths
+                    for column in ws.columns:
+                        max_length = 0
+                        column_letter = column[0].column_letter
+                        for cell in column:
+                            try:
+                                if len(str(cell.value)) > max_length:
+                                    max_length = len(str(cell.value))
+                            except:
+                                pass
+                        adjusted_width = min(max_length + 2, 50)
+                        ws.column_dimensions[column_letter].width = adjusted_width
+                
+                # Save to file on server (fixed filename that gets updated)
+                filename = "database_backup.xlsx"
+                filepath = os.path.join(BACKUP_FOLDER, filename)
+                
+                # Save workbook to file
+                wb.save(filepath)
+                file_size = os.path.getsize(filepath)
+                
+                # Save backup record
+                try:
+                    with connection.cursor() as cursor2:
+                        # Create backup_history table if it doesn't exist
+                        cursor2.execute("""
+                            CREATE TABLE IF NOT EXISTS backup_history (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                filename VARCHAR(255) NOT NULL,
+                                file_path VARCHAR(500),
+                                file_size BIGINT,
+                                table_count INT,
+                                record_count INT,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                created_by VARCHAR(255)
+                            )
+                        """)
+                        connection.commit()
+                        
+                        # Insert backup record
+                        cursor2.execute("""
+                            INSERT INTO backup_history (filename, file_path, file_size, table_count, record_count, created_by)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (filename, filepath, file_size, total_tables, total_records, session.get('full_name', 'Unknown')))
+                        connection.commit()
+                        
+                        # Update last_backup in settings
+                        cursor2.execute("""
+                            UPDATE backup_settings 
+                            SET last_backup = NOW() 
+                            WHERE id = (SELECT id FROM (SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS tmp)
+                        """)
+                        connection.commit()
+                except Exception as e:
+                    print(f"Error saving backup record: {e}")
+                
+                flash('Database backup updated successfully!', 'success')
+                return redirect(url_for('database_backup_restore'))
+            else:
+                # Fallback to CSV (zip multiple files)
+                import zipfile
+                from io import StringIO
+                
+                zip_buffer = BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for table_result in table_results:
+                        table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
+                        
+                        cursor.execute(f"SELECT * FROM `{table_name}`")
+                        columns = [desc[0] for desc in cursor.description]
+                        rows = cursor.fetchall()
+                        total_records += len(rows)
+                        
+                        # Create CSV in memory
+                        csv_buffer = StringIO()
+                        writer = csv.writer(csv_buffer)
+                        writer.writerow(columns)
+                        for row in rows:
+                            writer.writerow([str(v) if v is not None else '' for v in row])
+                        
+                        zip_file.writestr(f"{table_name}.csv", csv_buffer.getvalue())
+                
+                # Save to file on server (fixed filename that gets updated)
+                filename = "database_backup.zip"
+                filepath = os.path.join(BACKUP_FOLDER, filename)
+                
+                with open(filepath, 'wb') as f:
+                    f.write(zip_buffer.getvalue())
+                
+                file_size = os.path.getsize(filepath)
+                
+                flash('Database backup updated successfully!', 'success')
+                return redirect(url_for('database_backup_restore'))
+                
+    except Exception as e:
+        print(f"Error exporting database: {e}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Error exporting database: {str(e)}', 'error')
+        return redirect(url_for('database_backup_restore'))
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
+
+# Database Backup Settings Route
+@app.route('/database/backup-settings', methods=['POST'])
+@login_required
+def database_backup_settings():
+    """Update backup settings"""
+    user_role = session.get('role', '').lower()
+    
+    # Only technicians can access this page
+    if user_role != 'technician':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    auto_backup = request.form.get('auto_backup') == 'on'
+    frequency = request.form.get('frequency', 'daily')
+    
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('database_backup_restore'))
+    
+    try:
+        with connection.cursor() as cursor:
+            # Create backup_settings table if it doesn't exist
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS backup_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    auto_backup_enabled BOOLEAN DEFAULT FALSE,
+                    backup_frequency ENUM('daily', 'weekly', 'monthly') DEFAULT 'daily',
+                    last_backup DATETIME,
+                    next_backup DATETIME,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    updated_by VARCHAR(255)
+                )
+            """)
+            connection.commit()
+            
+            # Calculate next backup time
+            next_backup = None
+            if auto_backup:
+                if frequency == 'daily':
+                    next_backup = datetime.now() + timedelta(days=1)
+                elif frequency == 'weekly':
+                    next_backup = datetime.now() + timedelta(weeks=1)
+                elif frequency == 'monthly':
+                    next_backup = datetime.now() + timedelta(days=30)
+            
+            # Check if settings exist
+            cursor.execute("SELECT COUNT(*) as count FROM backup_settings")
+            exists = cursor.fetchone()
+            
+            if exists and exists.get('count', 0) > 0:
+                # Update existing
+                cursor.execute("""
+                    UPDATE backup_settings 
+                    SET auto_backup_enabled = %s, 
+                        backup_frequency = %s, 
+                        next_backup = %s,
+                        updated_by = %s
+                    WHERE id = (SELECT id FROM (SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS tmp)
+                """, (auto_backup, frequency, next_backup, session.get('full_name', 'Unknown')))
+            else:
+                # Insert new
+                cursor.execute("""
+                    INSERT INTO backup_settings (auto_backup_enabled, backup_frequency, next_backup, updated_by)
+                    VALUES (%s, %s, %s, %s)
+                """, (auto_backup, frequency, next_backup, session.get('full_name', 'Unknown')))
+            
+            connection.commit()
+            flash('Backup settings updated successfully.', 'success')
+    except Exception as e:
+        print(f"Error updating backup settings: {e}")
+        flash('Error updating backup settings.', 'error')
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except:
+                pass
+    
+    return redirect(url_for('database_backup_restore'))
+
 # School Profile Update Route
 @app.route('/system-settings/school-profile', methods=['POST'])
 @login_required
@@ -8741,6 +9401,18 @@ if __name__ == '__main__':
         import traceback
         traceback.print_exc()
         print("The application will continue, but some features may not work correctly.")
+    
+    # Run database migrations automatically on startup
+    try:
+        print("Running database migrations...")
+        from migrations.migration_manager import run_all_migrations
+        run_all_migrations()
+        print("Migrations completed.")
+    except Exception as e:
+        print(f"Warning: Error running migrations: {e}")
+        import traceback
+        traceback.print_exc()
+        print("The application will continue, but database may not be up to date.")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
 

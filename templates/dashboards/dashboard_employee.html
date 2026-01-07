@@ -397,8 +397,9 @@
         <i class="fas fa-plug w-5"></i>
         <span>Integrations</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Database'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+    <a href="{{ url_for('database_management') }}" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'database_management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'database_management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-database w-5"></i>
         <span>Database</span>
     </a>

@@ -20,6 +20,17 @@ try:
     print("Attempting to import app from app.py...")
     from app import app
     
+    # Run database migrations automatically on startup
+    try:
+        print("Running database migrations...")
+        from migrations.migration_manager import run_all_migrations
+        run_all_migrations()
+        print("Migrations completed.")
+    except Exception as e:
+        print(f"Warning: Error running migrations: {e}")
+        import traceback
+        traceback.print_exc()
+    
     # Verify the app is loaded and has routes
     if app is None:
         raise ImportError("Failed to import app from app.py - app is None")
