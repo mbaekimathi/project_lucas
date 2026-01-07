@@ -30,144 +30,8 @@ from io import BytesIO
 # Load environment variables from .env file
 load_dotenv()
 
-# Detect if running on localhost or hosted (cPanel)
-def is_localhost():
-    """Detect if application is running on localhost or hosted environment"""
-    # Method 1: Check DEPLOYMENT_ENV environment variable (most reliable - user can force it)
-    deployment_env = os.environ.get('DEPLOYMENT_ENV', '').lower()
-    if deployment_env in ['production', 'hosted', 'cpanel']:
-        print("Environment detection: DEPLOYMENT_ENV set to hosted/cPanel")
-        return False
-    if deployment_env in ['development', 'local', 'localhost']:
-        print("Environment detection: DEPLOYMENT_ENV set to localhost")
-        return True
-    
-    # Method 2: Check if DB_USER is explicitly set in environment
-    # If DB_USER is 'projectl_school', it's definitely hosted
-    db_user = os.environ.get('DB_USER', '')
-    if db_user and 'projectl' in db_user.lower():
-        print(f"Environment detection: DB_USER '{db_user}' indicates hosted/cPanel")
-        return False
-    if db_user == 'root':
-        print(f"Environment detection: DB_USER 'root' indicates localhost")
-        return True
-    
-    # Method 3: Check if DB_NAME is explicitly set in environment
-    # If DB_NAME is 'projectl_school', it's definitely hosted
-    db_name = os.environ.get('DB_NAME', '')
-    if db_name and 'projectl' in db_name.lower():
-        print(f"Environment detection: DB_NAME '{db_name}' indicates hosted/cPanel")
-        return False
-    if db_name == 'modern_school':
-        print(f"Environment detection: DB_NAME 'modern_school' indicates localhost")
-        return True
-    
-    # Method 4: Check if DB_PASSWORD is set and matches cPanel password
-    db_password = os.environ.get('DB_PASSWORD', '')
-    if db_password == 'Itskimathi007':
-        print("Environment detection: DB_PASSWORD matches cPanel credentials")
-        return False
-    
-    # Method 5: Check actual network interface IP address
-    try:
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            # Connect to external address to get local IP
-            s.connect(('8.8.8.8', 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-            if local_ip == '127.0.0.1':
-                print(f"Environment detection: Local IP {local_ip} indicates localhost")
-                return True
-            # If IP is not 127.0.0.1, likely on a server (could be local network or remote)
-            # This alone isn't definitive, so we continue checking
-        except Exception as e:
-            s.close()
-    except:
-        pass
-    
-    # Method 6: Check hostname patterns
-    try:
-        import socket
-        hostname = socket.gethostname().lower()
-        # Common localhost indicators
-        localhost_indicators = ['localhost', '127.0.0.1', 'desktop', 'laptop', 'pc-', 'computer']
-        if any(indicator in hostname for indicator in localhost_indicators):
-            print(f"Environment detection: Hostname '{hostname}' indicates localhost")
-            return True
-        # Server-like hostnames (contains domain patterns)
-        if '.' in hostname and len(hostname.split('.')) > 1:
-            print(f"Environment detection: Hostname '{hostname}' looks like a server (hosted)")
-            return False
-    except:
-        pass
-    
-    # Method 7: Check FLASK_ENV
-    flask_env = os.environ.get('FLASK_ENV', '').lower()
-    if flask_env == 'development':
-        print("Environment detection: FLASK_ENV=development indicates localhost")
-        return True
-    if flask_env == 'production':
-        print("Environment detection: FLASK_ENV=production indicates hosted")
-        return False
-    
-    # Method 8: Default fallback
-    # If no explicit indicators found, check if we can determine from system
-    # For Windows, check if we're on a typical development machine
-    import platform
-    if platform.system() == 'Windows':
-        # On Windows, if no explicit env vars set, likely localhost
-        print("Environment detection: Windows system, defaulting to localhost")
-        return True
-    
-    # If still uncertain, default to localhost (safer for development)
-    # User should set DEPLOYMENT_ENV if detection fails
-    print("Environment detection: No clear indicators, defaulting to localhost")
-    print("  Tip: Set DEPLOYMENT_ENV=production or DEPLOYMENT_ENV=development to override")
-    return True
-
-# Validate critical environment variables
-def validate_env_vars():
-    """Validate that critical environment variables are set"""
-    # SECRET_KEY is always required (no safe default)
-    secret_key = os.environ.get('SECRET_KEY', '')
-    
-    if not secret_key or secret_key == 'your-secret-key-change-in-production':
-        print("=" * 60)
-        print("SECURITY WARNING: Using default or empty SECRET_KEY!")
-        print("This is insecure and should be changed immediately.")
-        print("Generate a secure key using: python -c 'import secrets; print(secrets.token_hex(32))'")
-        print("=" * 60)
-        # Check if we're in production or hosted environment
-        is_production = os.environ.get('FLASK_ENV') == 'production'
-        is_hosted = not is_localhost()
-        if is_production or is_hosted:
-            print("ERROR: SECRET_KEY must be set to a secure value in production/hosted environment!")
-            print("Please set SECRET_KEY in your environment variables or .env file.")
-            print("WARNING: Application will start but sessions will be insecure until SECRET_KEY is set!")
-            # Don't raise error - let app start but log the critical warning
-            # This allows the app to start so you can access it to fix the issue
-    
-    # Database config will use defaults if env vars not set, so we just log the detected environment
-    is_local = is_localhost()
-    env_type = "localhost/development" if is_local else "cPanel/hosted"
-    print(f"Database environment detected: {env_type}")
-    if not is_local:
-        print("Using cPanel/hosted database defaults.")
-    else:
-        print("Using localhost/development database defaults.")
-
-# Run validation
-validate_env_vars()
-
-# Initialize Flask app with explicit paths for hosted deployment
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-app = Flask(__name__, 
-            template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
-# SECRET_KEY is required - validation above ensures it exists (or fails in production)
-app.secret_key = os.environ.get('SECRET_KEY') or 'your-secret-key-change-in-production'
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 
 # Email configuration
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
@@ -180,23 +44,18 @@ app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'norep
 # Initialize Flask-Mail
 mail = Mail(app)
 
-# File upload configuration - use absolute paths for hosted deployment
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'profiles')
-PAYMENT_PROOF_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads', 'payment_proofs')
+# File upload configuration
+UPLOAD_FOLDER = 'static/uploads/profiles'
+PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 ALLOWED_PAYMENT_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['PAYMENT_PROOF_FOLDER'] = PAYMENT_PROOF_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 
-# Create upload directories if they don't exist (with error handling)
-try:
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
-    print(f"Upload directories created: {UPLOAD_FOLDER}, {PAYMENT_PROOF_FOLDER}")
-except Exception as e:
-    print(f"Error creating upload directories: {e}")
+# Create upload directories if they don't exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -316,40 +175,15 @@ def inject_school_settings():
         'academic_levels': academic_levels
     }
 
-# Database configuration with automatic environment detection
-def get_db_config():
-    """Get database configuration based on environment (localhost vs hosted)"""
-    is_local = is_localhost()
-    
-    if is_local:
-        # Localhost/Development defaults
-        defaults = {
-            'host': 'localhost',
-            'user': 'root',
-            'password': '',
-            'database': 'modern_school'
-        }
-    else:
-        # cPanel/Hosted defaults
-        defaults = {
-            'host': 'localhost',  # cPanel usually uses localhost for MySQL
-            'user': 'projectl_school',
-            'password': 'Itskimathi007',
-            'database': 'projectl_school'
-        }
-    
-    # Environment variables always override defaults
-    return {
-        'host': os.environ.get('DB_HOST', defaults['host']),
-        'user': os.environ.get('DB_USER', defaults['user']),
-        'password': os.environ.get('DB_PASSWORD', defaults['password']),
-        'database': os.environ.get('DB_NAME', defaults['database']),
-        'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor
-    }
-
-# Initialize database configuration
-DB_CONFIG = get_db_config()
+# Database configuration
+DB_CONFIG = {
+    'host': os.environ.get('DB_HOST', 'localhost'),
+    'user': os.environ.get('DB_USER', 'root'),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'database': os.environ.get('DB_NAME', 'modern_school'),
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor
+}
 
 def ensure_database_exists():
     """Check if database exists, create it if it doesn't"""
@@ -747,7 +581,7 @@ def init_db():
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE academic_levels ADD INDEX idx_level_status (level_status)")
                     connection.commit()
-                    print("[OK] Migrated academic_levels.status to level_status")
+                    print("✓ Migrated academic_levels.status to level_status")
             except Exception as e:
                 # Column might not exist or already renamed
                 print(f"Migration note: {e}")
@@ -814,7 +648,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER is_current")
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
-                    print("[OK] Added is_locked and locked_at columns to academic_years table")
+                    print("✓ Added is_locked and locked_at columns to academic_years table")
             except Exception as e:
                 print(f"Migration note for academic_years.is_locked: {e}")
                 pass
@@ -825,7 +659,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("[OK] Updated academic_years.status enum to include 'suspended'")
+                    print("✓ Updated academic_years.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for academic_years.status enum: {e}")
                 pass
@@ -860,7 +694,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
-                    print("[OK] Added is_locked and locked_at columns to terms table")
+                    print("✓ Added is_locked and locked_at columns to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_locked: {e}")
                 pass
@@ -871,7 +705,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("[OK] Updated terms.status enum to include 'suspended'")
+                    print("✓ Updated terms.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for terms.status enum: {e}")
                 pass
@@ -882,7 +716,7 @@ def init_db():
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_current BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
-                    print("[OK] Added is_current column to terms table")
+                    print("✓ Added is_current column to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_current: {e}")
                 pass
@@ -913,7 +747,7 @@ def init_db():
                     cursor.execute("ALTER TABLE fee_structures ADD FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_term (term_id)")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_academic_year (academic_year_id)")
-                    print("[OK] Added term_id and academic_year_id to fee_structures")
+                    print("✓ Added term_id and academic_year_id to fee_structures")
             except Exception as e:
                 print(f"Migration note for fee_structures: {e}")
                 pass
@@ -930,7 +764,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN student_category VARCHAR(50) NULL AFTER special_needs")
-                    print("[OK] Added student_category column to students table")
+                    print("✓ Added student_category column to students table")
             except Exception as e:
                 print(f"Migration note for student_category: {e}")
                 pass
@@ -946,7 +780,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_name VARCHAR(255) NULL AFTER student_category")
-                    print("[OK] Added sponsor_name column to students table")
+                    print("✓ Added sponsor_name column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_name: {e}")
                 pass
@@ -963,7 +797,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_phone VARCHAR(50) NULL AFTER sponsor_name")
-                    print("[OK] Added sponsor_phone column to students table")
+                    print("✓ Added sponsor_phone column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_phone: {e}")
                 pass
@@ -980,7 +814,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_email VARCHAR(255) NULL AFTER sponsor_phone")
-                    print("[OK] Added sponsor_email column to students table")
+                    print("✓ Added sponsor_email column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_email: {e}")
                 pass
@@ -1746,68 +1580,34 @@ This is an automated message. Please do not reply to this email.
 # Routes
 @app.route('/')
 def home():
-    """Home page route - handles both localhost and hosted deployments"""
-    try:
-        # Fetch active academic levels for admission form
-        academic_levels = []
-        connection = get_db_connection()
-        if connection:
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT id, level_category, level_name, level_description 
-                        FROM academic_levels 
-                        WHERE level_status = 'active'
-                        ORDER BY level_name ASC
-                    """)
-                    results = cursor.fetchall()
-                    
-                    if results:
-                        for row in results:
-                            academic_levels.append({
-                                'id': row.get('id'),
-                                'level_category': row.get('level_category', ''),
-                                'level_name': row.get('level_name', ''),
-                                'level_description': row.get('level_description', '')
-                            })
-            except Exception as e:
-                print(f"Error fetching academic levels for home: {e}")
-                # Continue with empty academic_levels if database query fails
-            finally:
-                connection.close()
-        
-        # Render the home template
-        return render_template('home.html', academic_levels=academic_levels)
+    # Fetch active academic levels for admission form
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description 
+                    FROM academic_levels 
+                    WHERE level_status = 'active'
+                    ORDER BY level_name ASC
+                """)
+                results = cursor.fetchall()
+                
+                if results:
+                    for row in results:
+                        academic_levels.append({
+                            'id': row.get('id'),
+                            'level_category': row.get('level_category', ''),
+                            'level_name': row.get('level_name', ''),
+                            'level_description': row.get('level_description', '')
+                        })
+        except Exception as e:
+            print(f"Error fetching academic levels for home: {e}")
+        finally:
+            connection.close()
     
-    except Exception as e:
-        # Fallback: Return a simple message if template rendering fails
-        print(f"Error in home route: {e}")
-        import traceback
-        traceback.print_exc()
-        # Return a simple HTML response as fallback
-        error_html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <title>Project Lucas - Deployment Successful</title>
-    <meta charset="UTF-8">
-    <style>
-        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }}
-        .container {{ background: white; padding: 30px; border-radius: 10px; max-width: 600px; margin: 0 auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
-        h1 {{ color: #2563eb; }}
-        .success {{ color: #10b981; font-weight: bold; }}
-        .error {{ color: #ef4444; font-size: 12px; margin-top: 20px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>✅ Project Lucas is Running Successfully!</h1>
-        <p class="success">Flask application is deployed and working on cPanel/Passenger.</p>
-        <p>If you see this message, the deployment is successful.</p>
-        <p class="error">Template error: {str(e)}</p>
-    </div>
-</body>
-</html>"""
-        return error_html, 200
+    return render_template('home.html', academic_levels=academic_levels)
 
 @app.route('/about')
 def about():
@@ -7612,308 +7412,6 @@ def reset_role():
     flash('Switched back to your technician role.', 'success')
     return redirect(url_for('role_switch_page'))
 
-# Database Route (for technicians)
-@app.route('/dashboard/employee/database')
-@login_required
-def database_page():
-    """Database management page for technicians"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians can access this page
-    if user_role != 'technician':
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-    
-    return render_template('dashboards/database.html')
-
-# Database Analytics API (for technicians)
-@app.route('/api/database/analytics')
-@login_required
-def database_analytics():
-    """Get analytics for all database tables"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians can access this
-    if user_role != 'technician':
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
-    
-    connection = get_db_connection()
-    if not connection:
-        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
-    
-    try:
-        with connection.cursor() as cursor:
-            # List of all tables to analyze
-            tables = [
-                'users', 'students', 'parents', 'admissions', 'employees',
-                'employee_salaries', 'employee_salary_payments', 'employee_salary_audits',
-                'news', 'gallery', 'school_settings', 'academic_levels',
-                'fee_structures', 'fee_items', 'student_payments', 'academic_years', 'terms',
-                'term_academic_levels'
-            ]
-            
-            analytics = {}
-            
-            for table in tables:
-                try:
-                    # Get row count
-                    cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
-                    count_result = cursor.fetchone()
-                    row_count = count_result.get('count', 0) if count_result else 0
-                    
-                    # Get table size (approximate)
-                    cursor.execute(f"""
-                        SELECT 
-                            ROUND(((data_length + index_length) / 1024 / 1024), 2) AS size_mb
-                        FROM information_schema.TABLES 
-                        WHERE table_schema = DATABASE() 
-                        AND table_name = %s
-                    """, (table,))
-                    size_result = cursor.fetchone()
-                    size_mb = size_result.get('size_mb', 0) if size_result else 0
-                    
-                    # Get additional stats based on table type
-                    stats = {'row_count': row_count, 'size_mb': size_mb}
-                    
-                    # Table-specific analytics
-                    if table == 'students':
-                        cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'in session'")
-                        active = cursor.fetchone()
-                        stats['active_students'] = active.get('count', 0) if active else 0
-                        
-                        cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'pending approval'")
-                        pending = cursor.fetchone()
-                        stats['pending_students'] = pending.get('count', 0) if pending else 0
-                    
-                    elif table == 'employees':
-                        cursor.execute("SELECT COUNT(*) as count FROM employees WHERE status = 'active'")
-                        active = cursor.fetchone()
-                        stats['active_employees'] = active.get('count', 0) if active else 0
-                        
-                        cursor.execute("SELECT COUNT(*) as count FROM employees WHERE status = 'pending approval'")
-                        pending = cursor.fetchone()
-                        stats['pending_employees'] = pending.get('count', 0) if pending else 0
-                    
-                    elif table == 'users':
-                        cursor.execute("SELECT role, COUNT(*) as count FROM users GROUP BY role")
-                        roles = cursor.fetchall()
-                        stats['by_role'] = {r.get('role'): r.get('count', 0) for r in roles}
-                    
-                    elif table == 'student_payments':
-                        cursor.execute("SELECT SUM(amount_paid) as total FROM student_payments")
-                        total = cursor.fetchone()
-                        stats['total_payments'] = float(total.get('total', 0)) if total and total.get('total') else 0
-                    
-                    elif table == 'employee_salary_payments':
-                        cursor.execute("SELECT SUM(amount_paid) as total FROM employee_salary_payments")
-                        total = cursor.fetchone()
-                        stats['total_salary_payments'] = float(total.get('total', 0)) if total and total.get('total') else 0
-                    
-                    analytics[table] = stats
-                    
-                except Exception as e:
-                    # Table might not exist or have issues
-                    analytics[table] = {'row_count': 0, 'size_mb': 0, 'error': str(e)}
-            
-            # Get database total size
-            cursor.execute("""
-                SELECT 
-                    ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS total_size_mb
-                FROM information_schema.TABLES 
-                WHERE table_schema = DATABASE()
-            """)
-            db_size = cursor.fetchone()
-            total_db_size = db_size.get('total_size_mb', 0) if db_size else 0
-            
-            return jsonify({
-                'success': True,
-                'analytics': analytics,
-                'total_database_size_mb': total_db_size
-            })
-            
-    except Exception as e:
-        print(f"Error fetching database analytics: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        connection.close()
-
-# Database Backup & Restore Route (for technicians)
-@app.route('/dashboard/employee/database/backup-restore')
-@login_required
-def database_backup_restore():
-    """Database backup and restore page for technicians"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians can access this page
-    if user_role != 'technician':
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-    
-    return render_template('dashboards/database_backup_restore.html')
-
-# Database Backup to Excel API (for technicians)
-@app.route('/api/database/backup/excel', methods=['POST'])
-@login_required
-def backup_to_excel():
-    """Export database tables to Excel file"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians can access this
-    if user_role != 'technician':
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
-    
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils import get_column_letter
-    except ImportError:
-        return jsonify({'success': False, 'message': 'openpyxl library not installed. Please install it using: pip install openpyxl'}), 500
-    
-    data = request.get_json()
-    tables = data.get('tables', [])  # List of table names to export
-    
-    if not tables:
-        return jsonify({'success': False, 'message': 'No tables selected'}), 400
-    
-    connection = get_db_connection()
-    if not connection:
-        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
-    
-    try:
-        # Create Excel workbook
-        wb = Workbook()
-        wb.remove(wb.active)  # Remove default sheet
-        
-        with connection.cursor() as cursor:
-            for table_name in tables:
-                try:
-                    # Get all data from table
-                    cursor.execute(f"SELECT * FROM {table_name}")
-                    rows = cursor.fetchall()
-                    
-                    if not rows:
-                        continue  # Skip empty tables
-                    
-                    # Create worksheet for this table
-                    ws = wb.create_sheet(title=table_name[:31])  # Excel sheet name limit is 31 chars
-                    
-                    # Get column names from first row
-                    if rows:
-                        column_names = list(rows[0].keys())
-                        
-                        # Write header row with styling
-                        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                        header_font = Font(bold=True, color="FFFFFF")
-                        
-                        for col_num, column_name in enumerate(column_names, 1):
-                            cell = ws.cell(row=1, column=col_num, value=column_name)
-                            cell.fill = header_fill
-                            cell.font = header_font
-                            cell.alignment = Alignment(horizontal="center", vertical="center")
-                        
-                        # Write data rows
-                        for row_num, row_data in enumerate(rows, 2):
-                            for col_num, column_name in enumerate(column_names, 1):
-                                value = row_data.get(column_name, '')
-                                # Handle None values and dates
-                                if value is None:
-                                    value = ''
-                                elif isinstance(value, datetime):
-                                    value = value.strftime('%Y-%m-%d %H:%M:%S')
-                                elif isinstance(value, (bytes, bytearray)):
-                                    value = str(value)
-                                ws.cell(row=row_num, column=col_num, value=value)
-                        
-                        # Auto-adjust column widths
-                        for col_num, column_name in enumerate(column_names, 1):
-                            max_length = len(str(column_name))
-                            for row in ws.iter_rows(min_row=2, max_row=min(len(rows) + 1, 100)):  # Check first 100 rows
-                                cell_value = str(row[col_num - 1].value or '')
-                                if len(cell_value) > max_length:
-                                    max_length = len(cell_value)
-                            adjusted_width = min(max_length + 2, 50)  # Cap at 50
-                            ws.column_dimensions[get_column_letter(col_num)].width = adjusted_width
-                    
-                except Exception as e:
-                    print(f"Error exporting table {table_name}: {e}")
-                    continue  # Skip tables that fail
-        
-        # Save to BytesIO
-        from io import BytesIO
-        output = BytesIO()
-        wb.save(output)
-        output.seek(0)
-        
-        # Create response
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"database_backup_{timestamp}.xlsx"
-        
-        response = make_response(output.getvalue())
-        response.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        
-        return response
-        
-    except Exception as e:
-        print(f"Error creating Excel backup: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        connection.close()
-
-# Get list of tables API (for technicians)
-@app.route('/api/database/tables')
-@login_required
-def get_database_tables():
-    """Get list of all database tables"""
-    user_role = session.get('role', '').lower()
-    
-    # Only technicians can access this
-    if user_role != 'technician':
-        return jsonify({'success': False, 'message': 'Permission denied'}), 403
-    
-    connection = get_db_connection()
-    if not connection:
-        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
-    
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT table_name, 
-                       (SELECT COUNT(*) FROM information_schema.columns 
-                        WHERE table_schema = DATABASE() 
-                        AND table_name = t.table_name) as column_count,
-                       (SELECT COUNT(*) FROM information_schema.statistics 
-                        WHERE table_schema = DATABASE() 
-                        AND table_name = t.table_name) as index_count
-                FROM information_schema.tables t
-                WHERE table_schema = DATABASE()
-                AND table_type = 'BASE TABLE'
-                ORDER BY table_name
-            """)
-            tables = cursor.fetchall()
-            
-            return jsonify({
-                'success': True,
-                'tables': [
-                    {
-                        'name': t.get('table_name'),
-                        'column_count': t.get('column_count', 0),
-                        'index_count': t.get('index_count', 0)
-                    }
-                    for t in tables
-                ]
-            })
-            
-    except Exception as e:
-        print(f"Error fetching tables: {e}")
-        return jsonify({'success': False, 'message': str(e)}), 500
-    finally:
-        connection.close()
-
 # System Settings Route (for technicians)
 @app.route('/system-settings')
 @login_required
@@ -7994,20 +7492,20 @@ def system_settings():
                                 'updated_at': row.get('updated_at')
                             }
                             academic_levels.append(level_data)
-                        print(f"[OK] Successfully fetched {len(academic_levels)} academic level(s)")
+                        print(f"✓ Successfully fetched {len(academic_levels)} academic level(s)")
                     else:
-                        print("[INFO] No academic levels found in database (table exists but is empty)")
+                        print("ℹ No academic levels found in database (table exists but is empty)")
                 except pymysql.err.ProgrammingError as e:
                     # Table doesn't exist (error 1146)
                     error_code = e.args[0] if e.args else 0
                     if error_code == 1146 or "doesn't exist" in str(e).lower():
-                        print("[WARNING] Academic levels table does not exist yet")
+                        print("⚠ Academic levels table does not exist yet")
                     else:
-                        print(f"[WARNING] SQL Error: {e}")
+                        print(f"⚠ SQL Error: {e}")
                         import traceback
                         traceback.print_exc()
                 except Exception as e:
-                    print(f"[WARNING] Error fetching academic levels: {e}")
+                    print(f"⚠ Error fetching academic levels: {e}")
                     import traceback
                     traceback.print_exc()
                 
@@ -8023,7 +7521,7 @@ def system_settings():
                     """, (today,))
                     if cursor.rowcount > 0:
                         connection.commit()
-                        print(f"[OK] Auto-locked {cursor.rowcount} academic year(s) that have ended")
+                        print(f"✓ Auto-locked {cursor.rowcount} academic year(s) that have ended")
                     
                     cursor.execute("""
                         SELECT id, year_name, start_date, end_date, status, is_current, is_locked, locked_at
@@ -8142,7 +7640,7 @@ def system_settings():
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
         except Exception as e:
-            print(f"[ERROR] Error fetching data: {e}")
+            print(f"❌ Error fetching data: {e}")
             print(f"Error type: {type(e).__name__}")
             print(f"Error args: {e.args}")
             import traceback
@@ -9198,29 +8696,8 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
-# Error Handlers
-@app.errorhandler(404)
-def page_not_found(e):
-    """Custom 404 error page"""
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    """Custom 500 error page"""
-    return render_template('errors/500.html'), 500
-
-@app.errorhandler(403)
-def forbidden(e):
-    """Custom 403 error page"""
-    return render_template('errors/403.html'), 403
-
-# Passenger (cPanel) compatibility
-# Passenger handles running the app, so we don't use app.run()
-# The app variable is exported for Passenger to import
-
-# For local development only: run the development server
 if __name__ == '__main__':
-    # Initialize database on startup (development only)
+    # Initialize database on startup
     print("Initializing database...")
     try:
         if init_db():
@@ -9234,12 +8711,6 @@ if __name__ == '__main__':
         traceback.print_exc()
         print("The application will continue, but some features may not work correctly.")
     
-    # Only run development server if not in production/Passenger environment
-    # Passenger will import the app and run it automatically
-    if os.environ.get('FLASK_ENV') != 'production' and not os.environ.get('PASSENGER_APP_ENV'):
-        # Development server (localhost only)
-        app.run(debug=True, host='127.0.0.1', port=5000)
-    else:
-        print("Running in production mode. Passenger will handle the application server.")
+    app.run(debug=True, host='0.0.0.0', port=5000)
 
 
