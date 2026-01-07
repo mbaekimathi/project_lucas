@@ -11,15 +11,46 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Database configuration
-DB_CONFIG = {
-    'host': os.environ.get('DB_HOST', 'localhost'),
-    'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD', ''),
-    'database': os.environ.get('DB_NAME', 'modern_school'),
-    'charset': 'utf8mb4',
-    'cursorclass': pymysql.cursors.DictCursor
-}
+# Function to detect if running on hosted server
+def is_hosted():
+    """Check if the application is running on the hosted server"""
+    # Check if we're in the production path
+    current_path = os.path.abspath(os.getcwd())
+    if '/home1/projectl/project_lucas' in current_path or '\\home1\\projectl\\project_lucas' in current_path:
+        return True
+    
+    # Check for environment variable that indicates hosting
+    if os.environ.get('IS_HOSTED', '').lower() in ['true', '1', 'yes']:
+        return True
+    
+    # Check if DB_HOST is set to something other than localhost (indicates hosted)
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    if db_host != 'localhost' and db_host != '127.0.0.1':
+        return True
+    
+    return False
+
+# Database configuration - automatically detect hosted vs local
+if is_hosted():
+    # Hosted server credentials
+    DB_CONFIG = {
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'user': os.environ.get('DB_USER', 'projectl_school'),
+        'password': os.environ.get('DB_PASSWORD', 'Itskimathi007'),
+        'database': os.environ.get('DB_NAME', 'projectl_school'),
+        'charset': 'utf8mb4',
+        'cursorclass': pymysql.cursors.DictCursor
+    }
+else:
+    # Local development credentials
+    DB_CONFIG = {
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'user': os.environ.get('DB_USER', 'root'),
+        'password': os.environ.get('DB_PASSWORD', ''),
+        'database': os.environ.get('DB_NAME', 'modern_school'),
+        'charset': 'utf8mb4',
+        'cursorclass': pymysql.cursors.DictCursor
+    }
 
 def check_column_exists(cursor, table_name, column_name):
     """Check if a column exists in a table"""
