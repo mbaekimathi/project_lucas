@@ -80,3 +80,4 @@ if __name__ == '__main__':
     description = ' '.join(sys.argv[1:])
     create_migration(description)
 
+

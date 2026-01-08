@@ -8131,6 +8131,86 @@ def system_settings():
                          current_academic_year=current_academic_year,
                          today=today)
 
+# Integration Settings Route (for technicians)
+@app.route('/dashboard/employee/integration-settings')
+@login_required
+def integration_settings():
+    """Integration settings page for technicians"""
+    user_role = session.get('role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check permission OR role-based access - allow technicians
+    has_access = check_permission_or_role('integration_settings', 
+                                         allowed_roles=['technician'])
+    
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    # Get integration settings from database if they exist
+    connection = get_db_connection()
+    integration_data = {
+        'whatsapp': {
+            'enabled': False,
+            'api_key': '',
+            'api_secret': '',
+            'phone_number': '',
+            'webhook_url': ''
+        },
+        'email': {
+            'enabled': False,
+            'smtp_server': '',
+            'smtp_port': 587,
+            'smtp_username': '',
+            'smtp_password': '',
+            'from_email': '',
+            'from_name': ''
+        },
+        'sms': {
+            'enabled': False,
+            'provider': '',
+            'api_key': '',
+            'api_secret': '',
+            'sender_id': ''
+        }
+    }
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Check if integration_settings table exists and fetch data
+                cursor.execute("""
+                    SELECT integration_type, settings_json 
+                    FROM integration_settings 
+                    WHERE id = 1
+                """)
+                result = cursor.fetchone()
+                if result:
+                    # Parse JSON settings if stored as JSON
+                    import json
+                    if isinstance(result, dict):
+                        integration_type = result.get('integration_type', '')
+                        settings_json = result.get('settings_json', '{}')
+                    else:
+                        integration_type = result[0] if len(result) > 0 else ''
+                        settings_json = result[1] if len(result) > 1 else '{}'
+                    
+                    try:
+                        settings = json.loads(settings_json) if settings_json else {}
+                        if integration_type in integration_data:
+                            integration_data[integration_type].update(settings)
+                    except:
+                        pass
+        except Exception as e:
+            # Table might not exist yet, that's okay
+            print(f"Integration settings table may not exist: {e}")
+        finally:
+            connection.close()
+    
+    return render_template('dashboards/integration_settings.html', 
+                         integration_data=integration_data,
+                         role=user_role)
+
 # Database Management Route (for technicians)
 @app.route('/database')
 @login_required

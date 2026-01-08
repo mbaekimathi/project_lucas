@@ -232,3 +232,4 @@ if __name__ == '__main__':
     # Can be run standalone
     run_all_migrations()
 
+

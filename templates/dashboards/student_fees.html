@@ -10,6 +10,15 @@
 
 {% block sidebar_content %}
 <div class="space-y-2">
+    <!-- Student Management Link -->
+    <a href="/student-management" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 border-l-4"
+       style="border-color: var(--role-primary);">
+        <i class="fas fa-user-graduate w-5"></i>
+        <span class="font-medium">Student Management</span>
+        <i class="fas fa-chevron-right ml-auto"></i>
+    </a>
+    
     <!-- Add Fee Structure Link -->
     <button @click="$store.feeStructure.open()" 
             class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]">

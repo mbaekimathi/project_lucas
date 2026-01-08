@@ -170,3 +170,4 @@ alias deploy='cd /home1/projectl/project_lucas && git pull origin main && touch 
 
 Then just run: `deploy`
 
+

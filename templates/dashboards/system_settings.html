@@ -88,68 +88,6 @@
     </div>
 </div>
 
-<!-- C. Communication -->
-<div class="mb-4 pb-3 border-b border-gray-700/30">
-    <div class="px-4 py-2 mb-2 bg-gradient-to-r from-green-600/20 to-green-500/10 rounded-lg border-l-4 border-green-500">
-        <div class="flex items-center space-x-2">
-            <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-                <span class="text-white text-xs font-bold">C</span>
-            </div>
-            <p class="text-xs font-bold text-green-300 uppercase tracking-wider">Communication</p>
-        </div>
-    </div>
-    <div class="ml-2 space-y-1">
-        <a @click.prevent="activeSection = 'email-settings'; loadSection('email-settings')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
-           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'email-settings'}"
-           :style="activeSection === 'email-settings' ? 'border-color: var(--role-primary);' : ''">
-            <i class="fas fa-envelope w-4"></i>
-            <span>Email (SMTP) Settings</span>
-        </a>
-        <a @click.prevent="activeSection = 'sms-settings'; loadSection('sms-settings')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
-           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'sms-settings'}"
-           :style="activeSection === 'sms-settings' ? 'border-color: var(--role-primary);' : ''">
-            <i class="fas fa-sms w-4"></i>
-            <span>SMS Settings</span>
-        </a>
-        <a @click.prevent="activeSection = 'notification-templates'; loadSection('notification-templates')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
-           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'notification-templates'}"
-           :style="activeSection === 'notification-templates' ? 'border-color: var(--role-primary);' : ''">
-            <i class="fas fa-bell w-4"></i>
-            <span>Notification Templates</span>
-        </a>
-    </div>
-</div>
-
-<!-- D. System Controls -->
-<div class="mb-4 pb-3 border-b border-gray-700/30">
-    <div class="px-4 py-2 mb-2 bg-gradient-to-r from-orange-600/20 to-orange-500/10 rounded-lg border-l-4 border-orange-500">
-        <div class="flex items-center space-x-2">
-            <div class="w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                <span class="text-white text-xs font-bold">D</span>
-            </div>
-            <p class="text-xs font-bold text-orange-300 uppercase tracking-wider">System Controls</p>
-        </div>
-    </div>
-    <div class="ml-2 space-y-1">
-        <a @click.prevent="activeSection = 'backup-restore'; loadSection('backup-restore')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
-           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'backup-restore'}"
-           :style="activeSection === 'backup-restore' ? 'border-color: var(--role-primary);' : ''">
-            <i class="fas fa-database w-4"></i>
-            <span>Backup & Restore</span>
-        </a>
-        <a @click.prevent="activeSection = 'language-timezone'; loadSection('language-timezone')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
-           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'language-timezone'}"
-           :style="activeSection === 'language-timezone' ? 'border-color: var(--role-primary);' : ''">
-            <i class="fas fa-globe w-4"></i>
-            <span>Language & Timezone</span>
-        </a>
-    </div>
-</div>
 
 {% else %}
 <p class="text-gray-400 text-sm px-4 py-2">Menu items will be added here</p>
@@ -1848,54 +1786,8 @@
             </div>
         </div>
 
-        <!-- Email (SMTP) Settings -->
-        <div x-show="activeSection === 'email-settings'" x-cloak style="display: none;">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                <i class="fas fa-envelope text-green-600 mr-3"></i>
-                Email (SMTP) Settings
-            </h2>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">Configure SMTP server settings for email notifications.</p>
-            <div class="space-y-4">
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Email (SMTP) Settings will be displayed here</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- SMS Settings -->
-        <div x-show="activeSection === 'sms-settings'" x-cloak style="display: none;">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                <i class="fas fa-sms text-green-600 mr-3"></i>
-                SMS Settings
-            </h2>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">Configure SMS gateway settings for text message notifications.</p>
-            <div class="space-y-4">
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">SMS Settings will be displayed here</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Notification Templates -->
-        <div x-data="{ activeNotificationTab: 'general' }" x-show="activeSection === 'notification-templates'" x-cloak style="display: none;">
-            <div class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl p-4 sm:p-6 mb-6 border border-green-200 dark:border-green-800 shadow-lg">
-                <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 sm:mb-3 flex items-center">
-                    <i class="fas fa-bell text-green-600 dark:text-green-400 mr-2 sm:mr-3 text-2xl sm:text-3xl icon-animated"></i>
-                    <span>Notification Templates</span>
-            </h2>
-                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">Manage email and SMS notification templates for various system events.</p>
-            </div>
-
-            <!-- Notification Tabs -->
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 mb-6">
-                <div class="border-b border-gray-200 dark:border-gray-700">
-                    <nav class="flex flex-wrap -mb-px overflow-x-auto" aria-label="Tabs">
-                        <button @click="activeNotificationTab = 'general'"
-                                :class="activeNotificationTab === 'general' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                                class="whitespace-nowrap py-4 px-4 sm:px-6 border-b-2 font-medium text-sm transition-all duration-200 flex items-center space-x-2">
-                            <i class="fas fa-bell"></i>
-                            <span>General Notification</span>
-                        </button>
+    </div>
+</div>
                         <button @click="activeNotificationTab = 'academic-dates'"
                                 :class="activeNotificationTab === 'academic-dates' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
                                 class="whitespace-nowrap py-4 px-4 sm:px-6 border-b-2 font-medium text-sm transition-all duration-200 flex items-center space-x-2">
@@ -2541,33 +2433,6 @@ Best regards,
             </div>
         </div>
 
-        <!-- Backup & Restore -->
-        <div x-show="activeSection === 'backup-restore'" x-cloak style="display: none;">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                <i class="fas fa-database text-green-600 mr-3"></i>
-                Backup & Restore
-            </h2>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">Manage system backups and restore data from backups.</p>
-            <div class="space-y-4">
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Backup & Restore settings will be displayed here</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Language & Timezone -->
-        <div x-show="activeSection === 'language-timezone'" x-cloak style="display: none;">
-            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                <i class="fas fa-globe text-green-600 mr-3"></i>
-                Language & Timezone
-            </h2>
-            <p class="text-gray-600 dark:text-gray-400 mb-6">Configure system language and timezone settings.</p>
-            <div class="space-y-4">
-                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Language & Timezone settings will be displayed here</p>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
