@@ -3153,6 +3153,69 @@ def dashboard_employee():
                          current_employee_role=current_employee_role,
                          employee_roles_list=employee_roles_list)
 
+# Finance Overview Route
+@app.route('/dashboard/employee/finance-overview')
+@login_required
+def finance_overview():
+    """Finance Overview page for principals and accountants"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check if user is accountant, principal, or viewing as accountant/principal
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_principal or is_technician or has_view_fees_permission or has_manage_fees_permission):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    # Get finance summary data
+    connection = get_db_connection()
+    finance_summary = {
+        'total_students': 0,
+        'total_fee_structures': 0,
+        'total_revenue': 0,
+        'pending_payments': 0,
+        'paid_payments': 0
+    }
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get total students
+                cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'active'")
+                result = cursor.fetchone()
+                finance_summary['total_students'] = result.get('count', 0) if result else 0
+                
+                # Get total fee structures
+                cursor.execute("SELECT COUNT(*) as count FROM fee_structures WHERE status = 'active'")
+                result = cursor.fetchone()
+                finance_summary['total_fee_structures'] = result.get('count', 0) if result else 0
+                
+                # Get total revenue (paid payments)
+                cursor.execute("SELECT COALESCE(SUM(amount_paid), 0) as total FROM student_payments")
+                result = cursor.fetchone()
+                finance_summary['total_revenue'] = float(result.get('total', 0) if result else 0)
+                
+                # Get pending payments (this would need to be calculated from fee structures - payments)
+                # For now, we'll set it to 0 or calculate it if needed
+                finance_summary['pending_payments'] = 0
+                finance_summary['paid_payments'] = finance_summary['total_revenue']
+        except Exception as e:
+            print(f"Error fetching finance summary: {e}")
+        finally:
+            connection.close()
+    
+    return render_template('dashboards/finance_overview.html',
+                         finance_summary=finance_summary,
+                         role=user_role)
+
 # Student Fees Route
 @app.route('/dashboard/employee/student-fees')
 @login_required
@@ -3349,12 +3412,12 @@ def student_fees():
                                         SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
                                                fs.payment_deadline, fs.total_amount, fs.status, fs.category
                                         FROM fee_structures fs
-                                        WHERE fs.academic_level_id = %s 
-                                          AND fs.status = 'active'
-                                        ORDER BY fs.created_at DESC
-                                        LIMIT 1
-                                    """, (academic_level_id,))
-                                    fee_structure_result = cursor.fetchone()
+                                    WHERE fs.academic_level_id = %s 
+                                      AND fs.status = 'active'
+                                    ORDER BY fs.created_at DESC
+                                    LIMIT 1
+                                """, (academic_level_id,))
+                                fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
                                     # Format dates
@@ -8084,15 +8147,20 @@ def reset_role():
 @app.route('/system-settings')
 @login_required
 def system_settings():
-    """System settings page for technicians"""
+    """System settings page for technicians and accountants"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('system_settings', 
-                                         allowed_roles=['technician'])
+    # Check if user is accountant or viewing as accountant
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
     
-    if not has_access:
+    # Check permission OR role-based access - allow technicians and accountants
+    has_access = check_permission_or_role('system_settings', 
+                                         allowed_roles=['technician', 'accountant'])
+    
+    if not (has_access or is_accountant or is_technician):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -8393,7 +8461,120 @@ def system_settings():
                          academic_years=academic_years,
                          terms=terms,
                          current_academic_year=current_academic_year,
-                         today=today)
+                         today=today,
+                         is_accountant=is_accountant)
+
+@app.route('/dashboard/employee/academic-settings')
+@login_required
+def academic_settings():
+    """Academic settings page for accountants - shows only Academic Levels, Years, and Terms"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check if user is accountant or viewing as accountant
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    # Get academic levels, academic years, and terms
+    connection = get_db_connection()
+    academic_levels = []
+    academic_years = []
+    terms = []
+    current_academic_year = None
+    today = datetime.now().date()
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get academic levels
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description, level_status
+                    FROM academic_levels
+                    ORDER BY level_category, level_name ASC
+                """)
+                academic_levels_results = cursor.fetchall()
+                
+                for row in academic_levels_results:
+                    academic_levels.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
+                        'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
+                        'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
+                        'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
+                    })
+                
+                # Get academic years
+                try:
+                    cursor.execute("""
+                        SELECT id, year_name, start_date, end_date, status, is_current
+                        FROM academic_years
+                        ORDER BY start_date DESC
+                    """)
+                    academic_years_results = cursor.fetchall()
+                    
+                    for row in academic_years_results:
+                        year_dict = {
+                            'id': row.get('id') if isinstance(row, dict) else row[0],
+                            'year_name': row.get('year_name', '') if isinstance(row, dict) else row[1],
+                            'start_date': row.get('start_date') if isinstance(row, dict) else row[2],
+                            'end_date': row.get('end_date') if isinstance(row, dict) else row[3],
+                            'status': row.get('status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active'),
+                            'is_current': row.get('is_current', False) if isinstance(row, dict) else (row[5] if len(row) > 5 else False)
+                        }
+                        academic_years.append(year_dict)
+                        
+                        if year_dict.get('is_current'):
+                            current_academic_year = year_dict
+                except Exception as e:
+                    print(f"Note: academic_years table may not exist yet: {e}")
+                    academic_years = []
+                
+                # Get terms with their academic levels
+                try:
+                    cursor.execute("""
+                        SELECT t.id, t.term_name, t.academic_year_id,
+                               t.start_date, t.end_date, t.status, t.is_current, t.is_locked, t.locked_at,
+                               ay.year_name as academic_year_name
+                        FROM terms t
+                        LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                        ORDER BY t.academic_year_id DESC, t.start_date ASC
+                    """)
+                    terms_raw = cursor.fetchall()
+                    terms = []
+                    for term in terms_raw:
+                        term_dict = dict(term) if isinstance(term, dict) else {
+                            'id': term[0], 'term_name': term[1], 'academic_year_id': term[2],
+                            'start_date': term[3], 'end_date': term[4], 'status': term[5],
+                            'is_current': term[6] if len(term) > 6 else False,
+                            'is_locked': term[7] if len(term) > 7 else False,
+                            'locked_at': term[8] if len(term) > 8 else None,
+                            'academic_year_name': term[9] if len(term) > 9 else None
+                        }
+                        terms.append(term_dict)
+                except Exception as e:
+                    print(f"Note: terms table may not exist yet: {e}")
+                    terms = []
+        except Exception as e:
+            print(f"Error fetching academic settings: {e}")
+        finally:
+            connection.close()
+    
+    return render_template('dashboards/academic_settings.html',
+                         academic_levels=academic_levels,
+                         academic_years=academic_years,
+                         terms=terms,
+                         current_academic_year=current_academic_year,
+                         today=today,
+                         role=user_role)
 
 # Integration Settings Route (for technicians)
 @app.route('/dashboard/employee/integration-settings')
@@ -9801,11 +9982,15 @@ def update_school_profile():
 def add_academic_level():
     """Add a new academic level"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Only technicians can add academic levels
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     # Get form data and convert to uppercase
     level_category = request.form.get('level_category', '').strip().upper()
@@ -9816,7 +10001,7 @@ def add_academic_level():
     # Validate required fields
     if not level_category or not level_name:
         flash('Please fill in all required fields (Level Category and Level Name).', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     # Validate status
     if level_status_value not in ['active', 'inactive']:
@@ -9852,9 +10037,13 @@ def add_academic_level():
 def toggle_academic_level_status(level_id):
     """Toggle academic level status between active and inactive"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Only technicians can update academic levels
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Get current status from database
@@ -9900,9 +10089,13 @@ def toggle_academic_level_status(level_id):
 def update_academic_level(level_id):
     """Update an existing academic level"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Only technicians can update academic levels
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Get JSON data
@@ -10003,10 +10196,15 @@ def delete_academic_level(level_id):
 def create_academic_year():
     """Create a new academic year"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     year_name = request.form.get('year_name', '').strip()
     start_date = request.form.get('start_date', '').strip()
@@ -10016,12 +10214,12 @@ def create_academic_year():
     
     if not year_name or not start_date or not end_date:
         flash('All required fields must be filled.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     try:
         with connection.cursor() as cursor:
@@ -10044,15 +10242,20 @@ def create_academic_year():
     finally:
         connection.close()
     
-    return redirect(url_for('system_settings'))
+    return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
 
 @app.route('/system-settings/academic-year/<int:year_id>/update', methods=['POST'])
 @login_required
 def update_academic_year(year_id):
     """Update an academic year"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     data = request.get_json()
@@ -10113,8 +10316,13 @@ def update_academic_year(year_id):
 def toggle_suspend_academic_year(year_id):
     """Toggle academic year status between active and suspended"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -10163,8 +10371,13 @@ def toggle_suspend_academic_year(year_id):
 def toggle_lock_academic_year(year_id):
     """Toggle academic year lock status"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -10216,8 +10429,13 @@ def toggle_lock_academic_year(year_id):
 def delete_academic_year(year_id):
     """Delete an academic year"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -10268,10 +10486,15 @@ def delete_academic_year(year_id):
 def create_term():
     """Create a new term"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     term_name = request.form.get('term_name', '').strip()
     academic_year_id = request.form.get('academic_year_id', '').strip()
@@ -10282,12 +10505,12 @@ def create_term():
     
     if not term_name or not academic_year_id or not start_date or not end_date:
         flash('All required fields must be filled.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
-        return redirect(url_for('system_settings'))
+        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
     
     try:
         with connection.cursor() as cursor:
@@ -10299,7 +10522,7 @@ def create_term():
             
             if not academic_year:
                 flash('Selected academic year not found.', 'error')
-                return redirect(url_for('system_settings'))
+                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
             
             year_start = academic_year.get('start_date') if isinstance(academic_year, dict) else academic_year[0]
             year_end = academic_year.get('end_date') if isinstance(academic_year, dict) else academic_year[1]
@@ -10311,15 +10534,15 @@ def create_term():
             
             if term_start < year_start:
                 flash(f'Term start date ({start_date}) must be on or after academic year start date ({year_start}).', 'error')
-                return redirect(url_for('system_settings'))
+                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
             
             if term_end > year_end:
                 flash(f'Term end date ({end_date}) must be on or before academic year end date ({year_end}).', 'error')
-                return redirect(url_for('system_settings'))
+                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
             
             if term_start > term_end:
                 flash('Term start date must be before or equal to term end date.', 'error')
-                return redirect(url_for('system_settings'))
+                return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
             
             # Get is_current from form (default to False)
             is_current = request.form.get('is_current', 'false').lower() == 'true'
@@ -10368,15 +10591,20 @@ def create_term():
     finally:
         connection.close()
     
-    return redirect(url_for('system_settings'))
+    return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
 
 @app.route('/system-settings/term/<int:term_id>/update', methods=['POST'])
 @login_required
 def update_term(term_id):
     """Update a term"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     data = request.get_json()
@@ -10522,8 +10750,13 @@ def update_term(term_id):
 def delete_term(term_id):
     """Delete a term"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -10569,8 +10802,13 @@ def delete_term(term_id):
 def toggle_term_suspend(term_id):
     """Toggle term suspend/unsuspend status"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -10621,8 +10859,13 @@ def toggle_term_suspend(term_id):
 def toggle_term_lock(term_id):
     """Toggle term lock/unlock status"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    if not (is_technician or is_accountant):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()

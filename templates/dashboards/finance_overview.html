@@ -1,0 +1,176 @@
+{% extends "dashboards/base_dashboard.html" %}
+
+{% block title %}Finance Overview - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <!-- Finance Overview Link (Active) -->
+    <a href="/dashboard/employee/finance-overview" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+       style="border-color: var(--role-primary);">
+        <i class="fas fa-money-bill-wave w-5"></i>
+        <span class="font-semibold">Finance Overview</span>
+        <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    </a>
+    
+    <!-- Student Fees Link -->
+    <a href="/dashboard/employee/student-fees" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'student_fees' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_fees' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-user-graduate w-5"></i>
+        <span class="font-medium">Student Fees</span>
+        <i class="fas fa-chevron-right ml-auto"></i>
+    </a>
+    
+    <!-- Staff and Salaries Link -->
+    <a href="/dashboard/employee/staff-and-salaries" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'staff_and_salaries' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-wallet w-5"></i>
+        <span class="font-medium">Staff and Salaries</span>
+        <i class="fas fa-chevron-right ml-auto"></i>
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6">
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-money-bill-wave text-green-600 mr-3"></i>
+            Finance Overview
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Comprehensive financial overview and management</p>
+    </div>
+    
+    <!-- Summary Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <!-- Total Students Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                    <i class="fas fa-user-graduate text-blue-600 dark:text-blue-400 text-xl"></i>
+                </div>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total Students</span>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                {{ finance_summary.total_students }}
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Active students</p>
+        </div>
+        
+        <!-- Total Fee Structures Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                    <i class="fas fa-list-alt text-purple-600 dark:text-purple-400 text-xl"></i>
+                </div>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Fee Structures</span>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                {{ finance_summary.total_fee_structures }}
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Active structures</p>
+        </div>
+        
+        <!-- Total Revenue Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-3 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                    <i class="fas fa-chart-line text-green-600 dark:text-green-400 text-xl"></i>
+                </div>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total Revenue</span>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                KES {{ "{:,.2f}".format(finance_summary.total_revenue) }}
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Total payments received</p>
+        </div>
+        
+        <!-- Paid Payments Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
+                    <i class="fas fa-check-circle text-emerald-600 dark:text-emerald-400 text-xl"></i>
+                </div>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Paid Payments</span>
+            </div>
+            <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                {{ finance_summary.paid_payments|int if finance_summary.paid_payments else 0 }}
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400">Completed transactions</p>
+        </div>
+    </div>
+    
+    <!-- Quick Actions -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 mb-6">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-bolt text-yellow-500 mr-2"></i>
+            Quick Actions
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <a href="/dashboard/employee/student-fees" 
+               class="flex items-center space-x-4 p-4 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-lg hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800/30 dark:hover:to-blue-700/30 transition-all border border-blue-200 dark:border-blue-800">
+                <div class="p-3 bg-blue-500 rounded-lg">
+                    <i class="fas fa-user-graduate text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Student Fees</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Manage student fees</p>
+                </div>
+                <i class="fas fa-chevron-right text-blue-500 ml-auto"></i>
+            </a>
+            
+            <a href="/dashboard/employee/staff-and-salaries" 
+               class="flex items-center space-x-4 p-4 bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30 transition-all border border-purple-200 dark:border-purple-800">
+                <div class="p-3 bg-purple-500 rounded-lg">
+                    <i class="fas fa-wallet text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Staff Salaries</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Manage staff payments</p>
+                </div>
+                <i class="fas fa-chevron-right text-purple-500 ml-auto"></i>
+            </a>
+            
+            <a href="/dashboard/employee/student-fees/fee-structures" 
+               class="flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-lg hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30 transition-all border border-green-200 dark:border-green-800">
+                <div class="p-3 bg-green-500 rounded-lg">
+                    <i class="fas fa-list-alt text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Fee Structures</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">View all fee structures</p>
+                </div>
+                <i class="fas fa-chevron-right text-green-500 ml-auto"></i>
+            </a>
+        </div>
+    </div>
+    
+    <!-- Information Section -->
+    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center">
+            <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+            Finance Overview
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 mb-4">
+            This is your central hub for all financial operations. From here, you can:
+        </p>
+        <ul class="list-disc list-inside space-y-2 text-gray-700 dark:text-gray-300">
+            <li>View and manage student fees and payments</li>
+            <li>Track fee structures and payment records</li>
+            <li>Monitor financial transactions and revenue</li>
+            <li>Access staff salary management</li>
+            <li>Generate financial reports and audits</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+

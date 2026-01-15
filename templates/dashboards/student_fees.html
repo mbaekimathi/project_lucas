@@ -44,6 +44,15 @@
         <span class="font-medium">Payments Audits</span>
         <i class="fas fa-chevron-right ml-auto"></i>
     </a>
+    
+    <!-- Academic Settings Link -->
+    <a href="/dashboard/employee/academic-settings" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'academic_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'academic_settings' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span class="font-medium">Academic Settings</span>
+        <i class="fas fa-chevron-right ml-auto"></i>
+    </a>
 </div>
 {% endblock %}
 
