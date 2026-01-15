@@ -80,6 +80,7 @@ document.addEventListener('alpine:init', () => {
                     <tr>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Category</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Period</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Payment Deadline</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
@@ -99,6 +100,31 @@ document.addEventListener('alpine:init', () => {
                                 <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
                                     {{ structure.level_name }}
                                 </span>
+                            </td>
+                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                                {% if structure.category %}
+                                    {% if structure.category == 'both' %}
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize">
+                                            Both
+                                        </span>
+                                    {% elif structure.category == 'self sponsored' %}
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 capitalize">
+                                            Self Sponsored
+                                        </span>
+                                    {% elif structure.category == 'sponsored' %}
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-800 dark:text-orange-300 capitalize">
+                                            Sponsored
+                                        </span>
+                                    {% else %}
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 capitalize">
+                                            {{ structure.category }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300">
+                                        Both
+                                    </span>
+                                {% endif %}
                             </td>
                             <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm text-gray-900 dark:text-white">
@@ -170,7 +196,7 @@ document.addEventListener('alpine:init', () => {
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="7" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="8" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                                 <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                                 <p class="text-lg font-medium">No fee structures found</p>
                                 <p class="text-sm mt-1">Create your first fee structure to get started</p>
@@ -274,6 +300,11 @@ document.addEventListener('alpine:init', () => {
                             <p class="text-base font-semibold text-green-600 dark:text-green-400" 
                                x-text="'KES ' + (structure?.total_amount ? parseFloat(structure.total_amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00')"></p>
                         </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Category</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white capitalize" 
+                               x-text="structure?.category ? (structure.category.charAt(0).toUpperCase() + structure.category.slice(1)) : 'Both'"></p>
+                        </div>
                     </div>
                 </div>
                 
@@ -351,6 +382,7 @@ function editModalData() {
         structureId: null,
         academicLevelId: '',
         feeName: '',
+        category: 'both',
         startDate: '',
         endDate: '',
         paymentDeadline: '',
@@ -385,6 +417,7 @@ function editModalData() {
                 body: JSON.stringify({
                     academic_level_id: this.academicLevelId,
                     fee_name: this.feeName,
+                    category: this.category,
                     start_date: this.startDate,
                     end_date: this.endDate,
                     payment_deadline: this.paymentDeadline,
@@ -420,6 +453,7 @@ function editModalData() {
             this.structureId = structure.id;
             this.academicLevelId = structure.academic_level_id;
             this.feeName = structure.fee_name;
+            this.category = structure.category || 'both';
             
             let startDate = structure.start_date;
             if (startDate && typeof startDate === 'string') {
@@ -528,6 +562,22 @@ function editModalData() {
                            placeholder="e.g., TERM 1 FEES 2024"
                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
                            style="text-transform: uppercase;">
+                </div>
+                
+                <!-- Category -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Category <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="category" required
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                        <option value="both">Both (Self Sponsored & Sponsored)</option>
+                        <option value="self sponsored">Self Sponsored Only</option>
+                        <option value="sponsored">Sponsored Only</option>
+                    </select>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-info-circle mr-1"></i>Select which student category this fee structure applies to
+                    </p>
                 </div>
                 
                 <!-- Date Range -->

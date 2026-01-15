@@ -624,6 +624,28 @@ def init_db():
                 )
             """)
             
+            # Create student_payment_audit table to track all changes
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS student_payment_audit (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    payment_id INT,
+                    student_id VARCHAR(20) NOT NULL,
+                    action_type ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+                    field_name VARCHAR(100),
+                    old_value TEXT,
+                    new_value TEXT,
+                    changed_by INT,
+                    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (payment_id) REFERENCES student_payments(id) ON DELETE SET NULL,
+                    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+                    FOREIGN KEY (changed_by) REFERENCES employees(id) ON DELETE SET NULL,
+                    INDEX idx_payment_id (payment_id),
+                    INDEX idx_student_id (student_id),
+                    INDEX idx_changed_at (changed_at),
+                    INDEX idx_action_type (action_type)
+                )
+            """)
+            
             # Migrate existing table: rename status column to level_status if it exists
             try:
                 cursor.execute("SHOW COLUMNS FROM academic_levels LIKE 'status'")
@@ -808,6 +830,16 @@ def init_db():
                     print("✓ Added term_id and academic_year_id to fee_structures")
             except Exception as e:
                 print(f"Migration note for fee_structures: {e}")
+                pass
+            
+            # Add category column to fee_structures if it doesn't exist
+            try:
+                cursor.execute("SHOW COLUMNS FROM fee_structures LIKE 'category'")
+                if not cursor.fetchone():
+                    cursor.execute("ALTER TABLE fee_structures ADD COLUMN category VARCHAR(50) NULL DEFAULT 'both' AFTER fee_name")
+                    print("✓ Added category column to fee_structures")
+            except Exception as e:
+                print(f"Migration note for fee_structures category: {e}")
                 pass
             
             # Add student_category and sponsor_name columns to students table if they don't exist
@@ -3237,17 +3269,92 @@ def student_fees():
                                 }
                                 
                                 # Find active fee structure for this academic level
-                                # Get the most recent active fee structure
-                                cursor.execute("""
-                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                           fs.payment_deadline, fs.total_amount, fs.status
-                                    FROM fee_structures fs
-                                    WHERE fs.academic_level_id = %s 
-                                      AND fs.status = 'active'
-                                    ORDER BY fs.created_at DESC
-                                    LIMIT 1
-                                """, (academic_level_id,))
+                                # Match fee structure category with student category
+                                # Priority: 1) Category-specific match, 2) 'both' category, 3) NULL category
+                                # A fee structure marked as 'self sponsored' ONLY applies to self sponsored students
+                                # A fee structure marked as 'sponsored' ONLY applies to sponsored students
+                                # A fee structure marked as 'both' applies to all students
+                                student_category = row.get('student_category', '').lower().strip() if row.get('student_category') else ''
+                                
+                                if student_category == 'self sponsored':
+                                    # Match fee structures for self sponsored students
+                                    # Priority: 'self sponsored' first, then 'both', then NULL
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (
+                                              fs.category = 'self sponsored' 
+                                              OR fs.category = 'both' 
+                                              OR fs.category IS NULL
+                                          )
+                                          AND fs.category != 'sponsored'
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'self sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            WHEN fs.category IS NULL THEN 3
+                                            ELSE 4
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                elif student_category == 'sponsored':
+                                    # Match fee structures for sponsored students
+                                    # Priority: 'sponsored' first, then 'both', then NULL
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (
+                                              fs.category = 'sponsored' 
+                                              OR fs.category = 'both' 
+                                              OR fs.category IS NULL
+                                          )
+                                          AND fs.category != 'self sponsored'
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            WHEN fs.category IS NULL THEN 3
+                                            ELSE 4
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                else:
+                                    # If student has no category or unknown category, match 'both' or NULL only
+                                    # Do not match category-specific fee structures
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (fs.category = 'both' OR fs.category IS NULL)
+                                        ORDER BY fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                
                                 fee_structure_result = cursor.fetchone()
+                                
+                                # Only fall back to any fee structure if student has no category and no 'both' structure exists
+                                # This ensures category-specific structures are never shown to wrong student categories
+                                if not fee_structure_result and not student_category:
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                        ORDER BY fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                    fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
                                     # Format dates
@@ -3273,6 +3380,7 @@ def student_fees():
                                     fee_structure = {
                                         'id': fee_structure_result.get('id'),
                                         'fee_name': fee_structure_result.get('fee_name', ''),
+                                        'category': fee_structure_result.get('category', 'both'),
                                         'start_date': start_date,
                                         'end_date': end_date,
                                         'payment_deadline': payment_deadline,
@@ -4764,12 +4872,17 @@ def create_fee_structure():
                         'message': f'A fee structure already exists for this Academic Level in this Term. Each academic level must have a different fee structure in each term, and a term that has a fee structure for an academic level cannot have another one. You cannot create more than one fee structure for the same Academic Year, Term, and Academic Level combination. Existing structure: {existing_name}. Please select a different term or academic level, or edit the existing structure.'
                     }), 400
                 
+                # Get category from request data
+                category = data.get('category', 'both').strip().lower()
+                if category not in ['self sponsored', 'sponsored', 'both']:
+                    category = 'both'  # Default to 'both' if invalid
+                
                 # Insert fee structure
                 cursor.execute("""
                     INSERT INTO fee_structures 
-                    (academic_level_id, academic_year_id, term_id, fee_name, start_date, end_date, payment_deadline, total_amount, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (academic_level_id, academic_year_id, term_id, fee_name, term_start_date, term_end_date, payment_deadline, total_amount, employee_id))
+                    (academic_level_id, academic_year_id, term_id, fee_name, category, start_date, end_date, payment_deadline, total_amount, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (academic_level_id, academic_year_id, term_id, fee_name, category, term_start_date, term_end_date, payment_deadline, total_amount, employee_id))
                 
                 fee_structure_id = cursor.lastrowid
                 
@@ -4860,7 +4973,7 @@ def fee_structures():
             with connection.cursor() as cursor:
                 # Fetch all fee structures with academic level info
                 cursor.execute("""
-                    SELECT fs.id, fs.academic_level_id, fs.fee_name, fs.start_date, fs.end_date, 
+                    SELECT fs.id, fs.academic_level_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
                            fs.payment_deadline, fs.total_amount, fs.status, fs.created_at,
                            al.level_name, al.level_category
                     FROM fee_structures fs
@@ -4903,6 +5016,7 @@ def fee_structures():
                         'id': row.get('id'),
                         'academic_level_id': row.get('academic_level_id'),
                         'fee_name': row.get('fee_name', ''),
+                        'category': row.get('category', 'both'),
                         'start_date': start_date,
                         'end_date': end_date,
                         'payment_deadline': payment_deadline,
@@ -4943,6 +5057,133 @@ def fee_structures():
     return render_template('dashboards/fee_structures.html', 
                          fee_structures=fee_structures_list, 
                          academic_levels=academic_levels)
+
+@app.route('/dashboard/employee/student-fees/payments-audit')
+@login_required
+def payments_audit():
+    """Display payments audit log showing all changes to student fees"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+    
+    # Check if user is accountant or viewing as accountant
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    
+    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    
+    connection = get_db_connection()
+    audit_logs = []
+    
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Check if audit table exists, if not create it
+                try:
+                    cursor.execute("SHOW TABLES LIKE 'student_payment_audit'")
+                    table_exists = cursor.fetchone()
+                    
+                    if not table_exists:
+                        # Create the audit table if it doesn't exist
+                        cursor.execute("""
+                            CREATE TABLE IF NOT EXISTS student_payment_audit (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                payment_id INT,
+                                student_id VARCHAR(20) NOT NULL,
+                                action_type ENUM('INSERT', 'UPDATE', 'DELETE') NOT NULL,
+                                field_name VARCHAR(100),
+                                old_value TEXT,
+                                new_value TEXT,
+                                changed_by INT,
+                                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                FOREIGN KEY (payment_id) REFERENCES student_payments(id) ON DELETE SET NULL,
+                                FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
+                                FOREIGN KEY (changed_by) REFERENCES employees(id) ON DELETE SET NULL,
+                                INDEX idx_payment_id (payment_id),
+                                INDEX idx_student_id (student_id),
+                                INDEX idx_changed_at (changed_at),
+                                INDEX idx_action_type (action_type)
+                            )
+                        """)
+                        connection.commit()
+                except Exception as e:
+                    print(f"Error checking/creating audit table: {e}")
+                
+                # Fetch all audit logs with student and employee information
+                cursor.execute("""
+                    SELECT 
+                        spa.id,
+                        spa.payment_id,
+                        spa.student_id,
+                        spa.action_type,
+                        spa.field_name,
+                        spa.old_value,
+                        spa.new_value,
+                        spa.changed_at,
+                        s.full_name as student_name,
+                        e.full_name as employee_name,
+                        e.employee_id as employee_code,
+                        sp.amount_paid,
+                        sp.payment_method,
+                        sp.payment_date,
+                        fs.fee_name
+                    FROM student_payment_audit spa
+                    LEFT JOIN students s ON spa.student_id = s.student_id
+                    LEFT JOIN employees e ON spa.changed_by = e.id
+                    LEFT JOIN student_payments sp ON spa.payment_id = sp.id
+                    LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                    ORDER BY spa.changed_at DESC
+                    LIMIT 1000
+                """)
+                
+                results = cursor.fetchall()
+                
+                for row in results:
+                    changed_at = row.get('changed_at')
+                    if changed_at and hasattr(changed_at, 'strftime'):
+                        changed_at_str = changed_at.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        changed_at_str = str(changed_at) if changed_at else ''
+                    
+                    payment_date = row.get('payment_date')
+                    if payment_date and hasattr(payment_date, 'strftime'):
+                        payment_date_str = payment_date.strftime('%Y-%m-%d')
+                    else:
+                        payment_date_str = str(payment_date).split(' ')[0] if payment_date else ''
+                    
+                    audit_logs.append({
+                        'id': row.get('id'),
+                        'payment_id': row.get('payment_id'),
+                        'student_id': row.get('student_id'),
+                        'student_name': row.get('student_name', 'Unknown'),
+                        'action_type': row.get('action_type', ''),
+                        'field_name': row.get('field_name', ''),
+                        'old_value': row.get('old_value', ''),
+                        'new_value': row.get('new_value', ''),
+                        'changed_at': changed_at_str,
+                        'employee_name': row.get('employee_name', 'Unknown'),
+                        'employee_code': row.get('employee_code', ''),
+                        'amount_paid': float(row.get('amount_paid', 0)) if row.get('amount_paid') else 0,
+                        'payment_method': row.get('payment_method', ''),
+                        'payment_date': payment_date_str,
+                        'fee_name': row.get('fee_name', '')
+                    })
+        except Exception as e:
+            print(f"Error fetching audit logs: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            connection.close()
+    
+    return render_template('dashboards/payments_audit.html',
+                         audit_logs=audit_logs,
+                         role=user_role)
 
 @app.route('/dashboard/employee/student-fees/record-payment', methods=['POST'])
 @login_required
@@ -5027,6 +5268,26 @@ def record_payment():
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (student_id, fee_structure_id, amount_paid, payment_method, reference_number,
                       cheque_number, transaction_id, proof_of_payment, received_by_id, payment_date, notes))
+                
+                payment_id = cursor.lastrowid
+                
+                # Log audit entry for payment creation
+                payment_details = f"Amount: KES {amount_paid:,.2f}, Method: {payment_method}, Date: {payment_date}"
+                if reference_number:
+                    payment_details += f", Ref: {reference_number}"
+                if cheque_number:
+                    payment_details += f", Cheque: {cheque_number}"
+                if transaction_id:
+                    payment_details += f", Transaction: {transaction_id}"
+                if notes:
+                    payment_details += f", Notes: {notes[:100]}"
+                
+                cursor.execute("""
+                    INSERT INTO student_payment_audit 
+                    (payment_id, student_id, action_type, field_name, old_value, new_value, changed_by)
+                    VALUES (%s, %s, 'INSERT', 'Payment Created', NULL, %s, %s)
+                """, (payment_id, student_id, payment_details, received_by_id))
+                
                 connection.commit()
                 
                 return jsonify({
@@ -5167,6 +5428,9 @@ def update_fee_structure(structure_id):
         
         academic_level_id = data.get('academic_level_id')
         fee_name = data.get('fee_name', '').strip().upper()
+        category = data.get('category', 'both').strip().lower()
+        if category not in ['self sponsored', 'sponsored', 'both']:
+            category = 'both'  # Default to 'both' if invalid
         start_date = data.get('start_date')
         end_date = data.get('end_date')
         payment_deadline = data.get('payment_deadline')
@@ -5208,10 +5472,10 @@ def update_fee_structure(structure_id):
                 # Update fee structure
                 cursor.execute("""
                     UPDATE fee_structures 
-                    SET academic_level_id = %s, fee_name = %s, start_date = %s, 
+                    SET academic_level_id = %s, fee_name = %s, category = %s, start_date = %s, 
                         end_date = %s, payment_deadline = %s, total_amount = %s
                     WHERE id = %s
-                """, (academic_level_id, fee_name, start_date, end_date, payment_deadline, total_amount, structure_id))
+                """, (academic_level_id, fee_name, category, start_date, end_date, payment_deadline, total_amount, structure_id))
                 
                 # Delete existing items
                 cursor.execute("DELETE FROM fee_items WHERE fee_structure_id = %s", (structure_id,))
