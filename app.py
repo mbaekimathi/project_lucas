@@ -3290,6 +3290,7 @@ def student_fees():
     academic_levels = []
     academic_years = []
     terms = []
+    fee_structures_by_grade = {}
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -3412,12 +3413,12 @@ def student_fees():
                                         SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
                                                fs.payment_deadline, fs.total_amount, fs.status, fs.category
                                         FROM fee_structures fs
-                                    WHERE fs.academic_level_id = %s 
-                                      AND fs.status = 'active'
-                                    ORDER BY fs.created_at DESC
-                                    LIMIT 1
-                                """, (academic_level_id,))
-                                fee_structure_result = cursor.fetchone()
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                        ORDER BY fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                    fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
                                     # Format dates
@@ -3641,6 +3642,75 @@ def student_fees():
                         }
                         terms.append(term_dict)
                         print(f"DEBUG: Added term: {term_dict['term_name']} (ID: {term_dict['id']}, Year ID: {term_dict['academic_year_id']}, Status: {term_dict['status']})")
+                
+                # Fetch all fee structures grouped by grade and category (for display section)
+                cursor.execute("""
+                    SELECT fs.id, fs.academic_level_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.created_at,
+                           al.level_name, al.level_category
+                    FROM fee_structures fs
+                    LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                    WHERE fs.status = 'active'
+                    ORDER BY al.level_name ASC, fs.category ASC, fs.created_at DESC
+                """)
+                fee_structures_results = cursor.fetchall()
+                
+                # Group fee structures by grade and category
+                for row in fee_structures_results:
+                    level_name = row.get('level_name', 'Unknown') if isinstance(row, dict) else (row[10] if len(row) > 10 else 'Unknown')
+                    category = row.get('category', 'both') if isinstance(row, dict) else (row[3] if len(row) > 3 else 'both')
+                    
+                    if level_name not in fee_structures_by_grade:
+                        fee_structures_by_grade[level_name] = {}
+                    
+                    if category not in fee_structures_by_grade[level_name]:
+                        fee_structures_by_grade[level_name][category] = []
+                    
+                    # Format dates
+                    start_date = row.get('start_date') if isinstance(row, dict) else row[4]
+                    end_date = row.get('end_date') if isinstance(row, dict) else row[5]
+                    payment_deadline = row.get('payment_deadline') if isinstance(row, dict) else row[6]
+                    
+                    if start_date and hasattr(start_date, 'strftime'):
+                        start_date = start_date.strftime('%Y-%m-%d')
+                    elif start_date:
+                        start_date = str(start_date).split(' ')[0]
+                    
+                    if end_date and hasattr(end_date, 'strftime'):
+                        end_date = end_date.strftime('%Y-%m-%d')
+                    elif end_date:
+                        end_date = str(end_date).split(' ')[0]
+                    
+                    if payment_deadline and hasattr(payment_deadline, 'strftime'):
+                        payment_deadline = payment_deadline.strftime('%Y-%m-%d')
+                    elif payment_deadline:
+                        payment_deadline = str(payment_deadline).split(' ')[0]
+                    
+                    # Fetch fee items for this structure
+                    structure_id = row.get('id') if isinstance(row, dict) else row[0]
+                    cursor.execute("""
+                        SELECT item_name, item_description, amount
+                        FROM fee_items
+                        WHERE fee_structure_id = %s
+                        ORDER BY item_order ASC
+                    """, (structure_id,))
+                    items = cursor.fetchall()
+                    
+                    fee_structures_by_grade[level_name][category].append({
+                        'id': structure_id,
+                        'fee_name': row.get('fee_name', '') if isinstance(row, dict) else row[2],
+                        'category': category,
+                        'start_date': start_date,
+                        'end_date': end_date,
+                        'payment_deadline': payment_deadline,
+                        'total_amount': float(row.get('total_amount', 0) if isinstance(row, dict) else (row[7] if len(row) > 7 else 0)),
+                        'status': row.get('status', 'active') if isinstance(row, dict) else row[8],
+                        'items': [{
+                            'item_name': item.get('item_name', '') if isinstance(item, dict) else item[0],
+                            'item_description': item.get('item_description', '') if isinstance(item, dict) else (item[1] if len(item) > 1 else ''),
+                            'amount': float(item.get('amount', 0) if isinstance(item, dict) else (item[2] if len(item) > 2 else 0))
+                        } for item in items]
+                    })
         except Exception as e:
             print(f"Error fetching data: {e}")
             import traceback
@@ -3678,6 +3748,35 @@ def student_fees():
         finally:
             connection.close()
     
+    # Fetch all active fee structures for assignment dropdown
+    all_fee_structures = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT fs.id, fs.fee_name, fs.category, fs.total_amount,
+                           al.level_name, al.level_category
+                    FROM fee_structures fs
+                    LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                    WHERE fs.status = 'active'
+                    ORDER BY al.level_name ASC, fs.fee_name ASC
+                """)
+                structures = cursor.fetchall()
+                for row in structures:
+                    all_fee_structures.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'fee_name': row.get('fee_name', '') if isinstance(row, dict) else row[1],
+                        'category': row.get('category', 'both') if isinstance(row, dict) else row[2],
+                        'total_amount': float(row.get('total_amount', 0) if isinstance(row, dict) else (row[3] if len(row) > 3 else 0)),
+                        'level_name': row.get('level_name', '') if isinstance(row, dict) else (row[4] if len(row) > 4 else ''),
+                        'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[5] if len(row) > 5 else '')
+                    })
+        except Exception as e:
+            print(f"Error fetching fee structures: {e}")
+        finally:
+            connection.close()
+    
     return render_template('dashboards/student_fees.html', 
                          students=students, 
                          academic_levels=academic_levels,
@@ -3685,6 +3784,7 @@ def student_fees():
                          terms=terms,
                          today=today,
                          current_employee=current_employee,
+                         fee_structures_by_grade=fee_structures_by_grade,
                          can_view_students=can_view_students,
                          can_view_fee_structure_details=can_view_fee_structure_details,
                          can_record_payments=can_record_payments,
@@ -4758,9 +4858,337 @@ def generate_invoice(student_id):
     # Create response
     response = make_response(buffer.getvalue())
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'inline; filename=Invoice_{student_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
+    # Check if download parameter is present
+    if request.args.get('download', '').lower() == 'true':
+        response.headers['Content-Disposition'] = f'attachment; filename=Invoice_{student_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
+    else:
+        response.headers['Content-Disposition'] = f'inline; filename=Invoice_{student_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
     
     return response
+
+@app.route('/dashboard/employee/student-fees/download-receipt/<student_id>/<int:payment_id>')
+@login_required
+def download_payment_receipt(student_id, payment_id):
+    """Generate a receipt for a specific payment transaction"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    
+    # Check if user is accountant or viewing as accountant
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
+    
+    if not (is_accountant or is_technician or has_generate_invoices_permission):
+        flash('You do not have permission to download receipts.', 'error')
+        return redirect(url_for('student_fees'))
+    
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('student_fees'))
+    
+    try:
+        with connection.cursor() as cursor:
+            # Get payment transaction details
+            cursor.execute("""
+                SELECT sp.id, sp.amount_paid, sp.payment_method, sp.reference_number, 
+                       sp.cheque_number, sp.transaction_id, sp.proof_of_payment, 
+                       sp.payment_date, sp.notes, sp.created_at,
+                       sp.student_id, sp.fee_structure_id,
+                       fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                       fs.payment_deadline, fs.category,
+                       e.full_name as received_by_name, e.employee_id as received_by_id
+                FROM student_payments sp
+                LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                LEFT JOIN employees e ON sp.received_by = e.id
+                WHERE sp.id = %s AND sp.student_id = %s
+                LIMIT 1
+            """, (payment_id, student_id))
+            payment_result = cursor.fetchone()
+            
+            if not payment_result:
+                flash('Payment transaction not found.', 'error')
+                return redirect(url_for('student_fees'))
+            
+            # Convert to dictionary
+            if isinstance(payment_result, dict):
+                payment = payment_result
+            else:
+                payment = {
+                    'id': payment_result[0],
+                    'amount_paid': payment_result[1],
+                    'payment_method': payment_result[2],
+                    'reference_number': payment_result[3],
+                    'cheque_number': payment_result[4],
+                    'transaction_id': payment_result[5],
+                    'proof_of_payment': payment_result[6],
+                    'payment_date': payment_result[7],
+                    'notes': payment_result[8],
+                    'created_at': payment_result[9],
+                    'student_id': payment_result[10],
+                    'fee_structure_id': payment_result[11],
+                    'fee_name': payment_result[12],
+                    'total_amount': payment_result[13],
+                    'start_date': payment_result[14] if len(payment_result) > 14 else None,
+                    'end_date': payment_result[15] if len(payment_result) > 15 else None,
+                    'payment_deadline': payment_result[16] if len(payment_result) > 16 else None,
+                    'category': payment_result[17] if len(payment_result) > 17 else None,
+                    'received_by_name': payment_result[18] if len(payment_result) > 18 else None,
+                    'received_by_id': payment_result[19] if len(payment_result) > 19 else None
+                }
+            
+            # Get student information
+            cursor.execute("""
+                SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
+                       p.full_name as parent_name, p.phone as parent_phone, p.email as parent_email
+                FROM students s
+                LEFT JOIN parents p ON s.student_id = p.student_id
+                WHERE s.student_id = %s AND s.status = 'in session'
+                LIMIT 1
+            """, (student_id,))
+            student_result = cursor.fetchone()
+            
+            if not student_result:
+                flash('Student not found.', 'error')
+                return redirect(url_for('student_fees'))
+            
+            student = dict(student_result) if isinstance(student_result, dict) else {
+                'id': student_result[0],
+                'student_id': student_result[1],
+                'full_name': student_result[2],
+                'current_grade': student_result[3],
+                'status': student_result[4],
+                'student_category': student_result[5] if len(student_result) > 5 else None,
+                'parent_name': student_result[6] if len(student_result) > 6 else None,
+                'parent_phone': student_result[7] if len(student_result) > 7 else None,
+                'parent_email': student_result[8] if len(student_result) > 8 else None
+            }
+            
+            # Get student profile image if available (check if profile_image column exists)
+            student['profile_image'] = None
+            try:
+                cursor.execute("SHOW COLUMNS FROM students LIKE 'profile_image'")
+                if cursor.fetchone():
+                    cursor.execute("SELECT profile_image FROM students WHERE student_id = %s", (student_id,))
+                    profile_result = cursor.fetchone()
+                    if profile_result:
+                        profile_image = profile_result[0] if isinstance(profile_result, (list, tuple)) else profile_result.get('profile_image')
+                        if profile_image:
+                            student['profile_image'] = url_for('static', filename=profile_image)
+            except Exception as e:
+                print(f"Note: profile_image column may not exist: {e}")
+                pass
+            
+            # Get school settings
+            cursor.execute("""
+                SELECT school_name, school_location, school_phone, school_email, school_logo
+                FROM school_settings
+                LIMIT 1
+            """)
+            school_result = cursor.fetchone()
+            
+            school_settings = dict(school_result) if isinstance(school_result, dict) else {
+                'school_name': school_result[0] if school_result and len(school_result) > 0 else 'Modern School',
+                'school_address': school_result[1] if school_result and len(school_result) > 1 else None,  # Using school_location as school_address
+                'school_phone': school_result[2] if school_result and len(school_result) > 2 else None,
+                'school_email': school_result[3] if school_result and len(school_result) > 3 else None,
+                'school_logo': school_result[4] if school_result and len(school_result) > 4 else None
+            }
+            
+            # Format dates
+            payment_date = payment.get('payment_date')
+            if payment_date and hasattr(payment_date, 'strftime'):
+                payment_date_str = payment_date.strftime('%B %d, %Y')
+            else:
+                payment_date_str = str(payment_date) if payment_date else 'N/A'
+            
+            created_at = payment.get('created_at')
+            if created_at and hasattr(created_at, 'strftime'):
+                receipt_time = created_at.strftime('%I:%M %p')
+                receipt_date = created_at.strftime('%B %d, %Y')
+            else:
+                receipt_time = datetime.now().strftime('%I:%M %p')
+                receipt_date = datetime.now().strftime('%B %d, %Y')
+            
+            receipt_number = f"RCP-{student_id}-{payment_id}-{datetime.now().strftime('%Y%m%d')}"
+            
+            # Prepare single payment transaction for template
+            payment_transaction = {
+                'date': payment_date_str,
+                'method': payment.get('payment_method', ''),
+                'amount': float(payment.get('amount_paid', 0)),
+                'reference': payment.get('reference_number', ''),
+                'transaction_id': payment.get('transaction_id', ''),
+                'cheque': payment.get('cheque_number', ''),
+                'notes': payment.get('notes', ''),
+                'received_by': payment.get('received_by_name', 'N/A')
+            }
+            
+            # Prepare fee structure for template
+            fee_structure = {
+                'fee_name': payment.get('fee_name', ''),
+                'total_amount': float(payment.get('total_amount', 0)),
+                'start_date': payment.get('start_date'),
+                'end_date': payment.get('end_date'),
+                'payment_deadline': payment.get('payment_deadline'),
+                'category': payment.get('category'),
+                'items': []  # Single payment receipt doesn't need fee items breakdown
+            }
+            
+            # Render receipt template (similar to invoice but for single payment)
+            return render_template('dashboards/payment_receipt.html',
+                                 student=student,
+                                 payment=payment,
+                                 payment_transaction=payment_transaction,
+                                 fee_structure=fee_structure,
+                                 school_settings=school_settings,
+                                 receipt_date=receipt_date,
+                                 receipt_time=receipt_time,
+                                 receipt_number=receipt_number)
+            
+            # Check if user wants PDF format
+            format_type = request.args.get('format', 'html').lower()
+            
+            if format_type == 'pdf':
+                # Generate PDF using reportlab
+                buffer = BytesIO()
+                doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                                       rightMargin=0.75*inch, leftMargin=0.75*inch,
+                                       topMargin=0.75*inch, bottomMargin=0.75*inch)
+                
+                elements = []
+                styles = getSampleStyleSheet()
+                
+                # Title
+                title_style = ParagraphStyle(
+                    'ReceiptTitle',
+                    parent=styles['Heading1'],
+                    fontSize=24,
+                    textColor=colors.HexColor('#800020'),
+                    spaceAfter=20,
+                    alignment=TA_CENTER,
+                    fontName='Helvetica-Bold'
+                )
+                elements.append(Paragraph("PAYMENT RECEIPT", title_style))
+                elements.append(Spacer(1, 0.2*inch))
+                
+                # School info
+                normal_style = ParagraphStyle(
+                    'Normal',
+                    parent=styles['Normal'],
+                    fontSize=10,
+                    textColor=colors.HexColor('#2B2D42'),
+                    spaceAfter=6
+                )
+                elements.append(Paragraph(f"<b>{school_settings.get('school_name', 'Modern School')}</b>", normal_style))
+                if school_settings.get('school_address'):
+                    elements.append(Paragraph(school_settings['school_address'], normal_style))
+                elements.append(Spacer(1, 0.2*inch))
+                
+                # Receipt details
+                receipt_data = [
+                    ['Receipt Number:', receipt_number],
+                    ['Date:', receipt_date],
+                    ['Time:', receipt_time],
+                    ['Student:', student['full_name']],
+                    ['Student ID:', student['student_id']],
+                    ['Grade:', student.get('current_grade', 'N/A')],
+                ]
+                
+                receipt_table = Table(receipt_data, colWidths=[2*inch, 4*inch])
+                receipt_table.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ]))
+                elements.append(receipt_table)
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Payment details
+                elements.append(Paragraph("<b>Payment Details</b>", normal_style))
+                payment_data = [
+                    ['Payment Date:', payment_transaction['date']],
+                    ['Payment Method:', payment_transaction['method']],
+                    ['Amount Paid:', f"KES {payment_transaction['amount']:,.2f}"],
+                ]
+                if payment_transaction.get('reference'):
+                    payment_data.append(['Reference:', payment_transaction['reference']])
+                if payment_transaction.get('transaction_id'):
+                    payment_data.append(['Transaction ID:', payment_transaction['transaction_id']])
+                if payment_transaction.get('cheque'):
+                    payment_data.append(['Cheque Number:', payment_transaction['cheque']])
+                payment_data.append(['Received By:', payment_transaction.get('received_by', 'N/A')])
+                
+                payment_table = Table(payment_data, colWidths=[2*inch, 4*inch])
+                payment_table.setStyle(TableStyle([
+                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                    ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ]))
+                elements.append(payment_table)
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Footer
+                footer_style = ParagraphStyle(
+                    'Footer',
+                    parent=styles['Normal'],
+                    fontSize=8,
+                    textColor=colors.grey,
+                    alignment=TA_CENTER
+                )
+                elements.append(Spacer(1, 0.5*inch))
+                elements.append(Paragraph("Thank you for your payment!", footer_style))
+                elements.append(Paragraph("This is a computer-generated receipt. No signature required.", footer_style))
+                
+                doc.build(elements)
+                buffer.seek(0)
+                
+                response = make_response(buffer.getvalue())
+                response.headers['Content-Type'] = 'application/pdf'
+                if request.args.get('download', '').lower() == 'true':
+                    response.headers['Content-Disposition'] = f'attachment; filename=Receipt_{student_id}_{payment_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
+                else:
+                    response.headers['Content-Disposition'] = f'inline; filename=Receipt_{student_id}_{payment_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
+                
+                return response
+                                 
+    except Exception as e:
+        print(f"Error generating payment receipt: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Error generating receipt.', 'error')
+        return redirect(url_for('student_fees'))
+    finally:
+        connection.close()
+
+@app.route('/dashboard/employee/student-fees/download-receipt/<student_id>/<int:payment_id>/pdf')
+@login_required
+def download_payment_receipt_pdf(student_id, payment_id):
+    """Generate a PDF receipt for a specific payment transaction"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    
+    # Check if user is accountant or viewing as accountant
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
+    
+    if not (is_accountant or is_technician or has_generate_invoices_permission):
+        flash('You do not have permission to download receipts.', 'error')
+        return redirect(url_for('student_fees'))
+    
+    # For PDF, we'll use the browser's print-to-PDF functionality
+    # Redirect to the HTML version with a print parameter
+    return redirect(url_for('download_payment_receipt', student_id=student_id, payment_id=payment_id) + '?print=true')
 
 @app.route('/dashboard/employee/student-fees/fee-items', methods=['GET'])
 @login_required

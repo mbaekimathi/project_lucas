@@ -1351,13 +1351,21 @@ window.feeStructureCreateModal = function() {
                                     <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Notes:</span>
                                     <span class="break-words flex-1 italic" x-text="transaction.notes"></span>
                                 </div>
-                                <a x-show="transaction.proof_of_payment" 
-                                   :href="'/static/' + transaction.proof_of_payment" 
-                                   target="_blank" 
-                                   class="inline-flex items-center justify-center w-full mt-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors touch-manipulation">
-                                    <i class="fas fa-file-pdf mr-2"></i>
-                                    <span class="text-xs font-medium">View Proof</span>
-                                </a>
+                                <div class="flex flex-col gap-2 mt-2">
+                                    <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                       target="_blank" 
+                                       class="inline-flex items-center justify-center w-full px-3 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#5C0016] transition-colors touch-manipulation shadow-sm">
+                                        <i class="fas fa-download mr-2"></i>
+                                        <span class="text-xs font-medium">Download Receipt</span>
+                                    </a>
+                                    <a x-show="transaction.proof_of_payment" 
+                                       :href="'/static/' + transaction.proof_of_payment" 
+                                       target="_blank" 
+                                       class="inline-flex items-center justify-center w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors touch-manipulation">
+                                        <i class="fas fa-file-pdf mr-2"></i>
+                                        <span class="text-xs font-medium">View Proof</span>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </template>
@@ -1393,13 +1401,21 @@ window.feeStructureCreateModal = function() {
                                 <p x-show="transaction.notes" class="break-words">
                                     <strong class="font-medium">Notes:</strong> <span x-text="transaction.notes"></span>
                                 </p>
-                                <a x-show="transaction.proof_of_payment" 
-                                   :href="'/static/' + transaction.proof_of_payment" 
-                                   target="_blank" 
-                                   class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline mt-2 touch-manipulation">
-                                    <i class="fas fa-file-pdf mr-1.5"></i>
-                                    <span class="text-xs sm:text-sm">View Proof of Payment</span>
-                                </a>
+                                <div class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
+                                    <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                       target="_blank" 
+                                       class="inline-flex items-center px-3 py-1.5 bg-[#800020] text-white rounded-lg hover:bg-[#5C0016] transition-colors touch-manipulation shadow-sm text-xs sm:text-sm">
+                                        <i class="fas fa-download mr-1.5"></i>
+                                        <span>Download Receipt</span>
+                                    </a>
+                                    <a x-show="transaction.proof_of_payment" 
+                                       :href="'/static/' + transaction.proof_of_payment" 
+                                       target="_blank" 
+                                       class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline touch-manipulation text-xs sm:text-sm">
+                                        <i class="fas fa-file-pdf mr-1.5"></i>
+                                        <span>View Proof</span>
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </template>
