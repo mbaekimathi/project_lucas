@@ -622,41 +622,6 @@ function paymentsAudit() {
     };
 }
 </script>
-{% endblock %}
-
-{% block title %}Payments Audits - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
-{% block sidebar_content %}
-<div class="space-y-2">
-    <!-- Back to Fees Link -->
-    <a href="/dashboard/employee/student-fees" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span class="font-medium">Back to Fees</span>
-    </a>
-    
-    <!-- Payments Audits Link -->
-    <a href="/dashboard/employee/student-fees/payments-audit" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all active text-brand-primary dark:text-brand-secondary">
-        <i class="fas fa-history w-5"></i>
-        <span class="font-semibold">Payments Audits</span>
-        <i class="fas fa-check-circle ml-auto text-green-500"></i>
-    </a>
-</div>
-{% endblock %}
-
-{% block content %}
-<script>
-window.auditLogsData = {{ audit_logs|tojson|safe }};
-</script>
-
-<div class="p-4 lg:p-6" x-data="paymentsAudit()">
     <!-- Header Section -->
     <div class="mb-6">
         <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4">

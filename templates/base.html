@@ -578,9 +578,9 @@
                             {% if session.get('profile_picture') %}
                             <img src="{{ url_for('static', filename=session.profile_picture) }}" 
                                  alt="Profile" 
-                                 class="w-8 h-8 rounded-full object-cover">
+                                 class="w-8 h-8 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600">
                             {% else %}
-                            <div class="w-8 h-8 bg-brand-primary rounded-full flex items-center justify-center">
+                            <div class="w-8 h-8 bg-brand-primary rounded-full flex items-center justify-center border-2 border-gray-300 dark:border-gray-600">
                                 <i class="fas fa-user text-white text-sm"></i>
                                     </div>
                             {% endif %}
@@ -602,9 +602,15 @@
                              class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
                             {% set user_role = session.get('role', 'employee')|lower %}
                             {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
+                            {% if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] %}
+                            <a href="/dashboard/employee" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                            </a>
+                            {% else %}
                             <a href="/dashboard/{{ user_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
                             </a>
+                            {% endif %}
                             <a href="/profile/{{ profile_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-user mr-2"></i>Profile
                             </a>

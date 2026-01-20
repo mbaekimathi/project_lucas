@@ -174,6 +174,20 @@ def inject_school_settings():
                             'level_name': row.get('level_name', ''),
                             'level_description': row.get('level_description', '')
                         })
+                
+                # Update employee profile picture in session if user is logged in as employee
+                if session.get('user_id') and session.get('role'):
+                    user_role = session.get('role', '').lower()
+                    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
+                                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
+                    if user_role in employee_roles:
+                        employee_id = session.get('employee_id') or session.get('user_id')
+                        cursor.execute("SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s", 
+                                     (employee_id, employee_id))
+                        employee = cursor.fetchone()
+                        if employee and employee.get('profile_picture'):
+                            # Update session with latest profile picture
+                            session['profile_picture'] = employee.get('profile_picture')
         except Exception as e:
             # Table might not exist yet, that's okay
             pass
@@ -8382,16 +8396,64 @@ def update_employee_profile():
         flash('Please fill in all required fields.', 'error')
         return redirect(url_for('profile', role='employee'))
     
+    # Handle profile picture upload
+    profile_picture = None
+    if 'profile_picture' in request.files:
+        file = request.files['profile_picture']
+        if file and file.filename != '' and allowed_file(file.filename):
+            # Generate unique filename
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            employee_id = session.get('employee_id') or session.get('user_id')
+            filename = secure_filename(file.filename)
+            file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else 'jpg'
+            unique_filename = f"{employee_id}_{timestamp}_{filename}"
+            
+            # Save file
+            file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+            file.save(file_path)
+            profile_picture = f"uploads/profiles/{unique_filename}"
+    
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
                 employee_id = session.get('employee_id') or session.get('user_id')
-                cursor.execute("""
-                    UPDATE employees 
-                    SET full_name = %s, email = %s, phone = %s, id_number = %s
-                    WHERE id = %s OR employee_id = %s
-                """, (full_name, email, phone, id_number, employee_id, employee_id))
+                
+                # Get current profile picture to delete old one if new one is uploaded
+                old_profile_picture = None
+                if profile_picture:
+                    cursor.execute("SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s", 
+                                 (employee_id, employee_id))
+                    result = cursor.fetchone()
+                    if result and result.get('profile_picture'):
+                        old_profile_picture = result.get('profile_picture')
+                
+                # Update employee profile
+                if profile_picture:
+                    cursor.execute("""
+                        UPDATE employees 
+                        SET full_name = %s, email = %s, phone = %s, id_number = %s, profile_picture = %s
+                        WHERE id = %s OR employee_id = %s
+                    """, (full_name, email, phone, id_number, profile_picture, employee_id, employee_id))
+                    
+                    # Delete old profile picture if it exists
+                    if old_profile_picture:
+                        old_file_path = os.path.join('static', old_profile_picture)
+                        if os.path.exists(old_file_path):
+                            try:
+                                os.remove(old_file_path)
+                            except Exception as e:
+                                print(f"Error deleting old profile picture: {e}")
+                    
+                    # Update session with new profile picture
+                    session['profile_picture'] = profile_picture
+                else:
+                    cursor.execute("""
+                        UPDATE employees 
+                        SET full_name = %s, email = %s, phone = %s, id_number = %s
+                        WHERE id = %s OR employee_id = %s
+                    """, (full_name, email, phone, id_number, employee_id, employee_id))
+                
                 connection.commit()
                 
                 # Update session
@@ -8401,6 +8463,8 @@ def update_employee_profile():
                 flash('Profile updated successfully!', 'success')
         except Exception as e:
             print(f"Error updating employee profile: {e}")
+            import traceback
+            traceback.print_exc()
             connection.rollback()
             flash('An error occurred while updating your profile. Please try again.', 'error')
         finally:
