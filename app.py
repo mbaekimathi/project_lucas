@@ -4038,7 +4038,7 @@ def generate_invoice(student_id):
             balance = fee_total - (total_paid + carry_forward)
             
             # Get school settings
-            cursor.execute("SELECT school_name, school_location, school_phone, school_email FROM school_settings ORDER BY id DESC LIMIT 1")
+            cursor.execute("SELECT school_name, school_location, school_phone, school_email, school_logo FROM school_settings ORDER BY id DESC LIMIT 1")
             school_result = cursor.fetchone()
             school_settings = {}
             if school_result:
@@ -4047,14 +4047,16 @@ def generate_invoice(student_id):
                         'school_name': school_result.get('school_name', 'Modern School') or 'Modern School',
                         'school_address': school_result.get('school_location', '') or '',
                         'school_phone': school_result.get('school_phone', '') or '',
-                        'school_email': school_result.get('school_email', '') or ''
+                        'school_email': school_result.get('school_email', '') or '',
+                        'school_logo': school_result.get('school_logo', '') or ''
                     }
                 else:
                     school_settings = {
                         'school_name': school_result[0] if len(school_result) > 0 and school_result[0] else 'Modern School',
                         'school_address': school_result[1] if len(school_result) > 1 and school_result[1] else '',
                         'school_phone': school_result[2] if len(school_result) > 2 and school_result[2] else '',
-                        'school_email': school_result[3] if len(school_result) > 3 and school_result[3] else ''
+                        'school_email': school_result[3] if len(school_result) > 3 and school_result[3] else '',
+                        'school_logo': school_result[4] if len(school_result) > 4 and school_result[4] else ''
                     }
             else:
                 # Default values if no settings found
@@ -4062,8 +4064,29 @@ def generate_invoice(student_id):
                     'school_name': 'Modern School',
                     'school_address': '',
                     'school_phone': '',
-                    'school_email': ''
+                    'school_email': '',
+                    'school_logo': ''
                 }
+            
+            # Get student profile image if available (check if profile_image column exists)
+            student['profile_image'] = None
+            try:
+                cursor.execute("SHOW COLUMNS FROM students LIKE 'profile_image'")
+                if cursor.fetchone():
+                    cursor.execute("SELECT profile_image FROM students WHERE student_id = %s", (student_id,))
+                    profile_result = cursor.fetchone()
+                    if profile_result:
+                        profile_image = profile_result[0] if isinstance(profile_result, (list, tuple)) else profile_result.get('profile_image')
+                        if profile_image:
+                            student['profile_image'] = url_for('static', filename=profile_image)
+            except:
+                pass  # Column doesn't exist, skip
+            
+            # Generate invoice date, number, and time
+            now = datetime.now()
+            invoice_date = now.strftime('%B %d, %Y')
+            invoice_time = now.strftime('%I:%M %p')
+            invoice_number = f"INV-{student_id}-{now.strftime('%Y%m%d%H%M%S')}"
             
     except Exception as e:
         print(f"Error generating invoice: {e}")
@@ -4074,7 +4097,25 @@ def generate_invoice(student_id):
     finally:
         connection.close()
     
-    # Generate PDF
+    # Check if user wants PDF or HTML format (default to HTML for modern view)
+    format_type = request.args.get('format', 'html').lower()
+    
+    if format_type == 'html':
+        # Render HTML invoice template
+        return render_template('dashboards/invoice.html',
+                             student=student,
+                             fee_structure=fee_structure,
+                             payment_transactions=payment_transactions,
+                             total_paid=total_paid,
+                             carry_forward=carry_forward,
+                             balance_brought_forward=balance_brought_forward,
+                             balance=balance,
+                             school_settings=school_settings,
+                             invoice_date=invoice_date,
+                             invoice_time=invoice_time,
+                             invoice_number=invoice_number)
+    
+    # Generate PDF (original functionality)
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                            rightMargin=0.75*inch, leftMargin=0.75*inch,
