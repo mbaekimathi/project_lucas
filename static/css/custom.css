@@ -3,29 +3,29 @@
 /* Import Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap');
 
-/* Brand Colors - Professional Corporate Palette */
+/* Brand Colors - Professional Maroon Palette */
 :root {
-    --brand-primary: #1E40AF;      /* Professional blue */
-    --brand-secondary: #DC2626;     /* Professional red */
-    --brand-accent: #059669;        /* Professional green */
-    --brand-warm: #6366F1;          /* Professional indigo */
+    --brand-primary: #800020;      /* Classic maroon */
+    --brand-secondary: #A00030;     /* Light maroon */
+    --brand-accent: #5C0014;        /* Dark maroon */
+    --brand-warm: #8B1538;          /* Warm maroon */
     --warm-cream: #FFFFFF;          /* White */
     --warm-beige: #F9FAFB;          /* Light gray */
     --warm-slate: #64748B;          /* Medium slate */
-    --warm-coral: #EF4444;          /* Professional red */
-    --warm-gold: #F59E0B;           /* Professional amber */
-    --warm-navy: #1E3A8A;           /* Navy blue */
-    --warm-teal: #0D9488;           /* Professional teal */
-    --vibrant-blue: #2563EB;        /* Blue */
-    --vibrant-purple: #6366F1;      /* Indigo */
-    --vibrant-pink: #EC4899;        /* Pink */
+    --warm-coral: #B00040;          /* Bright maroon */
+    --warm-gold: #C9A961;           /* Maroon gold accent */
+    --warm-navy: #5C0014;           /* Dark maroon */
+    --warm-teal: #8B1538;           /* Medium maroon */
+    --vibrant-maroon: #800020;      /* Primary maroon */
+    --vibrant-burgundy: #722F37;    /* Burgundy */
+    --vibrant-wine: #6B1A2F;        /* Wine red */
     /* Legacy support */
-    --brand-orange: #F97316;
-    --brand-blue: #1E40AF;
+    --brand-orange: #C9A961;
+    --brand-blue: #800020;
     --orange-light: #FFFFFF;
-    --orange-dark: #DC2626;
-    --blue-light: #2563EB;
-    --blue-dark: #1E3A8A;
+    --orange-dark: #5C0014;
+    --blue-light: #A00030;
+    --blue-dark: #5C0014;
     --text-dark: #1F2937;
     --text-light: #64748B;
     --bg-light: #FFFFFF;

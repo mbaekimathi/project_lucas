@@ -4,30 +4,30 @@
 
 {% block content %}
 <!-- Hero Section -->
-<section class="hero-parallax text-white py-12 md:py-20 fade-in-section relative overflow-hidden min-h-[400px] md:min-h-[600px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/90 via-brand-primary/80 to-blue-900/90 z-10"></div>
-    <!-- Floating Animated Elements -->
-    <div class="absolute top-20 left-10 w-20 h-20 bg-white/10 rounded-full blur-xl animate-float z-20"></div>
-    <div class="absolute bottom-20 right-10 w-32 h-32 bg-white/10 rounded-full blur-xl animate-float-delayed z-20"></div>
-    <div class="absolute top-1/2 left-1/4 w-16 h-16 bg-white/10 rounded-full blur-lg animate-float-slow z-20"></div>
+<section class="relative bg-white py-24 md:py-32 overflow-hidden">
+    <!-- Decorative Background Elements -->
+    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
     
-    <div class="container mx-auto px-4 lg:px-8 relative z-30">
-        <div class="max-w-3xl mx-auto text-center floating-content">
-            <div class="mb-4 animate-bounce-in">
-                <span class="inline-block px-6 py-3 bg-white/20 backdrop-blur-md text-white rounded-full font-semibold mb-4 shadow-lg hover:scale-110 transition-transform duration-300 border border-white/30">
-                    <i class="fas fa-heart mr-2 animate-pulse"></i>NGO Sponsored Education
+    <div class="container mx-auto px-4 lg:px-8 relative z-10">
+        <div class="max-w-5xl mx-auto text-center">
+            <div class="mb-8">
+                <span class="inline-block px-6 py-2 bg-brand-primary/10 text-brand-primary rounded-full text-sm font-semibold border border-brand-primary/20">
+                    <i class="fas fa-heart mr-2"></i>NGO Sponsored Education
                 </span>
             </div>
-            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-heading font-bold mb-4 md:mb-6 text-white drop-shadow-2xl animate-slide-up px-2">Welcome to {{ school_settings.school_name or 'Modern School' }}</h1>
-            <p class="text-base sm:text-lg md:text-xl lg:text-2xl mb-6 md:mb-8 text-white/95 font-medium drop-shadow-lg animate-slide-up-delayed px-2">Empowering the next generation through quality education and community support</p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in-up">
-                <a href="/admission" class="px-8 py-4 bg-brand-secondary text-white rounded-lg font-semibold hover:bg-red-700 hover:scale-110 transition-all shadow-xl hover:shadow-2xl transform backdrop-blur-sm">
+            <h1 class="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold mb-6 text-gray-900 leading-tight">
+                Welcome to<br>
+                <span class="text-brand-primary">{{ school_settings.school_name or 'Modern School' }}</span>
+            </h1>
+            <p class="text-xl md:text-2xl mb-12 text-gray-600 max-w-3xl mx-auto leading-relaxed">
+                Empowering the next generation through quality education and community support
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/admission" class="px-10 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
                     <i class="fas fa-file-alt mr-2"></i>Apply Now
                 </a>
-                <a href="/about" class="px-8 py-4 bg-white/20 backdrop-blur-md border-2 border-white/50 text-white rounded-lg font-semibold hover:bg-white/30 hover:scale-110 transition-all transform shadow-lg">
+                <a href="/about" class="px-10 py-4 bg-white hover:bg-gray-50 text-gray-900 rounded-xl font-semibold transition-all border-2 border-gray-200 hover:border-gray-300 text-lg">
                     <i class="fas fa-info-circle mr-2"></i>Learn More
                 </a>
             </div>
@@ -35,39 +35,38 @@
     </div>
 </section>
 
-<!-- Trust & Transparency Section -->
-<section class="py-12 relative overflow-hidden min-h-[300px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.3" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-r from-blue-600/80 via-indigo-600/80 to-purple-600/80 z-10"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-20">
-        <div class="max-w-4xl mx-auto">
-            <div class="flex flex-wrap justify-center items-center gap-4 sm:gap-6 md:gap-8 text-center floating-content px-2">
-                <div class="flex flex-col items-center space-y-2 bg-black/60 backdrop-blur-lg px-4 sm:px-6 py-3 sm:py-4 rounded-lg border border-white/20 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all transform group w-full sm:w-auto min-w-[140px]">
-                    <div class="w-14 h-14 bg-brand-primary rounded-full flex items-center justify-center group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-shield-alt text-white text-xl"></i>
+<!-- Trust & Values Section -->
+<section class="py-20 bg-gray-50">
+    <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="text-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100">
+                    <div class="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <i class="fas fa-shield-alt text-brand-primary text-2xl"></i>
                     </div>
-                    <span class="font-semibold text-white">Trusted Institution</span>
+                    <h3 class="font-bold text-gray-900 mb-2 text-lg">Trusted Institution</h3>
+                    <p class="text-sm text-gray-600">Proven track record</p>
                 </div>
-                <div class="flex flex-col items-center space-y-2 bg-black/60 backdrop-blur-lg px-6 py-4 rounded-lg border border-white/20 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all transform group">
-                    <div class="w-14 h-14 bg-brand-primary rounded-full flex items-center justify-center group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-eye text-white text-xl"></i>
+                <div class="text-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100">
+                    <div class="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <i class="fas fa-eye text-brand-primary text-2xl"></i>
                     </div>
-                    <span class="font-semibold text-white">Full Transparency</span>
+                    <h3 class="font-bold text-gray-900 mb-2 text-lg">Full Transparency</h3>
+                    <p class="text-sm text-gray-600">Open and honest</p>
                 </div>
-                <div class="flex flex-col items-center space-y-2 bg-black/60 backdrop-blur-lg px-6 py-4 rounded-lg border border-white/20 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all transform group">
-                    <div class="w-14 h-14 bg-brand-primary rounded-full flex items-center justify-center group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-users text-white text-xl"></i>
+                <div class="text-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100">
+                    <div class="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <i class="fas fa-users text-brand-primary text-2xl"></i>
                     </div>
-                    <span class="font-semibold text-white">Community Impact</span>
+                    <h3 class="font-bold text-gray-900 mb-2 text-lg">Community Impact</h3>
+                    <p class="text-sm text-gray-600">Making a difference</p>
                 </div>
-                <div class="flex flex-col items-center space-y-2 bg-black/60 backdrop-blur-lg px-6 py-4 rounded-lg border border-white/20 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all transform group">
-                    <div class="w-14 h-14 bg-brand-primary rounded-full flex items-center justify-center group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-certificate text-white text-xl"></i>
+                <div class="text-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100">
+                    <div class="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                        <i class="fas fa-certificate text-brand-primary text-2xl"></i>
                     </div>
-                    <span class="font-semibold text-white">Accredited Programs</span>
+                    <h3 class="font-bold text-gray-900 mb-2 text-lg">Accredited Programs</h3>
+                    <p class="text-sm text-gray-600">Quality education</p>
                 </div>
             </div>
         </div>
@@ -75,52 +74,48 @@
 </section>
 
 <!-- Features Section -->
-<section class="py-8 md:py-12 lg:py-16 section-padding relative overflow-hidden min-h-[400px] md:min-h-[500px] lg:min-h-[600px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.4" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-br from-white/95 via-white/90 to-white/95 z-10"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-20">
-        <div class="text-center mb-12 floating-content">
-            <h2 class="text-3xl md:text-4xl font-heading font-bold text-brand-primary mb-4 animate-fade-in drop-shadow-lg">Why Choose Us</h2>
-            <p class="text-gray-700 max-w-2xl mx-auto text-lg animate-fade-in-delayed font-medium">We are committed to providing quality education with transparency, trust, and community impact at our core.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
-            <div class="bg-black/70 backdrop-blur-lg p-4 sm:p-6 md:p-8 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=800&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="w-16 h-16 bg-brand-primary rounded-full flex items-center justify-center mb-4 mx-auto group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 shadow-lg">
-                        <i class="fas fa-graduation-cap text-white text-2xl"></i>
-                    </div>
-                    <h3 class="text-xl font-heading font-bold mb-3 text-center text-white group-hover:text-blue-300 transition-colors">Quality Education</h3>
-                    <p class="text-white/90 text-center leading-relaxed font-medium">World-class curriculum designed to prepare students for success in the modern world.</p>
-                </div>
+<section class="py-24 bg-white">
+    <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-20">
+                <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-5">Why Choose Us</h2>
+                <p class="text-xl text-gray-600 max-w-2xl mx-auto">
+                    We are committed to providing quality education with transparency, trust, and community impact at our core.
+                </p>
             </div>
-            <div class="bg-black/70 backdrop-blur-lg p-8 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-red-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="w-16 h-16 bg-brand-secondary rounded-full flex items-center justify-center mb-4 mx-auto group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 shadow-lg">
-                        <i class="fas fa-users text-white text-2xl"></i>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+                <div class="group">
+                    <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
+                        <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                            <i class="fas fa-graduation-cap text-white text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4">Quality Education</h3>
+                        <p class="text-gray-600 leading-relaxed text-lg">
+                            World-class curriculum designed to prepare students for success in the modern world.
+                        </p>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-3 text-center text-white group-hover:text-red-300 transition-colors">Expert Faculty</h3>
-                    <p class="text-white/90 text-center leading-relaxed font-medium">Experienced and dedicated teachers committed to student growth and development.</p>
                 </div>
-            </div>
-            <div class="bg-black/70 backdrop-blur-lg p-8 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-green-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="w-16 h-16 bg-brand-accent rounded-full flex items-center justify-center mb-4 mx-auto group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 shadow-lg">
-                        <i class="fas fa-laptop text-white text-2xl"></i>
+                <div class="group">
+                    <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
+                        <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                            <i class="fas fa-users text-white text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4">Expert Faculty</h3>
+                        <p class="text-gray-600 leading-relaxed text-lg">
+                            Experienced and dedicated teachers committed to student growth and development.
+                        </p>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-3 text-center text-white group-hover:text-green-300 transition-colors">Modern Facilities</h3>
-                    <p class="text-white/90 text-center leading-relaxed font-medium">State-of-the-art technology and facilities to enhance the learning experience.</p>
+                </div>
+                <div class="group">
+                    <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
+                        <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
+                            <i class="fas fa-laptop text-white text-3xl"></i>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900 mb-4">Modern Facilities</h3>
+                        <p class="text-gray-600 leading-relaxed text-lg">
+                            State-of-the-art technology and facilities to enhance the learning experience.
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -128,52 +123,29 @@
 </section>
 
 <!-- Impact Stats Section -->
-<section class="py-8 md:py-12 lg:py-16 section-padding relative overflow-hidden min-h-[350px] md:min-h-[450px] lg:min-h-[500px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.35" style="background-image: url('https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-br from-indigo-600/85 via-purple-600/85 to-pink-600/85 z-10"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-20">
-        <div class="text-center mb-12 floating-content">
-            <h2 class="text-3xl md:text-4xl font-heading font-bold text-white mb-4 animate-fade-in drop-shadow-2xl">Our Impact</h2>
-            <p class="text-white/95 text-lg animate-fade-in-delayed font-medium drop-shadow-lg">Transforming lives through education and community support</p>
-        </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 lg:gap-8 px-2">
-            <div class="text-center fade-in-section impact-stat bg-black/70 backdrop-blur-lg rounded-lg p-3 sm:p-4 md:p-6 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all border border-white/30 group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-heading font-bold text-white mb-1 sm:mb-2 drop-shadow-2xl" data-count="500">500+</div>
-                    <div class="text-white/90 font-semibold text-xs sm:text-sm md:text-base">Students</div>
-                </div>
+<section class="py-24 bg-gray-50">
+    <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-5 text-gray-900">Our Impact</h2>
+                <p class="text-xl text-gray-600">Transforming lives through education and community support</p>
             </div>
-            <div class="text-center fade-in-section impact-stat bg-black/70 backdrop-blur-lg rounded-lg p-6 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all border border-white/30 group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-red-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="text-4xl md:text-5xl font-heading font-bold text-white mb-2 drop-shadow-2xl" data-count="50">50+</div>
-                    <div class="text-white/90 font-semibold">Teachers</div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+                <div class="text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="text-5xl md:text-6xl font-bold mb-3 text-brand-primary">500+</div>
+                    <div class="text-gray-600 font-semibold text-lg">Students</div>
                 </div>
-            </div>
-            <div class="text-center fade-in-section impact-stat bg-black/70 backdrop-blur-lg rounded-lg p-6 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all border border-white/30 group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-green-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="text-4xl md:text-5xl font-heading font-bold text-white mb-2 drop-shadow-2xl" data-count="20">20+</div>
-                    <div class="text-white/90 font-semibold">Programs</div>
+                <div class="text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="text-5xl md:text-6xl font-bold mb-3 text-brand-primary">50+</div>
+                    <div class="text-gray-600 font-semibold text-lg">Teachers</div>
                 </div>
-            </div>
-            <div class="text-center fade-in-section impact-stat bg-black/70 backdrop-blur-lg rounded-lg p-6 shadow-2xl hover:shadow-2xl hover:scale-110 transition-all border border-white/30 group relative overflow-hidden floating-content">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-900/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div class="relative z-10">
-                    <div class="text-4xl md:text-5xl font-heading font-bold text-white mb-2 drop-shadow-2xl" data-count="95">95%</div>
-                    <div class="text-white/90 font-semibold">Success Rate</div>
+                <div class="text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="text-5xl md:text-6xl font-bold mb-3 text-brand-primary">20+</div>
+                    <div class="text-gray-600 font-semibold text-lg">Programs</div>
+                </div>
+                <div class="text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="text-5xl md:text-6xl font-bold mb-3 text-brand-primary">95%</div>
+                    <div class="text-gray-600 font-semibold text-lg">Success Rate</div>
                 </div>
             </div>
         </div>
@@ -181,31 +153,29 @@
 </section>
 
 <!-- CTA Section -->
-<section class="py-8 md:py-12 lg:py-16 section-padding relative overflow-hidden min-h-[300px] md:min-h-[350px] lg:min-h-[400px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/90 via-blue-800/90 to-indigo-900/90 z-10"></div>
-    <!-- Floating Elements -->
-    <div class="absolute top-10 left-10 w-24 h-24 bg-white/10 rounded-full blur-2xl animate-float z-20"></div>
-    <div class="absolute bottom-10 right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-float-delayed z-20"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 text-center relative z-30 floating-content">
-        <h2 class="text-2xl sm:text-3xl md:text-4xl font-heading font-bold mb-3 md:mb-4 text-white animate-slide-up drop-shadow-2xl px-2">Ready to Start Your Journey?</h2>
-        <p class="text-base sm:text-lg md:text-xl mb-6 md:mb-8 text-white/95 font-medium animate-slide-up-delayed drop-shadow-lg px-2">Join us today and unlock your potential</p>
-        <a href="/admission" class="inline-block px-6 sm:px-8 py-3 sm:py-4 bg-brand-secondary text-white rounded-lg font-semibold hover:bg-red-700 hover:scale-110 transition-all shadow-xl hover:shadow-2xl transform animate-bounce-in backdrop-blur-sm text-sm sm:text-base">
-            <i class="fas fa-arrow-right mr-2"></i>Apply for Admission
-        </a>
+<section class="py-24 bg-white">
+    <div class="container mx-auto px-4 lg:px-8 text-center">
+        <div class="max-w-3xl mx-auto">
+            <h2 class="text-4xl md:text-5xl font-bold mb-5 text-gray-900">Ready to Start Your Journey?</h2>
+            <p class="text-xl mb-10 text-gray-600">
+                Join us today and unlock your potential
+            </p>
+            <a href="/admission" class="inline-block px-12 py-5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
+                <i class="fas fa-arrow-right mr-2"></i>Apply for Admission
+            </a>
+        </div>
     </div>
 </section>
 
 <!-- Next Button -->
-<div class="container mx-auto px-4 lg:px-8 py-8 bg-white">
-    <div class="flex justify-end">
-        <a href="/about" class="inline-flex items-center space-x-2 px-6 py-3 bg-brand-primary text-white rounded-lg font-semibold hover:bg-blue-800 transition-all shadow-md">
-            <span>Next</span>
-            <i class="fas fa-arrow-right"></i>
-        </a>
+<div class="bg-white border-t border-gray-200">
+    <div class="container mx-auto px-4 lg:px-8 py-8">
+        <div class="flex justify-end">
+            <a href="/about" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
+                <span>Next</span>
+                <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
     </div>
 </div>
 {% endblock %}

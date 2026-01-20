@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Employee Registration - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="bg-gray-900 text-white py-16">
+    <div class="container mx-auto px-4 lg:px-8">
+        <h1 class="text-4xl md:text-5xl font-bold mb-4">Employee Registration</h1>
+        <p class="text-xl text-white/90">Join our team at {{ school_settings.school_name or 'Modern School' }}</p>
+    </div>
+</section>
+
+<!-- Registration Form Section -->
+<section class="py-16 bg-gray-50">
+    <div class="container mx-auto px-4 lg:px-8 max-w-4xl">
+        <div class="bg-white rounded-xl shadow-lg p-8 md:p-12">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mb-6 p-4 rounded-lg {% if category == 'error' %}bg-red-50 border border-red-200 text-red-700{% else %}bg-green-50 border border-green-200 text-green-700{% endif %}">
+                            <div class="flex items-center">
+                                <i class="fas {% if category == 'error' %}fa-exclamation-circle{% else %}fa-check-circle{% endif %} mr-2"></i>
+                                <span>{{ message }}</span>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST" action="/register-employee" enctype="multipart/form-data" class="space-y-8">
+                <!-- Personal Information -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 border-b-2 border-brand-primary pb-2">
+                        <i class="fas fa-user mr-2"></i>Personal Information
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="md:col-span-2">
+                            <label for="full_name" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Full Name <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="full_name" name="full_name" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="Enter your full name">
+                        </div>
+                        <div>
+                            <label for="email" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Email Address <span class="text-red-500">*</span>
+                            </label>
+                            <input type="email" id="email" name="email" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="your.email@example.com">
+                        </div>
+                        <div>
+                            <label for="phone" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Phone Number <span class="text-red-500">*</span>
+                            </label>
+                            <input type="tel" id="phone" name="phone" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="+254 700 000 000">
+                        </div>
+                        <div>
+                            <label for="id_number" class="block text-sm font-semibold mb-2 text-gray-700">
+                                National ID Number <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" id="id_number" name="id_number" required
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="Enter your ID number">
+                        </div>
+                        <div>
+                            <label for="employee_id" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Employee ID <span class="text-red-500">*</span>
+                                <span class="text-xs text-gray-500 block mt-1">Must be exactly 6 digits</span>
+                            </label>
+                            <input type="text" id="employee_id" name="employee_id" required
+                                   pattern="[0-9]{6}" maxlength="6" minlength="6"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="000000">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account Security -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 border-b-2 border-brand-primary pb-2">
+                        <i class="fas fa-lock mr-2"></i>Account Security
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label for="password" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Password <span class="text-red-500">*</span>
+                                <span class="text-xs text-gray-500 block mt-1">Minimum 6 characters</span>
+                            </label>
+                            <input type="password" id="password" name="password" required minlength="6"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="Enter password">
+                        </div>
+                        <div>
+                            <label for="confirm_password" class="block text-sm font-semibold mb-2 text-gray-700">
+                                Confirm Password <span class="text-red-500">*</span>
+                            </label>
+                            <input type="password" id="confirm_password" name="confirm_password" required minlength="6"
+                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
+                                   placeholder="Confirm password">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Picture (Optional) -->
+                <div>
+                    <h2 class="text-2xl font-bold mb-6 text-gray-900 border-b-2 border-brand-primary pb-2">
+                        <i class="fas fa-image mr-2"></i>Profile Picture (Optional)
+                    </h2>
+                    <div>
+                        <label for="profile_picture" class="block text-sm font-semibold mb-2 text-gray-700">
+                            Upload Profile Picture
+                            <span class="text-xs text-gray-500 block mt-1">Accepted formats: JPG, PNG, GIF (Max 5MB)</span>
+                        </label>
+                        <input type="file" id="profile_picture" name="profile_picture" accept="image/*"
+                               class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-blue-600 focus:border-blue-600">
+                    </div>
+                </div>
+
+                <!-- Information Notice -->
+                <div class="bg-red-50 border-l-4 border-brand-primary p-4 rounded">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-info-circle text-brand-primary"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700">
+                                <strong>Note:</strong> Your registration will be reviewed by our administration team. 
+                                You will receive an email notification once your account has been approved. 
+                                Please ensure all information provided is accurate.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="flex flex-col sm:flex-row gap-4 pt-4">
+                    <button type="submit" class="flex-1 px-8 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl">
+                        <i class="fas fa-paper-plane mr-2"></i>Submit Registration
+                    </button>
+                    <button type="reset" class="px-8 py-4 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-all">
+                        <i class="fas fa-redo mr-2"></i>Reset Form
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+

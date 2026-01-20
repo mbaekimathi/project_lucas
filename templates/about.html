@@ -4,50 +4,42 @@
 
 {% block content %}
 <!-- Hero Section -->
-<section class="hero-parallax text-white py-12 md:py-16 fade-in-section relative overflow-hidden min-h-[350px] md:min-h-[450px] lg:min-h-[500px] flex items-center">
-    <!-- Background Image with Parallax -->
-    <div class="parallax-bg absolute inset-0 z-0" data-speed="0.5" style="background-image: url('https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80'); background-size: cover; background-position: center; background-attachment: fixed;"></div>
-    <!-- Overlay Gradient -->
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/90 via-blue-800/90 to-indigo-900/90 z-10"></div>
-    <!-- Floating Elements -->
-    <div class="absolute top-10 right-10 w-32 h-32 bg-white/10 rounded-full blur-2xl animate-float z-20"></div>
-    <div class="absolute bottom-10 left-10 w-24 h-24 bg-white/10 rounded-full blur-2xl animate-float-delayed z-20"></div>
+<section class="relative bg-white py-24 md:py-32 overflow-hidden">
+    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
     
-    <div class="container mx-auto px-4 lg:px-8 relative z-30 floating-content">
-        <h1 class="text-3xl sm:text-4xl md:text-5xl font-heading font-bold mb-3 md:mb-4 text-white animate-slide-up drop-shadow-2xl px-2">About {{ school_settings.school_name or 'Modern School' }}</h1>
-        <p class="text-base sm:text-lg md:text-xl text-white/95 font-medium animate-slide-up-delayed drop-shadow-lg px-2">Excellence in Education Since 2010 | NGO Sponsored</p>
+    <div class="container mx-auto px-4 lg:px-8 relative z-10">
+        <div class="max-w-4xl mx-auto text-center">
+            <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-gray-900">
+                About <span class="text-brand-primary">{{ school_settings.school_name or 'Modern School' }}</span>
+            </h1>
+            <p class="text-xl md:text-2xl text-gray-600">Excellence in Education Since 2010 | NGO Sponsored</p>
+        </div>
     </div>
 </section>
 
 <!-- Mission Section -->
-<section class="py-8 md:py-12 lg:py-16 bg-white section-padding relative overflow-hidden">
-    <!-- Background Decoration -->
-    <div class="absolute top-0 right-0 w-96 h-96 bg-blue-50 rounded-full blur-3xl opacity-50 -translate-y-1/2 translate-x-1/2"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 lg:gap-12 items-center">
-                <div class="fade-in-section">
-                    <h2 class="text-2xl sm:text-3xl font-heading font-bold mb-4 md:mb-6 text-brand-primary animate-fade-in">Our Mission</h2>
-                    <p class="text-gray-700 mb-3 md:mb-4 leading-relaxed animate-fade-in-delayed text-sm sm:text-base">
+<section class="py-24 bg-gray-50">
+    <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-6xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                <div>
+                    <h2 class="text-4xl md:text-5xl font-bold mb-6 text-gray-900">Our Mission</h2>
+                    <p class="text-lg text-gray-600 mb-4 leading-relaxed">
                         At {{ school_settings.school_name or 'Modern School' }}, we are committed to providing a transformative educational experience that prepares students for success in an ever-changing world. We believe in nurturing critical thinking, creativity, and character development.
                     </p>
-                    <p class="text-gray-700 leading-relaxed animate-fade-in-delayed">
+                    <p class="text-lg text-gray-600 leading-relaxed">
                         Our mission is to empower every student to reach their full potential through innovative teaching methods, personalized attention, and a supportive learning environment. As an NGO-sponsored institution, we ensure transparency, trust, and community impact in everything we do.
                     </p>
                 </div>
-                <div class="fade-in-section">
-                    <div class="bg-black/70 backdrop-blur-lg rounded-lg p-4 sm:p-6 md:p-8 shadow-2xl border border-white/30 hover:shadow-2xl hover:scale-105 transition-all group relative overflow-hidden">
-                        <!-- Background Image Overlay -->
-                        <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=600&q=80'); background-size: cover; background-position: center;"></div>
-                        <div class="relative z-10">
-                            <i class="fas fa-bullseye text-6xl text-white mb-4 group-hover:rotate-360 transition-transform duration-500 drop-shadow-lg"></i>
-                            <h3 class="text-2xl font-heading font-bold mb-4 text-white">Vision</h3>
-                            <p class="text-white/90">
-                                To be a leading educational institution recognized for academic excellence, innovation, student success, and positive community impact.
-                            </p>
-                        </div>
+                <div class="bg-white p-10 rounded-3xl shadow-lg border border-gray-100">
+                    <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 mx-auto">
+                        <i class="fas fa-bullseye text-white text-3xl"></i>
                     </div>
+                    <h3 class="text-2xl font-bold mb-4 text-gray-900 text-center">Our Vision</h3>
+                    <p class="text-gray-600 text-center leading-relaxed">
+                        To be a leading educational institution recognized for academic excellence, innovation, student success, and positive community impact.
+                    </p>
                 </div>
             </div>
         </div>
@@ -55,56 +47,38 @@
 </section>
 
 <!-- Values Section -->
-<section class="py-8 md:py-12 lg:py-16 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 section-padding relative overflow-hidden">
-    <!-- Animated Background Pattern -->
-    <div class="absolute inset-0 opacity-5">
-        <div class="absolute inset-0" style="background-image: url('data:image/svg+xml,%3Csvg width=\'100\' height=\'100\' viewBox=\'0 0 100 100\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M11 18c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm48 25c3.866 0 7-3.134 7-7s-3.134-7-7-7-7 3.134-7 7 3.134 7 7 7zm-43-7c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm63 31c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM34 90c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zm56-76c1.657 0 3-1.343 3-3s-1.343-3-3-3-3 1.343-3 3 1.343 3 3 3zM12 86c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm28-65c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm23 11c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-6 60c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm29 4c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zM32 63c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm57-13c2.76 0 5-2.24 5-5s-2.24-5-5-5-5 2.24-5 5 2.24 5 5 5zm-9-21c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM60 91c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM35 41c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2zM12 60c1.105 0 2-.895 2-2s-.895-2-2-2-2 .895-2 2 .895 2 2 2z\' fill=\'%231e40af\' fill-opacity=\'0.1\' fill-rule=\'evenodd\'/%3E%3C/svg%3E'); background-size: 200px 200px;"></div>
-    </div>
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <h2 class="text-2xl sm:text-3xl md:text-4xl font-heading font-bold text-center mb-6 md:mb-8 lg:mb-12 text-brand-primary animate-fade-in px-2">Our Core Values</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-            <div class="bg-black/70 backdrop-blur-lg p-4 sm:p-5 md:p-6 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="relative z-10">
-                    <div class="w-12 h-12 bg-brand-primary rounded-lg flex items-center justify-center mb-4 group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-star text-white"></i>
+<section class="py-24 bg-white">
+    <div class="container mx-auto px-4 lg:px-8">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-16 text-gray-900">Our Core Values</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="bg-gray-50 p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mb-6">
+                        <i class="fas fa-star text-white text-2xl"></i>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-2 text-white">Excellence</h3>
-                    <p class="text-white/90">Striving for the highest standards in everything we do.</p>
+                    <h3 class="text-xl font-bold mb-3 text-gray-900">Excellence</h3>
+                    <p class="text-gray-600">Striving for the highest standards in everything we do.</p>
                 </div>
-            </div>
-            <div class="bg-black/70 backdrop-blur-lg p-6 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="relative z-10">
-                    <div class="w-12 h-12 bg-brand-primary rounded-lg flex items-center justify-center mb-4 group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-shield-alt text-white"></i>
+                <div class="bg-gray-50 p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mb-6">
+                        <i class="fas fa-shield-alt text-white text-2xl"></i>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-2 text-white">Transparency</h3>
-                    <p class="text-white/90">Open communication and accountability in all operations.</p>
+                    <h3 class="text-xl font-bold mb-3 text-gray-900">Transparency</h3>
+                    <p class="text-gray-600">Open communication and accountability in all operations.</p>
                 </div>
-            </div>
-            <div class="bg-black/70 backdrop-blur-lg p-6 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="relative z-10">
-                    <div class="w-12 h-12 bg-brand-primary rounded-lg flex items-center justify-center mb-4 group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-heart text-white"></i>
+                <div class="bg-gray-50 p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mb-6">
+                        <i class="fas fa-heart text-white text-2xl"></i>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-2 text-white">Trust</h3>
-                    <p class="text-white/90">Building confidence through integrity and reliability.</p>
+                    <h3 class="text-xl font-bold mb-3 text-gray-900">Trust</h3>
+                    <p class="text-gray-600">Building confidence through integrity and reliability.</p>
                 </div>
-            </div>
-            <div class="bg-black/70 backdrop-blur-lg p-6 rounded-lg shadow-2xl hover:shadow-2xl hover:-translate-y-2 transition-all border border-white/30 fade-in-section group relative overflow-hidden">
-                <!-- Background Image Overlay -->
-                <div class="absolute inset-0 opacity-30 group-hover:opacity-40 transition-opacity" style="background-image: url('https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&q=80'); background-size: cover; background-position: center;"></div>
-                <div class="relative z-10">
-                    <div class="w-12 h-12 bg-brand-primary rounded-lg flex items-center justify-center mb-4 group-hover:rotate-360 transition-transform duration-500 shadow-lg">
-                        <i class="fas fa-users text-white"></i>
+                <div class="bg-gray-50 p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
+                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mb-6">
+                        <i class="fas fa-users text-white text-2xl"></i>
                     </div>
-                    <h3 class="text-xl font-heading font-bold mb-2 text-white">Community</h3>
-                    <p class="text-white/90">Building strong relationships and positive impact.</p>
+                    <h3 class="text-xl font-bold mb-3 text-gray-900">Community</h3>
+                    <p class="text-gray-600">Building strong relationships and positive impact.</p>
                 </div>
             </div>
         </div>
@@ -112,45 +86,37 @@
 </section>
 
 <!-- History Section -->
-<section class="py-16 bg-white section-padding">
+<section class="py-24 bg-gray-50">
     <div class="container mx-auto px-4 lg:px-8">
-        <div class="max-w-3xl mx-auto">
-            <h2 class="text-3xl md:text-4xl font-heading font-bold text-center mb-12 text-brand-blue">Our History</h2>
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-4xl md:text-5xl font-bold text-center mb-16 text-gray-900">Our History</h2>
             <div class="space-y-8">
-                <div class="fade-in-section">
-                    <div class="flex items-start space-x-4">
-                        <div class="flex-shrink-0 w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold shadow-md">2010</div>
-                        <div>
-                            <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Foundation</h3>
-                            <p class="text-gray-700">{{ school_settings.school_name or 'Modern School' }} was founded with a vision to revolutionize education through innovative teaching methods and student-centered learning, supported by NGO funding.</p>
-                        </div>
+                <div class="flex items-start space-x-6">
+                    <div class="flex-shrink-0 w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">2010</div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1">
+                        <h3 class="text-xl font-bold mb-2 text-gray-900">Foundation</h3>
+                        <p class="text-gray-600">{{ school_settings.school_name or 'Modern School' }} was founded with a vision to revolutionize education through innovative teaching methods and student-centered learning, supported by NGO funding.</p>
                     </div>
                 </div>
-                <div class="fade-in-section">
-                    <div class="flex items-start space-x-4">
-                        <div class="flex-shrink-0 w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold shadow-md">2015</div>
-                        <div>
-                            <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Expansion</h3>
-                            <p class="text-gray-700">We expanded our facilities and programs, introducing new technology labs and specialized learning centers with transparent community reporting.</p>
-                        </div>
+                <div class="flex items-start space-x-6">
+                    <div class="flex-shrink-0 w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">2015</div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1">
+                        <h3 class="text-xl font-bold mb-2 text-gray-900">Expansion</h3>
+                        <p class="text-gray-600">We expanded our facilities and programs, introducing new technology labs and specialized learning centers with transparent community reporting.</p>
                     </div>
                 </div>
-                <div class="fade-in-section">
-                    <div class="flex items-start space-x-4">
-                        <div class="flex-shrink-0 w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold shadow-md">2020</div>
-                        <div>
-                            <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Digital Transformation</h3>
-                            <p class="text-gray-700">We embraced digital learning platforms and online education, ensuring continuity during challenging times while maintaining our commitment to transparency.</p>
-                        </div>
+                <div class="flex items-start space-x-6">
+                    <div class="flex-shrink-0 w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">2020</div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1">
+                        <h3 class="text-xl font-bold mb-2 text-gray-900">Digital Transformation</h3>
+                        <p class="text-gray-600">We embraced digital learning platforms and online education, ensuring continuity during challenging times while maintaining our commitment to transparency.</p>
                     </div>
                 </div>
-                <div class="fade-in-section">
-                    <div class="flex items-start space-x-4">
-                        <div class="flex-shrink-0 w-12 h-12 bg-brand-blue rounded-full flex items-center justify-center text-white font-bold shadow-md">2025</div>
-                        <div>
-                            <h3 class="text-xl font-heading font-bold mb-2 text-brand-blue">Today</h3>
-                            <p class="text-gray-700">We continue to innovate and excel, preparing students for success in the modern world with cutting-edge programs, facilities, and unwavering commitment to community impact.</p>
-                        </div>
+                <div class="flex items-start space-x-6">
+                    <div class="flex-shrink-0 w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center text-white font-bold text-lg shadow-lg">2025</div>
+                    <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex-1">
+                        <h3 class="text-xl font-bold mb-2 text-gray-900">Today</h3>
+                        <p class="text-gray-600">We continue to innovate and excel, preparing students for success in the modern world with cutting-edge programs, facilities, and unwavering commitment to community impact.</p>
                     </div>
                 </div>
             </div>
@@ -159,13 +125,14 @@
 </section>
 
 <!-- Next Button -->
-<div class="container mx-auto px-4 lg:px-8 py-8 bg-white">
-    <div class="flex justify-end">
-        <a href="/programs" class="inline-flex items-center space-x-2 px-6 py-3 bg-brand-primary text-white rounded-lg font-semibold hover:bg-blue-800 transition-all shadow-md">
-            <span>Next</span>
-            <i class="fas fa-arrow-right"></i>
-        </a>
+<div class="bg-white border-t border-gray-200">
+    <div class="container mx-auto px-4 lg:px-8 py-8">
+        <div class="flex justify-end">
+            <a href="/programs" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
+                <span>Next</span>
+                <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
     </div>
 </div>
 {% endblock %}
-

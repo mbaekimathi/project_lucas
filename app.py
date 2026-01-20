@@ -2100,8 +2100,35 @@ def admission():
         
         return redirect(url_for('home'))
     
-    # GET request - redirect to home (admission is now handled via modal)
-    return redirect(url_for('home'))
+    # GET request - render admission form
+    # Fetch active academic levels for admission form
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description 
+                    FROM academic_levels 
+                    WHERE level_status = 'active'
+                    ORDER BY level_name ASC
+                """)
+                results = cursor.fetchall()
+                
+                if results:
+                    for row in results:
+                        academic_levels.append({
+                            'id': row.get('id'),
+                            'level_category': row.get('level_category', ''),
+                            'level_name': row.get('level_name', ''),
+                            'level_description': row.get('level_description', '')
+                        })
+        except Exception as e:
+            print(f"Error fetching academic levels for admission: {e}")
+        finally:
+            connection.close()
+    
+    return render_template('admission_form.html', academic_levels=academic_levels)
 
 @app.route('/register-employee', methods=['GET', 'POST'])
 def register_employee():
@@ -2210,8 +2237,8 @@ def register_employee():
         
         return redirect(url_for('home'))
     
-    # GET request - redirect to home (registration is handled via modal)
-    return redirect(url_for('home'))
+    # GET request - render employee registration form
+    return render_template('employee_registration_form.html')
 
 @app.route('/check-employee-id', methods=['POST'])
 def check_employee_id():
@@ -2369,8 +2396,9 @@ def login():
         
         return redirect(url_for('home'))
     
-    # GET request - redirect to home (login is now handled via modal)
-    return redirect(url_for('home'))
+    # GET request - render login page
+    role = request.args.get('role', '')
+    return render_template('login.html', default_role=role)
 
 @app.route('/logout')
 def logout():
