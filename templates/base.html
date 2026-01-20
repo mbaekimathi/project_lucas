@@ -1,490 +1,717 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" x-data="{ 
+    darkMode: localStorage.getItem('darkMode') === 'true',
+    sidebarOpen: window.innerWidth >= 1024,
+    isDesktop: window.innerWidth >= 1024,
+    userClosedSidebar: false,
+    profileDropdownOpen: false,
+    notificationDropdownOpen: false,
+    loginModalOpen: false,
+    admissionModalOpen: false,
+    comingSoonModalOpen: false,
+    comingSoonTitle: ''
+}" 
+      :class="{ 'dark': darkMode }"
+      x-init="
+        // Initialize dark mode
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+        }
+        
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const wasDesktop = isDesktop;
+                isDesktop = window.innerWidth >= 1024;
+                
+                if (isDesktop && !wasDesktop && !userClosedSidebar) {
+                    sidebarOpen = true;
+                } else if (!isDesktop && wasDesktop) {
+                    sidebarOpen = false;
+                    userClosedSidebar = false;
+                }
+            }, 150);
+        });
+        
+        // Watch dark mode changes
+        $watch('darkMode', value => {
+            localStorage.setItem('darkMode', value);
+            if (value) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+        
+        // Store initial scroll position
+        let scrollPosition = 0;
+        let touchStartY = 0;
+        
+        // Function to prevent body scrolling
+        function preventBodyScroll(e) {
+            if (!isDesktop && sidebarOpen) {
+                const sidebar = document.querySelector('aside');
+                const sidebarNav = document.querySelector('.sidebar-nav');
+                
+                // If event is from sidebar navigation, allow it
+                if (sidebarNav && (sidebarNav.contains(e.target) || sidebarNav === e.target)) {
+                    // Check if sidebar can scroll in this direction
+                    const nav = sidebarNav;
+                    const isAtTop = nav.scrollTop <= 1;
+                    const isAtBottom = nav.scrollTop + nav.clientHeight >= nav.scrollHeight - 1;
+                    
+                    if (e.type === 'touchmove') {
+                        const touch = e.touches[0];
+                        if (touch) {
+                            const deltaY = touch.clientY - touchStartY;
+                            
+                            // If at top and trying to scroll up, or at bottom and trying to scroll down, prevent
+                            if ((isAtTop && deltaY > 0) || (isAtBottom && deltaY < 0)) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return false;
+                            }
+                        }
+                    } else if (e.type === 'wheel') {
+                        // If at boundaries and trying to scroll beyond, prevent
+                        if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            return false;
+                        }
+                    }
+                    // Allow scrolling within sidebar
+                    return true;
+                }
+                
+                // If event is from sidebar container but not nav, allow
+                if (sidebar && sidebar.contains(e.target) && !sidebarNav.contains(e.target)) {
+                    return true;
+                }
+                
+                // Prevent all scrolling outside sidebar
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }
+        
+        // Track touch start for scroll direction detection
+        function handleTouchStart(e) {
+            if (!isDesktop && sidebarOpen) {
+                const touch = e.touches[0];
+                if (touch) {
+                    touchStartY = touch.clientY;
+                }
+            }
+        }
+        
+        // Prevent body scroll when sidebar is open on mobile
+        $watch('sidebarOpen', value => {
+            if (!isDesktop && value) {
+                // Save current scroll position
+                scrollPosition = window.pageYOffset || document.documentElement.scrollTop;
+                
+                // Lock body scroll
+                document.documentElement.classList.add('sidebar-open-mobile');
+                document.body.classList.add('sidebar-open-mobile');
+                document.body.style.overflow = 'hidden';
+                document.body.style.position = 'fixed';
+                document.body.style.top = `-${scrollPosition}px`;
+                document.body.style.width = '100%';
+                document.body.style.height = '100%';
+                document.body.style.touchAction = 'none';
+                
+                // Prevent touch scrolling on body (except sidebar)
+                document.addEventListener('touchstart', handleTouchStart, { passive: true });
+                document.addEventListener('touchmove', preventBodyScroll, { passive: false });
+                document.addEventListener('wheel', preventBodyScroll, { passive: false });
+                document.addEventListener('scroll', preventBodyScroll, { passive: false });
+            } else {
+                // Restore scroll position
+                document.documentElement.classList.remove('sidebar-open-mobile');
+                document.body.classList.remove('sidebar-open-mobile');
+                document.body.style.overflow = '';
+                document.body.style.position = '';
+                document.body.style.top = '';
+                document.body.style.width = '';
+                document.body.style.height = '';
+                document.body.style.touchAction = '';
+                
+                // Restore scroll position
+                window.scrollTo(0, scrollPosition);
+                
+                // Remove event listeners
+                document.removeEventListener('touchstart', handleTouchStart);
+                document.removeEventListener('touchmove', preventBodyScroll);
+                document.removeEventListener('wheel', preventBodyScroll);
+                document.removeEventListener('scroll', preventBodyScroll);
+            }
+        });
+        
+        // Also watch isDesktop changes
+        $watch('isDesktop', value => {
+            if (value || !sidebarOpen) {
+                document.documentElement.classList.remove('sidebar-open-mobile');
+                document.body.classList.remove('sidebar-open-mobile');
+                document.body.style.overflow = '';
+                document.body.style.position = '';
+                document.body.style.top = '';
+                document.body.style.width = '';
+                document.body.style.height = '';
+                document.body.style.touchAction = '';
+                document.removeEventListener('touchstart', handleTouchStart);
+                document.removeEventListener('touchmove', preventBodyScroll);
+                document.removeEventListener('wheel', preventBodyScroll);
+                document.removeEventListener('scroll', preventBodyScroll);
+            }
+        });
+      ">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>{% block title %}{{ school_settings.school_name or 'Modern School' }} - NGO Sponsored Education{% endblock %}</title>
+    <title>{% block title %}{{ school_settings.school_name or 'Modern School' }}{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        'brand-primary': '#1D3557',      // Deep royal blue - navigation, headers, footer
-                        'brand-secondary': '#E63946',    // Romantic red - CTAs, active states, highlights
-                        'brand-accent': '#E63946',      // Romantic red - accents
-                        'brand-warm': '#1D3557',         // Royal blue
-                        'warm-cream': '#F8F9FA',         // Soft white - backgrounds
-                        'warm-beige': '#F8F9FA',         // Soft white
-                        'warm-slate': '#2B2D42',         // Charcoal - main text
-                        'warm-coral': '#E63946',         // Romantic red
-                        'warm-gold': '#E63946',          // Romantic red
-                        'warm-navy': '#1D3557',         // Royal blue
-                        'warm-teal': '#1D3557',          // Royal blue
-                        'vibrant-blue': '#1D3557',      // Royal blue
-                        'vibrant-purple': '#1D3557',     // Royal blue
-                        'vibrant-pink': '#E63946',       // Romantic red
-                        'light-blue': '#E3F2FD',         // Light blue - brightness accents
-                        'light-blue-50': '#E8F4F8',     // Very light blue
-                        'light-blue-100': '#BBDEFB',    // Light blue tint
-                        // Legacy support
-                        'brand-orange': '#E63946',      // Romantic red
-                        'brand-blue': '#1D3557',        // Royal blue
-                        'orange-light': '#F8F9FA',      // Soft white
-                        'orange-dark': '#1D3557',       // Royal blue
-                        'blue-light': '#E63946',        // Romantic red
-                        'blue-dark': '#1D3557',         // Royal blue
+                        'brand-primary': '#1D3557',
+                        'brand-secondary': '#E63946',
+                        'light-blue': '#E3F2FD',
+                        'light-blue-50': '#E8F4F8',
                     },
                     fontFamily: {
-                        'sans': ['Inter', 'Poppins', 'system-ui', 'sans-serif'],
+                        'sans': ['Inter', 'system-ui', 'sans-serif'],
                         'heading': ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
                     }
                 }
             }
         }
     </script>
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    
+    <!-- Role-specific theme colors (for dashboard pages) -->
     <style>
+        :root {
+            --role-primary: {% block role_primary %}#1D3557{% endblock %};
+            --role-secondary: {% block role_secondary %}#E63946{% endblock %};
+            --role-accent: {% block role_accent %}#1D3557{% endblock %};
+        }
+        
         [x-cloak] { display: none !important; }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+        
+        /* Responsive base styles */
+        * {
+            box-sizing: border-box;
         }
-        @keyframes slideIn {
-            from { transform: translateX(-100%); }
-            to { transform: translateX(0); }
+        
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
         }
-        .fade-in-section {
-            animation: fadeIn 0.6s ease-out;
-        }
-        .slide-in-section {
-            animation: slideIn 0.4s ease-out;
-        }
+        
+        /* Sidebar transitions */
         .sidebar-transition {
-            transition: transform 0.3s ease-in-out;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        /* Dropdown menu styles */
-        .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            margin-top: 0.5rem;
-            z-index: 1000;
-        }
-        /* Ensure dropdown appears above other content */
-        header {
-            position: relative;
-            z-index: 50;
-        }
-        /* Fix for dropdown positioning */
-        .relative[x-data] {
-            position: relative;
-        }
-        /* Responsive improvements */
-        @media (max-width: 640px) {
-            .container {
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
+        
+        /* Mobile sidebar improvements */
+        @media (max-width: 1023px) {
+            aside {
+                height: 100vh;
+                top: 0;
             }
         }
-        /* Touch target improvements */
-        button, a, input, select, textarea {
-            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+        
+        /* Desktop sidebar */
+        @media (min-width: 1024px) {
+            aside {
+                height: calc(100vh - 4rem);
+                top: 4rem;
+            }
         }
-        /* Better scrolling on mobile */
-        @media (max-width: 768px) {
-            body {
+        
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+            transition: background 0.2s ease;
+        }
+        
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.4);
+        }
+        
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        /* Sidebar scrollable container */
+        .sidebar-scrollable {
+            height: calc(100vh - 4rem - 4rem);
+            overflow-y: auto;
+            overflow-x: hidden;
                 -webkit-overflow-scrolling: touch;
             }
+        
+        @media (max-width: 1023px) {
+            .sidebar-scrollable {
+                height: calc(100vh - 4rem);
+            }
         }
+        
+        /* Prevent body scroll when sidebar is open on mobile */
+        body.sidebar-open-mobile {
+            overflow: hidden !important;
+            position: fixed !important;
+            width: 100% !important;
+            height: 100% !important;
+            touch-action: none !important;
+            -webkit-overflow-scrolling: none !important;
+        }
+        
+        /* Prevent scrolling on html element too */
+        html.sidebar-open-mobile {
+            overflow: hidden !important;
+            height: 100% !important;
+            position: relative !important;
+        }
+        
+        /* Ensure sidebar can still scroll */
+        aside .sidebar-nav {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            touch-action: pan-y;
+        }
+        
+        /* Prevent any scroll on main content when sidebar is open on mobile */
+        @media (max-width: 1023px) {
+            body.sidebar-open-mobile main {
+                overflow: hidden !important;
+                touch-action: none !important;
+            }
+            
+            body.sidebar-open-mobile * {
+                overscroll-behavior: none;
+            }
+            
+            body.sidebar-open-mobile aside .sidebar-nav {
+                overscroll-behavior: contain;
+                touch-action: pan-y;
+            }
+        }
+        
+        /* Touch-friendly */
+        button, a {
+            -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+            touch-action: manipulation;
+        }
+        
         /* Prevent text size adjustment on iOS */
         @media screen and (max-width: 768px) {
             input, select, textarea {
                 font-size: 16px !important;
             }
         }
-    </style>
-</head>
-<body class="bg-light-blue-50 min-h-screen font-sans text-warm-slate" 
-      x-data="{ sidebarOpen: window.innerWidth >= 1024, loginModalOpen: false, admissionModalOpen: false, employeeModalOpen: false, teamMemberModalOpen: false, selectedMember: null, roleSelectionModalOpen: false, parentLoginModalOpen: false, studentLoginModalOpen: false }"
-      @open-admission-modal.window="admissionModalOpen = true"
-      @open-login-modal.window="loginModalOpen = true"
-      x-init="window.addEventListener('open-login-modal', () => { loginModalOpen = true; })">
-    <!-- Header -->
-    <header class="bg-brand-primary shadow-xl sticky top-0 z-50 border-b-2 border-brand-primary/20 backdrop-blur-sm header-modern relative">
-        <!-- Animated Background Pattern -->
-        <div class="absolute inset-0 opacity-5 pointer-events-none">
-            <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, #F97316 1px, transparent 0); background-size: 40px 40px;"></div>
-        </div>
         
-        <div class="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 relative z-10">
-            <div class="flex items-center justify-between h-14 sm:h-16 md:h-18">
-                <!-- Logo -->
-                <div class="flex items-center space-x-2 sm:space-x-3 flex-1 min-w-0">
-                    <button @click="sidebarOpen = !sidebarOpen" class="text-white hover:text-brand-secondary transition-all transform hover:scale-110 active:scale-95 duration-300 p-1.5 sm:p-2 rounded-lg sm:rounded-xl hover:bg-light-blue/30 border border-white/20 shadow-sm touch-manipulation flex-shrink-0">
-                        <i class="fas fa-bars text-lg sm:text-xl" x-show="!sidebarOpen"></i>
-                        <i class="fas fa-times text-lg sm:text-xl" x-show="sidebarOpen"></i>
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        
+        /* Sidebar item styles */
+        .sidebar-item {
+            transition: all 0.2s ease;
+            min-height: 44px;
+            font-weight: 500;
+        }
+        
+        .sidebar-item:hover {
+            transform: translateX(2px);
+        }
+        
+        .sidebar-item.active {
+            font-weight: 600;
+            color: var(--role-primary, #1D3557) !important;
+        }
+        
+        .dark .sidebar-item.active {
+            color: var(--role-secondary, #E63946) !important;
+        }
+        
+        .sidebar-item i {
+            transition: color 0.2s ease;
+            width: 1.25rem;
+            text-align: center;
+        }
+        
+        .sidebar-item:hover i {
+            color: inherit;
+        }
+        
+        /* Sidebar improvements */
+        .sidebar-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .sidebar-nav {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-bottom: 1rem;
+        }
+        
+        /* Sidebar header section */
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        .dark .sidebar-header {
+            border-bottom-color: rgba(255, 255, 255, 0.1);
+        }
+        
+        /* Sidebar footer section */
+        .sidebar-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(0, 0, 0, 0.1);
+            background: rgba(0, 0, 0, 0.02);
+            flex-shrink: 0;
+        }
+        
+        .dark .sidebar-footer {
+            border-top-color: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.02);
+        }
+        
+        /* Better spacing for sidebar items */
+        .sidebar-nav .sidebar-item {
+            margin-bottom: 0.25rem;
+        }
+        
+        /* Active link indicator */
+        .sidebar-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 3px;
+            height: 60%;
+            background: var(--role-primary, #1D3557);
+            border-radius: 0 2px 2px 0;
+        }
+        
+        .dark .sidebar-item.active::before {
+            background: var(--role-secondary, #E63946);
+        }
+        
+        .sidebar-item {
+            position: relative;
+        }
+        
+        /* Footer improvements */
+        footer {
+            flex-shrink: 0;
+        }
+        
+        /* Responsive footer */
+        @media (max-width: 640px) {
+            footer {
+                padding-top: 0.75rem;
+                padding-bottom: 0.75rem;
+            }
+            
+            footer span {
+                font-size: 0.7rem;
+                line-height: 1.4;
+            }
+            
+            footer i {
+                font-size: 0.7rem;
+            }
+        }
+        
+        @media (min-width: 641px) and (max-width: 1023px) {
+            footer {
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            footer {
+                padding-top: 1.25rem;
+                padding-bottom: 1.25rem;
+            }
+        }
+    </style>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300">
+    
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Left: Logo and Sidebar Toggle -->
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <button @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen" 
+                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation">
+                        <i class="fas fa-bars text-xl" x-show="!sidebarOpen"></i>
+                        <i class="fas fa-times text-xl" x-show="sidebarOpen" x-cloak></i>
                     </button>
-                    <div class="flex items-center space-x-2 sm:space-x-3 group min-w-0 flex-1">
-                        <div class="flex items-center space-x-2 sm:space-x-3 cursor-pointer min-w-0 flex-1" @click="roleSelectionModalOpen = true">
-                            <div class="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 bg-light-blue rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg transform group-hover:scale-110 group-hover:rotate-12 transition-all duration-300 border-2 border-light-blue/50 overflow-hidden flex-shrink-0">
+                    
+                    <a href="/" class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1 sm:flex-none group">
+                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md overflow-hidden flex-shrink-0">
                                 {% if school_settings.school_logo %}
                                 <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
                                      alt="{{ school_settings.school_name or 'School Logo' }}" 
                                      class="w-full h-full object-cover">
                                 {% else %}
-                                <i class="fas fa-graduation-cap text-white text-base sm:text-lg md:text-xl"></i>
+                            <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
                                 {% endif %}
                             </div>
-                            <div class="flex flex-col min-w-0 flex-1">
-                                <span class="text-base sm:text-lg md:text-xl lg:text-2xl font-heading font-bold text-white group-hover:text-brand-secondary transition-colors truncate">{{ school_settings.school_name or 'Modern School' }}</span>
-                                <span class="text-[10px] sm:text-xs text-white/80 -mt-0.5 sm:-mt-1 font-medium hidden xs:block">NGO Sponsored Education</span>
+                        <div class="hidden sm:block min-w-0">
+                            <div class="font-heading font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate">
+                                {{ school_settings.school_name or 'Modern School' }}
                             </div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 hidden md:block">
+                                {% block header_subtitle %}NGO Sponsored Education{% endblock %}
                         </div>
                     </div>
+                    </a>
                 </div>
 
-                <!-- Right Side: Calendar and Login -->
-                <div class="flex items-center space-x-1.5 sm:space-x-2 md:space-x-3 lg:space-x-4 flex-shrink-0">
-                    <!-- Calendar Widget (Desktop/Tablet) -->
-                    <div class="hidden sm:flex items-center header-datetime">
-                        <div class="calendar-widget-modern bg-light-blue border-2 border-brand-secondary rounded-lg sm:rounded-xl shadow-xl overflow-hidden transform hover:shadow-2xl hover:border-brand-secondary transition-all duration-300 flex-shrink-0">
-                            <div class="bg-gradient-to-r from-brand-secondary to-brand-secondary px-2 sm:px-2.5 py-1 sm:py-1.5 text-center">
-                                <div class="text-white text-[8px] sm:text-[9px] font-bold uppercase tracking-wide" id="calendar-month-header">January</div>
-                            </div>
-                            <div class="px-1.5 sm:px-2 py-1 sm:py-1.5 text-center bg-light-blue">
-                                <div class="text-base sm:text-lg font-bold text-brand-secondary leading-none" id="calendar-day">01</div>
-                                <div class="text-[7px] sm:text-[8px] text-brand-primary mt-0.5 font-semibold leading-tight" id="calendar-weekday">Mon</div>
-                                <div class="text-[6px] sm:text-[7px] text-gray-500 mt-0.5" id="calendar-year">2025</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Calendar Widget (Mobile) -->
-                    <div class="sm:hidden flex items-center header-datetime-mobile">
-                        <div class="calendar-widget-mobile-modern bg-light-blue border-2 border-brand-secondary rounded-lg shadow-lg px-1.5 sm:px-2 py-1 sm:py-1.5">
-                            <div class="text-[9px] sm:text-[10px] text-brand-secondary font-semibold" id="mobile-date">Jan 01</div>
-                        </div>
-                    </div>
-
-                    <!-- Login Button / User Menu -->
-                    <div class="flex items-center">
+                <!-- Right: User Menu / Login -->
+                <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
+                    <!-- Dark Mode Toggle -->
+                    <button @click="darkMode = !darkMode" 
+                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation">
+                        <i class="fas fa-moon text-lg" x-show="!darkMode"></i>
+                        <i class="fas fa-sun text-lg" x-show="darkMode" x-cloak></i>
+                    </button>
+                    
+                    <!-- User Menu / Login -->
                         {% if session.get('user_id') %}
-                        <div class="relative" x-data="{ open: false }" x-cloak>
-                            <button @click.stop="open = !open" type="button" class="user-menu-button-modern group relative flex items-center space-x-1.5 sm:space-x-2 px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl bg-brand-secondary text-white font-semibold shadow-xl overflow-hidden transition-all duration-300 transform hover:scale-105 hover:shadow-2xl active:scale-95 border-2 border-brand-secondary/50 z-50 touch-manipulation">
-                                <span class="relative z-10 flex items-center space-x-1.5 sm:space-x-2">
-                                    <div class="w-7 h-7 sm:w-8 sm:h-8 bg-white/30 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
-                                        <i class="fas fa-user-circle text-sm sm:text-base md:text-lg transform group-hover:scale-110 transition-transform duration-300"></i>
+                    <div class="relative" x-data="{ open: false }">
+                        <button @click.stop="open = !open" 
+                                class="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors touch-manipulation">
+                            {% if session.get('profile_picture') %}
+                            <img src="{{ url_for('static', filename=session.profile_picture) }}" 
+                                 alt="Profile" 
+                                 class="w-8 h-8 rounded-full object-cover">
+                            {% else %}
+                            <div class="w-8 h-8 bg-brand-primary rounded-full flex items-center justify-center">
+                                <i class="fas fa-user text-white text-sm"></i>
                                     </div>
-                                    <span class="hidden lg:inline font-bold text-sm md:text-base">{{ session.get('full_name', 'User') }}</span>
-                                    <i class="fas fa-chevron-down text-[10px] sm:text-xs transform transition-transform duration-300" :class="open ? 'rotate-180' : ''"></i>
+                            {% endif %}
+                            <span class="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
+                                {{ session.get('full_name', 'User') }}
                                 </span>
-                                <span class="login-button-shine absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
+                            <i class="fas fa-chevron-down text-xs text-gray-500"></i>
                             </button>
+                        
                             <div x-show="open" 
                                  @click.away="open = false" 
-                                 @keydown.escape.window="open = false"
                                  x-transition:enter="transition ease-out duration-200"
                                  x-transition:enter-start="opacity-0 scale-95"
                                  x-transition:enter-end="opacity-100 scale-100"
                                  x-transition:leave="transition ease-in duration-150"
                                  x-transition:leave-start="opacity-100 scale-100"
                                  x-transition:leave-end="opacity-0 scale-95"
-                                 style="display: none;"
-                                 class="absolute right-0 mt-2 w-48 sm:w-56 md:w-64 bg-light-blue rounded-lg sm:rounded-xl shadow-2xl border-2 border-light-blue-100 py-2 z-[100] overflow-hidden"
-                                 x-cloak>
-                                <div class="px-3 sm:px-4 py-2 sm:py-3 border-b border-light-blue-100 bg-gradient-to-r from-light-blue to-light-blue-50">
-                                    <p class="text-xs sm:text-sm font-semibold text-gray-900 truncate">{{ session.get('full_name', 'User') }}</p>
-                                    <p class="text-[10px] sm:text-xs text-gray-600 mt-0.5 truncate">{{ session.get('email', '') }}</p>
-                                </div>
-                                <a href="/dashboard/{{ session.get('role') }}" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
-                                    <i class="fas fa-tachometer-alt w-4 sm:w-5 text-brand-secondary"></i>
-                                    <span>Dashboard</span>
-                                </a>
-                                <a href="/profile" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
-                                    <i class="fas fa-user-circle w-4 sm:w-5 text-brand-secondary"></i>
-                                    <span>Profile</span>
-                                </a>
-                                <a href="/settings" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-warm-slate hover:bg-brand-secondary/10 hover:text-brand-secondary transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
-                                    <i class="fas fa-cog w-4 sm:w-5 text-brand-secondary"></i>
-                                    <span>Settings</span>
-                                </a>
-                                <div class="border-t border-gray-200 my-1"></div>
-                                <a href="/logout" class="block px-3 sm:px-4 py-2 sm:py-2.5 text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all duration-300 flex items-center space-x-2 font-medium text-sm sm:text-base touch-manipulation">
-                                    <i class="fas fa-sign-out-alt w-4 sm:w-5 text-red-600"></i>
-                                    <span>Logout</span>
+                             x-cloak
+                             class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
+                            {% set user_role = session.get('role', 'employee')|lower %}
+                            {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
+                            <a href="/dashboard/{{ user_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
+                            </a>
+                            <a href="/profile/{{ profile_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-user mr-2"></i>Profile
+                            </a>
+                            <a href="/settings/{{ profile_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                <i class="fas fa-cog mr-2"></i>Settings
+                            </a>
+                            <hr class="my-1 border-gray-200 dark:border-gray-700">
+                            <a href="/logout" class="block px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                <i class="fas fa-sign-out-alt mr-2"></i>Logout
                                 </a>
                             </div>
                         </div>
                         {% else %}
-                        <button @click="loginModalOpen = true" class="login-button-modern-advanced group relative px-2.5 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-lg sm:rounded-xl bg-brand-secondary text-white font-bold shadow-xl overflow-hidden transition-all duration-300 transform hover:scale-105 hover:shadow-2xl active:scale-95 whitespace-nowrap border-2 border-brand-secondary/50 touch-manipulation">
-                            <span class="relative z-10 flex items-center space-x-1.5 sm:space-x-2">
-                                <div class="w-7 h-7 sm:w-8 sm:h-8 bg-white/30 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
-                                    <i class="fas fa-user-circle text-sm sm:text-base md:text-lg transform group-hover:rotate-12 transition-transform duration-300"></i>
-                                </div>
-                                <span class="hidden sm:inline text-sm md:text-base">Login</span>
-                                <i class="fas fa-arrow-right text-xs sm:text-sm transform group-hover:translate-x-1 transition-transform duration-300 sm:hidden"></i>
-                            </span>
-                            <span class="login-button-shine absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent transform -skew-x-12 -translate-x-full group-hover:translate-x-full transition-transform duration-700"></span>
-                        </button>
+                    <a href="/login" class="px-4 py-2 bg-brand-primary text-white rounded-lg hover:bg-brand-primary/90 transition-colors text-sm font-medium touch-manipulation">
+                        <i class="fas fa-sign-in-alt mr-2"></i><span class="hidden sm:inline">Login</span>
+                    </a>
                         {% endif %}
-                    </div>
                 </div>
             </div>
         </div>
     </header>
 
-    <div class="flex min-h-screen">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div x-show="sidebarOpen && !isDesktop"
+         @click="sidebarOpen = false"
+         @touchmove.prevent
+         @wheel.prevent
+         x-transition:enter="transition-opacity ease-linear duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-linear duration-300"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden backdrop-blur-sm"
+         x-cloak
+         style="display: none;"></div>
+    
         <!-- Sidebar -->
-        <aside class="fixed left-0 z-40 w-64 sm:w-72 md:w-80 bg-brand-primary shadow-lg sidebar-transition transform border-r border-brand-primary/20 sidebar-position" 
+    <aside class="fixed top-16 left-0 bottom-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-xl sidebar-transition sidebar-container"
                :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
                x-transition:enter="transition-transform duration-300 ease-out"
                x-transition:enter-start="-translate-x-full"
                x-transition:enter-end="translate-x-0"
                x-transition:leave="transition-transform duration-300 ease-in"
                x-transition:leave-start="translate-x-0"
-               x-transition:leave-end="-translate-x-full">
-            <div class="h-full flex flex-col" style="max-height: calc(100vh - 4rem);">
-                <!-- Sidebar Header (Mobile) -->
-                <div class="p-4 border-b border-white/20 lg:hidden flex items-center justify-between bg-brand-primary">
-                    <span class="font-heading font-bold text-white flex items-center space-x-2">
-                        <i class="fas fa-bars text-white"></i>
-                        <span>Menu</span>
-                    </span>
-                    <button @click="sidebarOpen = false" class="text-white hover:text-brand-secondary transition-colors">
+           x-transition:leave-end="-translate-x-full"
+           @touchmove.stop.prevent
+           @wheel.stop.prevent>
+        
+        <!-- Sidebar Header (Mobile only) -->
+        <div class="sidebar-header lg:hidden flex items-center justify-between">
+            <span class="font-heading font-bold text-gray-900 dark:text-white text-lg">Menu</span>
+            <button @click="sidebarOpen = false" 
+                    class="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                         <i class="fas fa-times text-xl"></i>
                     </button>
                 </div>
                 
-                <!-- Navigation Menu -->
-                <nav class="flex-1 p-2 sm:p-3 md:p-4 space-y-1.5 sm:space-y-2 overflow-y-auto sidebar-nav">
-                    <a href="/" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'home' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-home text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'home' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">Home</span>
-                        {% if request.endpoint == 'home' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/about" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'about' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-info-circle text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'about' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">About</span>
-                        {% if request.endpoint == 'about' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/programs" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'programs' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-book text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'programs' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">Programs</span>
-                        {% if request.endpoint == 'programs' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/news" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'news' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-newspaper text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'news' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">News/Events</span>
-                        {% if request.endpoint == 'news' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/gallery" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'gallery' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-images text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'gallery' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">Gallery</span>
-                        {% if request.endpoint == 'gallery' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/team" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'team' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-users text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'team' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">Our Team</span>
-                        {% if request.endpoint == 'team' %}
-                        <div class="w-2 h-2 bg-brand-secondary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <a href="/contact" class="sidebar-link group flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-white hover:bg-light-blue/30 hover:text-brand-secondary transition-all duration-200 font-medium touch-manipulation min-h-[44px] {% if request.endpoint == 'contact' %}bg-light-blue/30 text-brand-secondary border-l-4 border-brand-secondary{% endif %}">
-                        <i class="fas fa-envelope text-base sm:text-lg w-4 sm:w-5 text-center flex-shrink-0 {% if request.endpoint == 'contact' %}text-brand-secondary{% else %}text-white group-hover:text-brand-secondary{% endif %}"></i>
-                        <span class="flex-1 font-semibold text-sm sm:text-base">Contact</span>
-                        {% if request.endpoint == 'contact' %}
-                        <div class="w-2 h-2 bg-brand-primary rounded-full"></div>
-                        {% endif %}
-                    </a>
-                    
-                    <button @click="admissionModalOpen = true" class="sidebar-link group flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-white hover:text-brand-primary transition-all duration-200 font-medium w-full text-left">
-                        <i class="fas fa-file-alt text-lg w-5 text-center text-gray-600 group-hover:text-brand-primary"></i>
-                        <span class="flex-1 font-semibold">Admission</span>
-                    </button>
+        <!-- Scrollable Navigation -->
+        <nav class="sidebar-nav custom-scrollbar px-4 py-4 space-y-1"
+             @touchmove.stop
+             @wheel.stop
+             style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
+            {% block sidebar_content %}
+            <!-- Default sidebar links for public pages -->
+            <a href="/" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'home' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-home"></i>
+                <span class="font-medium">Home</span>
+            </a>
+            <a href="/about" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'about' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-info-circle"></i>
+                <span class="font-medium">About</span>
+            </a>
+            <a href="/programs" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'programs' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-book"></i>
+                <span class="font-medium">Programs</span>
+            </a>
+            <a href="/gallery" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'gallery' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-images"></i>
+                <span class="font-medium">Gallery</span>
+            </a>
+            <a href="/news" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'news' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-newspaper"></i>
+                <span class="font-medium">News</span>
+            </a>
+            <a href="/team" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'team' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-users"></i>
+                <span class="font-medium">Team</span>
+            </a>
+            <a href="/contact" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'contact' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+                <i class="fas fa-envelope"></i>
+                <span class="font-medium">Contact</span>
+            </a>
+            {% endblock %}
                 </nav>
                 
                 <!-- Sidebar Footer -->
-                <div class="p-4 border-t border-gray-300 bg-gray-100">
-                    <div class="ngo-badge bg-light-blue rounded-lg p-3 border border-light-blue-100 shadow-sm">
-                        <div class="flex items-center justify-center space-x-2">
-                            <i class="fas fa-heart text-brand-secondary text-sm"></i>
-                            <span class="text-gray-700 font-semibold text-sm">NGO Sponsored</span>
-                        </div>
+        <div class="sidebar-footer">
+            <div class="text-center">
+                <div class="flex items-center justify-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
+                    <i class="fas fa-heart text-brand-secondary"></i>
+                    <span class="font-medium">NGO Sponsored</span>
                     </div>
                 </div>
             </div>
         </aside>
 
-        <!-- Sidebar Overlay (Mobile) -->
-        <div x-show="sidebarOpen" 
-             @click="sidebarOpen = false" 
-             x-transition:enter="transition-opacity ease-out duration-300" 
-             x-transition:enter-start="opacity-0" 
-             x-transition:enter-end="opacity-100" 
-             x-transition:leave="transition-opacity ease-in duration-200" 
-             x-transition:leave-start="opacity-100" 
-             x-transition:leave-end="opacity-0" 
-             class="fixed top-16 left-0 right-0 bottom-0 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 bg-opacity-75 backdrop-blur-sm z-30 lg:hidden cursor-pointer"
-             style="display: none;"></div>
-
         <!-- Main Content -->
-        <main class="flex-1 transition-all duration-300" 
-              :class="{'lg:ml-64 md:ml-72 xl:ml-80': sidebarOpen, 'lg:ml-0': !sidebarOpen}"
-              x-transition:enter="transition-all duration-300"
-              x-transition:enter-start="opacity-0"
-              x-transition:enter-end="opacity-100">
-            <!-- Flash Messages - Top Right Popup -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                    <div x-data="{ show: true }" 
-                         x-show="show"
-                         x-init="
-                            $nextTick(() => {
-                                setTimeout(() => {
-                                    show = false;
-                                    setTimeout(() => {
-                                        if ($el && $el.parentNode) {
-                                            $el.parentNode.removeChild($el);
-                                        }
-                                    }, 300);
-                                }, 5000);
-                            });
-                         "
-                         x-transition:enter="transition ease-out duration-300"
-                         x-transition:enter-start="opacity-0 translate-x-full"
-                         x-transition:enter-end="opacity-100 translate-x-0"
-                         x-transition:leave="transition ease-in duration-200"
-                         x-transition:leave-start="opacity-100 translate-x-0"
-                         x-transition:leave-end="opacity-0 translate-x-full"
-                         class="fixed top-4 right-4 z-[100] max-w-sm w-full pointer-events-auto"
-                         style="display: block;"
-                         x-cloak>
-                        <!-- Notification Popup -->
-                        <div class="bg-light-blue rounded-lg shadow-xl border-l-4 overflow-hidden
-                            {% if category == 'error' %}border-red-500
-                            {% elif category == 'success' %}border-brand-primary
-                            {% else %}border-brand-primary{% endif %}">
-                            <div class="p-4 flex items-start gap-3">
-                                <!-- Icon -->
-                                <div class="flex-shrink-0">
-                                    <div class="w-10 h-10 rounded-full flex items-center justify-center
-                                        {% if category == 'error' %}bg-red-100 text-red-600
-                                        {% elif category == 'success' %}bg-red-100 text-brand-primary
-                                        {% else %}bg-red-100 text-brand-primary{% endif %}">
-                                        {% if category == 'error' %}
-                                            <i class="fas fa-exclamation-circle text-lg"></i>
-                                        {% elif category == 'success' %}
-                                            <i class="fas fa-check-circle text-lg"></i>
-                                        {% else %}
-                                            <i class="fas fa-info-circle text-lg"></i>
-                                        {% endif %}
+    <main class="pt-16 pb-20 transition-all duration-300 flex flex-col overflow-hidden"
+          :style="isDesktop && sidebarOpen ? 'margin-left: 16rem;' : 'margin-left: 0;'"
+          style="height: calc(100vh - 4rem);">
+        <div class="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+                {% block content %}{% endblock %}
                                     </div>
                                 </div>
-                                
-                                <!-- Content -->
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-sm font-medium text-gray-900 leading-relaxed">
-                                        {{ message }}
-                                    </p>
-                                </div>
-                                
-                                <!-- Close Button -->
-                                <button @click="show = false" 
-                                        class="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100">
-                                    <i class="fas fa-times text-sm"></i>
-                                </button>
-                            </div>
-                            
-                            <!-- Progress Bar -->
-                            <div class="h-1 bg-gray-100">
-                                <div class="h-full
-                                    {% if category == 'error' %}bg-red-500
-                                    {% elif category == 'success' %}bg-brand-primary
-                                    {% else %}bg-brand-primary{% endif %}
-                                    animate-progress"></div>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
-            {% block content %}{% endblock %}
         </main>
-    </div>
 
     <!-- Footer -->
-    <footer class="footer-modern bg-brand-primary text-white border-t border-brand-primary/30 backdrop-blur-xl relative overflow-hidden transition-all duration-300" 
-            :class="{'lg:ml-64': sidebarOpen, 'lg:ml-0': !sidebarOpen}"
-            x-transition:enter="transition-all duration-300"
-            x-transition:enter-start="opacity-0"
-            x-transition:enter-end="opacity-100">
-        <!-- Animated Background Pattern -->
-        <div class="absolute inset-0 opacity-5 pointer-events-none">
-            <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 40px 40px;"></div>
-        </div>
-        <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5 pointer-events-none"></div>
-        
-        <div class="container mx-auto px-3 sm:px-4 md:px-6 lg:px-8 relative z-10">
-            <div class="py-3 sm:py-4 md:py-5 flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0 gap-3 sm:gap-4">
-                <div class="flex items-center space-x-4">
-                    <div class="flex items-center space-x-2">
-                        <i class="fas fa-heart text-brand-secondary animate-pulse"></i>
-                        <span class="text-sm text-gray-300 font-medium">NGO Sponsored Education Initiative</span>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-6">
-                    <a href="/about" class="text-gray-300 hover:text-brand-secondary transition-colors text-sm font-medium flex items-center space-x-1 group">
-                        <i class="fas fa-info-circle text-xs"></i>
-                        <span>About Us</span>
-                    </a>
-                    <a href="/contact" class="text-gray-300 hover:text-brand-secondary transition-colors text-sm font-medium flex items-center space-x-1 group">
-                        <i class="fas fa-envelope text-xs"></i>
-                        <span>Contact</span>
-                    </a>
-                    <div class="text-sm text-gray-400">
-                        &copy; 2025 {{ school_settings.school_name or 'Modern School' }}. All rights reserved.
-                    </div>
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+            <div class="flex items-center justify-center">
+                <div class="flex items-center space-x-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center">
+                    <i class="fas fa-heart text-brand-secondary text-xs sm:text-sm"></i>
+                    <span class="font-medium">NGO Sponsored Education Initiative</span>
                 </div>
             </div>
         </div>
     </footer>
 
-    <!-- Login Modal -->
-    <div x-show="loginModalOpen" 
-         @click.away="loginModalOpen = false"
+    <!-- Coming Soon Modal -->
+    <div x-show="comingSoonModalOpen" 
+         @click.away="comingSoonModalOpen = false"
          x-transition:enter="transition-opacity ease-out duration-300"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition-opacity ease-in duration-200"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
+         class="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+         x-cloak
          style="display: none;">
-        
         <div @click.stop
              x-transition:enter="transition-all ease-out duration-300"
              x-transition:enter-start="opacity-0 scale-95 translate-y-4"
@@ -492,1147 +719,47 @@
              x-transition:leave="transition-all ease-in duration-200"
              x-transition:leave-start="opacity-100 scale-100 translate-y-0"
              x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-             class="login-modal bg-light-blue rounded-lg sm:rounded-xl md:rounded-2xl shadow-2xl w-full max-w-[90vw] sm:max-w-md md:max-w-lg max-h-[98vh] sm:max-h-[95vh] md:max-h-[90vh] overflow-y-auto">
-            
-            <!-- Modal Header with Logo -->
-            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
-                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
-                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
-                                 class="w-full h-full object-cover">
-                            {% else %}
-                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
-                            {% endif %}
+             class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+            <div class="mb-6">
+                <div class="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <i class="fas fa-hourglass-half text-white text-3xl"></i>
                         </div>
-                        <div class="flex flex-col min-w-0">
-                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
-                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">NGO Sponsored Education</span>
+                <h3 class="text-2xl font-bold text-gray-900 dark:text-white mb-2" x-text="comingSoonTitle || 'Coming Soon'"></h3>
+                <p class="text-gray-600 dark:text-gray-400">This feature is currently under development and will be available soon.</p>
                         </div>
-                    </div>
-                    <button @click="loginModalOpen = false" class="text-white hover:text-red-300 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
-                        <i class="fas fa-times text-lg sm:text-xl"></i>
+            <button @click="comingSoonModalOpen = false" 
+                    class="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-300">
+                <i class="fas fa-check mr-2"></i>Got it
                     </button>
                 </div>
             </div>
 
-            <!-- Modal Body -->
-            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
-                <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-gray-800 mb-1 sm:mb-1.5 md:mb-2 text-center">Employee Login</h2>
-                <p class="text-xs sm:text-sm md:text-base text-gray-600 text-center mb-3 sm:mb-4 md:mb-6">Enter your credentials to continue</p>
-
-                <form method="POST" action="/login" id="loginForm" class="space-y-3 sm:space-y-4 md:space-y-5" @submit="
-                        // Ensure employee_id is captured
-                        const empIdField = document.getElementById('employee_id');
-                        const fallbackField = document.getElementById('employee_id_fallback');
-                        if(empIdField && fallbackField) {
-                            fallbackField.value = empIdField.value;
-                    }
-                ">
-                    <!-- Hidden role field - always employee -->
-                    <input type="hidden" name="role" value="employee" required>
-
-                    <!-- Employee Fields -->
-                    <div>
-                        <label for="employee_id" class="block text-xs sm:text-sm font-semibold mb-1 sm:mb-1.5 md:mb-2 text-gray-700">
-                            6-Digit Employee Code <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <input type="text" 
-                                   id="employee_id" 
-                                   name="employee_id" 
-                                   required
-                                   maxlength="6"
-                                   pattern="[0-9]{6}"
-                                   inputmode="numeric"
-                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 md:py-3.5 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation min-h-[44px]"
-                                   placeholder="Enter 6-digit code"
-                                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 6)"
-                                   autocomplete="off">
-                        </div>
-                        <p class="text-[10px] sm:text-xs text-gray-500 mt-1 sm:mt-1.5 md:mt-2">Enter your 6-digit employee identification code</p>
-                    </div>
-                    
-                    <!-- Hidden employee_id field to ensure it's always in form (for form submission) -->
-                    <input type="hidden" 
-                           name="employee_id_fallback" 
-                           id="employee_id_fallback"
-                           value="">
-
-                    <!-- Password Field -->
-                    <div>
-                        <label for="password" class="block text-xs sm:text-sm font-semibold mb-1 sm:mb-1.5 md:mb-2 text-gray-700">
-                            Password <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative" x-data="{ showPassword: false }">
-                            <input :type="showPassword ? 'text' : 'password'" 
-                                   id="password" 
-                                   name="password" 
-                                   required
-                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 md:py-3.5 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation min-h-[44px]"
-                                   placeholder="Enter your password"
-                                   autocomplete="current-password">
-                            <button type="button" 
-                                    @click="showPassword = !showPassword"
-                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation min-w-[44px] justify-center">
-                                <i class="fas text-sm sm:text-base" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Remember Me -->
-                    <div class="flex items-center pt-1 sm:pt-1.5">
-                        <input type="checkbox" id="remember" name="remember"
-                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer touch-manipulation min-w-[20px] min-h-[20px]">
-                        <label for="remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none touch-manipulation">Remember me</label>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <button type="submit" 
-                            class="w-full px-4 sm:px-6 py-3 sm:py-3.5 md:py-4 bg-brand-secondary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base md:text-lg shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation min-h-[48px] sm:min-h-[52px]">
-                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
-                    </button>
-                </form>
-
-                <div class="mt-3 sm:mt-4 md:mt-6 text-center pt-3 sm:pt-4 md:pt-6 border-t border-gray-200">
-                    <p class="text-[10px] sm:text-xs md:text-sm text-gray-600">
-                        Don't have an account? 
-                        <button @click="loginModalOpen = false; employeeModalOpen = true" class="text-brand-secondary font-semibold hover:text-brand-secondary/80 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Employee Registration Portal</button>
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Role Selection Modal -->
-    <div x-show="roleSelectionModalOpen" 
-         @click.away="roleSelectionModalOpen = false"
-         @keydown.escape.window="roleSelectionModalOpen = false"
-         x-transition:enter="transition-opacity ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
-         style="display: none;">
-        
-        <div @click.stop
-                         x-transition:enter="transition-all ease-out duration-300"
-             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
-             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-             x-transition:leave="transition-all ease-in duration-200"
-             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-            
-            <!-- Modal Header with Logo -->
-            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
-                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
-                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
-                                 class="w-full h-full object-cover">
-                            {% else %}
-                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
-                            {% endif %}
-                        </div>
-                        <div class="flex flex-col min-w-0">
-                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
-                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">NGO Sponsored Education</span>
-                        </div>
-                    </div>
-                    <button @click="roleSelectionModalOpen = false" class="text-white hover:text-red-300 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
-                        <i class="fas fa-times text-lg sm:text-xl"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
-                <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-gray-800 mb-1 sm:mb-1.5 md:mb-2 text-center">Select Your Role</h2>
-                <p class="text-xs sm:text-sm md:text-base text-gray-600 text-center mb-3 sm:mb-4 md:mb-6">Choose how you want to login</p>
-
-                <div class="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
-                    <!-- Parent Login Option -->
-                    <button @click="roleSelectionModalOpen = false; parentLoginModalOpen = true" 
-                            class="p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl md:rounded-2xl bg-gradient-to-br from-brand-secondary to-brand-primary text-white transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl border-2 border-brand-primary touch-manipulation min-h-[120px] sm:min-h-[140px] md:min-h-[160px]">
-                        <div class="flex flex-col items-center space-y-1.5 sm:space-y-2 md:space-y-3">
-                            <i class="fas fa-users text-2xl sm:text-3xl md:text-4xl"></i>
-                            <span class="text-sm sm:text-base md:text-lg font-heading font-bold">Parent</span>
-                            <span class="text-[10px] sm:text-xs md:text-sm text-red-100 text-center">Login as a parent</span>
-                        </div>
-                    </button>
-
-                    <!-- Student Login Option -->
-                    <button @click="roleSelectionModalOpen = false; studentLoginModalOpen = true" 
-                            class="p-3 sm:p-4 md:p-6 rounded-lg sm:rounded-xl md:rounded-2xl bg-brand-primary text-white transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl border-2 border-brand-primary touch-manipulation min-h-[120px] sm:min-h-[140px] md:min-h-[160px]">
-                        <div class="flex flex-col items-center space-y-1.5 sm:space-y-2 md:space-y-3">
-                            <i class="fas fa-user-graduate text-2xl sm:text-3xl md:text-4xl"></i>
-                            <span class="text-sm sm:text-base md:text-lg font-heading font-bold">Student</span>
-                            <span class="text-[10px] sm:text-xs md:text-sm text-red-100 text-center">Login as a student</span>
-                        </div>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Parent Login Modal -->
-    <div x-show="parentLoginModalOpen" 
-         @click.away="parentLoginModalOpen = false"
-         @keydown.escape.window="parentLoginModalOpen = false"
-         x-transition:enter="transition-opacity ease-out duration-300"
-                         x-transition:enter-start="opacity-0"
-                         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
-                         style="display: none;">
-        
-        <div @click.stop
-             x-transition:enter="transition-all ease-out duration-300"
-             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
-             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-             x-transition:leave="transition-all ease-in duration-200"
-             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-            
-            <!-- Modal Header with Logo -->
-            <div class="bg-gradient-to-r from-brand-secondary to-brand-primary p-4 sm:p-5 md:p-6 rounded-t-xl sm:rounded-t-2xl">
-                <div class="flex items-center justify-between mb-3 sm:mb-4">
-                    <div class="flex items-center space-x-2 sm:space-x-3">
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
-                                 class="w-full h-full object-cover">
-                            {% else %}
-                            <i class="fas fa-graduation-cap text-brand-secondary text-lg sm:text-2xl"></i>
-                            {% endif %}
-                        </div>
-                        <div class="flex flex-col min-w-0">
-                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
-                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">Parent Login</span>
-                        </div>
-                    </div>
-                    <button @click="parentLoginModalOpen = false" class="text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
-                        <i class="fas fa-times text-lg sm:text-xl"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
-                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-800 mb-1.5 sm:mb-2 text-center">Parent Login</h2>
-                <p class="text-sm sm:text-base text-gray-600 text-center mb-4 sm:mb-6">Enter your credentials to continue</p>
-
-                <form method="POST" action="/login" id="parentLoginForm" class="space-y-4 sm:space-y-5">
-                    <!-- Hidden role field - always parent -->
-                    <input type="hidden" name="role" value="parent" required>
-
-                    <!-- Admission Number Field -->
-                    <div>
-                        <label for="parent_admission_number" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
-                            Student Admission Number <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <input type="text" 
-                                   id="parent_admission_number" 
-                                   name="admission_number" 
-                                   required
-                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-secondary focus:border-brand-secondary transition-all touch-manipulation"
-                                   placeholder="Enter admission number"
-                                   autocomplete="off">
-                            </div>
-                    </div>
-
-                    <!-- Password Field -->
-                    <div>
-                        <label for="parent_password" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
-                            Password <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative" x-data="{ showPassword: false }">
-                            <input :type="showPassword ? 'text' : 'password'" 
-                                   id="parent_password" 
-                                   name="password" 
-                                   required
-                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-secondary focus:border-brand-secondary transition-all touch-manipulation"
-                                   placeholder="Enter your password"
-                                   autocomplete="current-password">
-                            <button type="button" 
-                                    @click="showPassword = !showPassword"
-                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation">
-                                <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Remember Me -->
-                    <div class="flex items-center pt-1">
-                        <input type="checkbox" id="parent_remember" name="remember"
-                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-secondary border-gray-300 rounded focus:ring-brand-secondary cursor-pointer touch-manipulation">
-                        <label for="parent_remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none">Remember me</label>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <button type="submit" 
-                            class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-brand-secondary to-brand-primary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation">
-                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
-                    </button>
-                </form>
-
-                <div class="mt-4 sm:mt-6 text-center pt-4 sm:pt-6 border-t border-gray-200">
-                    <p class="text-xs sm:text-sm text-gray-600">
-                        Don't have an account? 
-                        <button @click="parentLoginModalOpen = false; admissionModalOpen = true" class="text-brand-secondary font-semibold hover:text-brand-secondary/80 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-secondary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Apply for Admission</button>
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Student Login Modal -->
-    <div x-show="studentLoginModalOpen" 
-         @click.away="studentLoginModalOpen = false"
-         @keydown.escape.window="studentLoginModalOpen = false"
-         x-transition:enter="transition-opacity ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
-                         style="display: none;">
-        
-        <div @click.stop
-             x-transition:enter="transition-all ease-out duration-300"
-             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
-             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-             x-transition:leave="transition-all ease-in duration-200"
-             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-             class="bg-light-blue rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] overflow-y-auto">
-            
-            <!-- Modal Header with Logo -->
-            <div class="bg-brand-primary p-3 sm:p-4 md:p-5 lg:p-6 rounded-t-lg sm:rounded-t-xl md:rounded-t-2xl">
-                <div class="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
-                    <div class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
-                        <div class="w-9 h-9 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-light-blue-50 rounded-lg sm:rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                                 alt="{{ school_settings.school_name or 'School Logo' }}" 
-                                 class="w-full h-full object-cover">
-                            {% else %}
-                            <i class="fas fa-graduation-cap text-brand-primary text-lg sm:text-2xl"></i>
-                            {% endif %}
-                        </div>
-                        <div class="flex flex-col min-w-0">
-                            <span class="text-base sm:text-lg md:text-xl font-heading font-bold text-white truncate">{{ school_settings.school_name or 'Modern School' }}</span>
-                            <span class="text-xs text-red-100 -mt-1 hidden sm:block">Student Login</span>
-                        </div>
-                    </div>
-                    <button @click="studentLoginModalOpen = false" class="text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 flex-shrink-0 touch-manipulation">
-                        <i class="fas fa-times text-lg sm:text-xl"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-3 sm:p-4 md:p-5 lg:p-6">
-                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-800 mb-1.5 sm:mb-2 text-center">Student Login</h2>
-                <p class="text-sm sm:text-base text-gray-600 text-center mb-4 sm:mb-6">Enter your credentials to continue</p>
-
-                <form method="POST" action="/login" id="studentLoginForm" class="space-y-4 sm:space-y-5">
-                    <!-- Hidden role field - always student -->
-                    <input type="hidden" name="role" value="student" required>
-
-                    <!-- Admission Number Field -->
-                    <div>
-                        <label for="student_admission_number" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
-                            Student Admission Number <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <input type="text" 
-                                   id="student_admission_number" 
-                                   name="admission_number" 
-                                   required
-                                   class="w-full pl-3 sm:pl-4 pr-3 sm:pr-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-blue focus:border-brand-blue transition-all touch-manipulation"
-                                   placeholder="Enter admission number"
-                                   autocomplete="off">
-                        </div>
-                    </div>
-
-                    <!-- Password Field -->
-                    <div>
-                        <label for="student_password" class="block text-xs sm:text-sm font-semibold mb-1.5 sm:mb-2 text-gray-700">
-                            Password <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative" x-data="{ showPassword: false }">
-                            <input :type="showPassword ? 'text' : 'password'" 
-                                   id="student_password" 
-                                   name="password" 
-                                   required
-                                   class="w-full pl-3 sm:pl-4 pr-10 sm:pr-12 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg border-2 border-light-blue-100 bg-light-blue-50 text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all touch-manipulation"
-                                   placeholder="Enter your password"
-                                   autocomplete="current-password">
-                            <button type="button" 
-                                    @click="showPassword = !showPassword"
-                                    class="absolute inset-y-0 right-0 pr-3 sm:pr-4 flex items-center text-gray-400 hover:text-gray-600 transition-colors touch-manipulation">
-                                <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Remember Me -->
-                    <div class="flex items-center pt-1">
-                        <input type="checkbox" id="student_remember" name="remember"
-                               class="w-4 h-4 sm:w-5 sm:h-5 text-brand-primary border-gray-300 rounded focus:ring-brand-primary cursor-pointer touch-manipulation">
-                        <label for="student_remember" class="ml-2 sm:ml-2.5 text-xs sm:text-sm text-gray-600 cursor-pointer select-none">Remember me</label>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <button type="submit" 
-                            class="w-full px-4 sm:px-6 py-2.5 sm:py-3 bg-brand-primary text-white rounded-lg sm:rounded-xl font-semibold text-sm sm:text-base shadow-lg transition-all duration-300 transform hover:scale-105 active:scale-95 hover:shadow-xl touch-manipulation">
-                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
-                    </button>
-                </form>
-
-                <div class="mt-4 sm:mt-6 text-center pt-4 sm:pt-6 border-t border-gray-200">
-                    <p class="text-xs sm:text-sm text-gray-600">
-                        Don't have an account? 
-                        <button @click="studentLoginModalOpen = false; admissionModalOpen = true" class="text-brand-primary font-semibold hover:text-warm-navy hover:underline focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 rounded px-1 touch-manipulation transition-colors">Apply for Admission</button>
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Admission Modal -->
-    <div x-show="admissionModalOpen" 
-         @click.away="admissionModalOpen = false"
-         @keydown.escape.window="admissionModalOpen = false"
-         x-transition:enter="transition-opacity ease-out duration-200"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity ease-in duration-150"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-3 md:p-4 lg:p-6"
-         style="display: none;">
-        
-        <div @click.stop
-             x-transition:enter="transition-all ease-out duration-300"
-             x-transition:enter-start="opacity-0 scale-95 translate-y-4"
-             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-             x-transition:leave="transition-all ease-in duration-200"
-             x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-             x-transition:leave-end="opacity-0 scale-95 translate-y-4"
-             class="admission-modal bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-4xl max-h-[98vh] sm:max-h-[95vh] overflow-hidden flex flex-col">
-            
-            <!-- Modal Header -->
-            <div class="bg-brand-primary px-4 sm:px-6 py-4 sm:py-5 flex items-center justify-between sticky top-0 z-20">
-                <div class="flex items-center space-x-3 sm:space-x-4 min-w-0 flex-1">
-                    <div class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center flex-shrink-0">
-                        {% if school_settings.school_logo %}
-                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                             alt="{{ school_settings.school_name or 'School Logo' }}" 
-                             class="w-full h-full object-cover rounded-xl">
-                        {% else %}
-                        <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
-                        {% endif %}
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <h2 class="text-lg sm:text-xl md:text-2xl font-heading font-bold text-white truncate">Admission Application</h2>
-                        <p class="text-xs sm:text-sm text-blue-100 truncate">{{ school_settings.school_name or 'Modern School' }}</p>
-                    </div>
-                </div>
-                <button @click="admissionModalOpen = false" 
-                        class="ml-3 text-white/90 hover:text-white hover:bg-white/10 transition-all p-2 rounded-lg flex-shrink-0">
-                    <i class="fas fa-times text-lg sm:text-xl"></i>
-                </button>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-4 sm:p-6 md:p-8 overflow-y-auto flex-1 bg-gray-50/50">
-                <form method="POST" action="/admission" id="admissionForm" class="space-y-6 sm:space-y-8">
-                    <!-- Student Information -->
-                    <div class="bg-white rounded-xl sm:rounded-2xl p-5 sm:p-6 md:p-8 shadow-sm">
-                        <h3 class="text-base sm:text-lg font-bold text-gray-900 mb-5 sm:mb-6 flex items-center">
-                            <i class="fas fa-user-graduate text-brand-primary mr-2 sm:mr-3 text-sm sm:text-base"></i>
-                            <span>Student Information</span>
-                        </h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 md:gap-6">
-                            <div class="sm:col-span-2">
-                                <label for="student_full_name" class="block text-sm font-semibold text-gray-700 mb-2">
-                                    Student Full Name <span class="text-red-500">*</span>
-                                </label>
-                                <input type="text" id="student_full_name" name="student_full_name" required
-                                       class="w-full px-4 py-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all text-sm sm:text-base">
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="date_of_birth" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-calendar-alt text-brand-primary mr-2 text-xs"></i>
-                                    Date of Birth <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-calendar text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="date" id="date_of_birth" name="date_of_birth" required
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="gender" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-venus-mars text-brand-primary mr-2 text-xs"></i>Gender
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-venus-mars text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <select id="gender" name="gender"
-                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
-                                        <option value="">Select Gender</option>
-                                        <option value="Male">Male</option>
-                                        <option value="Female">Female</option>
-                                        <option value="Other">Other</option>
-                                        <option value="Prefer not to say">Prefer not to say</option>
-                                    </select>
-                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-chevron-down text-gray-400"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="current_grade" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-graduation-cap text-brand-primary mr-2 text-xs"></i>Current Grade
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-graduation-cap text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <select id="current_grade" name="current_grade"
-                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
-                                        <option value="">Select Academic Level</option>
-                                        {% if academic_levels %}
-                                            {% for level in academic_levels %}
-                                            <option value="{{ level.level_name }}">{{ level.level_name }}{% if level.level_category %} - {{ level.level_category }}{% endif %}</option>
-                                            {% endfor %}
-                                        {% else %}
-                                            <!-- Fallback options if no academic levels in database -->
-                                            <option value="Kindergarten">Kindergarten</option>
-                                            <option value="Grade 1">Grade 1</option>
-                                            <option value="Grade 2">Grade 2</option>
-                                            <option value="Grade 3">Grade 3</option>
-                                            <option value="Grade 4">Grade 4</option>
-                                            <option value="Grade 5">Grade 5</option>
-                                            <option value="Grade 6">Grade 6</option>
-                                            <option value="Grade 7">Grade 7</option>
-                                            <option value="Grade 8">Grade 8</option>
-                                            <option value="Grade 9">Grade 9</option>
-                                            <option value="Grade 10">Grade 10</option>
-                                            <option value="Grade 11">Grade 11</option>
-                                            <option value="Grade 12">Grade 12</option>
-                                        {% endif %}
-                                    </select>
-                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-chevron-down text-gray-400"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="previous_school" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-school text-brand-primary mr-2 text-xs"></i>Previous School
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-school text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="text" id="previous_school" name="previous_school"
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Student Category Section -->
-                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md"
-                         x-data="{ 
-                             studentCategory: '',
-                             clearSponsor() {
-                                 if (this.studentCategory !== 'sponsored') {
-                                     const sponsorNameField = document.getElementById('sponsor_name');
-                                     const sponsorPhoneField = document.getElementById('sponsor_phone');
-                                     const sponsorEmailField = document.getElementById('sponsor_email');
-                                     if (sponsorNameField) sponsorNameField.value = '';
-                                     if (sponsorPhoneField) sponsorPhoneField.value = '';
-                                     if (sponsorEmailField) sponsorEmailField.value = '';
-                                 }
-                             }
-                         }"
-                         x-init="$watch('studentCategory', () => clearSponsor())">
-                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
-                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
-                                <i class="fas fa-tag text-white text-lg"></i>
-                            </div>
-                            <span>Student Category</span>
-                        </h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                            <div class="md:col-span-2 form-field-wrapper">
-                                <label for="student_category" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-tag text-brand-primary mr-2 text-xs"></i>
-                                    Student Category <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-tag text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <select id="student_category" name="student_category" required
-                                            x-model="studentCategory"
-                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
-                                        <option value="">Select Category</option>
-                                        <option value="self_sponsored">Self Sponsored</option>
-                                        <option value="sponsored">Sponsored</option>
-                                    </select>
-                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-chevron-down text-gray-400"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="md:col-span-2"
-                                 x-show="studentCategory === 'sponsored'"
-                                 x-transition:enter="transition-all ease-out duration-300"
-                                 x-transition:enter-start="opacity-0 height-0"
-                                 x-transition:enter-end="opacity-100"
-                                 x-transition:leave="transition-all ease-in duration-200"
-                                 x-transition:leave-start="opacity-100"
-                                 x-transition:leave-end="opacity-0 height-0"
-                                 style="display: none;">
-                                <div class="space-y-4 sm:space-y-5">
-                                    <div class="form-field-wrapper">
-                                        <label for="sponsor_name" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                            <i class="fas fa-handshake text-brand-primary mr-2 text-xs"></i>
-                                            Sponsored By (Name/Company) <span class="text-red-500 ml-1">*</span>
-                                        </label>
-                                        <div class="relative group">
-                                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                <i class="fas fa-handshake text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                            </div>
-                                            <input type="text" id="sponsor_name" name="sponsor_name"
-                                                   x-bind:required="studentCategory === 'sponsored'"
-                                                   class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
-                                                   placeholder="Enter sponsor name or company name">
-                                        </div>
-                                        <p class="text-xs text-gray-500 mt-1.5 flex items-center">
-                                            <i class="fas fa-info-circle mr-1"></i>
-                                            Please provide the name of the person or company sponsoring the student
-                                        </p>
-                                    </div>
-                                    
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                                        <div class="form-field-wrapper">
-                                            <label for="sponsor_phone" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                                <i class="fas fa-phone text-brand-primary mr-2 text-xs"></i>
-                                                Sponsor Phone <span class="text-gray-400 text-xs ml-1">(Optional)</span>
-                                            </label>
-                                            <div class="relative group">
-                                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                    <i class="fas fa-phone text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                                </div>
-                                                <input type="tel" id="sponsor_phone" name="sponsor_phone"
-                                                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
-                                                       placeholder="Enter sponsor phone number">
-                                            </div>
-                                        </div>
-                                        <div class="form-field-wrapper">
-                                            <label for="sponsor_email" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                                <i class="fas fa-envelope text-brand-primary mr-2 text-xs"></i>
-                                                Sponsor Email <span class="text-gray-400 text-xs ml-1">(Optional)</span>
-                                            </label>
-                                            <div class="relative group">
-                                                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                    <i class="fas fa-envelope text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                                </div>
-                                                <input type="email" id="sponsor_email" name="sponsor_email"
-                                                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
-                                                       placeholder="Enter sponsor email address">
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Parent/Guardian Information -->
-                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md">
-                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
-                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
-                                <i class="fas fa-users text-white text-lg"></i>
-                            </div>
-                            <span>Parent/Guardian Information</span>
-                        </h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                            <div class="form-field-wrapper">
-                                <label for="parent_name" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-user-friends text-brand-primary mr-2 text-xs"></i>
-                                    Parent/Guardian Name <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-user-friends text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="text" id="parent_name" name="parent_name" required
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="relationship" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-heart text-brand-primary mr-2 text-xs"></i>
-                                    Relationship <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-heart text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <select id="relationship" name="relationship" required
-                                            class="w-full pl-12 pr-10 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all appearance-none cursor-pointer">
-                                        <option value="">Select Relationship</option>
-                                        <option value="PARENT">Parent</option>
-                                        <option value="GUARDIAN">Guardian</option>
-                                    </select>
-                                    <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-chevron-down text-gray-400"></i>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-phone text-brand-primary mr-2 text-xs"></i>
-                                    Parent Phone <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-phone text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="tel" id="parent_phone" name="parent_phone" required
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                            <div class="md:col-span-2 form-field-wrapper">
-                                <label for="parent_email" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-envelope text-brand-primary mr-2 text-xs"></i>
-                                    Parent Email <span class="text-red-500 ml-1">*</span>
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-envelope text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="email" id="parent_email" name="parent_email" required
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Additional Information -->
-                    <div class="admission-section bg-white rounded-lg p-5 sm:p-6 border border-gray-200 shadow-md">
-                        <h2 class="text-lg sm:text-xl font-bold mb-5 text-gray-800 border-b border-gray-300 pb-3 flex items-center">
-                            <div class="w-10 h-10 bg-brand-primary rounded-lg flex items-center justify-center mr-3">
-                                <i class="fas fa-info-circle text-white text-lg"></i>
-                            </div>
-                            <span>Additional Information</span>
-                        </h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                            <div class="md:col-span-2 form-field-wrapper">
-                                <label for="address" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-map-marker-alt text-brand-primary mr-2 text-xs"></i>Home Address
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute top-3 left-4 pointer-events-none">
-                                        <i class="fas fa-map-marker-alt text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <textarea id="address" name="address" rows="3"
-                                              class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all resize-none"></textarea>
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="emergency_contact" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-phone-alt text-brand-primary mr-2 text-xs"></i>Emergency Contact
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-phone-alt text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="text" id="emergency_contact" name="emergency_contact"
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                            <div class="form-field-wrapper">
-                                <label for="medical_conditions" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-heartbeat text-brand-primary mr-2 text-xs"></i>Medical Conditions
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                        <i class="fas fa-heartbeat text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <input type="text" id="medical_conditions" name="medical_conditions"
-                                           class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
-                                </div>
-                            </div>
-                            <div class="md:col-span-2 form-field-wrapper">
-                                <label for="special_needs" class="block text-sm font-semibold mb-2 text-gray-700 flex items-center">
-                                    <i class="fas fa-wheelchair text-brand-primary mr-2 text-xs"></i>Special Needs
-                                </label>
-                                <div class="relative group">
-                                    <div class="absolute top-3 left-4 pointer-events-none">
-                                        <i class="fas fa-wheelchair text-gray-400 group-focus-within:text-brand-primary transition-colors"></i>
-                                    </div>
-                                    <textarea id="special_needs" name="special_needs" rows="3"
-                                              class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all resize-none"></textarea>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Consent -->
-                    <div class="admission-section">
-                        <div class="flex items-start space-x-4 p-5 bg-gray-50 rounded-lg border border-gray-200">
-                            <div class="flex-shrink-0 mt-1">
-                                <input type="checkbox" id="consent" name="consent" required
-                                       class="w-5 h-5 text-brand-primary border border-gray-300 rounded focus:ring-brand-primary focus:ring-2 cursor-pointer transition-all">
-                            </div>
-                            <label for="consent" class="text-sm text-gray-700 cursor-pointer flex-1">
-                                <span class="text-red-500 font-bold">*</span> I hereby confirm that all information provided is accurate and I consent to the processing of this application. I understand that providing false information may result in the rejection of this application.
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div class="flex flex-col sm:flex-row gap-4 pt-4">
-                        <button type="submit" class="flex-1 px-6 py-4 bg-brand-secondary text-white rounded-lg font-semibold hover:bg-red-700 transition-all shadow-lg">
-                            <span class="flex items-center justify-center">
-                                <i class="fas fa-paper-plane mr-2"></i>
-                                Submit Application
-                            </span>
-                        </button>
-                        <button type="button" @click="document.getElementById('admissionForm').reset()" class="px-6 py-4 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200 transition-all border border-gray-200">
-                            <i class="fas fa-redo mr-2"></i>Reset Form
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- Employee Registration Modal -->
-    <div x-show="employeeModalOpen" 
-         @click.away="employeeModalOpen = false"
-         x-transition:enter="transition-opacity ease-out duration-300"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition-opacity ease-in duration-200"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-gradient-to-br from-gray-900/80 via-gray-800/80 to-gray-900/80 backdrop-blur-md"
-         style="display: none;">
-        <div @click.stop
-             x-transition:enter="transition-all ease-out duration-500"
-             x-transition:enter-start="opacity-0 scale-90 translate-y-8 rotate-2"
-             x-transition:enter-end="opacity-100 scale-100 translate-y-0 rotate-0"
-             x-transition:leave="transition-all ease-in duration-300"
-             x-transition:leave-start="opacity-100 scale-100 translate-y-0 rotate-0"
-             x-transition:leave-end="opacity-0 scale-90 translate-y-8 -rotate-2"
-             class="bg-gradient-to-br from-white via-gray-50 to-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col employee-modal border-4 border-green-100/50 employee-modal-container">
-            <!-- Modal Header -->
-            <div class="relative bg-gradient-to-br from-brand-primary via-red-700 to-warm-navy text-white p-6 sm:p-8 flex items-center justify-between shadow-2xl overflow-hidden">
-                <!-- Animated Background Pattern -->
-                <div class="absolute inset-0 opacity-10">
-                    <div class="absolute inset-0" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 40px 40px;"></div>
-                </div>
-                <div class="relative z-10 flex items-center space-x-4 sm:space-x-6 w-full">
-                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center shadow-xl transform hover:scale-110 transition-transform duration-300 border-2 border-white/30">
-                        <i class="fas fa-user-tie text-2xl sm:text-3xl"></i>
-                    </div>
-                    <div class="flex-1">
-                        <h2 class="text-2xl sm:text-3xl font-bold mb-1 drop-shadow-lg">Join Our Team</h2>
-                        <p class="text-red-50 text-sm sm:text-base font-medium">Employee Registration Portal</p>
-                    </div>
-                </div>
-                <button @click="employeeModalOpen = false" class="relative z-10 text-white hover:text-red-100 transition-all transform hover:rotate-90 hover:scale-110 active:scale-95 duration-300 p-2 sm:p-3 rounded-xl hover:bg-white/20 backdrop-blur-sm border border-white/20">
-                    <i class="fas fa-times text-xl sm:text-2xl"></i>
-                </button>
-            </div>
-
-            <!-- Modal Body -->
-            <div class="p-4 sm:p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-b from-white to-gray-50/50">
-                <form method="POST" action="/register-employee" id="employeeForm" enctype="multipart/form-data" class="space-y-6 sm:space-y-8">
-                    <!-- Welcome Message -->
-                    <div class="bg-gradient-to-r from-red-50 via-red-50 to-red-50 rounded-2xl p-4 sm:p-6 border-l-4 border-brand-primary shadow-md mb-6">
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-10 h-10 bg-brand-primary rounded-full flex items-center justify-center">
-                                <i class="fas fa-info-circle text-white text-sm"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-sm sm:text-base font-bold text-gray-800 mb-1">Welcome to {{ school_settings.school_name or 'Modern School' }}</h3>
-                                <p class="text-xs sm:text-sm text-gray-600">Fill in all required fields to complete your employee registration. All information will be kept confidential.</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
-                        <!-- Full Name -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_full_name" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-user text-brand-primary mr-2 text-sm"></i>
-                                Full Name <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="text" id="emp_full_name" name="full_name" required
-                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                            </div>
-                        </div>
-
-                        <!-- Email -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_email" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-envelope text-brand-primary mr-2 text-sm"></i>
-                                Email <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="email" id="emp_email" name="email" required
-                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                            </div>
-                        </div>
-
-                        <!-- Phone Number -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_phone" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-phone text-brand-primary mr-2 text-sm"></i>
-                                Phone Number <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="tel" id="emp_phone" name="phone" required
-                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                            </div>
-                        </div>
-
-                        <!-- ID Number or Passport -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_id_number" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-id-card text-brand-primary mr-2 text-sm"></i>
-                                Kenyan ID / Passport <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="text" id="emp_id_number" name="id_number" required
-                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                            </div>
-                        </div>
-
-                        <!-- Employee ID -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_employee_id" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-barcode text-brand-primary mr-2 text-sm"></i>
-                                Employee ID (6 digits) <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="text" id="emp_employee_id" name="employee_id" required maxlength="6" pattern="[0-9]{6}"
-                                       placeholder="000000"
-                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400 font-mono text-lg tracking-wider">
-                                <div id="employee_id_validation" class="absolute right-4 top-1/2 transform -translate-y-1/2 hidden">
-                                    <i id="employee_id_icon" class="text-xl"></i>
-                                </div>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1 flex items-center">
-                                <i class="fas fa-info-circle mr-1"></i>Must be exactly 6 digits
-                            </p>
-                            <div id="employee_id_message" class="mt-2 text-sm font-medium hidden flex items-center space-x-2">
-                                <i class="text-xs"></i>
-                                <span></span>
-                            </div>
-                        </div>
-
-                        <!-- Profile Picture -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_profile_picture" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-image text-brand-primary mr-2 text-sm"></i>
-                                Profile Picture <span class="text-gray-400 text-xs ml-1">(Optional)</span>
-                            </label>
-                            <div class="relative group">
-                                <input type="file" id="emp_profile_picture" name="profile_picture" accept="image/*"
-                                       class="w-full pl-4 pr-4 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-gradient-to-r file:from-red-50 file:to-red-50 file:text-brand-primary hover:file:from-red-100 hover:file:to-red-100 file:transition-all">
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1 flex items-center">
-                                <i class="fas fa-info-circle mr-1"></i>Max 5MB (PNG, JPG, JPEG, GIF)
-                            </p>
-                        </div>
-
-                        <!-- Password -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_password" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-lock text-brand-primary mr-2 text-sm"></i>
-                                Password <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group" x-data="{ showPassword: false }">
-                                <input :type="showPassword ? 'text' : 'password'" id="emp_password" name="password" required minlength="6"
-                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                                <button type="button" 
-                                        @click="showPassword = !showPassword"
-                                        class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-brand-primary transition-colors touch-manipulation">
-                                    <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-                                </button>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1 flex items-center">
-                                <i class="fas fa-shield-alt mr-1"></i>Minimum 6 characters
-                            </p>
-                        </div>
-
-                        <!-- Confirm Password -->
-                        <div class="form-field-wrapper group">
-                            <label for="emp_confirm_password" class="block text-sm font-bold mb-2 text-gray-700 flex items-center group-hover:text-brand-primary transition-colors">
-                                <i class="fas fa-lock text-brand-primary mr-2 text-sm"></i>
-                                Confirm Password <span class="text-red-500 ml-1">*</span>
-                            </label>
-                            <div class="relative group" x-data="{ showPassword: false }">
-                                <input :type="showPassword ? 'text' : 'password'" id="emp_confirm_password" name="confirm_password" required minlength="6"
-                                       class="w-full pl-4 pr-12 py-3.5 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all duration-300 shadow-sm hover:shadow-md hover:border-red-300 focus:shadow-xl focus:scale-[1.02] placeholder-gray-400">
-                                <button type="button" 
-                                        @click="showPassword = !showPassword"
-                                        class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-brand-primary transition-colors touch-manipulation">
-                                    <i class="fas" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div class="flex flex-col sm:flex-row gap-4 pt-6 border-t-2 border-gray-100">
-                        <button type="submit" class="flex-1 px-8 py-4 bg-gradient-to-r from-brand-primary via-red-700 to-warm-navy text-white rounded-xl font-bold text-base sm:text-lg hover:shadow-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-xl group relative overflow-hidden border-2 border-red-400/50">
-                            <span class="relative z-10 flex items-center justify-center">
-                                <i class="fas fa-user-plus mr-3 transform group-hover:translate-x-2 transition-transform duration-300 text-lg"></i>
-                                <span>Register as Employee</span>
-                            </span>
-                            <span class="absolute inset-0 bg-gradient-to-r from-warm-navy via-red-700 to-brand-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-                            <span class="absolute inset-0 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left"></span>
-                        </button>
-                        <button type="button" @click="document.getElementById('employeeForm').reset(); employeeModalOpen = false" class="px-6 sm:px-8 py-4 bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 rounded-xl font-semibold hover:from-gray-200 hover:to-gray-300 transition-all transform hover:scale-[1.02] active:scale-[0.98] border-2 border-gray-300 shadow-md hover:shadow-lg">
-                            <i class="fas fa-times mr-2"></i>Cancel
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    <!-- Extra Scripts Block -->
+    {% block extra_scripts %}{% endblock %}
     
-    <!-- Input Formatting Script: Uppercase conversion and spacing normalization -->
+    <!-- Calendar Script (if needed) -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // Function to normalize text: uppercase and single spacing
-            function normalizeText(value) {
-                if (!value) return value;
-                // Replace multiple spaces with single space, trim, then uppercase
-                return value.replace(/\s+/g, ' ').trim().toUpperCase();
-            }
+        // Update calendar if elements exist
+        function updateCalendar() {
+            const now = new Date();
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
             
-            // Function to handle input formatting
-            function formatInput(input) {
-                // Skip if it's an email field or password field
-                const fieldType = input.type.toLowerCase();
-                const fieldName = (input.name || '').toLowerCase();
-                const fieldId = (input.id || '').toLowerCase();
-                
-                if (fieldType === 'email' || 
-                    fieldType === 'password' || 
-                    fieldName.includes('email') || 
-                    fieldId.includes('email') ||
-                    fieldName.includes('password') ||
-                    fieldId.includes('password')) {
-                    return; // Skip email and password fields
-                }
-                
-                // Handle input event (as user types)
-                input.addEventListener('input', function(e) {
-                    const cursorPosition = e.target.selectionStart;
-                    const originalValue = e.target.value;
-                    const normalizedValue = normalizeText(originalValue);
-                    
-                    if (originalValue !== normalizedValue) {
-                        e.target.value = normalizedValue;
-                        // Restore cursor position (adjust for length change)
-                        const lengthDiff = normalizedValue.length - originalValue.length;
-                        e.target.setSelectionRange(
-                            Math.max(0, cursorPosition + lengthDiff),
-                            Math.max(0, cursorPosition + lengthDiff)
-                        );
-                    }
-                });
-                
-                // Handle blur event (when field loses focus) - final normalization
-                input.addEventListener('blur', function(e) {
-                    const normalizedValue = normalizeText(e.target.value);
-                    if (e.target.value !== normalizedValue) {
-                        e.target.value = normalizedValue;
-                    }
-                });
-            }
+            const monthHeader = document.getElementById('calendar-month-header');
+            const calendarDay = document.getElementById('calendar-day');
+            const calendarWeekday = document.getElementById('calendar-weekday');
+            const calendarYear = document.getElementById('calendar-year');
+            const mobileDate = document.getElementById('mobile-date');
             
-            // Apply to all text inputs and textareas in admission form
-            const admissionForm = document.getElementById('admissionForm');
-            if (admissionForm) {
-                const textInputs = admissionForm.querySelectorAll('input[type="text"], input[type="tel"], textarea');
-                textInputs.forEach(formatInput);
-            }
-            
-            // Apply to all text inputs in employee form
-            const employeeForm = document.getElementById('employeeForm');
-            if (employeeForm) {
-                const textInputs = employeeForm.querySelectorAll('input[type="text"], input[type="tel"], textarea');
-                textInputs.forEach(formatInput);
-            }
-            
-            // Apply to login form (admission number field)
-            const loginForm = document.getElementById('loginForm');
-            if (loginForm) {
-                const admissionNumberField = loginForm.querySelector('#admission_number');
-                if (admissionNumberField) {
-                    formatInput(admissionNumberField);
-                }
-            }
-            
-            // Also apply to any dynamically added inputs (for future-proofing)
-            const observer = new MutationObserver(function(mutations) {
-                mutations.forEach(function(mutation) {
-                    mutation.addedNodes.forEach(function(node) {
-                        if (node.nodeType === 1) { // Element node
-                            if (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA') {
-                                formatInput(node);
-                            } else {
-                                const inputs = node.querySelectorAll && node.querySelectorAll('input[type="text"], input[type="tel"], textarea');
-                                if (inputs) {
-                                    inputs.forEach(formatInput);
-                                }
-                            }
-                        }
-                    });
-                });
-            });
-            
-            // Observe the document body for dynamically added elements
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-        });
+            if (monthHeader) monthHeader.textContent = monthNames[now.getMonth()];
+            if (calendarDay) calendarDay.textContent = String(now.getDate()).padStart(2, '0');
+            if (calendarWeekday) calendarWeekday.textContent = dayNames[now.getDay()];
+            if (calendarYear) calendarYear.textContent = now.getFullYear();
+            if (mobileDate) mobileDate.textContent = monthNames[now.getMonth()].substring(0, 3) + ' ' + String(now.getDate()).padStart(2, '0');
+        }
+        
+        updateCalendar();
+        setInterval(updateCalendar, 60000); // Update every minute
     </script>
 </body>
 </html>

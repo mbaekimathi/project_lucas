@@ -1,6 +1,52 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Student Fees - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Custom select styling */
+    select {
+        background-image: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+    }
+    
+    /* Search input clear button */
+    #clearSearch {
+        transition: all 0.2s ease;
+    }
+    
+    #clearSearch:hover {
+        transform: scale(1.1);
+    }
+    
+    /* Active filter badges */
+    #activeFilters span button {
+        transition: all 0.2s ease;
+    }
+    
+    #activeFilters span button:hover {
+        transform: scale(1.2);
+    }
+    
+    /* Filter section improvements */
+    #searchStudents:focus,
+    #filterGrade:focus,
+    #filterCategory:focus {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+    }
+    
+    /* Responsive improvements */
+    @media (max-width: 640px) {
+        #clearFilters {
+            font-size: 0.7rem;
+            padding: 0.5rem 0.75rem;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block role_primary %}#10b981{% endblock %}
 {% block role_secondary %}#059669{% endblock %}
@@ -12,7 +58,7 @@
 <div class="space-y-2">
     <!-- Student Management Link -->
     <a href="/student-management" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 border-l-4"
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary border-l-4"
        style="border-color: var(--role-primary);">
         <i class="fas fa-user-graduate w-5"></i>
         <span class="font-medium">Student Management</span>
@@ -29,7 +75,7 @@
     
     <!-- View Fee Structures Link -->
     <a href="/dashboard/employee/student-fees/fee-structures" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 border-l-4"
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary border-l-4"
        style="border-color: var(--role-primary);">
         <i class="fas fa-list-alt w-5"></i>
         <span class="font-medium">Fee Structures</span>
@@ -38,7 +84,7 @@
     
     <!-- Payments Audits Link -->
     <a href="/dashboard/employee/student-fees/payments-audit" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'payments_audit' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'payments_audit' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'payments_audit' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-history w-5"></i>
         <span class="font-medium">Payments Audits</span>
@@ -47,7 +93,7 @@
     
     <!-- Academic Settings Link -->
     <a href="/dashboard/employee/academic-settings" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'academic_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'academic_settings' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-calendar-alt w-5"></i>
         <span class="font-medium">Academic Settings</span>
@@ -73,36 +119,114 @@
     </div>
 
     <!-- Search and Filter Bar -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-4 sm:mb-6">
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <div class="relative sm:col-span-2 lg:col-span-1">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <i class="fas fa-search text-gray-400 text-sm sm:text-base"></i>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-5 mb-4 sm:mb-6">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                <i class="fas fa-filter text-green-600 mr-2"></i>
+                Search & Filter
+            </h2>
+            <button type="button" 
+                    id="clearFilters"
+                    class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 touch-manipulation">
+                <i class="fas fa-times-circle"></i>
+                <span>Clear All</span>
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Search Input -->
+            <div class="sm:col-span-2 lg:col-span-1">
+                <label for="searchStudents" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <i class="fas fa-search text-green-600 mr-1.5"></i>Search Students
+                </label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-gray-400"></i>
+                    </div>
+                    <input type="text" 
+                           id="searchStudents" 
+                           placeholder="Search by name or ID..."
+                           class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm hover:shadow-md"
+                           style="font-size: 16px;">
+                    <button type="button" 
+                            id="clearSearch"
+                            class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hidden">
+                        <i class="fas fa-times-circle"></i>
+                    </button>
                 </div>
-                <input type="text" 
-                       id="searchStudents" 
-                       placeholder="Search by student name or ID..."
-                       class="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 sm:py-2.5 text-sm sm:text-base border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation"
-                       style="font-size: 16px;">
             </div>
+            
+            <!-- Grade Filter -->
             <div>
-                <select id="filterGrade" 
-                        class="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation"
-                        style="font-size: 16px;">
-                    <option value="">All Grades</option>
-                    {% for level in academic_levels %}
-                    <option value="{{ level.level_name }}">{{ level.level_name }}</option>
-                    {% endfor %}
-                </select>
+                <label for="filterGrade" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <i class="fas fa-graduation-cap text-blue-600 mr-1.5"></i>Grade/Level
+                </label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-graduation-cap text-gray-400"></i>
+                    </div>
+                    <select id="filterGrade" 
+                            class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm hover:shadow-md appearance-none cursor-pointer"
+                            style="font-size: 16px;">
+                        <option value="">All Grades</option>
+                        {% for level in academic_levels %}
+                        <option value="{{ level.level_name }}">{{ level.level_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400"></i>
+                    </div>
+                </div>
             </div>
+            
+            <!-- Category Filter -->
             <div>
-                <select id="filterCategory" 
-                        class="w-full px-3 sm:px-4 py-2 sm:py-2.5 text-sm sm:text-base border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation"
-                        style="font-size: 16px;">
-                    <option value="">All Categories</option>
-                    <option value="sponsored">Sponsored</option>
-                    <option value="self sponsored">Self Sponsored</option>
-                </select>
+                <label for="filterCategory" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    <i class="fas fa-tags text-purple-600 mr-1.5"></i>Category
+                </label>
+                <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-tags text-gray-400"></i>
+                    </div>
+                    <select id="filterCategory" 
+                            class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm hover:shadow-md appearance-none cursor-pointer"
+                            style="font-size: 16px;">
+                        <option value="">All Categories</option>
+                        <option value="sponsored">Sponsored</option>
+                        <option value="self sponsored">Self Sponsored</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                        <i class="fas fa-chevron-down text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Active Filters Display -->
+        <div id="activeFilters" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 hidden">
+            <div class="flex items-center flex-wrap gap-2">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Active filters:</span>
+                <span id="activeSearchFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-xs font-medium hidden">
+                    <i class="fas fa-search"></i>
+                    <span id="searchValue"></span>
+                    <button type="button" class="ml-1 hover:text-green-900 dark:hover:text-green-200" onclick="clearSearchFilter()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>
+                <span id="activeGradeFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-xs font-medium hidden">
+                    <i class="fas fa-graduation-cap"></i>
+                    <span id="gradeValue"></span>
+                    <button type="button" class="ml-1 hover:text-blue-900 dark:hover:text-blue-200" onclick="clearGradeFilter()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>
+                <span id="activeCategoryFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-xs font-medium hidden">
+                    <i class="fas fa-tags"></i>
+                    <span id="categoryValue"></span>
+                    <button type="button" class="ml-1 hover:text-purple-900 dark:hover:text-purple-200" onclick="clearCategoryFilter()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>
             </div>
         </div>
     </div>
@@ -114,8 +238,6 @@
                 <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Student</th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Grade</th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Category</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Parent/Guardian</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Fee Amount</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Paid</th>
@@ -132,41 +254,32 @@
                             data-student-name="{{ student.full_name|lower }}"
                             data-grade="{{ student.current_grade|lower }}"
                             data-category="{{ (student.student_category|lower if student.student_category else '') }}">
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <td class="px-4 sm:px-6 py-4">
                                 <div class="flex items-center">
                                     <div class="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
                                         <i class="fas fa-user-graduate text-white text-sm"></i>
                                     </div>
-                                    <div class="ml-3">
+                                    <div class="ml-3 min-w-0 flex-1">
                                         <div class="text-sm font-medium text-gray-900 dark:text-white">{{ student.full_name }}</div>
                                         <div class="text-xs text-gray-500 dark:text-gray-400">ID: {{ student.student_id }}</div>
+                                        <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                                            {% if student.academic_level %}
+                                                <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                                    {{ student.academic_level.level_name }}
+                                                </span>
+                                            {% elif student.current_grade %}
+                                                <span class="px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                                                    {{ student.current_grade }}
+                                                </span>
+                                            {% endif %}
+                                            {% if student.student_category %}
+                                                <span class="px-2 py-0.5 text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize">
+                                                    {{ student.student_category }}
+                                                </span>
+                                            {% endif %}
+                                        </div>
                                     </div>
                                 </div>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                {% if student.academic_level %}
-                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
-                                        {{ student.academic_level.level_name }}
-                                    </span>
-                                    {% if student.academic_level.level_category %}
-                                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        {{ student.academic_level.level_category }}
-                                    </div>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                                        {{ student.current_grade or 'N/A' }}
-                                    </span>
-                                {% endif %}
-                            </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                {% if student.student_category %}
-                                <span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize">
-                                    {{ student.student_category }}
-                                </span>
-                                {% else %}
-                                <span class="text-xs text-gray-400">-</span>
-                                {% endif %}
                             </td>
                             <td class="px-6 py-4">
                                 <div class="text-sm text-gray-900 dark:text-white">{{ student.parent_name or 'N/A' }}</div>
@@ -269,7 +382,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="9" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                            <td colspan="7" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                                 <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                                 <p class="text-lg font-medium">No students found</p>
                                 <p class="text-sm mt-1">Students will appear here once they are registered</p>
@@ -282,153 +395,144 @@
     </div>
 
     <!-- Students Fees Cards - Mobile/Tablet View -->
-    <div class="lg:hidden space-y-2 sm:space-y-4" id="studentsCardsContainer" x-data>
+    <div class="lg:hidden space-y-3 sm:space-y-4" id="studentsCardsContainer" x-data>
         {% if students %}
             {% for student in students %}
-            <div class="student-card bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-3 sm:p-5"
+            <div class="student-card bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden transition-all hover:shadow-xl"
                  data-student-id="{{ student.student_id }}"
                  data-student-name="{{ student.full_name|lower }}"
                  data-grade="{{ student.current_grade|lower }}"
                  data-category="{{ (student.student_category|lower if student.student_category else '') }}">
+                
                 <!-- Card Header -->
-                <div class="flex items-start justify-between mb-3">
-                    <div class="flex items-center space-x-2 flex-1 min-w-0 pr-2">
-                        <div class="w-10 h-10 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-user-graduate text-white text-xs sm:text-lg"></i>
-                        </div>
-                        <div class="flex-1 min-w-0">
-                            <h3 class="text-[9px] leading-tight sm:text-lg font-semibold text-gray-900 dark:text-white break-words" style="font-size: 9px; line-height: 1.3;">{{ student.full_name }}</h3>
-                            <p class="text-[9px] sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5" style="font-size: 9px;">ID: {{ student.student_id }}</p>
+                <div class="bg-gradient-to-r from-green-50 to-green-100/50 dark:from-gray-700 dark:to-gray-800 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3 flex-1 min-w-0">
+                            <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 shadow-md">
+                                <i class="fas fa-user-graduate text-white text-base sm:text-lg"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <h3 class="text-sm sm:text-base font-bold text-gray-900 dark:text-white truncate">{{ student.full_name }}</h3>
+                                <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">ID: {{ student.student_id }}</p>
+                                <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    {% if student.academic_level %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
+                                            {{ student.academic_level.level_name }}
+                                        </span>
+                                    {% elif student.current_grade %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
+                                            {{ student.current_grade }}
+                                        </span>
+                                    {% endif %}
+                                    {% if student.student_category %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize">
+                                            {{ student.student_category }}
+                                        </span>
+                                    {% endif %}
+                                    {% if student.payment_status == 'overdue' %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
+                                            Overdue
+                                        </span>
+                                    {% elif student.payment_status == 'pending' %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">
+                                            Pending
+                                        </span>
+                                    {% elif student.payment_status == 'paid' %}
+                                        <span class="inline-block px-2 py-0.5 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
+                                            Paid
+                                        </span>
+                                    {% endif %}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex items-center space-x-1 flex-shrink-0">
+                </div>
+
+                <!-- Card Body -->
+                <div class="p-4">
+                    <!-- Financial Summary -->
+                    <div class="grid grid-cols-3 gap-3 mb-4">
+                        <!-- Fee Amount -->
+                        <div class="text-center p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Fee Amount</p>
+                            {% if student.fee_structure %}
+                                <p class="text-sm font-bold text-gray-900 dark:text-white">
+                                    KES {{ "{:,.0f}".format(student.fee_structure.total_amount) }}
+                                </p>
+                            {% else %}
+                                <p class="text-xs text-gray-400 dark:text-gray-500 italic">N/A</p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Paid -->
+                        <div class="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Paid</p>
+                            <p class="text-sm font-bold text-green-600 dark:text-green-400">
+                                KES {{ "{:,.0f}".format(student.total_paid or 0) }}
+                            </p>
+                            {% if student.get('carry_forward', 0) > 0 %}
+                            <p class="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                                +{{ "{:,.0f}".format(student.carry_forward) }} CF
+                            </p>
+                            {% endif %}
+                        </div>
+
+                        <!-- Balance -->
+                        <div class="text-center p-3 rounded-lg {% if student.balance > 0 %}bg-red-50 dark:bg-red-900/20{% elif student.balance == 0 %}bg-green-50 dark:bg-green-900/20{% else %}bg-blue-50 dark:bg-blue-900/20{% endif %}">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Balance</p>
+                            {% if student.fee_structure %}
+                                {% if student.balance > 0 %}
+                                    <p class="text-sm font-bold text-red-600 dark:text-red-400">
+                                        KES {{ "{:,.0f}".format(student.balance) }}
+                                    </p>
+                                {% elif student.balance == 0 %}
+                                    <p class="text-sm font-bold text-green-600 dark:text-green-400">
+                                        KES 0
+                                    </p>
+                                {% else %}
+                                    <p class="text-sm font-bold text-blue-600 dark:text-blue-400">
+                                        KES {{ "{:,.0f}".format(-student.balance) }}
+                                    </p>
+                                {% endif %}
+                            {% else %}
+                                <p class="text-xs font-semibold text-gray-400 dark:text-gray-500">KES 0</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Parent/Guardian Info -->
+                    <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg">
+                        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 uppercase tracking-wide">Parent/Guardian</p>
+                        <p class="text-sm font-medium text-gray-900 dark:text-white">{{ student.parent_name or 'N/A' }}</p>
+                        {% if student.parent_phone %}
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1 flex items-center">
+                            <i class="fas fa-phone text-xs mr-1.5"></i>{{ student.parent_phone }}
+                        </p>
+                        {% endif %}
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center justify-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                         {% if student.fee_structure %}
                         <button type="button" 
                                 @click="$store.paymentModal && $store.paymentModal.openPaymentModal('{{ student.student_id }}', {{ student.fee_structure.id }}, '{{ student.full_name }}', {{ student.fee_structure.total_amount }}, {{ student.balance }})"
-                                class="p-1.5 sm:p-2.5 text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 touch-manipulation"
-                                title="Record Payment">
-                            <i class="fas fa-money-check-alt text-xs sm:text-base"></i>
+                                class="flex-1 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm hover:shadow-md touch-manipulation flex items-center justify-center gap-2">
+                            <i class="fas fa-money-check-alt"></i>
+                            <span>Record Payment</span>
                         </button>
                         {% endif %}
                         <button type="button" 
                                 @click="$store.transactionsModal && $store.transactionsModal.openTransactionsModal('{{ student.student_id }}', '{{ student.full_name }}')"
-                                class="p-1.5 sm:p-2.5 text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 touch-manipulation"
-                                title="View Transactions">
-                            <i class="fas fa-eye text-xs sm:text-base"></i>
+                                class="px-3 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm hover:shadow-md touch-manipulation flex items-center justify-center gap-2">
+                            <i class="fas fa-eye"></i>
+                            <span class="hidden sm:inline">View</span>
                         </button>
                         <a href="/dashboard/employee/student-fees/generate-invoice/{{ student.student_id }}" 
                            target="_blank"
-                           class="p-1.5 sm:p-2.5 text-purple-600 hover:text-purple-900 dark:text-purple-400 dark:hover:text-purple-300 transition-colors rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/20 touch-manipulation"
-                           title="Generate Invoice">
-                            <i class="fas fa-file-invoice text-xs sm:text-base"></i>
+                           class="px-3 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm hover:shadow-md touch-manipulation flex items-center justify-center gap-2">
+                            <i class="fas fa-file-invoice"></i>
+                            <span class="hidden sm:inline">Invoice</span>
                         </a>
-                    </div>
-                </div>
-
-                <!-- Card Content -->
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
-                    <!-- Grade -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Grade</p>
-                        {% if student.academic_level %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300" style="font-size: 9px;">
-                                {{ student.academic_level.level_name }}
-                            </span>
-                        {% else %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400" style="font-size: 9px;">
-                                {{ student.current_grade or 'N/A' }}
-                            </span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Category -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Category</p>
-                        {% if student.student_category %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize" style="font-size: 9px;">
-                                {{ student.student_category }}
-                            </span>
-                        {% else %}
-                            <span class="text-[9px] text-gray-400" style="font-size: 9px;">-</span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Fee Amount -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Fee Amount</p>
-                        {% if student.fee_structure %}
-                            <p class="text-[10px] sm:text-sm font-semibold text-gray-900 dark:text-white" style="font-size: 10px;">
-                                KES {{ "{:,.2f}".format(student.fee_structure.total_amount) }}
-                            </p>
-                        {% else %}
-                            <p class="text-[10px] sm:text-sm text-gray-400 dark:text-gray-500 italic" style="font-size: 10px;">No fee structure</p>
-                        {% endif %}
-                    </div>
-
-                    <!-- Paid -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Paid</p>
-                        <p class="text-[10px] sm:text-sm font-semibold text-green-600 dark:text-green-400" style="font-size: 10px;">
-                            KES {{ "{:,.2f}".format(student.total_paid or 0) }}
-                        </p>
-                        {% if student.get('carry_forward', 0) > 0 %}
-                        <p class="text-[9px] text-blue-600 dark:text-blue-400 mt-0.5" style="font-size: 9px;">
-                            + {{ "{:,.2f}".format(student.carry_forward) }} CF
-                        </p>
-                        {% endif %}
-                    </div>
-
-                    <!-- Balance -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Balance</p>
-                        {% if student.fee_structure %}
-                            {% if student.balance > 0 %}
-                                <p class="text-[10px] sm:text-sm font-semibold text-red-600 dark:text-red-400" style="font-size: 10px;">
-                                    KES {{ "{:,.2f}".format(student.balance) }}
-                                </p>
-                            {% elif student.balance == 0 %}
-                                <p class="text-[10px] sm:text-sm font-semibold text-green-600 dark:text-green-400" style="font-size: 10px;">
-                                    KES 0.00
-                                </p>
-                            {% else %}
-                                <p class="text-[10px] sm:text-sm font-semibold text-blue-600 dark:text-blue-400" style="font-size: 10px;">
-                                    KES {{ "{:,.2f}".format(-student.balance) }}
-                                </p>
-                            {% endif %}
-                        {% else %}
-                            <p class="text-[10px] sm:text-sm font-semibold text-gray-400 dark:text-gray-500" style="font-size: 10px;">KES 0.00</p>
-                        {% endif %}
-                    </div>
-
-                    <!-- Status -->
-                    <div>
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Status</p>
-                        {% if student.payment_status == 'overdue' %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300" style="font-size: 9px;">
-                                Overdue
-                            </span>
-                        {% elif student.payment_status == 'pending' %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300" style="font-size: 9px;">
-                                Pending
-                            </span>
-                        {% elif student.payment_status == 'paid' %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300" style="font-size: 9px;">
-                                Paid
-                            </span>
-                        {% else %}
-                            <span class="inline-block px-1.5 py-0.5 text-[9px] sm:text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400" style="font-size: 9px;">
-                                No Structure
-                            </span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Parent/Guardian -->
-                    <div class="col-span-2 sm:col-span-3">
-                        <p class="text-[9px] sm:text-xs text-gray-500 dark:text-gray-400 mb-0.5" style="font-size: 9px;">Parent/Guardian</p>
-                        <p class="text-[10px] sm:text-sm text-gray-900 dark:text-white break-words" style="font-size: 10px;">{{ student.parent_name or 'N/A' }}</p>
-                        {% if student.parent_phone %}
-                        <p class="text-[9px] text-gray-500 dark:text-gray-400 mt-0.5" style="font-size: 9px;">{{ student.parent_phone }}</p>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -449,15 +553,110 @@ document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('searchStudents');
     const filterGrade = document.getElementById('filterGrade');
     const filterCategory = document.getElementById('filterCategory');
+    const clearSearchBtn = document.getElementById('clearSearch');
+    const clearFiltersBtn = document.getElementById('clearFilters');
+    const activeFiltersDiv = document.getElementById('activeFilters');
     const tableBody = document.getElementById('studentsTableBody');
     const cardsContainer = document.getElementById('studentsCardsContainer');
     const rows = document.querySelectorAll('.student-row');
     const cards = document.querySelectorAll('.student-card');
 
+    // Update active filters display
+    function updateActiveFilters() {
+        const searchTerm = searchInput.value.trim();
+        const gradeValue = filterGrade.value;
+        const categoryValue = filterCategory.value;
+        
+        // Show/hide clear search button
+        if (clearSearchBtn) {
+            if (searchTerm) {
+                clearSearchBtn.classList.remove('hidden');
+            } else {
+                clearSearchBtn.classList.add('hidden');
+            }
+        }
+        
+        // Update active filters display
+        if (activeFiltersDiv) {
+            const hasFilters = searchTerm || gradeValue || categoryValue;
+            if (hasFilters) {
+                activeFiltersDiv.classList.remove('hidden');
+                
+                // Search filter
+                const activeSearchFilter = document.getElementById('activeSearchFilter');
+                const searchValueSpan = document.getElementById('searchValue');
+                if (searchTerm && activeSearchFilter && searchValueSpan) {
+                    activeSearchFilter.classList.remove('hidden');
+                    searchValueSpan.textContent = searchTerm;
+                } else if (activeSearchFilter) {
+                    activeSearchFilter.classList.add('hidden');
+                }
+                
+                // Grade filter
+                const activeGradeFilter = document.getElementById('activeGradeFilter');
+                const gradeValueSpan = document.getElementById('gradeValue');
+                if (gradeValue && activeGradeFilter && gradeValueSpan) {
+                    activeGradeFilter.classList.remove('hidden');
+                    gradeValueSpan.textContent = gradeValue;
+                } else if (activeGradeFilter) {
+                    activeGradeFilter.classList.add('hidden');
+                }
+                
+                // Category filter
+                const activeCategoryFilter = document.getElementById('activeCategoryFilter');
+                const categoryValueSpan = document.getElementById('categoryValue');
+                if (categoryValue && activeCategoryFilter && categoryValueSpan) {
+                    activeCategoryFilter.classList.remove('hidden');
+                    categoryValueSpan.textContent = categoryValue;
+                } else if (activeCategoryFilter) {
+                    activeCategoryFilter.classList.add('hidden');
+                }
+            } else {
+                activeFiltersDiv.classList.add('hidden');
+            }
+        }
+    }
+
+    // Clear functions
+    function clearSearchFilter() {
+        if (searchInput) {
+            searchInput.value = '';
+            filterTable();
+            updateActiveFilters();
+        }
+    }
+    
+    function clearGradeFilter() {
+        if (filterGrade) {
+            filterGrade.value = '';
+            filterTable();
+            updateActiveFilters();
+        }
+    }
+    
+    function clearCategoryFilter() {
+        if (filterCategory) {
+            filterCategory.value = '';
+            filterTable();
+            updateActiveFilters();
+        }
+    }
+    
+    function clearAllFilters() {
+        if (searchInput) searchInput.value = '';
+        if (filterGrade) filterGrade.value = '';
+        if (filterCategory) filterCategory.value = '';
+        filterTable();
+        updateActiveFilters();
+    }
+
     function filterTable() {
         const searchTerm = searchInput.value.toLowerCase();
         const gradeFilter = filterGrade.value.toLowerCase();
         const categoryFilter = filterCategory.value.toLowerCase();
+        
+        // Update active filters display
+        updateActiveFilters();
 
         // Filter table rows (desktop)
         rows.forEach(row => {
@@ -500,9 +699,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    if (searchInput) searchInput.addEventListener('input', filterTable);
-    if (filterGrade) filterGrade.addEventListener('change', filterTable);
-    if (filterCategory) filterCategory.addEventListener('change', filterTable);
+    // Event listeners
+    if (searchInput) {
+        searchInput.addEventListener('input', filterTable);
+        searchInput.addEventListener('input', updateActiveFilters);
+    }
+    if (filterGrade) {
+        filterGrade.addEventListener('change', filterTable);
+        filterGrade.addEventListener('change', updateActiveFilters);
+    }
+    if (filterCategory) {
+        filterCategory.addEventListener('change', filterTable);
+        filterCategory.addEventListener('change', updateActiveFilters);
+    }
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', clearSearchFilter);
+    }
+    if (clearFiltersBtn) {
+        clearFiltersBtn.addEventListener('click', clearAllFilters);
+    }
+    
+    // Make clear functions globally accessible
+    window.clearSearchFilter = clearSearchFilter;
+    window.clearGradeFilter = clearGradeFilter;
+    window.clearCategoryFilter = clearCategoryFilter;
+    
+    // Initial update
+    updateActiveFilters();
 });
 </script>
 
@@ -1134,115 +1357,221 @@ window.feeStructureCreateModal = function() {
          x-transition:leave="ease-in duration-200"
          x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
          x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
-        <div class="relative bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain pointer-events-auto"
-             @click.stop
-             style="-webkit-overflow-scrolling: touch; scroll-behavior: smooth;">
-            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-3 sm:px-4 md:px-6 py-3 sm:py-4 rounded-t-lg sm:rounded-t-xl flex items-center justify-between z-10 shadow-lg">
-                <h2 class="text-base sm:text-lg md:text-xl font-bold text-white truncate flex-1 min-w-0 pr-2">Record Payment</h2>
-                <button @click="close()" 
-                        class="text-white hover:text-gray-200 p-1.5 sm:p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                        aria-label="Close">
-                    <i class="fas fa-times text-lg sm:text-xl"></i>
-                </button>
-            </div>
-            <form @submit.prevent="submitPayment()" class="p-3 sm:p-4 md:p-5 lg:p-6 space-y-3 sm:space-y-4">
-                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm">
-                    <i class="fas fa-exclamation-circle mr-2"></i><span x-text="error"></span>
-                </div>
-                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg text-xs sm:text-sm">
-                    <i class="fas fa-check-circle mr-2"></i><span x-text="success"></span>
-                </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Student</label>
-                    <input type="text" :value="studentName" readonly 
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 touch-manipulation"
-                           style="font-size: 16px;">
-                </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Amount Paid <span class="text-red-500">*</span></label>
-                    <input type="number" x-model="amountPaid" step="0.01" min="0.01" required
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                           style="font-size: 16px;">
-                    <div class="mt-1.5 space-y-0.5">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                            Current Balance: KES <span x-text="(balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
-                        </p>
-                        <p class="text-xs text-blue-600 dark:text-blue-400 italic">
-                            <i class="fas fa-info-circle mr-1"></i>Overpayments are allowed and will be carried forward to the next term
-                        </p>
+        <div class="relative bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
+             @click.stop>
+            <!-- Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 flex items-center justify-between z-10 shadow-lg">
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-money-check-alt text-white text-lg"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="text-lg sm:text-xl font-bold text-white truncate">Record Payment</h2>
+                        <p class="text-xs text-green-100 truncate" x-text="studentName"></p>
                     </div>
                 </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Payment Method <span class="text-red-500">*</span></label>
-                    <select x-model="paymentMethod" @change="updatePaymentFields()" required
-                            class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                            style="font-size: 16px;">
-                        <option value="">Select Payment Method</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Bank Transfer">Bank Transfer / Wire</option>
-                        <option value="Cheque">Cheque</option>
-                        <option value="Mobile Money">Mobile Money</option>
-                        <option value="Credit/Debit Card">Credit/Debit Card</option>
-                    </select>
-                </div>
-                
-                <div x-show="paymentMethod === 'Bank Transfer'" x-cloak>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Reference Number <span class="text-red-500">*</span></label>
-                    <input type="text" x-model="referenceNumber"
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                           style="font-size: 16px;">
-                </div>
-                
-                <div x-show="paymentMethod === 'Cheque'" x-cloak>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Cheque Number <span class="text-red-500">*</span></label>
-                    <input type="text" x-model="chequeNumber"
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                           style="font-size: 16px;">
-                </div>
-                
-                <div x-show="paymentMethod === 'Mobile Money'" x-cloak>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Transaction ID <span class="text-red-500">*</span></label>
-                    <input type="text" x-model="transactionId"
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                           style="font-size: 16px;">
-                </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Payment Date <span class="text-red-500">*</span></label>
-                    <input type="date" x-model="paymentDate" required
-                           class="w-full px-3 py-2 sm:py-2.5 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                           style="font-size: 16px;">
-                </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Proof of Payment</label>
-                    <input type="file" @change="handleFileSelect($event)" accept=".pdf,.jpg,.jpeg,.png,.gif"
-                           class="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation">
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Accepted: PDF, JPG, PNG, GIF (Max 10MB)</p>
-                </div>
-                
-                <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Notes (Optional)</label>
-                    <textarea x-model="notes" rows="3"
-                              class="w-full px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 touch-manipulation"
-                              style="font-size: 16px;"></textarea>
-                </div>
-                
-                <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" @click="close()" 
-                            class="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors touch-manipulation min-h-[44px] sm:min-h-0">
-                        Cancel
-                    </button>
-                    <button type="submit" :disabled="loading" 
-                            class="w-full sm:w-auto px-4 py-2.5 sm:py-2 text-sm sm:text-base bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 touch-manipulation min-h-[44px] sm:min-h-0">
-                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                        <span x-text="loading ? 'Recording...' : 'Record Payment'"></span>
-                    </button>
-                </div>
-            </form>
+                <button @click="close()" 
+                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
+                        aria-label="Close">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar">
+                <form @submit.prevent="submitPayment()" class="p-4 sm:p-6 space-y-5">
+                    <!-- Error/Success Messages -->
+                    <div x-show="error" x-cloak 
+                         class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-start space-x-3">
+                        <i class="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
+                        <span class="text-sm" x-text="error"></span>
+                    </div>
+                    <div x-show="success" x-cloak 
+                         class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg flex items-start space-x-3">
+                        <i class="fas fa-check-circle mt-0.5 flex-shrink-0"></i>
+                        <span class="text-sm" x-text="success"></span>
+                    </div>
+                    
+                    <!-- Student Info Card -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">
+                            <i class="fas fa-user-graduate mr-1.5"></i>Student Information
+                        </label>
+                        <div class="flex items-center space-x-3">
+                            <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+                                <i class="fas fa-user text-white"></i>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-base font-bold text-gray-900 dark:text-white truncate" x-text="studentName"></p>
+                                <p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">Student ID: <span x-text="studentId"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Payment Amount Section -->
+                    <div class="space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-money-bill-wave text-green-600 mr-2"></i>Payment Amount <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <span class="text-gray-500 font-medium">KES</span>
+                            </div>
+                            <input type="number" 
+                                   x-model="amountPaid" 
+                                   step="0.01" 
+                                   min="0.01" 
+                                   required
+                                   placeholder="0.00"
+                                   class="w-full pl-16 pr-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm"
+                                   style="font-size: 16px;">
+                        </div>
+                        <div class="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">Current Balance:</span>
+                                <span class="text-sm font-bold text-gray-900 dark:text-white">
+                                    KES <span x-text="(balance || 0).toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                                </span>
+                            </div>
+                            <div class="flex items-start space-x-2 mt-2 pt-2 border-t border-blue-200 dark:border-blue-700">
+                                <i class="fas fa-info-circle text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"></i>
+                                <p class="text-xs text-blue-700 dark:text-blue-300 flex-1">
+                                    Overpayments are allowed and will be carried forward to the next term
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Payment Method Section -->
+                    <div class="space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-credit-card text-purple-600 mr-2"></i>Payment Method <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i class="fas fa-credit-card text-gray-400"></i>
+                            </div>
+                            <select x-model="paymentMethod" 
+                                    @change="updatePaymentFields()" 
+                                    required
+                                    class="w-full pl-12 pr-10 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm appearance-none cursor-pointer"
+                                    style="font-size: 16px;">
+                                <option value="">Select Payment Method</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Bank Transfer">Bank Transfer / Wire</option>
+                                <option value="Cheque">Cheque</option>
+                                <option value="Mobile Money">Mobile Money</option>
+                                <option value="Credit/Debit Card">Credit/Debit Card</option>
+                            </select>
+                            <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                                <i class="fas fa-chevron-down text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Payment Method Specific Fields -->
+                    <div x-show="paymentMethod === 'Bank Transfer'" 
+                         x-cloak
+                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-hashtag text-purple-600 mr-2"></i>Reference Number <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               x-model="referenceNumber"
+                               placeholder="Enter bank reference number"
+                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm"
+                               style="font-size: 16px;">
+                    </div>
+                    
+                    <div x-show="paymentMethod === 'Cheque'" 
+                         x-cloak
+                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-file-invoice text-purple-600 mr-2"></i>Cheque Number <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               x-model="chequeNumber"
+                               placeholder="Enter cheque number"
+                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm"
+                               style="font-size: 16px;">
+                    </div>
+                    
+                    <div x-show="paymentMethod === 'Mobile Money'" 
+                         x-cloak
+                         class="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-mobile-alt text-purple-600 mr-2"></i>Transaction ID <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               x-model="transactionId"
+                               placeholder="Enter mobile money transaction ID"
+                               class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all touch-manipulation shadow-sm font-mono"
+                               style="font-size: 16px;">
+                    </div>
+                    
+                    <!-- Payment Date -->
+                    <div class="space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-calendar-alt text-orange-600 mr-2"></i>Payment Date <span class="text-red-500">*</span>
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <i class="fas fa-calendar text-gray-400"></i>
+                            </div>
+                            <input type="date" 
+                                   x-model="paymentDate" 
+                                   required
+                                   class="w-full pl-12 pr-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm"
+                                   style="font-size: 16px;">
+                        </div>
+                    </div>
+                    
+                    <!-- Proof of Payment -->
+                    <div class="space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-file-upload text-indigo-600 mr-2"></i>Proof of Payment
+                        </label>
+                        <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 hover:border-green-500 dark:hover:border-green-600 transition-colors">
+                            <input type="file" 
+                                   @change="handleFileSelect($event)" 
+                                   accept=".pdf,.jpg,.jpeg,.png,.gif"
+                                   class="w-full text-sm text-gray-600 dark:text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100 dark:file:bg-green-900/30 dark:file:text-green-300 cursor-pointer touch-manipulation">
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center">
+                                <i class="fas fa-info-circle mr-1.5"></i>
+                                Accepted: PDF, JPG, PNG, GIF (Max 10MB)
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Notes -->
+                    <div class="space-y-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            <i class="fas fa-sticky-note text-yellow-600 mr-2"></i>Notes (Optional)
+                        </label>
+                        <textarea x-model="notes" 
+                                  rows="4"
+                                  placeholder="Add any additional notes about this payment..."
+                                  class="w-full px-4 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all touch-manipulation shadow-sm resize-none"
+                                  style="font-size: 16px;"></textarea>
+                    </div>
+                    
+                    <!-- Footer Actions -->
+                    <div class="sticky bottom-0 bg-white dark:bg-gray-800 -mx-4 sm:-mx-6 px-4 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex flex-col-reverse sm:flex-row justify-end gap-3 shadow-lg mt-6">
+                        <button type="button" 
+                                @click="close()" 
+                                class="w-full sm:w-auto px-6 py-3 text-base border-2 border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium touch-manipulation min-h-[48px] flex items-center justify-center">
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
+                        <button type="submit" 
+                                :disabled="loading" 
+                                class="w-full sm:w-auto px-6 py-3 text-base bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all touch-manipulation min-h-[48px]">
+                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                            <i class="fas fa-check-circle" x-show="!loading"></i>
+                            <span x-text="loading ? 'Recording Payment...' : 'Record Payment'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -1274,148 +1603,727 @@ window.feeStructureCreateModal = function() {
          x-transition:leave="ease-in duration-200"
          x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
          x-transition:leave-end="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95">
-        <div class="relative bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-lg sm:rounded-xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] sm:max-h-[90vh] overflow-y-auto overscroll-contain pointer-events-auto flex flex-col"
-             @click.stop
-             style="-webkit-overflow-scrolling: touch; scroll-behavior: smooth;">
-            <!-- Mobile-optimized header -->
-            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 py-3 sm:px-4 md:px-6 sm:py-4 rounded-t-2xl sm:rounded-t-lg sm:rounded-t-xl flex items-center justify-between z-10 shadow-lg flex-shrink-0">
-                <div class="flex-1 min-w-0 pr-2">
-                    <h2 class="text-sm sm:text-lg md:text-xl font-bold text-white truncate">
-                        <span class="hidden sm:inline">Payment Transactions - </span>
-                        <span x-text="studentName" class="truncate block sm:inline"></span>
-                    </h2>
-                    <p class="text-xs text-blue-100 mt-0.5 sm:hidden" x-show="transactions.length > 0">
-                        <span x-text="transactions.length"></span> transaction<span x-show="transactions.length !== 1">s</span>
-                    </p>
+        <div class="relative bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
+             @click.stop>
+            <!-- Enhanced Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-4 flex items-center justify-between z-10 shadow-lg flex-shrink-0">
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-history text-white text-lg"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="text-base sm:text-lg md:text-xl font-bold text-white truncate">
+                            Payment Transactions
+                        </h2>
+                        <p class="text-xs text-blue-100 truncate" x-text="studentName"></p>
+                    </div>
+                    <div x-show="!loading && transactions.length > 0" class="hidden sm:flex items-center space-x-2 bg-white/20 px-3 py-1.5 rounded-lg">
+                        <i class="fas fa-list text-white text-sm"></i>
+                        <span class="text-sm font-semibold text-white" x-text="transactions.length"></span>
+                    </div>
                 </div>
                 <button @click="close()" 
-                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
                         aria-label="Close">
-                    <i class="fas fa-times text-lg sm:text-xl"></i>
+                    <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
             
             <!-- Content area -->
-            <div class="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 lg:p-6">
-                <div x-show="loading" class="text-center py-6 sm:py-12">
-                    <i class="fas fa-spinner fa-spin text-2xl sm:text-3xl text-gray-400"></i>
-                    <p class="text-sm sm:text-base text-gray-500 mt-2">Loading transactions...</p>
-                </div>
-                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg mb-3 sm:mb-4 text-xs sm:text-sm">
-                    <i class="fas fa-exclamation-circle mr-2"></i><span x-text="error"></span>
-                </div>
-                <div x-show="!loading && !error && transactions.length === 0" class="text-center py-6 sm:py-12 text-gray-500 dark:text-gray-400">
-                    <i class="fas fa-inbox text-3xl sm:text-4xl mb-3 opacity-50"></i>
-                    <p class="text-sm sm:text-base font-medium">No transactions found</p>
-                    <p class="text-xs sm:text-sm mt-1">This student has no payment transactions yet.</p>
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6">
+                <!-- Loading State -->
+                <div x-show="loading" class="text-center py-12 sm:py-16">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-600 dark:text-blue-400"></i>
+                    </div>
+                    <p class="text-base font-medium text-gray-700 dark:text-gray-300">Loading transactions...</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Please wait</p>
                 </div>
                 
-                <!-- Mobile: Compact card layout -->
-                <div x-show="!loading && transactions.length > 0" class="block sm:hidden space-y-2">
+                <!-- Error State -->
+                <div x-show="error" x-cloak 
+                     class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start space-x-3">
+                    <i class="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
+                    <span class="text-sm" x-text="error"></span>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="!loading && !error && transactions.length === 0" 
+                     class="text-center py-12 sm:py-16">
+                    <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full mb-4">
+                        <i class="fas fa-inbox text-3xl text-gray-400 dark:text-gray-500"></i>
+                    </div>
+                    <p class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-1">No transactions found</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">This student has no payment transactions yet.</p>
+                </div>
+                
+                <!-- Mobile: Enhanced card layout -->
+                <div x-show="!loading && transactions.length > 0" class="block sm:hidden space-y-3">
                     <template x-for="transaction in transactions" :key="transaction.id">
-                        <div class="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-3 shadow-sm">
-                            <!-- Amount and Date Row -->
-                            <div class="flex items-center justify-between mb-2 pb-2 border-b border-gray-200 dark:border-gray-600">
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-lg font-bold text-gray-900 dark:text-white">
-                                        KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
-                                    </p>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-text="transaction.payment_method"></p>
+                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-4 shadow-md hover:shadow-lg transition-all">
+                            <!-- Header with Amount and Date -->
+                            <div class="flex items-start justify-between mb-3 pb-3 border-b-2 border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start space-x-3 flex-1 min-w-0">
+                                    <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+                                        <i class="fas fa-money-check-alt text-white"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xl font-bold text-gray-900 dark:text-white">
+                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                                        </p>
+                                        <div class="flex items-center space-x-2 mt-1">
+                                            <span class="inline-flex items-center px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
+                                                <i class="fas fa-credit-card mr-1 text-xs"></i>
+                                                <span x-text="transaction.payment_method"></span>
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <span class="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded whitespace-nowrap ml-2 flex-shrink-0" x-text="transaction.payment_date"></span>
+                                <div class="flex flex-col items-end ml-2 flex-shrink-0">
+                                    <span class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow-sm" x-text="transaction.payment_date"></span>
+                                </div>
                             </div>
                             
-                            <!-- Compact details grid -->
-                            <div class="grid grid-cols-1 gap-1.5 text-xs text-gray-600 dark:text-gray-400">
-                                <div x-show="transaction.reference_number" class="flex items-start">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Ref:</span>
-                                    <span class="break-words flex-1" x-text="transaction.reference_number"></span>
+                            <!-- Transaction Details -->
+                            <div class="space-y-2 mb-3">
+                                <div x-show="transaction.reference_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-hashtag text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Reference Number</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.reference_number"></p>
+                                    </div>
                                 </div>
-                                <div x-show="transaction.cheque_number" class="flex items-start">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Cheque:</span>
-                                    <span class="break-words flex-1" x-text="transaction.cheque_number"></span>
+                                <div x-show="transaction.cheque_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-file-invoice text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Cheque Number</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.cheque_number"></p>
+                                    </div>
                                 </div>
-                                <div x-show="transaction.transaction_id" class="flex items-start">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Txn ID:</span>
-                                    <span class="break-words flex-1 font-mono text-xs" x-text="transaction.transaction_id"></span>
+                                <div x-show="transaction.transaction_id" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-mobile-alt text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Transaction ID</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words font-mono" x-text="transaction.transaction_id"></p>
+                                    </div>
                                 </div>
-                                <div x-show="transaction.fee_name" class="flex items-start">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Fee:</span>
-                                    <span class="break-words flex-1" x-text="transaction.fee_name"></span>
+                                <div x-show="transaction.fee_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-graduation-cap text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Fee Structure</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.fee_name"></p>
+                                    </div>
                                 </div>
-                                <div x-show="transaction.received_by_name" class="flex items-start">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">By:</span>
-                                    <span class="break-words flex-1" x-text="transaction.received_by_name"></span>
+                                <div x-show="transaction.received_by_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-user-check text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Received By</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.received_by_name"></p>
+                                    </div>
                                 </div>
-                                <div x-show="transaction.notes" class="flex items-start pt-1 border-t border-gray-100 dark:border-gray-600">
-                                    <span class="font-semibold text-gray-700 dark:text-gray-300 w-20 flex-shrink-0">Notes:</span>
-                                    <span class="break-words flex-1 italic" x-text="transaction.notes"></span>
+                                <div x-show="transaction.notes" class="flex items-start space-x-2 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300">Notes</p>
+                                        <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
+                                    </div>
                                 </div>
-                                <div class="flex flex-col gap-2 mt-2">
-                                    <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
-                                       target="_blank" 
-                                       class="inline-flex items-center justify-center w-full px-3 py-2 bg-[#800020] text-white rounded-lg hover:bg-[#5C0016] transition-colors touch-manipulation shadow-sm">
-                                        <i class="fas fa-download mr-2"></i>
-                                        <span class="text-xs font-medium">Download Receipt</span>
-                                    </a>
-                                    <a x-show="transaction.proof_of_payment" 
-                                       :href="'/static/' + transaction.proof_of_payment" 
-                                       target="_blank" 
-                                       class="inline-flex items-center justify-center w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors touch-manipulation">
-                                        <i class="fas fa-file-pdf mr-2"></i>
-                                        <span class="text-xs font-medium">View Proof</span>
-                                    </a>
-                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                   target="_blank" 
+                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-[1.02] transition-all touch-manipulation font-medium shadow-md">
+                                    <i class="fas fa-download mr-2"></i>
+                                    <span>Download Receipt</span>
+                                </a>
+                                <a x-show="transaction.proof_of_payment" 
+                                   :href="'/static/' + transaction.proof_of_payment" 
+                                   target="_blank" 
+                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors touch-manipulation font-medium border border-blue-200 dark:border-blue-700">
+                                    <i class="fas fa-file-pdf mr-2"></i>
+                                    <span>View Proof of Payment</span>
+                                </a>
                             </div>
                         </div>
                     </template>
                 </div>
                 
-                <!-- Desktop: Full card layout -->
-                <div x-show="!loading && transactions.length > 0" class="hidden sm:block space-y-3 sm:space-y-4">
+                <!-- Desktop: Enhanced card layout -->
+                <div x-show="!loading && transactions.length > 0" class="hidden sm:block space-y-4">
                     <template x-for="transaction in transactions" :key="transaction.id">
-                        <div class="bg-gray-50 dark:bg-gray-700/50 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0 mb-2 sm:mb-3">
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span></p>
-                                    <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-0.5" x-text="transaction.payment_method"></p>
+                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-5 shadow-md hover:shadow-xl transition-all hover:border-blue-300 dark:hover:border-blue-600">
+                            <!-- Header Section -->
+                            <div class="flex items-start justify-between mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start space-x-4 flex-1">
+                                    <div class="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
+                                        <i class="fas fa-money-check-alt text-white text-xl"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                                        </p>
+                                        <div class="flex items-center space-x-2">
+                                            <span class="inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-medium">
+                                                <i class="fas fa-credit-card mr-2"></i>
+                                                <span x-text="transaction.payment_method"></span>
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
-                                <span class="px-2 sm:px-3 py-1 text-xs sm:text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded whitespace-nowrap" x-text="transaction.payment_date"></span>
+                                <div class="flex flex-col items-end ml-4">
+                                    <span class="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-semibold whitespace-nowrap shadow-md" x-text="transaction.payment_date"></span>
+                                </div>
                             </div>
-                            <div class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 space-y-1.5 sm:space-y-2">
-                                <p x-show="transaction.reference_number" class="break-words">
-                                    <strong class="font-medium">Reference:</strong> <span x-text="transaction.reference_number"></span>
-                                </p>
-                                <p x-show="transaction.cheque_number" class="break-words">
-                                    <strong class="font-medium">Cheque #:</strong> <span x-text="transaction.cheque_number"></span>
-                                </p>
-                                <p x-show="transaction.transaction_id" class="break-words">
-                                    <strong class="font-medium">Transaction ID:</strong> <span x-text="transaction.transaction_id"></span>
-                                </p>
-                                <p x-show="transaction.fee_name" class="break-words">
-                                    <strong class="font-medium">Fee Structure:</strong> <span x-text="transaction.fee_name"></span>
-                                </p>
-                                <p x-show="transaction.received_by_name" class="break-words">
-                                    <strong class="font-medium">Received by:</strong> <span x-text="transaction.received_by_name"></span>
-                                </p>
-                                <p x-show="transaction.notes" class="break-words">
-                                    <strong class="font-medium">Notes:</strong> <span x-text="transaction.notes"></span>
-                                </p>
-                                <div class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-200 dark:border-gray-600">
-                                    <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
-                                       target="_blank" 
-                                       class="inline-flex items-center px-3 py-1.5 bg-[#800020] text-white rounded-lg hover:bg-[#5C0016] transition-colors touch-manipulation shadow-sm text-xs sm:text-sm">
-                                        <i class="fas fa-download mr-1.5"></i>
-                                        <span>Download Receipt</span>
-                                    </a>
-                                    <a x-show="transaction.proof_of_payment" 
-                                       :href="'/static/' + transaction.proof_of_payment" 
-                                       target="_blank" 
-                                       class="inline-flex items-center text-blue-600 dark:text-blue-400 hover:underline touch-manipulation text-xs sm:text-sm">
-                                        <i class="fas fa-file-pdf mr-1.5"></i>
-                                        <span>View Proof</span>
-                                    </a>
+                            
+                            <!-- Details Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                <div x-show="transaction.reference_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-hashtag text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Reference Number</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.reference_number"></p>
                                 </div>
+                                <div x-show="transaction.cheque_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-file-invoice text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Cheque Number</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.cheque_number"></p>
+                                </div>
+                                <div x-show="transaction.transaction_id" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-mobile-alt text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Transaction ID</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-mono font-medium" x-text="transaction.transaction_id"></p>
+                                </div>
+                                <div x-show="transaction.fee_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-graduation-cap text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Fee Structure</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.fee_name"></p>
+                                </div>
+                                <div x-show="transaction.received_by_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-user-check text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Received By</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.received_by_name"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Notes Section -->
+                            <div x-show="transaction.notes" class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
+                                <div class="flex items-center space-x-2 mb-2">
+                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400"></i>
+                                    <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300 uppercase tracking-wide">Notes</p>
+                                </div>
+                                <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all font-medium shadow-md">
+                                    <i class="fas fa-download mr-2"></i>
+                                    <span>Download Receipt</span>
+                                </a>
+                                <a x-show="transaction.proof_of_payment" 
+                                   :href="'/static/' + transaction.proof_of_payment" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-5 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700">
+                                    <i class="fas fa-file-pdf mr-2"></i>
+                                    <span>View Proof of Payment</span>
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Initialize Alpine Store for Fee Structure Modal -->
+<script>
+// Payment Modal Function
+function paymentModal() {
+    return {
+        isOpen: false,
+        studentId: '',
+        feeStructureId: '',
+        studentName: '',
+        balance: 0,
+        amountPaid: '',
+        paymentMethod: '',
+        referenceNumber: '',
+        chequeNumber: '',
+        transactionId: '',
+        paymentDate: new Date().toISOString().split('T')[0],
+        proofOfPayment: null,
+        notes: '',
+        loading: false,
+        error: '',
+        success: '',
+        openPaymentModal(studentId, feeStructureId, studentName, totalAmount, balance) {
+            this.studentId = studentId;
+            this.feeStructureId = feeStructureId;
+            this.studentName = studentName;
+            this.balance = balance;
+            this.amountPaid = '';
+            this.paymentMethod = '';
+            this.referenceNumber = '';
+            this.chequeNumber = '';
+            this.transactionId = '';
+            this.paymentDate = new Date().toISOString().split('T')[0];
+            this.proofOfPayment = null;
+            this.notes = '';
+            this.error = '';
+            this.success = '';
+            this.isOpen = true;
+        },
+        close() {
+            this.isOpen = false;
+            setTimeout(() => {
+                this.error = '';
+                this.success = '';
+            }, 300);
+        },
+        updatePaymentFields() {
+            this.referenceNumber = '';
+            this.chequeNumber = '';
+            this.transactionId = '';
+        },
+        handleFileSelect(event) {
+            this.proofOfPayment = event.target.files[0];
+        },
+        async submitPayment() {
+            this.loading = true;
+            this.error = '';
+            this.success = '';
+            
+            // Validate required fields
+            if (!this.amountPaid || parseFloat(this.amountPaid) <= 0) {
+                this.error = 'Please enter a valid amount paid.';
+                this.loading = false;
+                return;
+            }
+            
+            if (!this.paymentMethod) {
+                this.error = 'Please select a payment method.';
+                this.loading = false;
+                return;
+            }
+            
+            if (!this.paymentDate) {
+                this.error = 'Please select a payment date.';
+                this.loading = false;
+                return;
+            }
+            
+            // Validate payment method specific fields
+            if (this.paymentMethod === 'Bank Transfer' && !this.referenceNumber) {
+                this.error = 'Reference number is required for bank transfer.';
+                this.loading = false;
+                return;
+            }
+            
+            if (this.paymentMethod === 'Cheque' && !this.chequeNumber) {
+                this.error = 'Cheque number is required for cheque payment.';
+                this.loading = false;
+                return;
+            }
+            
+            if (this.paymentMethod === 'Mobile Money' && !this.transactionId) {
+                this.error = 'Transaction ID is required for mobile money payment.';
+                this.loading = false;
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('student_id', this.studentId);
+            formData.append('fee_structure_id', this.feeStructureId);
+            formData.append('amount_paid', this.amountPaid);
+            formData.append('payment_method', this.paymentMethod);
+            formData.append('payment_date', this.paymentDate);
+            if (this.referenceNumber) formData.append('reference_number', this.referenceNumber);
+            if (this.chequeNumber) formData.append('cheque_number', this.chequeNumber);
+            if (this.transactionId) formData.append('transaction_id', this.transactionId);
+            if (this.notes) formData.append('notes', this.notes);
+            if (this.proofOfPayment) formData.append('proof_of_payment', this.proofOfPayment);
+            
+            try {
+                const response = await fetch('/dashboard/employee/student-fees/record-payment', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.success = data.message;
+                    setTimeout(() => {
+                        this.close();
+                        location.reload();
+                    }, 1500);
+                } else {
+                    this.error = data.message || 'Failed to record payment';
+                }
+            } catch (error) {
+                this.error = 'An error occurred. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+
+// Transactions Modal Function
+function transactionsModal() {
+    return {
+        isOpen: false,
+        studentId: '',
+        studentName: '',
+        transactions: [],
+        loading: false,
+        error: '',
+        async openTransactionsModal(studentId, studentName) {
+            this.studentId = studentId;
+            this.studentName = studentName;
+            this.transactions = [];
+            this.error = '';
+            this.isOpen = true;
+            this.loading = true;
+            
+            try {
+                const response = await fetch(`/dashboard/employee/student-fees/transactions/${studentId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.transactions = data.transactions;
+                } else {
+                    this.error = data.message || 'Failed to load transactions';
+                }
+            } catch (error) {
+                this.error = 'An error occurred. Please try again.';
+            } finally {
+                this.loading = false;
+            }
+        },
+        close() {
+            this.isOpen = false;
+        }
+    };
+}
+
+document.addEventListener('alpine:init', () => {
+    Alpine.store('feeStructure', {
+        isOpen: false,
+        open() {
+            this.isOpen = true;
+        },
+        close() {
+            this.isOpen = false;
+        }
+    });
+    
+    const paymentModalStore = paymentModal();
+    const transactionsModalStore = transactionsModal();
+    
+    Alpine.store('paymentModal', paymentModalStore);
+    Alpine.store('transactionsModal', transactionsModalStore);
+    
+    // Make stores globally accessible for debugging
+    window.paymentModalStore = paymentModalStore;
+    window.transactionsModalStore = transactionsModalStore;
+});
+
+</script>
+
+                            <i class="fas fa-times mr-2"></i>Cancel
+                        </button>
+                        <button type="submit" 
+                                :disabled="loading" 
+                                class="w-full sm:w-auto px-6 py-3 text-base bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl hover:from-green-600 hover:to-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 transition-all touch-manipulation min-h-[48px]">
+                            <i class="fas fa-spinner fa-spin" x-show="loading"></i>
+                            <i class="fas fa-check-circle" x-show="!loading"></i>
+                            <span x-text="loading ? 'Recording Payment...' : 'Record Payment'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Transactions Modal -->
+<div x-data="$store.transactionsModal" 
+     x-show="isOpen"
+     x-cloak
+     @keydown.escape.window="close()"
+     class="fixed inset-0 z-50"
+     style="display: none;"
+     x-transition:enter="ease-out duration-300"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="ease-in duration-200"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0">
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" @click="close()"
+         x-transition:enter="ease-out duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="ease-in duration-200"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"></div>
+    <div class="fixed inset-0 flex items-end sm:items-center justify-center p-0 sm:p-3 md:p-4 pointer-events-none"
+         x-transition:enter="ease-out duration-300"
+         x-transition:enter-start="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95"
+         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+         x-transition:leave="ease-in duration-200"
+         x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
+         x-transition:leave-end="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95">
+        <div class="relative bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-4xl max-h-[90vh] sm:max-h-[90vh] overflow-hidden flex flex-col pointer-events-auto"
+             @click.stop>
+            <!-- Enhanced Header -->
+            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-4 flex items-center justify-between z-10 shadow-lg flex-shrink-0">
+                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <div class="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-history text-white text-lg"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h2 class="text-base sm:text-lg md:text-xl font-bold text-white truncate">
+                            Payment Transactions
+                        </h2>
+                        <p class="text-xs text-blue-100 truncate" x-text="studentName"></p>
+                    </div>
+                    <div x-show="!loading && transactions.length > 0" class="hidden sm:flex items-center space-x-2 bg-white/20 px-3 py-1.5 rounded-lg">
+                        <i class="fas fa-list text-white text-sm"></i>
+                        <span class="text-sm font-semibold text-white" x-text="transactions.length"></span>
+                    </div>
+                </div>
+                <button @click="close()" 
+                        class="text-white hover:text-gray-200 p-2 rounded-lg hover:bg-white/20 flex-shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors"
+                        aria-label="Close">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Content area -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6">
+                <!-- Loading State -->
+                <div x-show="loading" class="text-center py-12 sm:py-16">
+                    <div class="inline-flex items-center justify-center w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full mb-4">
+                        <i class="fas fa-spinner fa-spin text-2xl text-blue-600 dark:text-blue-400"></i>
+                    </div>
+                    <p class="text-base font-medium text-gray-700 dark:text-gray-300">Loading transactions...</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Please wait</p>
+                </div>
+                
+                <!-- Error State -->
+                <div x-show="error" x-cloak 
+                     class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4 flex items-start space-x-3">
+                    <i class="fas fa-exclamation-circle mt-0.5 flex-shrink-0"></i>
+                    <span class="text-sm" x-text="error"></span>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="!loading && !error && transactions.length === 0" 
+                     class="text-center py-12 sm:py-16">
+                    <div class="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full mb-4">
+                        <i class="fas fa-inbox text-3xl text-gray-400 dark:text-gray-500"></i>
+                    </div>
+                    <p class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-1">No transactions found</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">This student has no payment transactions yet.</p>
+                </div>
+                
+                <!-- Mobile: Enhanced card layout -->
+                <div x-show="!loading && transactions.length > 0" class="block sm:hidden space-y-3">
+                    <template x-for="transaction in transactions" :key="transaction.id">
+                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-4 shadow-md hover:shadow-lg transition-all">
+                            <!-- Header with Amount and Date -->
+                            <div class="flex items-start justify-between mb-3 pb-3 border-b-2 border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start space-x-3 flex-1 min-w-0">
+                                    <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center flex-shrink-0 shadow-md">
+                                        <i class="fas fa-money-check-alt text-white"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xl font-bold text-gray-900 dark:text-white">
+                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                                        </p>
+                                        <div class="flex items-center space-x-2 mt-1">
+                                            <span class="inline-flex items-center px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
+                                                <i class="fas fa-credit-card mr-1 text-xs"></i>
+                                                <span x-text="transaction.payment_method"></span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col items-end ml-2 flex-shrink-0">
+                                    <span class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap shadow-sm" x-text="transaction.payment_date"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Transaction Details -->
+                            <div class="space-y-2 mb-3">
+                                <div x-show="transaction.reference_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-hashtag text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Reference Number</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.reference_number"></p>
+                                    </div>
+                                </div>
+                                <div x-show="transaction.cheque_number" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-file-invoice text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Cheque Number</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.cheque_number"></p>
+                                    </div>
+                                </div>
+                                <div x-show="transaction.transaction_id" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-mobile-alt text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Transaction ID</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words font-mono" x-text="transaction.transaction_id"></p>
+                                    </div>
+                                </div>
+                                <div x-show="transaction.fee_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-graduation-cap text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Fee Structure</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.fee_name"></p>
+                                    </div>
+                                </div>
+                                <div x-show="transaction.received_by_name" class="flex items-start space-x-2 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                                    <i class="fas fa-user-check text-gray-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400">Received By</p>
+                                        <p class="text-sm text-gray-900 dark:text-white break-words" x-text="transaction.received_by_name"></p>
+                                    </div>
+                                </div>
+                                <div x-show="transaction.notes" class="flex items-start space-x-2 bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300">Notes</p>
+                                        <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-200 dark:border-gray-600">
+                                <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                   target="_blank" 
+                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-[1.02] transition-all touch-manipulation font-medium shadow-md">
+                                    <i class="fas fa-download mr-2"></i>
+                                    <span>Download Receipt</span>
+                                </a>
+                                <a x-show="transaction.proof_of_payment" 
+                                   :href="'/static/' + transaction.proof_of_payment" 
+                                   target="_blank" 
+                                   class="inline-flex items-center justify-center w-full px-4 py-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors touch-manipulation font-medium border border-blue-200 dark:border-blue-700">
+                                    <i class="fas fa-file-pdf mr-2"></i>
+                                    <span>View Proof of Payment</span>
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Desktop: Enhanced card layout -->
+                <div x-show="!loading && transactions.length > 0" class="hidden sm:block space-y-4">
+                    <template x-for="transaction in transactions" :key="transaction.id">
+                        <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-5 shadow-md hover:shadow-xl transition-all hover:border-blue-300 dark:hover:border-blue-600">
+                            <!-- Header Section -->
+                            <div class="flex items-start justify-between mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
+                                <div class="flex items-start space-x-4 flex-1">
+                                    <div class="w-14 h-14 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
+                                        <i class="fas fa-money-check-alt text-white text-xl"></i>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                                            KES <span x-text="transaction.amount_paid.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
+                                        </p>
+                                        <div class="flex items-center space-x-2">
+                                            <span class="inline-flex items-center px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-lg text-sm font-medium">
+                                                <i class="fas fa-credit-card mr-2"></i>
+                                                <span x-text="transaction.payment_method"></span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col items-end ml-4">
+                                    <span class="px-4 py-2 bg-blue-500 text-white rounded-xl text-sm font-semibold whitespace-nowrap shadow-md" x-text="transaction.payment_date"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Details Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                <div x-show="transaction.reference_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-hashtag text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Reference Number</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.reference_number"></p>
+                                </div>
+                                <div x-show="transaction.cheque_number" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-file-invoice text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Cheque Number</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.cheque_number"></p>
+                                </div>
+                                <div x-show="transaction.transaction_id" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-mobile-alt text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Transaction ID</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-mono font-medium" x-text="transaction.transaction_id"></p>
+                                </div>
+                                <div x-show="transaction.fee_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-graduation-cap text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Fee Structure</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.fee_name"></p>
+                                </div>
+                                <div x-show="transaction.received_by_name" class="bg-gray-50 dark:bg-gray-700/50 p-3 rounded-lg border border-gray-200 dark:border-gray-600">
+                                    <div class="flex items-center space-x-2 mb-1">
+                                        <i class="fas fa-user-check text-gray-400"></i>
+                                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Received By</p>
+                                    </div>
+                                    <p class="text-sm text-gray-900 dark:text-white break-words font-medium" x-text="transaction.received_by_name"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- Notes Section -->
+                            <div x-show="transaction.notes" class="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-4">
+                                <div class="flex items-center space-x-2 mb-2">
+                                    <i class="fas fa-sticky-note text-yellow-600 dark:text-yellow-400"></i>
+                                    <p class="text-xs font-semibold text-yellow-700 dark:text-yellow-300 uppercase tracking-wide">Notes</p>
+                                </div>
+                                <p class="text-sm text-yellow-800 dark:text-yellow-200 break-words italic" x-text="transaction.notes"></p>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all font-medium shadow-md">
+                                    <i class="fas fa-download mr-2"></i>
+                                    <span>Download Receipt</span>
+                                </a>
+                                <a x-show="transaction.proof_of_payment" 
+                                   :href="'/static/' + transaction.proof_of_payment" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-5 py-2.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors font-medium border border-blue-200 dark:border-blue-700">
+                                    <i class="fas fa-file-pdf mr-2"></i>
+                                    <span>View Proof of Payment</span>
+                                </a>
                             </div>
                         </div>
                     </template>

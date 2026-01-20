@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Database Backup & Restore - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -11,18 +11,414 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-3 border-b border-gray-700/50 pb-3">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
 <a href="/system-settings" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-cog w-5"></i>
     <span>System Settings</span>
 </a>
 <a href="{{ url_for('database_management') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-database w-5"></i>
+    <span>Database</span>
+</a>
+<a href="{{ url_for('database_backup_restore') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-download w-5"></i>
+    <span>Database Backup & Restore</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    <span class="ml-auto text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Core</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-6 sm:mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                    <i class="fas fa-download text-blue-600 dark:text-blue-400 mr-2"></i>
+                    Database Backup & Restore
+                </h1>
+                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
+                    Backup your database data in Excel format and configure automatic backups
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Up to Date Notification -->
+    {% if backup_file_info.exists and backup_file_info.is_up_to_date %}
+    <div class="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg">
+        <div class="flex items-center">
+            <i class="fas fa-check-circle text-green-500 text-xl mr-3"></i>
+            <div>
+                <h3 class="text-sm font-semibold text-green-800 dark:text-green-200">Database Backup is Up to Date</h3>
+                <p class="text-sm text-green-700 dark:text-green-300 mt-1">
+                    The backup file has been recently updated and is current. You can open and share it using the link below.
+                </p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Manual Backup Section -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 mb-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-file-export text-green-600 dark:text-green-400 mr-2"></i>
+            Database Backup
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-4">
+            Update the database backup file. All tables will be exported as separate sheets in the Excel file.
+        </p>
+        
+        <!-- Update Backup Button -->
+        <form action="{{ url_for('database_backup_export') }}" method="POST" class="mb-4">
+            <button type="submit" 
+                    class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2">
+                <i class="fas fa-sync-alt"></i>
+                <span>Update Database Backup</span>
+            </button>
+        </form>
+        
+        <!-- Backup File Link -->
+        {% if backup_file_info.exists %}
+        <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Backup File</h3>
+                {% if backup_file_info.is_up_to_date %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                    <i class="fas fa-check-circle mr-1"></i>
+                    Up to Date
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                    <i class="fas fa-clock mr-1"></i>
+                    Needs Update
+                </span>
+                {% endif %}
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">Excel File Path:</label>
+                    <div class="flex items-center space-x-2 flex-1 w-full">
+                        <input type="text" 
+                               id="backupLink" 
+                               value="{{ backup_file_info.file_path }}" 
+                               readonly
+                               class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                        <button onclick="copyBackupLink()" 
+                                class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors whitespace-nowrap">
+                            <i class="fas fa-copy"></i>
+                            <span class="ml-1">Copy Path</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">File Link:</label>
+                    <div class="flex items-center space-x-2 flex-1 w-full">
+                        <input type="text" 
+                               id="backupFileLink" 
+                               value="{{ backup_file_info.url }}" 
+                               readonly
+                               class="flex-1 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white font-mono text-xs">
+                        <button onclick="copyFileLink()" 
+                                class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm rounded-lg transition-colors whitespace-nowrap">
+                            <i class="fas fa-copy"></i>
+                            <span class="ml-1">Copy Link</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p>Last updated: {{ backup_file_info.modified.strftime('%Y-%m-%d %H:%M:%S') if backup_file_info.modified else 'Unknown' }}</p>
+                <p>File size: 
+                    {% if backup_file_info.size < 1024 %}
+                        {{ backup_file_info.size }} B
+                    {% elif backup_file_info.size < 1048576 %}
+                        {{ "%.2f"|format(backup_file_info.size / 1024) }} KB
+                    {% else %}
+                        {{ "%.2f"|format(backup_file_info.size / 1048576) }} MB
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        {% else %}
+        <div class="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                <i class="fas fa-info-circle mr-2"></i>
+                No backup file found. Click "Update Database Backup" to create one.
+            </p>
+        </div>
+        {% endif %}
+        
+        {% if not excel_available %}
+        <div class="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+            <p class="text-sm text-yellow-800 dark:text-yellow-200">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                Excel library not available. Backup will be exported as CSV files in a ZIP archive.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Automatic Backup Settings -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 mb-6 border border-gray-200 dark:border-gray-700">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-clock text-blue-600 dark:text-blue-400 mr-2"></i>
+            Automatic Backup Settings
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400 text-sm mb-4">
+            Configure automatic database backups that will be generated at specified intervals.
+        </p>
+        
+        <form action="{{ url_for('database_backup_settings') }}" method="POST" class="space-y-4">
+            <!-- Enable Auto Backup -->
+            <div class="flex items-center space-x-3">
+                <input type="checkbox" 
+                       id="auto_backup" 
+                       name="auto_backup" 
+                       {% if backup_settings.auto_backup_enabled %}checked{% endif %}
+                       class="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                <label for="auto_backup" class="text-gray-700 dark:text-gray-300 font-medium">
+                    Enable Automatic Backups
+                </label>
+            </div>
+            
+            <!-- Backup Frequency -->
+            <div>
+                <label for="frequency" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Backup Frequency
+                </label>
+                <select name="frequency" 
+                        id="frequency" 
+                        class="w-full sm:w-64 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                    <option value="daily" {% if backup_settings.backup_frequency == 'daily' %}selected{% endif %}>Daily</option>
+                    <option value="weekly" {% if backup_settings.backup_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                    <option value="monthly" {% if backup_settings.backup_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                </select>
+            </div>
+            
+            <!-- Backup Status -->
+            {% if backup_settings.last_backup %}
+            <div class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                    <span class="font-medium">Last Backup:</span> 
+                    <span class="text-gray-900 dark:text-white">
+                        {{ backup_settings.last_backup.strftime('%Y-%m-%d %H:%M:%S') if backup_settings.last_backup else 'Never' }}
+                    </span>
+                </p>
+                {% if backup_settings.next_backup %}
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    <span class="font-medium">Next Backup:</span> 
+                    <span class="text-gray-900 dark:text-white">
+                        {{ backup_settings.next_backup.strftime('%Y-%m-%d %H:%M:%S') if backup_settings.next_backup else 'Not scheduled' }}
+                    </span>
+                </p>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <button type="submit" 
+                    class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold py-2 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl">
+                Save Settings
+            </button>
+        </form>
+    </div>
+
+    <!-- Backup History -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
+                <i class="fas fa-history text-purple-600 dark:text-purple-400 mr-2"></i>
+                Backup History
+            </h2>
+        </div>
+        
+        {% if backup_history %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-900">
+                    <tr>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Filename
+                        </th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Size
+                        </th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Tables
+                        </th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Records
+                        </th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Created
+                        </th>
+                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Created By
+                        </th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for backup in backup_history %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-excel text-green-600 dark:text-green-400 mr-2"></i>
+                                <span class="text-sm font-medium text-gray-900 dark:text-white">
+                                    {{ backup.filename if backup.filename else 'N/A' }}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {% if backup.file_size %}
+                                    {% if backup.file_size < 1024 %}
+                                        {{ backup.file_size }} B
+                                    {% elif backup.file_size < 1048576 %}
+                                        {{ "%.2f"|format(backup.file_size / 1024) }} KB
+                                    {% else %}
+                                        {{ "%.2f"|format(backup.file_size / 1048576) }} MB
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ backup.table_count if backup.table_count else 'N/A' }}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ "{:,}".format(backup.record_count) if backup.record_count else 'N/A' }}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {% if backup.created_at %}
+                                    {% if backup.created_at is string %}
+                                        {{ backup.created_at }}
+                                    {% else %}
+                                        {{ backup.created_at.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    {% endif %}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ backup.created_by if backup.created_by else 'System' }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+            <i class="fas fa-inbox text-4xl mb-2"></i>
+            <p>No backup history available</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function copyBackupLink() {
+    const linkInput = document.getElementById('backupLink');
+    copyToClipboard(linkInput.value, 'button[onclick="copyBackupLink()"]');
+}
+
+function copyFileLink() {
+    const linkInput = document.getElementById('backupFileLink');
+    copyToClipboard(linkInput.value, 'button[onclick="copyFileLink()"]');
+}
+
+function copyToClipboard(text, buttonSelector) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, 99999); // For mobile devices
+    
+    try {
+        // Use modern Clipboard API if available
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                showCopySuccess(buttonSelector);
+            }).catch(() => {
+                // Fallback to execCommand
+                document.execCommand('copy');
+                showCopySuccess(buttonSelector);
+            });
+        } else {
+            // Fallback for older browsers
+            document.execCommand('copy');
+            showCopySuccess(buttonSelector);
+        }
+    } catch (err) {
+        alert('Failed to copy. Please copy manually.');
+    } finally {
+        document.body.removeChild(textarea);
+    }
+}
+
+function showCopySuccess(buttonSelector) {
+    const button = document.querySelector(buttonSelector);
+    if (button) {
+        const originalText = button.innerHTML;
+        const originalClasses = button.className;
+        button.innerHTML = '<i class="fas fa-check"></i> <span class="ml-1">Copied!</span>';
+        button.classList.remove('bg-blue-600', 'bg-green-600', 'hover:bg-blue-700', 'hover:bg-green-700');
+        button.classList.add('bg-green-600', 'hover:bg-green-700');
+        
+        setTimeout(() => {
+            button.innerHTML = originalText;
+            button.className = originalClasses;
+        }, 2000);
+    }
+}
+</script>
+{% endblock %}
+
+
+{% block title %}Database Backup & Restore - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/role-switch" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+
+<a href="/system-settings" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-cog w-5"></i>
+    <span>System Settings</span>
+</a>
+<a href="{{ url_for('database_management') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-database w-5"></i>
     <span>Database</span>
 </a>

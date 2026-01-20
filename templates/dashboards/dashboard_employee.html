@@ -1,92 +1,81 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Employee Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block role_primary %}#10b981{% endblock %}
 {% block role_secondary %}#059669{% endblock %}
 {% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
-{% block role_display %}
-    {% if is_technician and current_employee_role %}
-        {{ current_employee_role|title }} (Viewing)
-    {% else %}
-        {{ role|title }}
-    {% endif %}
-{% endblock %}
 
 {% block sidebar_content %}
 {% set current_role = (current_employee_role if is_technician and current_employee_role else role)|lower %}
 
 {% if is_technician %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-2 sm:space-x-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 active:bg-gray-700/70 mb-2 border-b border-gray-700/50 pb-3 sm:pb-4 touch-manipulation min-h-[44px]">
-    <i class="fas fa-exchange-alt w-4 sm:w-5 flex-shrink-0"></i>
-    <span class="text-sm sm:text-base truncate">Role Switch</span>
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'role_switch' %}active text-brand-primary dark:text-brand-secondary{% endif %} mb-2 border-b border-gray-200 dark:border-gray-700 pb-3">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
 </a>
 {% endif %}
 
 {% if current_role == 'super admin' %}
     <!-- Super Admin Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-line w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Users Management'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-users-cog w-5"></i>
         <span>Users Management</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'School Settings'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-cog w-5"></i>
         <span>School Settings</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Academic Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-book-reader w-5"></i>
         <span>Academic Module</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Finance Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-dollar-sign w-5"></i>
         <span>Finance Module</span>
     </a>
     <a href="/dashboard/employee/staff-and-salaries" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'staff_and_salaries' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_and_salaries' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
         <i class="fas fa-wallet w-5"></i>
         <span>Staff and Salaries</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Library Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-book w-5"></i>
         <span>Library Module</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bed w-5"></i>
         <span>Hostel Module</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Transport Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bus w-5"></i>
         <span>Transport Module</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Logs / Audit Trail'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-history w-5"></i>
         <span>Logs / Audit Trail</span>
     </a>
@@ -94,69 +83,69 @@
 {% elif current_role == 'principal' %}
     <!-- Principal Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a href="/staff-management" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-tie w-5"></i>
         <span>Staff Management</span>
     </a>
     <a href="/student-management" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chalkboard-teacher w-5"></i>
         <span>Classes & Sections</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Academic Calendar & Timetable'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Calendar & Timetable</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Exams & Results'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Results</span>
     </a>
     <a href="/dashboard/employee/finance-overview" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'finance_overview' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'finance_overview' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'finance_overview' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Finance Overview</span>
     </a>
     <a href="/dashboard/employee/staff-and-salaries" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'staff_and_salaries' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'staff_and_salaries' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
         <i class="fas fa-wallet w-5"></i>
         <span>Staff and Salaries</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bed w-5"></i>
         <span>Hostel Overview</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Transport Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bus w-5"></i>
         <span>Transport Overview</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
     <a href="/settings/principal" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'principal' or request.path == '/settings/principal') %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'principal' or request.path == '/settings/principal') %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'principal' or request.path == '/settings/principal') %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-cog w-5"></i>
         <span>Settings</span>
@@ -165,42 +154,42 @@
 {% elif current_role == 'academic coordinator' %}
     <!-- Academic Coordinator Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-bar w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Classes & Subjects'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-book w-5"></i>
         <span>Classes & Subjects</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Teacher Assignment'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-tie w-5"></i>
         <span>Teacher Assignment</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Student Academic Records'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Records</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Exams & Assessments'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-clipboard-list w-5"></i>
         <span>Exams & Assessments</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -208,37 +197,37 @@
 {% elif current_role == 'teachers' %}
     <!-- Teacher Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'My Classes / Timetable'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>My Classes</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-tasks w-5"></i>
         <span>Assignments</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Exams & Grades'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Grades</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Student Academic Records'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Records</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -246,39 +235,39 @@
 {% elif current_role == 'accountant' %}
     <!-- Accountant Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-line w-5"></i>
         <span>Dashboard</span>
     </a>
     <a href="/dashboard/employee/student-fees" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'student_fees' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_fees' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'student_fees' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Student Fees</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Payments / Invoices'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-invoice-dollar w-5"></i>
         <span>Payments / Invoices</span>
     </a>
     <a href="/dashboard/employee/staff-and-salaries" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'staff_and_salaries' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'staff_and_salaries' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
         <i class="fas fa-wallet w-5"></i>
         <span>Staff and Salaries</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Budget & Expenses'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-calculator w-5"></i>
         <span>Budget & Expenses</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -286,32 +275,32 @@
 {% elif current_role == 'librarian' %}
     <!-- Librarian Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Books Inventory'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-book w-5"></i>
         <span>Books Inventory</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Issue / Return Records'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-exchange-alt w-5"></i>
         <span>Issue / Return</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Overdue Items'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-exclamation-triangle w-5"></i>
         <span>Overdue Items</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Library Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Library Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -319,32 +308,32 @@
 {% elif current_role == 'warden' %}
     <!-- Warden Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Rooms & Students'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bed w-5"></i>
         <span>Rooms & Students</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Attendance & Roll Call'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance & Roll Call</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Maintenance Requests'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-tools w-5"></i>
         <span>Maintenance</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Hostel Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -352,32 +341,32 @@
 {% elif current_role == 'transport manager' %}
     <!-- Transport Manager Links -->
     <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Vehicles & Routes'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bus w-5"></i>
         <span>Vehicles & Routes</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Student Transport Assignments'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-user-friends w-5"></i>
         <span>Transport Assignments</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Transport Attendance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-check-circle w-5"></i>
         <span>Transport Attendance</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Transport Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-file-alt w-5"></i>
         <span>Transport Reports</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
@@ -385,50 +374,47 @@
 {% elif current_role == 'technician' %}
     <!-- Technician Links -->
     <a href="/system-settings" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-cog w-5"></i>
         <span>System Settings</span>
     </a>
     <a href="{{ url_for('users_roles') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'users_roles' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'users_roles' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'users_roles' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-users-cog w-5"></i>
         <span>Users & Roles</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Security'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-shield-alt w-5"></i>
         <span>Security</span>
     </a>
     <a href="/dashboard/employee/integration-settings" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'integration_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'integration_settings' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'integration_settings' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-plug w-5"></i>
         <span>Integration Settings</span>
     </a>
     <a href="{{ url_for('database_management') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 {% if request.endpoint == 'database_management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'database_management' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'database_management' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-database w-5"></i>
         <span>Database</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Audit Logs'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-history w-5"></i>
         <span>Audit Logs</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'System Modules'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-puzzle-piece w-5"></i>
         <span>System Modules</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Diagnostics'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-stethoscope w-5"></i>
         <span>Diagnostics</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Support'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-life-ring w-5"></i>
         <span>Support</span>
     </a>

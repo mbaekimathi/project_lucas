@@ -8,9 +8,10 @@ from datetime import datetime
 from app import DB_CONFIG, get_db_connection
 
 def create_migrations_table(connection):
-    """Create the migrations tracking table if it doesn't exist"""
+    """Create the migrations tracking table if it doesn't exist, and add missing columns"""
     try:
         with connection.cursor() as cursor:
+            # Create table if it doesn't exist
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS migrations (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -24,6 +25,98 @@ def create_migrations_table(connection):
                     INDEX idx_applied_at (applied_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
+            
+            # Check if status column exists, add it if it doesn't
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'status'
+            """)
+            result = cursor.fetchone()
+            status_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            
+            if not status_exists:
+                try:
+                    cursor.execute("""
+                        ALTER TABLE migrations
+                        ADD COLUMN status ENUM('success', 'failed', 'partial') DEFAULT 'success'
+                        AFTER execution_time_ms
+                    """)
+                    print("Added 'status' column to migrations table")
+                except Exception as e:
+                    print(f"Note: Could not add status column (may already exist): {e}")
+            
+            # Check if other columns exist and add them if missing
+            # Check applied_by first (doesn't depend on other columns)
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'applied_by'
+            """)
+            result = cursor.fetchone()
+            applied_by_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            if not applied_by_exists:
+                try:
+                    cursor.execute("""
+                        ALTER TABLE migrations
+                        ADD COLUMN applied_by VARCHAR(255) DEFAULT 'system'
+                        AFTER applied_at
+                    """)
+                    print("Added 'applied_by' column to migrations table")
+                except Exception as e:
+                    print(f"Note: Could not add applied_by column: {e}")
+            
+            # Check execution_time_ms (doesn't depend on status)
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'execution_time_ms'
+            """)
+            result = cursor.fetchone()
+            execution_time_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            if not execution_time_exists:
+                try:
+                    # Position after applied_by if it exists, otherwise after applied_at
+                    position = 'AFTER applied_by' if applied_by_exists else 'AFTER applied_at'
+                    cursor.execute(f"""
+                        ALTER TABLE migrations
+                        ADD COLUMN execution_time_ms INT {position}
+                    """)
+                    print("Added 'execution_time_ms' column to migrations table")
+                except Exception as e:
+                    print(f"Note: Could not add execution_time_ms column: {e}")
+            
+            # Check error_message (depends on status, so check after status is added)
+            cursor.execute("""
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'error_message'
+            """)
+            result = cursor.fetchone()
+            error_message_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            if not error_message_exists:
+                try:
+                    # Position after status if it exists, otherwise after execution_time_ms
+                    if status_exists:
+                        position = 'AFTER status'
+                    else:
+                        position = 'AFTER execution_time_ms' if execution_time_exists else 'AFTER applied_at'
+                    cursor.execute(f"""
+                        ALTER TABLE migrations
+                        ADD COLUMN error_message TEXT {position}
+                    """)
+                    print("Added 'error_message' column to migrations table")
+                except Exception as e:
+                    print(f"Note: Could not add error_message column: {e}")
+            
             connection.commit()
             return True
     except Exception as e:
@@ -34,12 +127,31 @@ def get_applied_migrations(connection):
     """Get list of already applied migrations"""
     try:
         with connection.cursor() as cursor:
+            # Check if status column exists
             cursor.execute("""
-                SELECT migration_name 
-                FROM migrations 
-                WHERE status = 'success'
-                ORDER BY applied_at
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'status'
             """)
+            result = cursor.fetchone()
+            status_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            
+            if status_exists:
+                cursor.execute("""
+                    SELECT migration_name 
+                    FROM migrations 
+                    WHERE status = 'success'
+                    ORDER BY applied_at
+                """)
+            else:
+                # Fallback: get all migrations if status column doesn't exist
+                cursor.execute("""
+                    SELECT migration_name 
+                    FROM migrations 
+                    ORDER BY applied_at
+                """)
             results = cursor.fetchall()
             return [row['migration_name'] if isinstance(row, dict) else row[0] for row in results]
     except Exception as e:
@@ -50,15 +162,38 @@ def record_migration(connection, migration_name, status='success', execution_tim
     """Record a migration in the migrations table"""
     try:
         with connection.cursor() as cursor:
+            # Check if status column exists
             cursor.execute("""
-                INSERT INTO migrations (migration_name, status, execution_time_ms, error_message, applied_by)
-                VALUES (%s, %s, %s, %s, 'system')
-                ON DUPLICATE KEY UPDATE
-                    status = VALUES(status),
-                    execution_time_ms = VALUES(execution_time_ms),
-                    error_message = VALUES(error_message),
-                    applied_at = CURRENT_TIMESTAMP
-            """, (migration_name, status, execution_time, error_message))
+                SELECT COUNT(*) as count
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = 'migrations'
+                AND COLUMN_NAME = 'status'
+            """)
+            result = cursor.fetchone()
+            status_exists = (result[0] if isinstance(result, (list, tuple)) else result.get('count', 0)) > 0
+            
+            if status_exists:
+                # Use status column if it exists
+                cursor.execute("""
+                    INSERT INTO migrations (migration_name, status, execution_time_ms, error_message, applied_by)
+                    VALUES (%s, %s, %s, %s, 'system')
+                    ON DUPLICATE KEY UPDATE
+                        status = VALUES(status),
+                        execution_time_ms = VALUES(execution_time_ms),
+                        error_message = VALUES(error_message),
+                        applied_at = CURRENT_TIMESTAMP
+                """, (migration_name, status, execution_time, error_message))
+            else:
+                # Fallback: don't include status column
+                cursor.execute("""
+                    INSERT INTO migrations (migration_name, execution_time_ms, error_message, applied_by)
+                    VALUES (%s, %s, %s, 'system')
+                    ON DUPLICATE KEY UPDATE
+                        execution_time_ms = VALUES(execution_time_ms),
+                        error_message = VALUES(error_message),
+                        applied_at = CURRENT_TIMESTAMP
+                """, (migration_name, execution_time, error_message))
             connection.commit()
             return True
     except Exception as e:
@@ -231,6 +366,7 @@ def run_all_migrations():
 if __name__ == '__main__':
     # Can be run standalone
     run_all_migrations()
+
 
 
 

@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Integration Settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -11,7 +11,7 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-3 border-b border-gray-700/50 pb-3">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
@@ -36,7 +36,7 @@
     </div>
     <div class="ml-2">
         <a @click.prevent="activeSection = 'whatsapp'; loadSection('whatsapp')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'whatsapp'}"
            :style="activeSection === 'whatsapp' ? 'border-color: var(--role-primary);' : ''">
             <i class="fab fa-whatsapp w-4"></i>
@@ -56,7 +56,7 @@
     </div>
     <div class="ml-2">
         <a @click.prevent="activeSection = 'email'; loadSection('email')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'email'}"
            :style="activeSection === 'email' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-envelope w-4"></i>
@@ -76,7 +76,7 @@
     </div>
     <div class="ml-2">
         <a @click.prevent="activeSection = 'sms'; loadSection('sms')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'sms'}"
            :style="activeSection === 'sms' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-sms w-4"></i>
@@ -386,6 +386,401 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+
+
+
+
+
+
+
+
+{% block title %}Integration Settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="/role-switch" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+
+<a href="/dashboard/employee/integration-settings" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4 mb-4"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-plug w-5"></i>
+    <span>Integration Settings</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<!-- Integration Sections -->
+<div class="mb-4 pb-3 border-b border-gray-700/30">
+    <div class="px-4 py-2 mb-2 bg-gradient-to-r from-green-600/20 to-green-500/10 rounded-lg border-l-4 border-green-500">
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                <span class="text-white text-xs font-bold">1</span>
+            </div>
+            <p class="text-xs font-bold text-green-300 uppercase tracking-wider">WhatsApp Integration</p>
+        </div>
+    </div>
+    <div class="ml-2">
+        <a @click.prevent="activeSection = 'whatsapp'; loadSection('whatsapp')" 
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
+           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'whatsapp'}"
+           :style="activeSection === 'whatsapp' ? 'border-color: var(--role-primary);' : ''">
+            <i class="fab fa-whatsapp w-4"></i>
+            <span>WhatsApp Settings</span>
+        </a>
+    </div>
+</div>
+
+<div class="mb-4 pb-3 border-b border-gray-700/30">
+    <div class="px-4 py-2 mb-2 bg-gradient-to-r from-blue-600/20 to-blue-500/10 rounded-lg border-l-4 border-blue-500">
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                <span class="text-white text-xs font-bold">2</span>
+            </div>
+            <p class="text-xs font-bold text-blue-300 uppercase tracking-wider">Email Integration</p>
+        </div>
+    </div>
+    <div class="ml-2">
+        <a @click.prevent="activeSection = 'email'; loadSection('email')" 
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
+           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'email'}"
+           :style="activeSection === 'email' ? 'border-color: var(--role-primary);' : ''">
+            <i class="fas fa-envelope w-4"></i>
+            <span>Email Settings</span>
+        </a>
+    </div>
+</div>
+
+<div class="mb-4 pb-3 border-b border-gray-700/30">
+    <div class="px-4 py-2 mb-2 bg-gradient-to-r from-purple-600/20 to-purple-500/10 rounded-lg border-l-4 border-purple-500">
+        <div class="flex items-center space-x-2">
+            <div class="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                <span class="text-white text-xs font-bold">3</span>
+            </div>
+            <p class="text-xs font-bold text-purple-300 uppercase tracking-wider">SMS Integration</p>
+        </div>
+    </div>
+    <div class="ml-2">
+        <a @click.prevent="activeSection = 'sms'; loadSection('sms')" 
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
+           :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'sms'}"
+           :style="activeSection === 'sms' ? 'border-color: var(--role-primary);' : ''">
+            <i class="fas fa-sms w-4"></i>
+            <span>SMS Settings</span>
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8">
+    <!-- Header -->
+    <div class="mb-6 sm:mb-8">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">Integration Settings</h1>
+        <p class="text-gray-600 dark:text-gray-400">Configure WhatsApp, Email, and SMS integrations for your school management system</p>
+    </div>
+
+    <!-- WhatsApp Integration Section -->
+    <div x-show="activeSection === 'whatsapp' || activeSection === null" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-4"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
+                    <i class="fab fa-whatsapp text-white text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">WhatsApp Integration</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Configure WhatsApp Business API settings</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" 
+                       {% if integration_data.whatsapp.enabled %}checked{% endif %}>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+            </label>
+        </div>
+
+        <form id="whatsapp-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <input type="text" 
+                           name="api_key" 
+                           value="{{ integration_data.whatsapp.api_key }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="Enter WhatsApp API Key">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Secret</label>
+                    <input type="password" 
+                           name="api_secret" 
+                           value="{{ integration_data.whatsapp.api_secret }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="Enter WhatsApp API Secret">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phone Number</label>
+                    <input type="text" 
+                           name="phone_number" 
+                           value="{{ integration_data.whatsapp.phone_number }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="+1234567890">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Webhook URL</label>
+                    <input type="url" 
+                           name="webhook_url" 
+                           value="{{ integration_data.whatsapp.webhook_url }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="https://your-domain.com/webhook">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" 
+                        class="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Test Connection
+                </button>
+                <button type="submit" 
+                        class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Email Integration Section -->
+    <div x-show="activeSection === 'email'" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-4"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-envelope text-white text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">Email Integration</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Configure SMTP email settings</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" 
+                       {% if integration_data.email.enabled %}checked{% endif %}>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            </label>
+        </div>
+
+        <form id="email-form" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMTP Server</label>
+                    <input type="text" 
+                           name="smtp_server" 
+                           value="{{ integration_data.email.smtp_server }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="smtp.gmail.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMTP Port</label>
+                    <input type="number" 
+                           name="smtp_port" 
+                           value="{{ integration_data.email.smtp_port }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="587">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMTP Username</label>
+                    <input type="text" 
+                           name="smtp_username" 
+                           value="{{ integration_data.email.smtp_username }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="your-email@gmail.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMTP Password</label>
+                    <input type="password" 
+                           name="smtp_password" 
+                           value="{{ integration_data.email.smtp_password }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="Enter SMTP password">
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From Email</label>
+                    <input type="email" 
+                           name="from_email" 
+                           value="{{ integration_data.email.from_email }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="noreply@school.com">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">From Name</label>
+                    <input type="text" 
+                           name="from_name" 
+                           value="{{ integration_data.email.from_name }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="School Name">
+                </div>
+            </div>
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" 
+                        class="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Test Connection
+                </button>
+                <button type="submit" 
+                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- SMS Integration Section -->
+    <div x-show="activeSection === 'sms'" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-4"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6">
+        <div class="flex items-center justify-between mb-6">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-sms text-white text-2xl"></i>
+                </div>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">SMS Integration</h2>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Configure SMS provider settings</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" class="sr-only peer" 
+                       {% if integration_data.sms.enabled %}checked{% endif %}>
+                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+            </label>
+        </div>
+
+        <form id="sms-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS Provider</label>
+                <select name="provider" 
+                        class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white">
+                    <option value="">Select Provider</option>
+                    <option value="twilio" {% if integration_data.sms.provider == 'twilio' %}selected{% endif %}>Twilio</option>
+                    <option value="nexmo" {% if integration_data.sms.provider == 'nexmo' %}selected{% endif %}>Vonage (Nexmo)</option>
+                    <option value="aws-sns" {% if integration_data.sms.provider == 'aws-sns' %}selected{% endif %}>AWS SNS</option>
+                    <option value="custom" {% if integration_data.sms.provider == 'custom' %}selected{% endif %}>Custom API</option>
+                </select>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Key</label>
+                    <input type="text" 
+                           name="api_key" 
+                           value="{{ integration_data.sms.api_key }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="Enter SMS API Key">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">API Secret</label>
+                    <input type="password" 
+                           name="api_secret" 
+                           value="{{ integration_data.sms.api_secret }}"
+                           class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                           placeholder="Enter SMS API Secret">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sender ID</label>
+                <input type="text" 
+                       name="sender_id" 
+                       value="{{ integration_data.sms.sender_id }}"
+                       class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                       placeholder="School Name or Number">
+            </div>
+            <div class="flex justify-end space-x-3 pt-4">
+                <button type="button" 
+                        class="px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Test Connection
+                </button>
+                <button type="submit" 
+                        class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Default view when no section is selected -->
+    <div x-show="activeSection === null" 
+         x-transition:enter="transition ease-out duration-300"
+         x-transition:enter-start="opacity-0 transform translate-y-4"
+         x-transition:enter-end="opacity-100 transform translate-y-0"
+         class="text-center py-12">
+        <div class="w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
+            <i class="fas fa-plug text-white text-4xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Integration Settings</h2>
+        <p class="text-gray-600 dark:text-gray-400 mb-6">Select an integration from the sidebar to configure its settings</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer" 
+                 @click="activeSection = 'whatsapp'; loadSection('whatsapp')">
+                <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mx-auto mb-4">
+                    <i class="fab fa-whatsapp text-white text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">WhatsApp</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Configure WhatsApp Business API</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer" 
+                 @click="activeSection = 'email'; loadSection('email')">
+                <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-envelope text-white text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">Email</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Configure SMTP email settings</p>
+            </div>
+            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition-shadow cursor-pointer" 
+                 @click="activeSection = 'sms'; loadSection('sms')">
+                <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-sms text-white text-2xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">SMS</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Configure SMS provider settings</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize activeSection to null on page load
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof Alpine !== 'undefined') {
+        Alpine.data('x-data', function() {
+            return {
+                activeSection: null
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
+
 
 
 

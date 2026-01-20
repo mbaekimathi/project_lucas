@@ -5037,18 +5037,7 @@ def download_payment_receipt(student_id, payment_id):
                 'items': []  # Single payment receipt doesn't need fee items breakdown
             }
             
-            # Render receipt template (similar to invoice but for single payment)
-            return render_template('dashboards/payment_receipt.html',
-                                 student=student,
-                                 payment=payment,
-                                 payment_transaction=payment_transaction,
-                                 fee_structure=fee_structure,
-                                 school_settings=school_settings,
-                                 receipt_date=receipt_date,
-                                 receipt_time=receipt_time,
-                                 receipt_number=receipt_number)
-            
-            # Check if user wants PDF format
+            # Check if user wants PDF format BEFORE rendering template
             format_type = request.args.get('format', 'html').lower()
             
             if format_type == 'pdf':
@@ -5158,6 +5147,17 @@ def download_payment_receipt(student_id, payment_id):
                     response.headers['Content-Disposition'] = f'inline; filename=Receipt_{student_id}_{payment_id}_{datetime.now().strftime("%Y%m%d")}.pdf'
                 
                 return response
+            
+            # Render HTML receipt template (if not PDF)
+            return render_template('dashboards/payment_receipt.html',
+                                 student=student,
+                                 payment=payment,
+                                 payment_transaction=payment_transaction,
+                                 fee_structure=fee_structure,
+                                 school_settings=school_settings,
+                                 receipt_date=receipt_date,
+                                 receipt_time=receipt_time,
+                                 receipt_number=receipt_number)
                                  
     except Exception as e:
         print(f"Error generating payment receipt: {e}")

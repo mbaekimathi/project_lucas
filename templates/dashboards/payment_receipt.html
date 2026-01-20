@@ -8,9 +8,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             body {
                 margin: 0;
                 padding: 0;
+                background: white;
             }
             .no-print {
                 display: none !important;
@@ -18,6 +23,68 @@
             .receipt-container {
                 box-shadow: none !important;
                 border: none !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* Reduce padding for all sections */
+            .receipt-container > div {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+            /* Compact header */
+            .receipt-container > div:first-child {
+                padding-top: 0.75rem !important;
+                padding-bottom: 0.75rem !important;
+            }
+            /* Reduce logo size */
+            img.h-16, .h-16 {
+                width: 2.5rem !important;
+                height: 2.5rem !important;
+            }
+            /* Reduce font sizes */
+            h1 { font-size: 1.5rem !important; }
+            h2 { font-size: 1.75rem !important; }
+            h3 { font-size: 1rem !important; }
+            .text-3xl { font-size: 1.5rem !important; }
+            .text-2xl { font-size: 1.25rem !important; }
+            .text-xl { font-size: 1.125rem !important; }
+            .text-lg { font-size: 1rem !important; }
+            .text-base { font-size: 0.875rem !important; }
+            .text-sm { font-size: 0.75rem !important; }
+            .text-xs { font-size: 0.625rem !important; }
+            /* Reduce spacing */
+            .space-y-3 > * + * { margin-top: 0.5rem !important; }
+            .space-y-4 > * + * { margin-top: 0.5rem !important; }
+            .gap-4 { gap: 0.5rem !important; }
+            .gap-3 { gap: 0.375rem !important; }
+            .mb-4 { margin-bottom: 0.5rem !important; }
+            .mb-2 { margin-bottom: 0.25rem !important; }
+            .mb-1 { margin-bottom: 0.125rem !important; }
+            .mt-3 { margin-top: 0.375rem !important; }
+            .py-6 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+            .py-4 { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+            .px-8 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+            .px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+            .py-2 { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+            /* Reduce icon sizes */
+            .fa-3xl { font-size: 1.5rem !important; }
+            .w-20 { width: 3rem !important; height: 3rem !important; }
+            .h-20 { width: 3rem !important; height: 3rem !important; }
+            .h-16 { width: 2.5rem !important; height: 2.5rem !important; }
+            .w-16 { width: 2.5rem !important; height: 2.5rem !important; }
+            /* Compact grid */
+            .grid { gap: 0.5rem !important; }
+            /* Remove borders or make them thinner */
+            .border-b-2 { border-bottom-width: 1px !important; }
+            .border-b { border-bottom-width: 1px !important; }
+            /* Hide decorative elements */
+            .print\\:hidden { display: none !important; }
+            /* Ensure everything fits */
+            .receipt-container {
+                page-break-inside: avoid;
             }
             @page {
                 margin: 0.5cm;
@@ -29,243 +96,570 @@
             margin: 0 auto;
             background: white;
         }
+        .receipt-border {
+            border: 2px solid #e5e7eb;
+        }
     </style>
 </head>
-<body class="bg-gray-50 py-8">
-    <div class="receipt-container bg-white shadow-2xl rounded-lg overflow-hidden">
-        <!-- Header Section with Logo -->
-        <div class="bg-gradient-to-r from-[#800020] to-[#5C0016] text-white py-8 px-8">
-            <div class="flex flex-col items-center justify-center text-center">
-                {% if school_settings.school_logo %}
-                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                     alt="{{ school_settings.school_name }}" 
-                     class="h-24 w-24 object-contain mb-4 bg-white rounded-lg p-2 shadow-lg">
-                {% else %}
-                <div class="h-24 w-24 bg-white rounded-lg flex items-center justify-center mb-4 shadow-lg">
-                    <i class="fas fa-graduation-cap text-[#800020] text-5xl"></i>
+<body class="bg-gray-100 py-8">
+    <div class="receipt-container bg-white shadow-xl rounded-lg overflow-hidden receipt-border">
+        <!-- Header Section -->
+        <div class="bg-gradient-to-r from-[#800020] to-[#5C0016] text-white py-6 px-8">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                         alt="{{ school_settings.school_name }}" 
+                         class="h-16 w-16 object-contain bg-white rounded-lg p-2">
+                    {% else %}
+                    <div class="h-16 w-16 bg-white rounded-lg flex items-center justify-center">
+                        <i class="fas fa-graduation-cap text-[#800020] text-3xl"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <h1 class="text-2xl font-bold">{{ school_settings.school_name or 'Modern School' }}</h1>
+                        {% if school_settings.school_address %}
+                        <p class="text-red-100 text-sm mt-1">{{ school_settings.school_address }}</p>
+                        {% endif %}
+                    </div>
                 </div>
-                {% endif %}
-                <h1 class="text-3xl font-bold mb-2">{{ school_settings.school_name or 'Modern School' }}</h1>
-                {% if school_settings.school_address %}
-                <p class="text-red-100 text-sm">{{ school_settings.school_address }}</p>
-                {% endif %}
-                <div class="flex items-center gap-4 mt-2 text-sm">
-                    {% if school_settings.school_phone %}
-                    <span><i class="fas fa-phone mr-1"></i>{{ school_settings.school_phone }}</span>
-                    {% endif %}
-                    {% if school_settings.school_email %}
-                    <span><i class="fas fa-envelope mr-1"></i>{{ school_settings.school_email }}</span>
-                    {% endif %}
+                <div class="text-right">
+                    <div class="bg-white/20 px-4 py-2 rounded-lg">
+                        <p class="text-xs text-red-100 uppercase tracking-wide">Receipt</p>
+                        <p class="text-lg font-bold">{{ receipt_number }}</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Receipt Title and Student Info Section -->
+        <!-- Receipt Title -->
         <div class="px-8 py-6 border-b-2 border-gray-200">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <!-- Left: Receipt Info -->
+            <div class="flex items-center justify-between">
                 <div>
-                    <div class="flex items-center gap-3 mb-2">
-                        <h2 class="text-4xl font-bold text-gray-800">PAYMENT RECEIPT</h2>
-                        <span class="px-4 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold border-2 border-green-500">
-                            <i class="fas fa-check-circle mr-1"></i>PAID
-                        </span>
-                    </div>
-                    <p class="text-lg text-gray-600 mb-2 font-semibold">OFFICIAL RECEIPT</p>
-                    <div class="space-y-1 text-sm text-gray-600">
-                        <p><span class="font-semibold">Date:</span> {{ receipt_date }}</p>
-                        <p><span class="font-semibold">Time:</span> {{ receipt_time }}</p>
-                        <p><span class="font-semibold">Receipt #:</span> {{ receipt_number }}</p>
-                        {% if fee_structure %}
-                        <p><span class="font-semibold">Fee Structure:</span> {{ fee_structure.fee_name }}</p>
-                        {% endif %}
-                    </div>
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">Payment Receipt</h2>
+                    <p class="text-sm text-gray-600">Official payment confirmation</p>
                 </div>
-
-                <!-- Right: Student Image and Details -->
-                <div class="flex flex-col items-end md:items-start md:flex-row gap-4">
-                    <div class="flex-shrink-0">
-                        {% if student.profile_image %}
-                        <img src="{{ student.profile_image }}" 
-                             alt="{{ student.full_name }}" 
-                             class="w-32 h-32 rounded-xl object-cover border-4 border-[#800020] shadow-lg">
-                        {% else %}
-                        <div class="w-32 h-32 rounded-xl bg-gradient-to-br from-[#800020] to-[#5C0016] flex items-center justify-center border-4 border-[#800020] shadow-lg">
-                            <i class="fas fa-user text-white text-5xl"></i>
-                        </div>
-                        {% endif %}
-                    </div>
-                    <div class="text-right md:text-left">
-                        <h3 class="text-2xl font-bold text-gray-800 mb-2">{{ student.full_name }}</h3>
-                        <div class="space-y-1 text-sm text-gray-600">
-                            <p><span class="font-semibold">Student ID:</span> {{ student.student_id }}</p>
-                            <p><span class="font-semibold">Grade:</span> {{ student.current_grade or 'N/A' }}</p>
-                            {% if student.student_category %}
-                            <p><span class="font-semibold">Category:</span> 
-                                <span class="px-2 py-1 bg-red-100 text-[#800020] rounded text-xs font-semibold">
-                                    {{ student.student_category.title() }}
-                                </span>
-                            </p>
-                            {% endif %}
-                        </div>
+                <div class="text-right">
+                    <div class="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-lg border-2 border-green-500">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        <span class="font-bold">PAID</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Payment Details Section -->
+        <!-- Student Information -->
         <div class="px-8 py-6 bg-gray-50 border-b border-gray-200">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Payment Details</h3>
-            <div class="bg-white p-4 rounded-lg shadow-sm">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Payment Date:</span></p>
-                        <p class="text-base font-medium text-gray-800">{{ payment_transaction.date }}</p>
-                    </div>
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Payment Method:</span></p>
-                        <p class="text-base font-medium text-gray-800">
-                            <span class="px-2 py-1 bg-red-100 text-[#800020] rounded text-xs font-semibold">
-                                {{ payment_transaction.method }}
-                            </span>
-                        </p>
-                    </div>
-                    {% if payment_transaction.reference %}
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Reference Number:</span></p>
-                        <p class="text-base font-medium text-gray-800">{{ payment_transaction.reference }}</p>
-                    </div>
-                    {% endif %}
-                    {% if payment_transaction.transaction_id %}
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Transaction ID:</span></p>
-                        <p class="text-base font-medium text-gray-800 font-mono">{{ payment_transaction.transaction_id }}</p>
-                    </div>
-                    {% endif %}
-                    {% if payment_transaction.cheque %}
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Cheque Number:</span></p>
-                        <p class="text-base font-medium text-gray-800">{{ payment_transaction.cheque }}</p>
-                    </div>
-                    {% endif %}
-                    <div>
-                        <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Received By:</span></p>
-                        <p class="text-base font-medium text-gray-800">{{ payment_transaction.received_by }}</p>
-                    </div>
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-user-graduate mr-2 text-[#800020]"></i>
+                Student Information
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Student Name</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.full_name }}</p>
                 </div>
-                {% if payment_transaction.notes %}
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <p class="text-sm text-gray-600 mb-1"><span class="font-semibold">Notes:</span></p>
-                    <p class="text-sm text-gray-700 italic">{{ payment_transaction.notes }}</p>
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Student ID</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.student_id }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Grade</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.current_grade or 'N/A' }}</p>
+                </div>
+                {% if student.student_category %}
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Category</p>
+                    <span class="inline-block px-3 py-1 bg-[#800020] text-white rounded text-sm font-semibold">
+                        {{ student.student_category.title() }}
+                    </span>
                 </div>
                 {% endif %}
             </div>
         </div>
 
-        <!-- Payment Amount Summary -->
-        <div class="px-8 py-6">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Payment Summary</h3>
-            <div class="bg-gradient-to-r from-gray-50 to-gray-100 p-6 rounded-lg border-2 border-gray-300">
-                <div class="flex justify-between items-center">
-                    <span class="text-2xl font-bold text-gray-800">Amount Paid:</span>
-                    <span class="text-4xl font-bold text-green-600">
-                        KES {{ "%.2f"|format(payment_transaction.amount) }}
+        <!-- Payment Details -->
+        <div class="px-8 py-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-money-check-alt mr-2 text-[#800020]"></i>
+                Payment Details
+            </h3>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Payment Date</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.date }}</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Payment Method</span>
+                    <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
+                        {{ payment_transaction.method }}
                     </span>
+                </div>
+                {% if payment_transaction.reference %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Reference Number</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.reference }}</span>
+                </div>
+                {% endif %}
+                {% if payment_transaction.transaction_id %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Transaction ID</span>
+                    <span class="text-base font-semibold text-gray-900 font-mono">{{ payment_transaction.transaction_id }}</span>
+                </div>
+                {% endif %}
+                {% if payment_transaction.cheque %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Cheque Number</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.cheque }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between items-center py-2">
+                    <span class="text-sm text-gray-600">Received By</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.received_by }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Summary -->
+        <div class="px-8 py-6 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Amount Paid</p>
+                    <p class="text-3xl font-bold text-green-700 print:text-2xl">
+                        KES {{ "%.2f"|format(payment_transaction.amount) }}
+                    </p>
+                </div>
+                <div class="text-right print:hidden">
+                    <div class="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-lg print:w-12 print:h-12">
+                        <i class="fas fa-check text-white text-3xl print:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fee Structure (if available) -->
+        {% if fee_structure and fee_structure.fee_name %}
+        <div class="px-8 py-4 bg-gray-50 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-600">Fee Structure</span>
+                <span class="text-base font-semibold text-gray-900">{{ fee_structure.fee_name }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Notes (if available) -->
+        {% if payment_transaction.notes %}
+        <div class="px-8 py-4 border-b border-gray-200">
+            <p class="text-sm text-gray-600 mb-1">Notes</p>
+            <p class="text-sm text-gray-700 italic">{{ payment_transaction.notes }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Receipt Metadata -->
+        <div class="px-8 py-4 bg-gray-50">
+            <div class="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                <div>
+                    <p class="mb-1"><span class="font-semibold">Date:</span> {{ receipt_date }}</p>
+                    <p><span class="font-semibold">Time:</span> {{ receipt_time }}</p>
+                </div>
+                <div class="text-right">
+                    <p class="mb-1"><span class="font-semibold">Receipt #:</span> {{ receipt_number }}</p>
+                    <p class="text-xs text-gray-500">Computer Generated</p>
                 </div>
             </div>
         </div>
 
         <!-- Footer -->
-        <div class="px-8 py-6 bg-gray-800 text-white text-center text-sm">
-            <p class="mb-2">Thank you for your payment!</p>
-            <p class="text-gray-400">This is a computer-generated receipt. No signature required.</p>
-            <p class="text-gray-400 mt-2">Generated on {{ receipt_date }} at {{ receipt_time }}</p>
+        <div class="px-8 py-6 bg-gray-800 text-white text-center">
+            <p class="text-base font-semibold mb-2">Thank you for your payment!</p>
+            <p class="text-sm text-gray-300">This is an official computer-generated receipt. No signature required.</p>
+            {% if school_settings.school_phone or school_settings.school_email %}
+            <div class="flex items-center justify-center gap-4 mt-3 text-xs text-gray-400">
+                {% if school_settings.school_phone %}
+                <span><i class="fas fa-phone mr-1"></i>{{ school_settings.school_phone }}</span>
+                {% endif %}
+                {% if school_settings.school_email %}
+                <span><i class="fas fa-envelope mr-1"></i>{{ school_settings.school_email }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
         </div>
     </div>
 
     <!-- Action Buttons -->
     <div class="max-w-4xl mx-auto mt-6 no-print">
         <div class="flex flex-wrap justify-center gap-3">
-            <button onclick="window.print()" class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-print"></i> Print
+            <button onclick="window.print()" 
+                    class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-print"></i> Print Receipt
             </button>
-            <button onclick="downloadReceipt()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+            <a href="{{ url_for('download_payment_receipt', student_id=student.student_id, payment_id=payment.id) }}?format=pdf&download=true" 
+               download
+               class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
                 <i class="fas fa-download"></i> Download PDF
-            </button>
-            <button onclick="shareReceipt()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-share-alt"></i> Share
-            </button>
-            <a href="{{ url_for('student_fees') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-arrow-left"></i> Back
+            </a>
+            <a href="{{ url_for('student_fees') }}" 
+               class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-arrow-left"></i> Back to Fees
             </a>
         </div>
     </div>
 
     <script>
         function downloadReceiptPDF() {
-            // Create a hidden iframe to download the PDF
-            // First, get the current URL and modify it to trigger PDF download
-            const currentUrl = window.location.href;
-            const pdfUrl = currentUrl.includes('?') ? currentUrl + '&format=pdf&download=true' : currentUrl + '?format=pdf&download=true';
-            
-            // Create a temporary link and click it to trigger download
-            const link = document.createElement('a');
-            link.href = pdfUrl;
-            link.style.display = 'none';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-        
-        function shareReceipt() {
-            const url = window.location.href;
-            const title = 'Payment Receipt - {{ student.full_name }}';
-            
-            if (navigator.share) {
-                // Use Web Share API if available
-                navigator.share({
-                    title: title,
-                    text: 'Payment receipt for {{ student.full_name }}',
-                    url: url
-                }).catch(err => {
-                    console.log('Error sharing:', err);
-                    copyToClipboard(url);
-                });
+            // Use the direct download link
+            const downloadLink = document.querySelector('a[href*="format=pdf&download=true"]');
+            if (downloadLink) {
+                downloadLink.click();
             } else {
-                // Fallback to copy to clipboard
-                copyToClipboard(url);
+                // Fallback: construct URL manually
+                const currentUrl = window.location.href;
+                const baseUrl = currentUrl.split('?')[0];
+                const pdfUrl = baseUrl + '?format=pdf&download=true';
+                
+                const link = document.createElement('a');
+                link.href = pdfUrl;
+                link.download = 'Receipt_{{ student.student_id }}_{{ payment.id }}_{{ receipt_date.replace(" ", "_") }}.pdf';
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                }, 100);
             }
-        }
-        
-        function copyToClipboard(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    alert('Link copied to clipboard!');
-                }).catch(err => {
-                    console.error('Failed to copy:', err);
-                    fallbackCopy(text);
-                });
-            } else {
-                fallbackCopy(text);
-            }
-        }
-        
-        function fallbackCopy(text) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                alert('Link copied to clipboard!');
-            } catch (err) {
-                alert('Please copy this link manually: ' + text);
-            }
-            document.body.removeChild(textArea);
         }
     </script>
 </body>
 </html>
 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment Receipt - {{ student.student_id }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+                background: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .receipt-container {
+                box-shadow: none !important;
+                border: none !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* Reduce padding for all sections */
+            .receipt-container > div {
+                padding-top: 0.5rem !important;
+                padding-bottom: 0.5rem !important;
+                padding-left: 0.75rem !important;
+                padding-right: 0.75rem !important;
+            }
+            /* Compact header */
+            .receipt-container > div:first-child {
+                padding-top: 0.75rem !important;
+                padding-bottom: 0.75rem !important;
+            }
+            /* Reduce logo size */
+            img.h-16, .h-16 {
+                width: 2.5rem !important;
+                height: 2.5rem !important;
+            }
+            /* Reduce font sizes */
+            h1 { font-size: 1.5rem !important; }
+            h2 { font-size: 1.75rem !important; }
+            h3 { font-size: 1rem !important; }
+            .text-3xl { font-size: 1.5rem !important; }
+            .text-2xl { font-size: 1.25rem !important; }
+            .text-xl { font-size: 1.125rem !important; }
+            .text-lg { font-size: 1rem !important; }
+            .text-base { font-size: 0.875rem !important; }
+            .text-sm { font-size: 0.75rem !important; }
+            .text-xs { font-size: 0.625rem !important; }
+            /* Reduce spacing */
+            .space-y-3 > * + * { margin-top: 0.5rem !important; }
+            .space-y-4 > * + * { margin-top: 0.5rem !important; }
+            .gap-4 { gap: 0.5rem !important; }
+            .gap-3 { gap: 0.375rem !important; }
+            .mb-4 { margin-bottom: 0.5rem !important; }
+            .mb-2 { margin-bottom: 0.25rem !important; }
+            .mb-1 { margin-bottom: 0.125rem !important; }
+            .mt-3 { margin-top: 0.375rem !important; }
+            .py-6 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+            .py-4 { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+            .px-8 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+            .px-4 { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
+            .py-2 { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
+            /* Reduce icon sizes */
+            .fa-3xl { font-size: 1.5rem !important; }
+            .w-20 { width: 3rem !important; height: 3rem !important; }
+            .h-20 { width: 3rem !important; height: 3rem !important; }
+            .h-16 { width: 2.5rem !important; height: 2.5rem !important; }
+            .w-16 { width: 2.5rem !important; height: 2.5rem !important; }
+            /* Compact grid */
+            .grid { gap: 0.5rem !important; }
+            /* Remove borders or make them thinner */
+            .border-b-2 { border-bottom-width: 1px !important; }
+            .border-b { border-bottom-width: 1px !important; }
+            /* Hide decorative elements */
+            .print\\:hidden { display: none !important; }
+            /* Ensure everything fits */
+            .receipt-container {
+                page-break-inside: avoid;
+            }
+            @page {
+                margin: 0.5cm;
+                size: A4;
+            }
+        }
+        .receipt-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+        }
+        .receipt-border {
+            border: 2px solid #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 py-8">
+    <div class="receipt-container bg-white shadow-xl rounded-lg overflow-hidden receipt-border">
+        <!-- Header Section -->
+        <div class="bg-gradient-to-r from-[#800020] to-[#5C0016] text-white py-6 px-8">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                         alt="{{ school_settings.school_name }}" 
+                         class="h-16 w-16 object-contain bg-white rounded-lg p-2">
+                    {% else %}
+                    <div class="h-16 w-16 bg-white rounded-lg flex items-center justify-center">
+                        <i class="fas fa-graduation-cap text-[#800020] text-3xl"></i>
+                    </div>
+                    {% endif %}
+                    <div>
+                        <h1 class="text-2xl font-bold">{{ school_settings.school_name or 'Modern School' }}</h1>
+                        {% if school_settings.school_address %}
+                        <p class="text-red-100 text-sm mt-1">{{ school_settings.school_address }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="bg-white/20 px-4 py-2 rounded-lg">
+                        <p class="text-xs text-red-100 uppercase tracking-wide">Receipt</p>
+                        <p class="text-lg font-bold">{{ receipt_number }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Receipt Title -->
+        <div class="px-8 py-6 border-b-2 border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-3xl font-bold text-gray-900 mb-2">Payment Receipt</h2>
+                    <p class="text-sm text-gray-600">Official payment confirmation</p>
+                </div>
+                <div class="text-right">
+                    <div class="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-lg border-2 border-green-500">
+                        <i class="fas fa-check-circle mr-2"></i>
+                        <span class="font-bold">PAID</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Information -->
+        <div class="px-8 py-6 bg-gray-50 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-user-graduate mr-2 text-[#800020]"></i>
+                Student Information
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Student Name</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.full_name }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Student ID</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.student_id }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Grade</p>
+                    <p class="text-base font-semibold text-gray-900">{{ student.current_grade or 'N/A' }}</p>
+                </div>
+                {% if student.student_category %}
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Category</p>
+                    <span class="inline-block px-3 py-1 bg-[#800020] text-white rounded text-sm font-semibold">
+                        {{ student.student_category.title() }}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Payment Details -->
+        <div class="px-8 py-6 border-b border-gray-200">
+            <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-money-check-alt mr-2 text-[#800020]"></i>
+                Payment Details
+            </h3>
+            <div class="space-y-3">
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Payment Date</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.date }}</span>
+                </div>
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Payment Method</span>
+                    <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded text-sm font-semibold">
+                        {{ payment_transaction.method }}
+                    </span>
+                </div>
+                {% if payment_transaction.reference %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Reference Number</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.reference }}</span>
+                </div>
+                {% endif %}
+                {% if payment_transaction.transaction_id %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Transaction ID</span>
+                    <span class="text-base font-semibold text-gray-900 font-mono">{{ payment_transaction.transaction_id }}</span>
+                </div>
+                {% endif %}
+                {% if payment_transaction.cheque %}
+                <div class="flex justify-between items-center py-2 border-b border-gray-100">
+                    <span class="text-sm text-gray-600">Cheque Number</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.cheque }}</span>
+                </div>
+                {% endif %}
+                <div class="flex justify-between items-center py-2">
+                    <span class="text-sm text-gray-600">Received By</span>
+                    <span class="text-base font-semibold text-gray-900">{{ payment_transaction.received_by }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Summary -->
+        <div class="px-8 py-6 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+                <div>
+                    <p class="text-sm text-gray-600 mb-1">Amount Paid</p>
+                    <p class="text-3xl font-bold text-green-700 print:text-2xl">
+                        KES {{ "%.2f"|format(payment_transaction.amount) }}
+                    </p>
+                </div>
+                <div class="text-right print:hidden">
+                    <div class="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center shadow-lg print:w-12 print:h-12">
+                        <i class="fas fa-check text-white text-3xl print:text-xl"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fee Structure (if available) -->
+        {% if fee_structure and fee_structure.fee_name %}
+        <div class="px-8 py-4 bg-gray-50 border-b border-gray-200">
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-600">Fee Structure</span>
+                <span class="text-base font-semibold text-gray-900">{{ fee_structure.fee_name }}</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Notes (if available) -->
+        {% if payment_transaction.notes %}
+        <div class="px-8 py-4 border-b border-gray-200">
+            <p class="text-sm text-gray-600 mb-1">Notes</p>
+            <p class="text-sm text-gray-700 italic">{{ payment_transaction.notes }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Receipt Metadata -->
+        <div class="px-8 py-4 bg-gray-50">
+            <div class="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                <div>
+                    <p class="mb-1"><span class="font-semibold">Date:</span> {{ receipt_date }}</p>
+                    <p><span class="font-semibold">Time:</span> {{ receipt_time }}</p>
+                </div>
+                <div class="text-right">
+                    <p class="mb-1"><span class="font-semibold">Receipt #:</span> {{ receipt_number }}</p>
+                    <p class="text-xs text-gray-500">Computer Generated</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="px-8 py-6 bg-gray-800 text-white text-center">
+            <p class="text-base font-semibold mb-2">Thank you for your payment!</p>
+            <p class="text-sm text-gray-300">This is an official computer-generated receipt. No signature required.</p>
+            {% if school_settings.school_phone or school_settings.school_email %}
+            <div class="flex items-center justify-center gap-4 mt-3 text-xs text-gray-400">
+                {% if school_settings.school_phone %}
+                <span><i class="fas fa-phone mr-1"></i>{{ school_settings.school_phone }}</span>
+                {% endif %}
+                {% if school_settings.school_email %}
+                <span><i class="fas fa-envelope mr-1"></i>{{ school_settings.school_email }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="max-w-4xl mx-auto mt-6 no-print">
+        <div class="flex flex-wrap justify-center gap-3">
+            <button onclick="window.print()" 
+                    class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-print"></i> Print Receipt
+            </button>
+            <a href="{{ url_for('download_payment_receipt', student_id=student.student_id, payment_id=payment.id) }}?format=pdf&download=true" 
+               download
+               class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-download"></i> Download PDF
+            </a>
+            <a href="{{ url_for('student_fees') }}" 
+               class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-arrow-left"></i> Back to Fees
+            </a>
+        </div>
+    </div>
+
+    <script>
+        function downloadReceiptPDF() {
+            // Use the direct download link
+            const downloadLink = document.querySelector('a[href*="format=pdf&download=true"]');
+            if (downloadLink) {
+                downloadLink.click();
+            } else {
+                // Fallback: construct URL manually
+                const currentUrl = window.location.href;
+                const baseUrl = currentUrl.split('?')[0];
+                const pdfUrl = baseUrl + '?format=pdf&download=true';
+                
+                const link = document.createElement('a');
+                link.href = pdfUrl;
+                link.download = 'Receipt_{{ student.student_id }}_{{ payment.id }}_{{ receipt_date.replace(" ", "_") }}.pdf';
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                }, 100);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Assign Roles & Approve - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -11,7 +11,7 @@
 {% block sidebar_content %}
 <!-- Staff Management Links -->
 <a href="/staff-management" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-user-tie w-5"></i>
     <span>Staff Management</span>
 </a>
@@ -25,19 +25,19 @@
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-calendar-times w-5"></i>
     <span>Leave Management</span>
 </a>
 
 <a href="/dashboard/employee/staff-and-salaries" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-money-check-alt w-5"></i>
     <span>Payroll Management</span>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Job Attendance'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-clock w-5"></i>
     <span>Job Attendance</span>
 </a>

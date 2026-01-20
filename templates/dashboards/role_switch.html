@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Role Switch - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -11,7 +11,7 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2 border-b border-gray-700/50 pb-4"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg active text-brand-primary dark:text-brand-secondary transition-all mb-2 border-b border-gray-700/50 pb-4"
    style="border-color: var(--role-primary);">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
@@ -23,7 +23,7 @@
     <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-4">Employee Roles</p>
     {% for emp_role in employee_roles_list %}
     <a href="/switch-role/{{ emp_role }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_employee_role') == emp_role %}text-white bg-gray-700/50 border-l-4{% else %}text-gray-300 hover:text-white hover:bg-gray-700/50{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_employee_role') == emp_role %}active text-brand-primary dark:text-brand-secondary{% else %}text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary{% endif %}"
        style="{% if session.get('viewing_as_employee_role') == emp_role %}border-color: var(--role-primary);{% endif %}">
         <i class="fas fa-user-tie w-5"></i>
         <span>{{ emp_role|title }}</span>
@@ -38,7 +38,7 @@
 <div class="mb-4">
     <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-4">Student Role</p>
     <a href="/switch-role/student" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_role') == 'student' %}text-white bg-gray-700/50 border-l-4{% else %}text-gray-300 hover:text-white hover:bg-gray-700/50{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_role') == 'student' %}active text-brand-primary dark:text-brand-secondary{% else %}text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary{% endif %}"
        style="{% if session.get('viewing_as_role') == 'student' %}border-color: #2563eb;{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student</span>
@@ -52,7 +52,7 @@
 <div class="mb-4">
     <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-4">Parent Role</p>
     <a href="/switch-role/parent" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_role') == 'parent' %}text-white bg-gray-700/50 border-l-4{% else %}text-gray-300 hover:text-white hover:bg-gray-700/50{% endif %}"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all {% if session.get('viewing_as_role') == 'parent' %}active text-brand-primary dark:text-brand-secondary{% else %}text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary{% endif %}"
        style="{% if session.get('viewing_as_role') == 'parent' %}border-color: #F97316;{% endif %}">
         <i class="fas fa-users w-5"></i>
         <span>Parent</span>
@@ -66,7 +66,7 @@
 {% if session.get('viewing_as_role') or session.get('viewing_as_employee_role') %}
 <div class="mt-4 pt-4 border-t border-gray-700/50">
     <a href="/switch-role/reset" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-undo w-5"></i>
         <span>Reset to Technician</span>
     </a>

@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}System Settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -12,7 +12,7 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 mb-3 border-b border-gray-700/50 pb-3">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
@@ -37,21 +37,21 @@
     </div>
     <div class="ml-2 space-y-1">
         <a @click.prevent="activeSection = 'school-profile'; loadSection('school-profile')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'school-profile'}"
            :style="activeSection === 'school-profile' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-school w-4"></i>
             <span>School Profile</span>
         </a>
         <a @click.prevent="activeSection = 'general-settings'; loadSection('general-settings')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'general-settings'}"
            :style="activeSection === 'general-settings' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-sliders-h w-4"></i>
             <span>General Settings</span>
         </a>
         <a @click.prevent="activeSection = 'academic-year'; loadSection('academic-year')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'academic-year'}"
            :style="activeSection === 'academic-year' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-calendar-alt w-4"></i>
@@ -72,14 +72,14 @@
     </div>
     <div class="ml-2 space-y-1">
         <a @click.prevent="activeSection = 'theme-colors'; loadSection('theme-colors')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'theme-colors'}"
            :style="activeSection === 'theme-colors' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-palette w-4"></i>
             <span>Theme / Colors</span>
         </a>
         <a @click.prevent="activeSection = 'login-settings'; loadSection('login-settings')" 
-           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50 text-sm"
+           class="sidebar-item flex items-center space-x-3 px-4 py-2.5 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary text-sm"
            :class="{'text-white bg-gray-700/50 border-l-2': activeSection === 'login-settings'}"
            :style="activeSection === 'login-settings' ? 'border-color: var(--role-primary);' : ''">
             <i class="fas fa-sign-in-alt w-4"></i>

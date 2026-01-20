@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Student Management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -19,13 +19,13 @@
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Student Attendance'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-check-circle w-5"></i>
     <span>Student Attendance</span>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Students Progress'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-chart-line w-5"></i>
     <span>Students Progress</span>
 </a>
@@ -34,7 +34,7 @@
 {% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
 {% if user_role == 'principal' or viewing_as_role == 'principal' %}
 <a href="/dashboard/employee/student-fees" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-300 hover:text-white hover:bg-gray-700/50">
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
@@ -264,7 +264,7 @@
 
     <!-- Students List - Simple List Format -->
     <!-- Mobile View (< 768px) -->
-    <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700">
+    <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         {% if students %}
             {% for student in students %}
             <div class="student-card py-2 px-2.5"
@@ -375,14 +375,11 @@
     </div>
     
     <!-- Tablet View (768px - 1023px) -->
-    <div class="hidden md:block lg:hidden divide-y divide-gray-200 dark:divide-gray-700">
+    <div class="hidden md:block lg:hidden divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <!-- List Header -->
-        <div class="grid grid-cols-8 gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-[10px] sm:text-xs text-gray-700 dark:text-gray-300">
-            <div class="col-span-3">Student</div>
-            <div class="col-span-1">ID</div>
-            <div class="col-span-1">Grade</div>
-            <div class="col-span-1">Category</div>
-            <div class="col-span-1">Status</div>
+        <div class="grid grid-cols-6 gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-[10px] sm:text-xs text-gray-700 dark:text-gray-300">
+            <div class="col-span-3">Student / ID / Gender</div>
+            <div class="col-span-2">Grade / Category / Status</div>
             <div class="col-span-1 text-right">Actions</div>
         </div>
         
@@ -395,7 +392,7 @@
                  data-id="{{ student.student_id|lower }}"
                  data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
                  x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
-                <div class="grid grid-cols-8 gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 items-center">
+                <div class="grid grid-cols-6 gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 items-center">
                     <!-- Student Name -->
                     <div class="col-span-3 flex items-center space-x-2 min-w-0">
                         <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
@@ -403,19 +400,21 @@
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-xs font-semibold text-gray-900 dark:text-white truncate">{{ student.full_name }}</p>
+                            <div class="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                                <span class="font-mono font-semibold text-gray-700 dark:text-gray-300">{{ student.student_id }}</span>
+                                {% if student.gender %}
+                                <span class="text-gray-300 dark:text-gray-600">•</span>
+                                <span class="uppercase font-medium">{{ student.gender }}</span>
+                                {% endif %}
+                            </div>
                             {% if student.parent_name %}
                             <p class="text-[10px] text-gray-500 dark:text-gray-400 truncate">{{ student.parent_name }}</p>
                             {% endif %}
                         </div>
                     </div>
                     
-                    <!-- Student ID -->
-                    <div class="col-span-1">
-                        <p class="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400 font-mono truncate">{{ student.student_id }}</p>
-                    </div>
-                    
-                    <!-- Grade -->
-                    <div class="col-span-1">
+                    <!-- Grade / Category / Status -->
+                    <div class="col-span-2 flex flex-wrap gap-1.5">
                         {% if student.current_grade %}
                         <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
                             {{ student.current_grade }}
@@ -423,21 +422,11 @@
                         {% else %}
                         <span class="text-[10px] text-gray-400">-</span>
                         {% endif %}
-                    </div>
-                    
-                    <!-- Category -->
-                    <div class="col-span-1">
                         {% if student.student_category %}
                         <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize truncate block">
                             {{ student.student_category }}
                         </span>
-                        {% else %}
-                        <span class="text-[10px] text-gray-400">-</span>
                         {% endif %}
-                    </div>
-                    
-                    <!-- Status -->
-                    <div class="col-span-1">
                         {% if student.status == 'in session' %}
                         <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center gap-1 w-fit">
                             <span class="w-1 h-1 bg-green-500 rounded-full"></span>
@@ -502,17 +491,13 @@
     </div>
     
     <!-- Desktop View (≥ 1024px) - Simple List -->
-    <div class="hidden lg:block divide-y divide-gray-200 dark:divide-gray-700">
+    <div class="hidden lg:block divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
         <!-- List Header -->
-        <div class="grid lg:grid-cols-12 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-xs xl:text-sm text-gray-700 dark:text-gray-300">
-            <div class="col-span-3">Student</div>
-            <div class="col-span-1">ID</div>
-            <div class="col-span-1">Grade</div>
-            <div class="col-span-1">Category</div>
+        <div class="grid lg:grid-cols-10 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-xs xl:text-sm text-gray-700 dark:text-gray-300">
+            <div class="col-span-4">Student / ID / Gender</div>
+            <div class="col-span-3">Grade / Category / Status</div>
             <div class="col-span-2">Parent</div>
-            <div class="col-span-1">Gender</div>
-            <div class="col-span-1">Status</div>
-            <div class="col-span-2 text-right">Actions</div>
+            <div class="col-span-1 text-right">Actions</div>
         </div>
         
         <!-- Students List Items -->
@@ -524,24 +509,26 @@
                  data-id="{{ student.student_id|lower }}"
                  data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
                  x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
-                <div class="grid lg:grid-cols-12 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 items-center">
+                <div class="grid lg:grid-cols-10 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 items-center">
                     <!-- Student Name -->
-                    <div class="col-span-3 flex items-center space-x-2 xl:space-x-3 min-w-0">
+                    <div class="col-span-4 flex items-center space-x-2 xl:space-x-3 min-w-0">
                         <div class="w-9 h-9 xl:w-10 xl:h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
                             <i class="fas fa-user-graduate text-white text-xs xl:text-sm"></i>
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-xs xl:text-sm font-semibold text-gray-900 dark:text-white truncate">{{ student.full_name }}</p>
+                            <div class="flex items-center gap-1.5 text-[11px] xl:text-xs text-gray-500 dark:text-gray-400 truncate">
+                                <span class="font-mono font-semibold text-gray-700 dark:text-gray-300">{{ student.student_id }}</span>
+                                {% if student.gender %}
+                                <span class="text-gray-300 dark:text-gray-600">•</span>
+                                <span class="uppercase font-medium">{{ student.gender }}</span>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                     
-                    <!-- Student ID -->
-                    <div class="col-span-1">
-                        <p class="text-xs xl:text-sm text-gray-600 dark:text-gray-400 font-mono truncate">{{ student.student_id }}</p>
-                    </div>
-                    
-                    <!-- Grade -->
-                    <div class="col-span-1">
+                    <!-- Grade / Category / Status -->
+                    <div class="col-span-3 flex flex-wrap items-center gap-2">
                         {% if student.current_grade %}
                         <span class="px-2 py-1 text-xs font-semibold rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
                             {{ student.current_grade }}
@@ -549,16 +536,36 @@
                         {% else %}
                         <span class="text-xs text-gray-400">-</span>
                         {% endif %}
-                    </div>
-                    
-                    <!-- Category -->
-                    <div class="col-span-1">
                         {% if student.student_category %}
                         <span class="px-2 py-1 text-xs font-semibold rounded bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 capitalize truncate block">
                             {{ student.student_category }}
                         </span>
+                        {% endif %}
+                        {% if student.status == 'in session' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center gap-1.5 w-fit">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                            Active
+                        </span>
+                        {% elif student.status == 'pending approval' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 w-fit">
+                            Pending
+                        </span>
+                        {% elif student.status == 'suspended' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                            Suspended
+                        </span>
+                        {% elif student.status == 'expelled' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
+                            Expelled
+                        </span>
+                        {% elif student.status == 'alumni' %}
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
+                            Alumni
+                        </span>
                         {% else %}
-                        <span class="text-xs text-gray-400">-</span>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
+                            {{ student.status|title }}
+                        </span>
                         {% endif %}
                     </div>
                     
@@ -573,47 +580,8 @@
                         {% endif %}
                     </div>
                     
-                    <!-- Gender -->
-                    <div class="col-span-1">
-                        {% if student.gender %}
-                        <span class="text-xs xl:text-sm text-gray-600 dark:text-gray-400">{{ student.gender }}</span>
-                        {% else %}
-                        <span class="text-xs text-gray-400">-</span>
-                        {% endif %}
-                    </div>
-                    
-                    <!-- Status -->
-                    <div class="col-span-1">
-                            {% if student.status == 'in session' %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex items-center gap-1.5 w-fit">
-                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                            Active
-                            </span>
-                            {% elif student.status == 'pending approval' %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 w-fit">
-                            Pending
-                            </span>
-                            {% elif student.status == 'suspended' %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
-                                Suspended
-                            </span>
-                            {% elif student.status == 'expelled' %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 w-fit">
-                                Expelled
-                            </span>
-                            {% elif student.status == 'alumni' %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
-                                Alumni
-                            </span>
-                            {% else %}
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300 w-fit">
-                                {{ student.status|title }}
-                            </span>
-                            {% endif %}
-                        </div>
-                    
                     <!-- Actions -->
-                    <div class="col-span-2 flex items-center justify-end gap-1.5 xl:gap-2">
+                    <div class="col-span-1 flex items-center justify-end gap-1.5 xl:gap-2">
                             {% if student.status == 'pending approval' %}
                             <form action="/approve-student/{{ student.student_id }}" method="POST" class="inline">
                                 <button type="submit" 

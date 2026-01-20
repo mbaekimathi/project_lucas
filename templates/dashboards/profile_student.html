@@ -1,4 +1,4 @@
-{% extends "dashboards/base_dashboard.html" %}
+{% extends "base.html" %}
 
 {% block title %}Profile - Student - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
@@ -11,7 +11,7 @@
 {% block role_display %}Student{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/student" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+<a href="/dashboard/student" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all">
     <i class="fas fa-home w-5"></i>
     <span>Dashboard</span>
 </a>
@@ -19,7 +19,7 @@
     <i class="fas fa-user w-5"></i>
     <span>Profile</span>
 </a>
-<a href="/settings/student" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-300 hover:text-white hover:bg-gray-700/50 transition-all">
+<a href="/settings/student" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all">
     <i class="fas fa-cog w-5"></i>
     <span>Settings</span>
 </a>
