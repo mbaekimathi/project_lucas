@@ -4230,6 +4230,118 @@ def generate_invoice(student_id):
             invoice_time = now.strftime('%I:%M %p')
             invoice_number = f"INV-{student_id}-{now.strftime('%Y%m%d%H%M%S')}"
             
+            # Fetch all fee structures for this student (for fee breakdown table)
+            fee_breakdown = []
+            total_fees = 0.0
+            if academic_level_id:
+                cursor.execute("""
+                    SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                           fs.term_id, fs.academic_year_id,
+                           t.term_name, t.start_date as term_start, t.end_date as term_end,
+                           ay.year_name
+                    FROM fee_structures fs
+                    LEFT JOIN terms t ON fs.term_id = t.id
+                    LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                    WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                    ORDER BY fs.start_date DESC, fs.created_at DESC
+                """, (academic_level_id,))
+                fee_structures_results = cursor.fetchall()
+                
+                for fs_row in fee_structures_results:
+                    if isinstance(fs_row, dict):
+                        fee_id = fs_row.get('id')
+                        fee_name = fs_row.get('fee_name', '')
+                        total_amount = float(fs_row.get('total_amount', 0))
+                        term_name = fs_row.get('term_name', '')
+                        year_name = fs_row.get('year_name', '')
+                        start_date = fs_row.get('start_date')
+                        end_date = fs_row.get('end_date')
+                    else:
+                        fee_id = fs_row[0]
+                        fee_name = fs_row[1] if len(fs_row) > 1 else ''
+                        total_amount = float(fs_row[2] if len(fs_row) > 2 else 0)
+                        start_date = fs_row[3] if len(fs_row) > 3 else None
+                        end_date = fs_row[4] if len(fs_row) > 4 else None
+                        term_id = fs_row[5] if len(fs_row) > 5 else None
+                        academic_year_id = fs_row[6] if len(fs_row) > 6 else None
+                        term_name = fs_row[7] if len(fs_row) > 7 else ''
+                        term_start = fs_row[8] if len(fs_row) > 8 else None
+                        term_end = fs_row[9] if len(fs_row) > 9 else None
+                        year_name = fs_row[10] if len(fs_row) > 10 else ''
+                    
+                    # Format term display (e.g., "Term 3, 2025")
+                    term_display = ''
+                    if term_name and year_name:
+                        # Extract year from year_name
+                        year_part = year_name
+                        if hasattr(year_name, 'split'):
+                            year_parts = year_name.split()
+                            if len(year_parts) > 0:
+                                # Try to extract year from year_name like "2024/2025" or "2024-2025"
+                                for part in year_parts:
+                                    if '/' in part:
+                                        year_part = part.split('/')[1] if len(part.split('/')) > 1 else part.split('/')[0]
+                                        break
+                                    elif '-' in part:
+                                        year_part = part.split('-')[1] if len(part.split('-')) > 1 else part.split('-')[0]
+                                        break
+                        term_display = f"{term_name}, {year_part}"
+                    elif fee_name:
+                        term_display = fee_name
+                    else:
+                        term_display = 'Fees'
+                    
+                    fee_breakdown.append({
+                        'term': term_display,
+                        'description': 'fees',
+                        'amount': total_amount
+                    })
+                    total_fees += total_amount
+            
+            # Fetch all payments for this student (for payment details table)
+            cursor.execute("""
+                SELECT sp.id, sp.amount_paid, sp.payment_method, sp.reference_number,
+                       sp.transaction_id, sp.payment_date, sp.created_at,
+                       e.full_name as received_by_name
+                FROM student_payments sp
+                LEFT JOIN employees e ON sp.received_by = e.id
+                WHERE sp.student_id = %s
+                ORDER BY sp.payment_date DESC, sp.created_at DESC
+            """, (student_id,))
+            payments_results = cursor.fetchall()
+            
+            payment_details = []
+            total_paid_all = 0.0
+            for pay_row in payments_results:
+                if isinstance(pay_row, dict):
+                    pay_id = pay_row.get('id')
+                    amount = float(pay_row.get('amount_paid', 0))
+                    method = pay_row.get('payment_method', '')
+                    reference = pay_row.get('reference_number', '') or pay_row.get('transaction_id', '')
+                    pay_date = pay_row.get('payment_date')
+                else:
+                    pay_id = pay_row[0]
+                    amount = float(pay_row[1] if len(pay_row) > 1 else 0)
+                    method = pay_row[2] if len(pay_row) > 2 else ''
+                    reference = pay_row[3] if len(pay_row) > 3 else (pay_row[4] if len(pay_row) > 4 else '')
+                    pay_date = pay_row[5] if len(pay_row) > 5 else None
+                
+                if pay_date and hasattr(pay_date, 'strftime'):
+                    pay_date_formatted = pay_date.strftime('%d/%m/%Y')
+                else:
+                    pay_date_formatted = str(pay_date) if pay_date else ''
+                
+                payment_details.append({
+                    'date': pay_date_formatted,
+                    'amount': amount,
+                    'method': method,
+                    'reference': reference or ''
+                })
+                total_paid_all += amount
+            
+            # Calculate balance
+            balance_due = total_fees - total_paid_all
+            
     except Exception as e:
         print(f"Error generating invoice: {e}")
         import traceback
@@ -4248,652 +4360,186 @@ def generate_invoice(student_id):
                              student=student,
                              fee_structure=fee_structure,
                              payment_transactions=payment_transactions,
+                             fee_breakdown=fee_breakdown,
+                             payment_details=payment_details,
+                             total_fees=total_fees,
                              total_paid=total_paid,
+                             total_paid_all=total_paid_all,
                              carry_forward=carry_forward,
                              balance_brought_forward=balance_brought_forward,
                              balance=balance,
+                             balance_due=balance_due,
                              school_settings=school_settings,
                              invoice_date=invoice_date,
                              invoice_time=invoice_time,
                              invoice_number=invoice_number)
     
-    # Generate PDF (original functionality)
+    # Generate PDF matching receipt format
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                            rightMargin=0.75*inch, leftMargin=0.75*inch,
                            topMargin=0.75*inch, bottomMargin=0.75*inch)
     
-    # Container for the 'Flowable' objects
     elements = []
-    
-    # Define styles with improved color scheme
     styles = getSampleStyleSheet()
+    
+    # Header with logo and contact info (matching receipt format)
+    logo_cell = []
+    if school_settings.get('school_logo'):
+        try:
+            logo_path = os.path.join('static', school_settings['school_logo'])
+            if os.path.exists(logo_path):
+                logo_cell.append(Image(logo_path, width=1*inch, height=1*inch))
+            else:
+                logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+        except:
+            logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+    else:
+        logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+    
+    # Contact info in middle
+    contact_info = []
+    if school_settings.get('school_address'):
+        contact_info.append(school_settings['school_address'])
+    if school_settings.get('school_phone'):
+        contact_info.append(school_settings['school_phone'])
+    contact_cell = Paragraph("<br/>".join(contact_info) if contact_info else "", styles['Normal'])
+    
+    # Title "FEE INVOICE" on the right
     title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=28,
-        textColor=colors.HexColor('#1D3557'),
-        spaceAfter=20,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold'
-    )
-    
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=13,
-        textColor=colors.HexColor('#1D3557'),
-        spaceAfter=10,
-        fontName='Helvetica-Bold'
-    )
-    
-    normal_style = ParagraphStyle(
-        'CustomNormal',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#2B2D42'),
-        spaceAfter=6
-    )
-    
-    accent_style = ParagraphStyle(
-        'AccentStyle',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#E63946'),
-        spaceAfter=6,
-        fontName='Helvetica-Bold'
-    )
-    
-    # Header with improved professional design
-    school_name = school_settings.get('school_name', 'Modern School')
-    school_address = school_settings.get('school_address', '') or ''
-    school_phone = school_settings.get('school_phone', '') or ''
-    school_email = school_settings.get('school_email', '') or ''
-    
-    # Professional header with school info and invoice title side by side
-    header_title_style = ParagraphStyle(
-        'HeaderTitle',
-        parent=styles['Heading1'],
-        fontSize=20,
-        textColor=colors.HexColor('#1D3557'),
-        fontName='Helvetica-Bold',
-        spaceAfter=4
-    )
-    
-    header_subtitle_style = ParagraphStyle(
-        'HeaderSubtitle',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.HexColor('#2B2D42'),
-        fontName='Helvetica'
-    )
-    
-    # Left column: School info
-    school_info_lines = [Paragraph(f"<b>{school_name.upper()}</b>", header_title_style)]
-    if school_address:
-        school_info_lines.append(Paragraph(school_address, header_subtitle_style))
-    if school_phone:
-        school_info_lines.append(Paragraph(f"Phone: {school_phone}", header_subtitle_style))
-    if school_email:
-        school_info_lines.append(Paragraph(f"Email: {school_email}", header_subtitle_style))
-    
-    # Right column: Invoice title and student name
-    student_name = student.get('full_name', 'N/A')
-    invoice_title_style = ParagraphStyle(
-        'InvoiceTitleHeader',
+        'InvoiceTitle',
         parent=styles['Heading1'],
         fontSize=18,
-        textColor=colors.HexColor('#E63946'),
-        fontName='Helvetica-Bold',
+        textColor=colors.HexColor('#000000'),
+        spaceAfter=0,
         alignment=TA_RIGHT,
-        spaceAfter=6
+        fontName='Helvetica-Bold'
     )
+    title_cell = Paragraph("FEE INVOICE", title_style)
     
-    student_name_header_style = ParagraphStyle(
-        'StudentNameHeader',
-        parent=styles['Normal'],
-        fontSize=12,
-        textColor=colors.HexColor('#1D3557'),
-        fontName='Helvetica-Bold',
-        alignment=TA_RIGHT,
-        spaceAfter=2
-    )
-    
-    invoice_info_lines = [
-        Paragraph("FEE INVOICE", invoice_title_style),
-        Paragraph(f"<b>{student_name.upper()}</b>", student_name_header_style)
-    ]
-    
-    # Create two-column header
-    header_data = [[school_info_lines, invoice_info_lines]]
-    header_table = Table(header_data, colWidths=[4*inch, 3*inch])
+    header_table = Table([[logo_cell, contact_cell, title_cell]], colWidths=[2*inch, 2.5*inch, 3*inch])
     header_table.setStyle(TableStyle([
-        ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-        ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('LINEBELOW', (0, 0), (-1, 0), 3, colors.HexColor('#1D3557')),
+        ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
     ]))
     elements.append(header_table)
-    elements.append(Spacer(1, 0.25*inch))
-    
-    # Professional invoice details section
-    invoice_date = datetime.now().strftime("%B %d, %Y")
-    invoice_number = f"INV-{student_id}-{datetime.now().strftime('%Y%m%d')}"
-    
-    # Get current academic year and term if available
-    current_year = datetime.now().strftime('%Y')
-    if fee_structure and fee_structure.get('level_name'):
-        academic_info = f"{fee_structure.get('level_name', '')} {fee_structure.get('level_category', '')}".strip()
-    else:
-        academic_info = student.get('current_grade', 'N/A')
-    
-    # Create a more organized information layout
-    detail_label_style = ParagraphStyle(
-        'DetailLabel',
-        parent=normal_style,
-        fontSize=9,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#1D3557')
-    )
-    
-    # Header style with white text for blue backgrounds
-    header_label_style = ParagraphStyle(
-        'HeaderLabel',
-        parent=normal_style,
-        fontSize=9,
-        fontName='Helvetica-Bold',
-        textColor=colors.white
-    )
-    
-    detail_value_style = ParagraphStyle(
-        'DetailValue',
-        parent=normal_style,
-        fontSize=10,
-        fontName='Helvetica',
-        textColor=colors.HexColor('#2B2D42')
-    )
-    
-    # Student information section
-    student_category_text = ''
-    if student.get('student_category'):
-        category_display = student.get('student_category', '').title()
-        student_category_text = f"<br/><b>Category:</b> {category_display}"
-    
-    student_details = [
-        [Paragraph('<b>STUDENT INFORMATION</b>', header_label_style), ''],
-        [Paragraph('Student ID:', detail_label_style), Paragraph(student_id, detail_value_style)],
-        [Paragraph('Full Name:', detail_label_style), Paragraph(student.get('full_name', 'N/A'), detail_value_style)],
-        [Paragraph('Grade:', detail_label_style), Paragraph(student.get('current_grade', 'N/A'), detail_value_style)],
-    ]
-    if student.get('student_category'):
-        student_details.append([Paragraph('Category:', detail_label_style), Paragraph(category_display, detail_value_style)])
-    
-    # Invoice information section
-    invoice_details = [
-        [Paragraph('<b>INVOICE INFORMATION</b>', header_label_style), ''],
-        [Paragraph('Invoice Number:', detail_label_style), Paragraph(invoice_number, detail_value_style)],
-        [Paragraph('Invoice Date:', detail_label_style), Paragraph(invoice_date, detail_value_style)],
-        [Paragraph('Academic Level:', detail_label_style), Paragraph(academic_info, detail_value_style)],
-    ]
-    
-    # Combine into two-column layout
-    info_data = []
-    max_rows = max(len(student_details), len(invoice_details))
-    for i in range(max_rows):
-        row = []
-        if i < len(student_details):
-            row.extend(student_details[i])
-        else:
-            row.extend(['', ''])
-        if i < len(invoice_details):
-            row.extend(invoice_details[i])
-        else:
-            row.extend(['', ''])
-        info_data.append(row)
-    
-    info_table = Table(info_data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 2*inch])
-    info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#1D3557')),
-        ('BACKGROUND', (2, 0), (2, 0), colors.HexColor('#1D3557')),
-        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
-        ('TEXTCOLOR', (2, 0), (2, 0), colors.white),
-        ('BACKGROUND', (0, 1), (1, -1), colors.HexColor('#F8F9FA')),
-        ('BACKGROUND', (2, 1), (3, -1), colors.white),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor('#2B2D42')),  # Only apply dark text to non-header rows
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-        ('FONTNAME', (2, 0), (2, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E8F4F8')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LINEBELOW', (0, 0), (-1, 0), 0, colors.HexColor('#1D3557')),
-    ]))
-    elements.append(info_table)
-    elements.append(Spacer(1, 0.35*inch))
-    
-    # Ledger-style Account Statement
-    elements.append(Paragraph("ACCOUNT STATEMENT", heading_style))
-    elements.append(Spacer(1, 0.2*inch))
-    
-    # Use balance_brought_forward calculated earlier (inside cursor context)
-    # balance_brought_forward is already calculated and stored above
-    
-    # Build ledger table
-    # Create white text style for header row
-    ledger_header_style = ParagraphStyle(
-        'LedgerHeader',
-        parent=normal_style,
-        fontSize=10,
-        fontName='Helvetica-Bold',
-        textColor=colors.white
-    )
-    
-    ledger_data = [[
-            Paragraph('<b>Date</b>', ledger_header_style),
-            Paragraph('<b>Ref No</b>', ledger_header_style),
-            Paragraph('<b>Description</b>', ledger_header_style),
-            Paragraph('<b>Debit</b>', ledger_header_style),
-            Paragraph('<b>Credit</b>', ledger_header_style),
-            Paragraph('<b>Balance</b>', ledger_header_style)
-    ]]
-    
-    # Previous term closing section (if there's a previous term)
-    if balance_brought_forward != 0:
-            # Get previous term info from the calculation above
-            # We need to recalculate it here or pass it through
-            # For now, let's add a separator and closing balance row
-            separator_style = ParagraphStyle(
-                'Separator',
-                parent=normal_style,
-                fontSize=9,
-                fontName='Helvetica-Bold',
-                textColor=colors.HexColor('#1D3557'),
-                alignment=TA_CENTER
-            )
-            
-            # Previous term closing separator
-            prev_term_closing_balance = balance_brought_forward
-            prev_term_end_date = ""
-            if fee_structure and fee_structure.get('start_date'):
-                try:
-                    if hasattr(fee_structure['start_date'], 'strftime'):
-                        prev_term_end_date = (fee_structure['start_date'] - timedelta(days=1)).strftime('%b %d, %Y')
-                    else:
-                        date_obj = datetime.strptime(str(fee_structure['start_date']).split(' ')[0], '%Y-%m-%d')
-                        prev_term_end_date = (date_obj - timedelta(days=1)).strftime('%b %d, %Y')
-                except:
-                    prev_term_end_date = "Previous Term"
-            
-            # Add separator row for previous term closing
-            ledger_data.append([
-                Paragraph("─" * 20, separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("<b>PREVIOUS TERM CLOSING</b>", separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("─" * 10, separator_style)
-            ])
-            
-            # Previous term closing balance
-            if prev_term_closing_balance > 0:
-                closing_desc = "Closing Balance (Outstanding)"
-                closing_debit = f"{prev_term_closing_balance:,.2f}"
-                closing_credit = "0.00"
-            else:
-                closing_desc = "Closing Balance (Credit/Overpay)"
-                closing_debit = "0.00"
-                closing_credit = f"{abs(prev_term_closing_balance):,.2f}"
-            
-            ledger_data.append([
-                Paragraph(prev_term_end_date or "Previous Term", normal_style),
-                Paragraph("CLOSE", normal_style),
-                Paragraph(closing_desc, normal_style),
-                Paragraph(closing_debit, normal_style),
-                Paragraph(closing_credit, normal_style),
-                Paragraph(f"{prev_term_closing_balance:,.2f}", normal_style)
-            ])
-            
-            # Add separator row for new term opening
-            ledger_data.append([
-                Paragraph("─" * 20, separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("<b>NEW TERM OPENING - BALANCE BROUGHT FORWARD</b>", separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("─" * 10, separator_style),
-                Paragraph("─" * 10, separator_style)
-            ])
-            
-            # Balance brought forward row
-            # Get fee date for balance brought forward
-            bf_date = "Opening"
-            if fee_structure and fee_structure.get('start_date'):
-                try:
-                    if hasattr(fee_structure['start_date'], 'strftime'):
-                        bf_date = fee_structure['start_date'].strftime('%b %d, %Y')
-                    else:
-                        bf_date = datetime.strptime(str(fee_structure['start_date']).split(' ')[0], '%Y-%m-%d').strftime('%b %d, %Y')
-                except:
-                    bf_date = "Opening"
-            bf_ref = "BF"
-            if balance_brought_forward > 0:
-                bf_desc = "Balance Brought Forward (Outstanding)"
-                bf_debit = f"{balance_brought_forward:,.2f}"
-                bf_credit = "0.00"
-            else:
-                bf_desc = "Balance Brought Forward (Credit/Overpay)"
-                bf_debit = "0.00"
-                bf_credit = f"{abs(balance_brought_forward):,.2f}"
-            
-            running_balance = balance_brought_forward
-            ledger_data.append([
-                Paragraph(bf_date or "Opening", normal_style),
-                Paragraph(bf_ref, normal_style),
-                Paragraph(bf_desc, normal_style),
-                Paragraph(bf_debit, normal_style),
-                Paragraph(bf_credit, normal_style),
-                Paragraph(f"{running_balance:,.2f}", normal_style)
-            ])
-            
-            # Add separator for current term transactions
-            separator_style = ParagraphStyle(
-                'Separator',
-                parent=normal_style,
-                fontSize=9,
-                fontName='Helvetica-Bold',
-                textColor=colors.HexColor('#1D3557'),
-                alignment=TA_CENTER
-            )
-            ledger_data.append([
-                Paragraph("", normal_style),
-                Paragraph("", normal_style),
-                Paragraph("<b>CURRENT TERM TRANSACTIONS</b>", separator_style),
-                Paragraph("", normal_style),
-                Paragraph("", normal_style),
-                Paragraph("", normal_style)
-            ])
-    else:
-        running_balance = 0.0
-    
-    # Current fee structure charges - break down each fee item (Debit)
-    fee_date = ""
-    if fee_structure.get('start_date'):
-        try:
-            if hasattr(fee_structure['start_date'], 'strftime'):
-                fee_date = fee_structure['start_date'].strftime('%b %d, %Y')
-            else:
-                fee_date = datetime.strptime(str(fee_structure['start_date']).split(' ')[0], '%Y-%m-%d').strftime('%b %d, %Y')
-        except:
-            fee_date = str(fee_structure.get('start_date', ''))[:10]
-    
-    # Add each fee item as a separate row
-    if fee_structure.get('items') and len(fee_structure['items']) > 0:
-        for item in fee_structure['items']:
-            item_name = item.get('item_name', '')
-            item_desc = item.get('item_description', '') or ''
-            item_amount = float(item.get('amount', 0) or 0)
-            
-            # Build description with item name and description
-            if item_desc and item_desc != '-':
-                desc_text = f"{item_name} - {item_desc}"
-            else:
-                desc_text = item_name
-            
-            running_balance += item_amount
-            
-            ledger_data.append([
-                Paragraph(fee_date or "Current", normal_style),
-                Paragraph("INV", normal_style),
-                Paragraph(desc_text, normal_style),
-                Paragraph(f"{item_amount:,.2f}", normal_style),
-                Paragraph("0.00", normal_style),
-                Paragraph(f"{running_balance:,.2f}", normal_style)
-            ])
-    else:
-        # Fallback: if no items, show total fee structure
-        fee_total = fee_structure.get('total_amount', 0)
-        running_balance += fee_total
-        fee_desc = f"Fee Structure: {fee_structure.get('fee_name', 'N/A')}"
-        ledger_data.append([
-            Paragraph(fee_date or "Current", normal_style),
-            Paragraph("INV", normal_style),
-            Paragraph(fee_desc, normal_style),
-            Paragraph(f"{fee_total:,.2f}", normal_style),
-            Paragraph("0.00", normal_style),
-            Paragraph(f"{running_balance:,.2f}", normal_style)
-        ])
-    
-    # Payment transactions (Credits)
-    if payment_transactions:
-        for trans in payment_transactions:
-            trans_amount = trans.get('amount', 0)
-            running_balance -= trans_amount
-            
-            ref_text = trans.get('reference', '') or trans.get('cheque', '') or trans.get('transaction_id', '') or trans.get('method', 'N/A')
-            if len(ref_text) > 20:
-                ref_text = ref_text[:20] + '...'
-            
-            desc_text = f"Payment - {trans.get('method', 'N/A')}"
-            if trans.get('notes'):
-                desc_text += f" ({trans.get('notes', '')[:30]})"
-            
-            ledger_data.append([
-                Paragraph(trans.get('date', 'N/A'), normal_style),
-                Paragraph(ref_text, normal_style),
-                Paragraph(desc_text, normal_style),
-                Paragraph("0.00", normal_style),
-                Paragraph(f"{trans_amount:,.2f}", normal_style),
-                Paragraph(f"{running_balance:,.2f}", normal_style)
-            ])
-    
-    # Final balance row
-    final_balance_style = ParagraphStyle(
-        'FinalBalance',
-        parent=normal_style,
-        fontSize=11,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#E63946') if running_balance > 0 else colors.HexColor('#10b981')
-    )
-    
-    balance_text = "Outstanding Balance"
-    if running_balance < 0:
-        balance_text = "Credit Balance (Overpay)"
-    
-    ledger_data.append([
-        Paragraph("", normal_style),
-        Paragraph("", normal_style),
-        Paragraph(f"<b>{balance_text}</b>", final_balance_style),
-        Paragraph("", normal_style),
-        Paragraph("", normal_style),
-        Paragraph(f"<b>{running_balance:,.2f}</b>", final_balance_style)
-    ])
-    
-    # Create ledger table with improved styling
-    ledger_table = Table(ledger_data, colWidths=[1.1*inch, 1.1*inch, 2.4*inch, 1.0*inch, 1.0*inch, 1.2*inch])
-    ledger_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1D3557')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('ALIGN', (3, 1), (4, -2), 'RIGHT'),
-        ('ALIGN', (5, 1), (5, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('FONTSIZE', (0, 1), (-1, -2), 9),
-        ('FONTSIZE', (0, -1), (-1, -1), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 10),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E8F4F8')),
-        ('LINEBELOW', (0, -2), (-1, -2), 2, colors.HexColor('#1D3557')),
-        ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#1D3557')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8F4F8')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, colors.HexColor('#F8F9FA')]),
-    ]))
-    elements.append(ledger_table)
     elements.append(Spacer(1, 0.3*inch))
     
-    # Summary section
-    summary_style = ParagraphStyle(
-        'SummaryStyle',
-        parent=normal_style,
+    # Student Information
+    normal_style = ParagraphStyle(
+        'Normal',
+        parent=styles['Normal'],
         fontSize=10,
-        fontName='Helvetica',
-        textColor=colors.HexColor('#2B2D42')
+        textColor=colors.HexColor('#000000'),
+        spaceAfter=6
     )
-    
-    fee_total = fee_structure.get('total_amount', 0) if fee_structure else 0.0
-    
-    # Professional summary table
-    summary_heading_style = ParagraphStyle(
-        'SummaryHeading',
+    bold_style = ParagraphStyle(
+        'Bold',
         parent=normal_style,
-        fontSize=12,
-        fontName='Helvetica-Bold',
-        textColor=colors.white,  # White text for blue background
-        spaceAfter=8
+        fontName='Helvetica-Bold'
     )
     
-    summary_label_style = ParagraphStyle(
-        'SummaryLabel',
-        parent=normal_style,
-        fontSize=10,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#2B2D42')
-    )
-    
-    summary_value_style = ParagraphStyle(
-        'SummaryValue',
-        parent=normal_style,
-        fontSize=10,
-        fontName='Helvetica',
-        textColor=colors.HexColor('#2B2D42'),
-        alignment=TA_RIGHT
-    )
-    
-    summary_data = [
-        [Paragraph('<b>SUMMARY</b>', summary_heading_style), ''],
-        [Paragraph('Balance Brought Forward:', summary_label_style), Paragraph(f"KES {balance_brought_forward:,.2f}", summary_value_style)],
-        [Paragraph('Current Fee Charges:', summary_label_style), Paragraph(f"KES {fee_total:,.2f}", summary_value_style)],
-        [Paragraph('Total Payments:', summary_label_style), Paragraph(f"KES {total_paid:,.2f}", summary_value_style)],
+    student_data = [
+        [Paragraph("<b>NAME:</b>", bold_style), Paragraph(student['full_name'], normal_style)],
+        [Paragraph("<b>GRADE:</b>", bold_style), Paragraph(student.get('current_grade', 'N/A'), normal_style)],
+        [Paragraph("<b>DATE:</b>", bold_style), Paragraph(invoice_date, normal_style)],
     ]
     
-    if running_balance < 0:
-        overpay_style = ParagraphStyle(
-            'OverpayStyle',
-            parent=summary_value_style,
-            textColor=colors.HexColor('#10b981'),
-            fontName='Helvetica-Bold'
-        )
-        summary_data.append([Paragraph('Current Overpay:', summary_label_style), Paragraph(f"KES {abs(running_balance):,.2f}", overpay_style)])
-    
-    balance_style = ParagraphStyle(
-        'BalanceStyle',
-        parent=summary_value_style,
-        fontSize=11,
-        fontName='Helvetica-Bold',
-        textColor=colors.HexColor('#E63946') if running_balance > 0 else colors.HexColor('#10b981')
-    )
-    summary_data.append([Paragraph('<b>Outstanding Balance:</b>', summary_label_style), Paragraph(f"<b>KES {running_balance:,.2f}</b>", balance_style)])
-    
-    summary_table = Table(summary_data, colWidths=[3.5*inch, 2.5*inch])
-    summary_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1D3557')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('BACKGROUND', (0, 1), (-1, -2), colors.HexColor('#F8F9FA')),
-        ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#E8F4F8')),
-        ('TEXTCOLOR', (0, 1), (-1, -1), colors.HexColor('#2B2D42')),  # Only apply dark text to non-header rows
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('ALIGN', (1, 1), (1, -1), 'RIGHT'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
-        ('FONTSIZE', (0, 1), (-1, -2), 10),
-        ('FONTSIZE', (0, -1), (-1, -1), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('TOPPADDING', (0, 0), (-1, -1), 10),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E8F4F8')),
-        ('LINEBELOW', (0, -2), (-1, -2), 2, colors.HexColor('#1D3557')),
-        ('LINEABOVE', (0, -1), (-1, -1), 2, colors.HexColor('#1D3557')),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    student_table = Table(student_data, colWidths=[1.5*inch, 5.5*inch])
+    student_table.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
     ]))
-    elements.append(summary_table)
-    elements.append(Spacer(1, 0.35*inch))
+    elements.append(student_table)
+    elements.append(Spacer(1, 0.3*inch))
     
-    # Payment deadline and important notes
-    if fee_structure and fee_structure.get('payment_deadline'):
-        deadline_date = datetime.strptime(str(fee_structure['payment_deadline']), '%Y-%m-%d').strftime('%B %d, %Y')
-        deadline_style = ParagraphStyle(
-            'Deadline',
-            parent=styles['Normal'],
-            fontSize=11,
-            textColor=colors.HexColor('#E63946'),
-            spaceAfter=12,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        elements.append(Paragraph(f"<b>⚠ Payment Deadline: {deadline_date}</b>", deadline_style))
+    # Fee Breakdown Table
+    fee_breakdown_data = [['Fee Breakdown', 'Description', 'Amount']]
+    for fee in fee_breakdown:
+        fee_breakdown_data.append([
+            fee['term'],
+            fee['description'],
+            f"{fee['amount']:,.2f}"
+        ])
     
-    # Important notes section
+    fee_table = Table(fee_breakdown_data, colWidths=[2.5*inch, 2.5*inch, 2*inch])
+    fee_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+    ]))
+    elements.append(fee_table)
+    elements.append(Spacer(1, 0.3*inch))
+    
+    # Payment Details Table
+    payment_details_data = [['Date', 'Amount', 'Payment Method', 'Reference No.']]
+    for payment_detail in payment_details:
+        payment_details_data.append([
+            payment_detail['date'],
+            f"{payment_detail['amount']:,.2f}",
+            payment_detail['method'],
+            payment_detail['reference']
+        ])
+    
+    payment_table = Table(payment_details_data, colWidths=[1.5*inch, 1.5*inch, 2*inch, 2*inch])
+    payment_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+    ]))
+    elements.append(payment_table)
     elements.append(Spacer(1, 0.2*inch))
-    notes_style = ParagraphStyle(
-        'NotesStyle',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=colors.HexColor('#2B2D42'),
-        spaceAfter=6,
-        alignment=TA_LEFT,
-        fontName='Helvetica'
+    
+    # Total Paid (right aligned)
+    total_paid_style = ParagraphStyle(
+        'TotalPaid',
+        parent=normal_style,
+        alignment=TA_RIGHT,
+        fontSize=10
     )
-    notes_text = "<b>Important Notes:</b><br/>"
-    notes_text += "• Please ensure payment is made before the deadline to avoid penalties.<br/>"
-    notes_text += "• Overpayments will be carried forward to the next term.<br/>"
-    notes_text += "• Keep this invoice for your records.<br/>"
-    if running_balance > 0:
-        notes_text += f"• Outstanding balance of KES {running_balance:,.2f} must be cleared before the deadline."
-    elements.append(Paragraph(notes_text, notes_style))
-    elements.append(Spacer(1, 0.2*inch))
+    elements.append(Paragraph(f"<b>Total Paid: {total_paid_all:,.2f}</b>", total_paid_style))
+    elements.append(Spacer(1, 0.3*inch))
     
-    if not fee_structure or fee_structure.get('total_amount', 0) == 0:
-        # No fee structure message
-        no_fee_style = ParagraphStyle(
-            'NoFee',
-            parent=styles['Normal'],
-            fontSize=12,
-            textColor=colors.HexColor('#DC2626'),
-            spaceAfter=20,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
-        )
-        elements.append(Spacer(1, 0.3*inch))
-        elements.append(Paragraph("No Fee Structure Assigned", no_fee_style))
-        elements.append(Paragraph("This student does not have an active fee structure.", normal_style))
-        elements.append(Spacer(1, 0.3*inch))
+    # Payment Summary (right aligned)
+    summary_style = ParagraphStyle(
+        'Summary',
+        parent=normal_style,
+        alignment=TA_RIGHT,
+        fontSize=10,
+        spaceAfter=4
+    )
+    elements.append(Paragraph("<u><b>Payment Summary</b></u>", summary_style))
+    elements.append(Paragraph(f"<b>Total fees:</b> {total_fees:,.2f}", summary_style))
+    elements.append(Paragraph(f"<b>Total Paid:</b> {total_paid_all:,.2f}", summary_style))
+    elements.append(Spacer(1, 0.1*inch))
+    elements.append(Paragraph(f"<b>Balance Due:</b> {balance_due:,.2f}", summary_style))
+    elements.append(Spacer(1, 0.3*inch))
     
     # Footer
-    elements.append(Spacer(1, 0.4*inch))
     footer_style = ParagraphStyle(
         'Footer',
         parent=styles['Normal'],
         fontSize=8,
-        textColor=colors.HexColor('#6B7280'),
-        alignment=TA_CENTER,
-        spaceBefore=20
+        textColor=colors.grey,
+        alignment=TA_CENTER
     )
+    elements.append(Spacer(1, 0.5*inch))
+    elements.append(Paragraph("Thank you for your payment!", footer_style))
     elements.append(Paragraph("This is a computer-generated invoice. No signature required.", footer_style))
-    elements.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", footer_style))
     
-    # Build PDF
     doc.build(elements)
     buffer.seek(0)
     
@@ -5031,20 +4677,27 @@ def download_payment_receipt(student_id, payment_id):
             """)
             school_result = cursor.fetchone()
             
-            school_settings = dict(school_result) if isinstance(school_result, dict) else {
-                'school_name': school_result[0] if school_result and len(school_result) > 0 else 'Modern School',
-                'school_address': school_result[1] if school_result and len(school_result) > 1 else None,  # Using school_location as school_address
-                'school_phone': school_result[2] if school_result and len(school_result) > 2 else None,
-                'school_email': school_result[3] if school_result and len(school_result) > 3 else None,
-                'school_logo': school_result[4] if school_result and len(school_result) > 4 else None
-            }
+            if isinstance(school_result, dict):
+                school_settings = school_result.copy()
+                school_settings['school_address'] = school_result.get('school_location', '')
+            else:
+                school_settings = {
+                    'school_name': school_result[0] if school_result and len(school_result) > 0 else 'Modern School',
+                    'school_location': school_result[1] if school_result and len(school_result) > 1 else None,
+                    'school_address': school_result[1] if school_result and len(school_result) > 1 else None,  # Alias for school_location
+                    'school_phone': school_result[2] if school_result and len(school_result) > 2 else None,
+                    'school_email': school_result[3] if school_result and len(school_result) > 3 else None,
+                    'school_logo': school_result[4] if school_result and len(school_result) > 4 else None
+                }
             
             # Format dates
             payment_date = payment.get('payment_date')
             if payment_date and hasattr(payment_date, 'strftime'):
                 payment_date_str = payment_date.strftime('%B %d, %Y')
+                payment_date_short = payment_date.strftime('%d/%m/%Y')
             else:
                 payment_date_str = str(payment_date) if payment_date else 'N/A'
+                payment_date_short = payment_date_str
             
             created_at = payment.get('created_at')
             if created_at and hasattr(created_at, 'strftime'):
@@ -5056,19 +4709,147 @@ def download_payment_receipt(student_id, payment_id):
             
             receipt_number = f"RCP-{student_id}-{payment_id}-{datetime.now().strftime('%Y%m%d')}"
             
-            # Prepare single payment transaction for template
+            # Get student's academic level to fetch all fee structures
+            # First get the student's current_grade, then match it with academic_levels
+            student_grade = student.get('current_grade', '')
+            academic_level_id = None
+            if student_grade:
+                cursor.execute("""
+                    SELECT al.id
+                    FROM academic_levels al
+                    WHERE al.level_name = %s AND al.level_status = 'active'
+                    LIMIT 1
+                """, (student_grade,))
+                academic_level_result = cursor.fetchone()
+                if academic_level_result:
+                    academic_level_id = academic_level_result.get('id') if isinstance(academic_level_result, dict) else academic_level_result[0]
+            
+            # Fetch all fee structures for this student (based on academic level)
+            fee_breakdown = []
+            total_fees = 0.0
+            if academic_level_id:
+                cursor.execute("""
+                    SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                           fs.term_id, fs.academic_year_id,
+                           t.term_name, t.start_date as term_start, t.end_date as term_end,
+                           ay.year_name
+                    FROM fee_structures fs
+                    LEFT JOIN terms t ON fs.term_id = t.id
+                    LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                    WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                    ORDER BY fs.start_date DESC, fs.created_at DESC
+                """, (academic_level_id,))
+                fee_structures_results = cursor.fetchall()
+                
+                for fs_row in fee_structures_results:
+                    if isinstance(fs_row, dict):
+                        fee_id = fs_row.get('id')
+                        fee_name = fs_row.get('fee_name', '')
+                        total_amount = float(fs_row.get('total_amount', 0))
+                        term_name = fs_row.get('term_name', '')
+                        year_name = fs_row.get('year_name', '')
+                        start_date = fs_row.get('start_date')
+                        end_date = fs_row.get('end_date')
+                    else:
+                        fee_id = fs_row[0]
+                        fee_name = fs_row[1] if len(fs_row) > 1 else ''
+                        total_amount = float(fs_row[2] if len(fs_row) > 2 else 0)
+                        start_date = fs_row[3] if len(fs_row) > 3 else None
+                        end_date = fs_row[4] if len(fs_row) > 4 else None
+                        term_id = fs_row[5] if len(fs_row) > 5 else None
+                        academic_year_id = fs_row[6] if len(fs_row) > 6 else None
+                        term_name = fs_row[7] if len(fs_row) > 7 else ''
+                        term_start = fs_row[8] if len(fs_row) > 8 else None
+                        term_end = fs_row[9] if len(fs_row) > 9 else None
+                        year_name = fs_row[10] if len(fs_row) > 10 else ''
+                    
+                    # Format term display (e.g., "Term 3, 2025")
+                    term_display = ''
+                    if term_name and year_name:
+                        # Extract year from year_name or use start_year
+                        year_part = year_name
+                        if hasattr(year_name, 'split'):
+                            year_parts = year_name.split()
+                            if len(year_parts) > 0:
+                                # Try to extract year from year_name like "2024/2025" or "2024-2025"
+                                for part in year_parts:
+                                    if '/' in part:
+                                        year_part = part.split('/')[1] if len(part.split('/')) > 1 else part.split('/')[0]
+                                        break
+                                    elif '-' in part:
+                                        year_part = part.split('-')[1] if len(part.split('-')) > 1 else part.split('-')[0]
+                                        break
+                        term_display = f"{term_name}, {year_part}"
+                    elif fee_name:
+                        term_display = fee_name
+                    else:
+                        term_display = 'Fees'
+                    
+                    fee_breakdown.append({
+                        'term': term_display,
+                        'description': 'fees',
+                        'amount': total_amount
+                    })
+                    total_fees += total_amount
+            
+            # Fetch all payments for this student
+            cursor.execute("""
+                SELECT sp.id, sp.amount_paid, sp.payment_method, sp.reference_number,
+                       sp.transaction_id, sp.payment_date, sp.created_at,
+                       e.full_name as received_by_name
+                FROM student_payments sp
+                LEFT JOIN employees e ON sp.received_by = e.id
+                WHERE sp.student_id = %s
+                ORDER BY sp.payment_date DESC, sp.created_at DESC
+            """, (student_id,))
+            payments_results = cursor.fetchall()
+            
+            payment_details = []
+            total_paid = 0.0
+            for pay_row in payments_results:
+                if isinstance(pay_row, dict):
+                    pay_id = pay_row.get('id')
+                    amount = float(pay_row.get('amount_paid', 0))
+                    method = pay_row.get('payment_method', '')
+                    reference = pay_row.get('reference_number', '') or pay_row.get('transaction_id', '')
+                    pay_date = pay_row.get('payment_date')
+                else:
+                    pay_id = pay_row[0]
+                    amount = float(pay_row[1] if len(pay_row) > 1 else 0)
+                    method = pay_row[2] if len(pay_row) > 2 else ''
+                    reference = pay_row[3] if len(pay_row) > 3 else (pay_row[4] if len(pay_row) > 4 else '')
+                    pay_date = pay_row[5] if len(pay_row) > 5 else None
+                
+                if pay_date and hasattr(pay_date, 'strftime'):
+                    pay_date_formatted = pay_date.strftime('%d/%m/%Y')
+                else:
+                    pay_date_formatted = str(pay_date) if pay_date else ''
+                
+                payment_details.append({
+                    'date': pay_date_formatted,
+                    'amount': amount,
+                    'method': method,
+                    'reference': reference or ''
+                })
+                total_paid += amount
+            
+            # Calculate balance
+            balance_due = total_fees - total_paid
+            
+            # Prepare single payment transaction for template (current payment)
             payment_transaction = {
                 'date': payment_date_str,
+                'date_short': payment_date_short,
                 'method': payment.get('payment_method', ''),
                 'amount': float(payment.get('amount_paid', 0)),
-                'reference': payment.get('reference_number', ''),
+                'reference': payment.get('reference_number', '') or payment.get('transaction_id', ''),
                 'transaction_id': payment.get('transaction_id', ''),
                 'cheque': payment.get('cheque_number', ''),
                 'notes': payment.get('notes', ''),
                 'received_by': payment.get('received_by_name', 'N/A')
             }
             
-            # Prepare fee structure for template
+            # Prepare fee structure for template (for backward compatibility)
             fee_structure = {
                 'fee_name': payment.get('fee_name', ''),
                 'total_amount': float(payment.get('total_amount', 0)),
@@ -5076,7 +4857,7 @@ def download_payment_receipt(student_id, payment_id):
                 'end_date': payment.get('end_date'),
                 'payment_deadline': payment.get('payment_deadline'),
                 'category': payment.get('category'),
-                'items': []  # Single payment receipt doesn't need fee items breakdown
+                'items': []
             }
             
             # Check if user wants PDF format BEFORE rendering template
@@ -5092,78 +4873,148 @@ def download_payment_receipt(student_id, payment_id):
                 elements = []
                 styles = getSampleStyleSheet()
                 
-                # Title
+                # Header with logo and contact info
+                logo_cell = []
+                if school_settings.get('school_logo'):
+                    try:
+                        logo_path = os.path.join('static', school_settings['school_logo'])
+                        if os.path.exists(logo_path):
+                            logo_cell.append(Image(logo_path, width=1*inch, height=1*inch))
+                        else:
+                            logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+                    except:
+                        logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+                else:
+                    logo_cell.append(Paragraph("<b>LOGO</b>", styles['Normal']))
+                
+                # Contact info in middle
+                contact_info = []
+                if school_settings.get('school_address'):
+                    contact_info.append(school_settings['school_address'])
+                if school_settings.get('school_phone'):
+                    contact_info.append(school_settings['school_phone'])
+                contact_cell = Paragraph("<br/>".join(contact_info) if contact_info else "", styles['Normal'])
+                
+                # Title "PAYMENT RECEIPT" on the right
                 title_style = ParagraphStyle(
                     'ReceiptTitle',
                     parent=styles['Heading1'],
-                    fontSize=24,
-                    textColor=colors.HexColor('#800020'),
-                    spaceAfter=20,
-                    alignment=TA_CENTER,
+                    fontSize=18,
+                    textColor=colors.HexColor('#000000'),
+                    spaceAfter=0,
+                    alignment=TA_RIGHT,
                     fontName='Helvetica-Bold'
                 )
-                elements.append(Paragraph("PAYMENT RECEIPT", title_style))
-                elements.append(Spacer(1, 0.2*inch))
+                title_cell = Paragraph("PAYMENT RECEIPT", title_style)
                 
-                # School info
+                header_table = Table([[logo_cell, contact_cell, title_cell]], colWidths=[2*inch, 2.5*inch, 3*inch])
+                header_table.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
+                ]))
+                elements.append(header_table)
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Student Information
                 normal_style = ParagraphStyle(
                     'Normal',
                     parent=styles['Normal'],
                     fontSize=10,
-                    textColor=colors.HexColor('#2B2D42'),
+                    textColor=colors.HexColor('#000000'),
                     spaceAfter=6
                 )
-                elements.append(Paragraph(f"<b>{school_settings.get('school_name', 'Modern School')}</b>", normal_style))
-                if school_settings.get('school_address'):
-                    elements.append(Paragraph(school_settings['school_address'], normal_style))
-                elements.append(Spacer(1, 0.2*inch))
+                bold_style = ParagraphStyle(
+                    'Bold',
+                    parent=normal_style,
+                    fontName='Helvetica-Bold'
+                )
                 
-                # Receipt details
-                receipt_data = [
-                    ['Receipt Number:', receipt_number],
-                    ['Date:', receipt_date],
-                    ['Time:', receipt_time],
-                    ['Student:', student['full_name']],
-                    ['Student ID:', student['student_id']],
-                    ['Grade:', student.get('current_grade', 'N/A')],
+                student_data = [
+                    [Paragraph("<b>NAME:</b>", bold_style), Paragraph(student['full_name'], normal_style)],
+                    [Paragraph("<b>GRADE:</b>", bold_style), Paragraph(student.get('current_grade', 'N/A'), normal_style)],
+                    [Paragraph("<b>DATE:</b>", bold_style), Paragraph(receipt_date, normal_style)],
                 ]
-                
-                receipt_table = Table(receipt_data, colWidths=[2*inch, 4*inch])
-                receipt_table.setStyle(TableStyle([
-                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                    ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                student_table = Table(student_data, colWidths=[1.5*inch, 5.5*inch])
+                student_table.setStyle(TableStyle([
                     ('FONTSIZE', (0, 0), (-1, -1), 10),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                    ('TOPPADDING', (0, 0), (-1, -1), 6),
                 ]))
-                elements.append(receipt_table)
+                elements.append(student_table)
                 elements.append(Spacer(1, 0.3*inch))
                 
-                # Payment details
-                elements.append(Paragraph("<b>Payment Details</b>", normal_style))
-                payment_data = [
-                    ['Payment Date:', payment_transaction['date']],
-                    ['Payment Method:', payment_transaction['method']],
-                    ['Amount Paid:', f"KES {payment_transaction['amount']:,.2f}"],
-                ]
-                if payment_transaction.get('reference'):
-                    payment_data.append(['Reference:', payment_transaction['reference']])
-                if payment_transaction.get('transaction_id'):
-                    payment_data.append(['Transaction ID:', payment_transaction['transaction_id']])
-                if payment_transaction.get('cheque'):
-                    payment_data.append(['Cheque Number:', payment_transaction['cheque']])
-                payment_data.append(['Received By:', payment_transaction.get('received_by', 'N/A')])
+                # Fee Breakdown Table
+                fee_breakdown_data = [['Fee Breakdown', 'Description', 'Amount']]
+                for fee in fee_breakdown:
+                    fee_breakdown_data.append([
+                        fee['term'],
+                        fee['description'],
+                        f"{fee['amount']:,.2f}"
+                    ])
                 
-                payment_table = Table(payment_data, colWidths=[2*inch, 4*inch])
-                payment_table.setStyle(TableStyle([
-                    ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-                    ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
+                fee_table = Table(fee_breakdown_data, colWidths=[2.5*inch, 2.5*inch, 2*inch])
+                fee_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                     ('FONTSIZE', (0, 0), (-1, -1), 10),
                     ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
                     ('TOPPADDING', (0, 0), (-1, -1), 8),
-                    ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+                ]))
+                elements.append(fee_table)
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Payment Details Table
+                payment_details_data = [['Date', 'Amount', 'Payment Method', 'Reference No.']]
+                for payment_detail in payment_details:
+                    payment_details_data.append([
+                        payment_detail['date'],
+                        f"{payment_detail['amount']:,.2f}",
+                        payment_detail['method'],
+                        payment_detail['reference']
+                    ])
+                
+                payment_table = Table(payment_details_data, colWidths=[1.5*inch, 1.5*inch, 2*inch, 2*inch])
+                payment_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                    ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                    ('TOPPADDING', (0, 0), (-1, -1), 8),
+                    ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
                 ]))
                 elements.append(payment_table)
+                elements.append(Spacer(1, 0.2*inch))
+                
+                # Total Paid (right aligned)
+                total_paid_style = ParagraphStyle(
+                    'TotalPaid',
+                    parent=normal_style,
+                    alignment=TA_RIGHT,
+                    fontSize=10
+                )
+                elements.append(Paragraph(f"<b>Total Paid: {total_paid:,.2f}</b>", total_paid_style))
+                elements.append(Spacer(1, 0.3*inch))
+                
+                # Payment Summary (right aligned)
+                summary_style = ParagraphStyle(
+                    'Summary',
+                    parent=normal_style,
+                    alignment=TA_RIGHT,
+                    fontSize=10,
+                    spaceAfter=4
+                )
+                elements.append(Paragraph("<u><b>Payment Summary</b></u>", summary_style))
+                elements.append(Paragraph(f"<b>Total fees:</b> {total_fees:,.2f}", summary_style))
+                elements.append(Paragraph(f"<b>Total Paid:</b> {total_paid:,.2f}", summary_style))
+                elements.append(Spacer(1, 0.1*inch))
+                elements.append(Paragraph(f"<b>Balance Due:</b> {balance_due:,.2f}", summary_style))
                 elements.append(Spacer(1, 0.3*inch))
                 
                 # Footer
@@ -5196,6 +5047,11 @@ def download_payment_receipt(student_id, payment_id):
                                  payment=payment,
                                  payment_transaction=payment_transaction,
                                  fee_structure=fee_structure,
+                                 fee_breakdown=fee_breakdown,
+                                 payment_details=payment_details,
+                                 total_fees=total_fees,
+                                 total_paid=total_paid,
+                                 balance_due=balance_due,
                                  school_settings=school_settings,
                                  receipt_date=receipt_date,
                                  receipt_time=receipt_time,
@@ -8732,6 +8588,18 @@ def system_settings():
     academic_years = []
     terms = []
     current_academic_year = None
+    theme_settings = {
+        'primary_color': '#800020',
+        'secondary_color': '#A00030',
+        'accent_color': '#800020',
+        'font_family': 'Inter'
+    }
+    login_settings = {
+        'welcome_title': 'Welcome Back',
+        'welcome_subtitle': 'Sign in to your account',
+        'show_role_selector': True,
+        'show_register_links': True
+    }
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -9023,7 +8891,9 @@ def system_settings():
                          terms=terms,
                          current_academic_year=current_academic_year,
                          today=today,
-                         is_accountant=is_accountant)
+                         is_accountant=is_accountant,
+                         theme_settings=theme_settings,
+                         login_settings=login_settings)
 
 @app.route('/dashboard/employee/academic-settings')
 @login_required

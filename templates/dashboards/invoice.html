@@ -8,9 +8,14 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
             body {
                 margin: 0;
                 padding: 0;
+                background: white;
             }
             .no-print {
                 display: none !important;
@@ -18,9 +23,12 @@
             .invoice-container {
                 box-shadow: none !important;
                 border: none !important;
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
             @page {
-                margin: 0.5cm;
+                margin: 1cm;
                 size: A4;
             }
         }
@@ -28,332 +36,181 @@
             max-width: 210mm;
             margin: 0 auto;
             background: white;
+            padding: 20px;
+        }
+        .invoice-border {
+            border: 1px solid #e5e7eb;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table th, table td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: left;
+        }
+        table th {
+            background-color: #f3f4f6;
+            font-weight: bold;
+        }
+        table td:last-child {
+            text-align: right;
+        }
+        .payment-summary {
+            text-align: right;
+            margin-top: 20px;
+        }
+        .payment-summary p {
+            margin: 4px 0;
         }
     </style>
 </head>
-<body class="bg-gray-50 py-8">
-    <div class="invoice-container bg-white shadow-2xl rounded-lg overflow-hidden">
-        <!-- Header Section with Logo -->
-        <div class="bg-gradient-to-r from-[#800020] to-[#5C0016] text-white py-8 px-8">
-            <div class="flex flex-col items-center justify-center text-center">
-                {% if school_settings.school_logo %}
-                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                     alt="{{ school_settings.school_name }}" 
-                     class="h-24 w-24 object-contain mb-4 bg-white rounded-lg p-2 shadow-lg">
-                {% else %}
-                <div class="h-24 w-24 bg-white rounded-lg flex items-center justify-center mb-4 shadow-lg">
-                    <i class="fas fa-graduation-cap text-[#800020] text-5xl"></i>
+<body class="bg-gray-100 py-8">
+    <div class="invoice-container bg-white shadow-xl rounded-lg overflow-hidden invoice-border">
+        <!-- Header Section -->
+        <div class="mb-6">
+            <div class="flex justify-between items-start">
+                <!-- Logo Section -->
+                <div class="flex items-center">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
+                         alt="Logo" 
+                         class="h-20 w-20 object-contain border border-gray-300 p-2">
+                    {% else %}
+                    <div class="h-20 w-20 border-2 border-gray-400 flex items-center justify-center bg-gray-100">
+                        <span class="text-xs font-bold text-gray-600">LOGO</span>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endif %}
-                <h1 class="text-3xl font-bold mb-2">{{ school_settings.school_name or 'Modern School' }}</h1>
-                {% if school_settings.school_address %}
-                <p class="text-red-100 text-sm">{{ school_settings.school_address }}</p>
-                {% endif %}
-                <div class="flex items-center gap-4 mt-2 text-sm">
-                    {% if school_settings.school_phone %}
-                    <span><i class="fas fa-phone mr-1"></i>{{ school_settings.school_phone }}</span>
-                    {% endif %}
-                    {% if school_settings.school_email %}
-                    <span><i class="fas fa-envelope mr-1"></i>{{ school_settings.school_email }}</span>
-                    {% endif %}
+                
+                <!-- Contact Info and Title -->
+                <div class="flex-1 text-right">
+                    <div class="mb-4">
+                        {% if school_settings.school_address %}
+                        <p class="text-sm">{{ school_settings.school_address }}</p>
+                        {% endif %}
+                        {% if school_settings.school_phone %}
+                        <p class="text-sm">{{ school_settings.school_phone }}</p>
+                        {% endif %}
+                    </div>
+                    <h1 class="text-2xl font-bold">FEE INVOICE</h1>
                 </div>
             </div>
         </div>
 
-        <!-- Invoice Title and Student Info Section -->
-        <div class="px-8 py-6 border-b-2 border-gray-200">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <!-- Left: Invoice Info -->
-                <div>
-                    <div class="flex items-center gap-3 mb-2">
-                        <h2 class="text-4xl font-bold text-gray-800">FEE INVOICE</h2>
-                        {% if fee_structure %}
-                            {% if balance <= 0 %}
-                            <span class="px-4 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold border-2 border-green-500">
-                                <i class="fas fa-check-circle mr-1"></i>PAID
-                            </span>
-                            {% elif total_paid > 0 %}
-                            <span class="px-4 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-bold border-2 border-yellow-500">
-                                <i class="fas fa-clock mr-1"></i>PARTIALLY PAID
-                            </span>
-                            {% else %}
-                            <span class="px-4 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold border-2 border-red-500">
-                                <i class="fas fa-exclamation-circle mr-1"></i>UNPAID
-                            </span>
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                    <p class="text-lg text-gray-600 mb-2 font-semibold">INVOICE / RECEIPT</p>
-                    <div class="space-y-1 text-sm text-gray-600">
-                        <p><span class="font-semibold">Date:</span> {{ invoice_date }}</p>
-                        <p><span class="font-semibold">Invoice #:</span> {{ invoice_number }}</p>
-                        {% if fee_structure %}
-                        <p><span class="font-semibold">Fee Period:</span> 
-                            {% if fee_structure.start_date %}
-                                {{ fee_structure.start_date.strftime('%B %d, %Y') if fee_structure.start_date else 'N/A' }}
-                            {% else %}
-                                N/A
-                            {% endif %}
-                            {% if fee_structure.end_date %}
-                                - {{ fee_structure.end_date.strftime('%B %d, %Y') if fee_structure.end_date else '' }}
-                            {% endif %}
-                        </p>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Right: Student Image and Details -->
-                <div class="flex flex-col items-end md:items-start md:flex-row gap-4">
-                    <div class="flex-shrink-0">
-                        {% if student.profile_image %}
-                        <img src="{{ student.profile_image }}" 
-                             alt="{{ student.full_name }}" 
-                             class="w-32 h-32 rounded-xl object-cover border-4 border-[#800020] shadow-lg">
-                        {% else %}
-                        <div class="w-32 h-32 rounded-xl bg-gradient-to-br from-[#800020] to-[#5C0016] flex items-center justify-center border-4 border-[#800020] shadow-lg">
-                            <i class="fas fa-user text-white text-5xl"></i>
-                        </div>
-                        {% endif %}
-                    </div>
-                    <div class="text-right md:text-left">
-                        <h3 class="text-2xl font-bold text-gray-800 mb-2">{{ student.full_name }}</h3>
-                        <div class="space-y-1 text-sm text-gray-600">
-                            <p><span class="font-semibold">Student ID:</span> {{ student.student_id }}</p>
-                            <p><span class="font-semibold">Grade:</span> {{ student.current_grade or 'N/A' }}</p>
-                            {% if student.student_category %}
-                            <p><span class="font-semibold">Category:</span> 
-                                <span class="px-2 py-1 bg-red-100 text-[#800020] rounded text-xs font-semibold">
-                                    {{ student.student_category.title() }}
-                                </span>
-                            </p>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <!-- Student Information -->
+        <div class="mb-6">
+            <table style="border: none;">
+                <tr style="border: none;">
+                    <td style="border: none; padding: 4px 8px;"><strong>NAME:</strong></td>
+                    <td style="border: none; padding: 4px 8px;">{{ student.full_name }}</td>
+                </tr>
+                <tr style="border: none;">
+                    <td style="border: none; padding: 4px 8px;"><strong>GRADE:</strong></td>
+                    <td style="border: none; padding: 4px 8px;">{{ student.current_grade or 'N/A' }}</td>
+                </tr>
+                <tr style="border: none;">
+                    <td style="border: none; padding: 4px 8px;"><strong>DATE:</strong></td>
+                    <td style="border: none; padding: 4px 8px;">{{ invoice_date }}</td>
+                </tr>
+            </table>
         </div>
 
-        <!-- Payment Information -->
-        <div class="px-8 py-6 bg-gray-50 border-b border-gray-200">
-            <div>
-                <h4 class="text-lg font-bold text-gray-800 mb-3">Payment Information:</h4>
-                <div class="text-sm text-gray-700 space-y-1">
-                    {% if fee_structure and fee_structure.payment_deadline %}
-                    <p><span class="font-semibold">Payment Deadline:</span> 
-                        {{ fee_structure.payment_deadline.strftime('%B %d, %Y') if fee_structure.payment_deadline else 'N/A' }}
-                    </p>
-                    {% endif %}
-                    <p><span class="font-semibold">Payment Methods:</span> Cash, M-Pesa, Bank Transfer</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Fee Items Table -->
-        <div class="px-8 py-6">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">Fee Breakdown</h3>
-            {% if fee_structure and fee_structure.get('items') %}
-            <div class="overflow-x-auto">
-                <table class="w-full border-collapse">
-                    <thead>
-                        <tr class="bg-[#800020] text-white">
-                            <th class="px-4 py-3 text-left font-semibold">Item</th>
-                            <th class="px-4 py-3 text-left font-semibold">Description</th>
-                            <th class="px-4 py-3 text-right font-semibold">Amount (KES)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in fee_structure['items'] %}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3 font-medium text-gray-800">{{ item.item_name }}</td>
-                            <td class="px-4 py-3 text-gray-600">{{ item.item_description or '-' }}</td>
-                            <td class="px-4 py-3 text-right font-semibold text-gray-800">{{ "%.2f"|format(item.amount) }}</td>
+        <!-- Fee Breakdown Table -->
+        <div class="mb-6">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fee Breakdown</th>
+                        <th style="text-align: center;">Description</th>
+                        <th style="text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if fee_breakdown %}
+                        {% for fee in fee_breakdown %}
+                        <tr>
+                            <td>{{ fee.term }}</td>
+                            <td style="text-align: center;">{{ fee.description }}</td>
+                            <td style="text-align: right;">{{ "%.2f"|format(fee.amount) }}</td>
                         </tr>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    {% else %}
+                        <tr>
+                            <td colspan="3" style="text-align: center;">No fee structures found</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Payment Details Table -->
+        <div class="mb-4">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th style="text-align: right;">Amount</th>
+                        <th style="text-align: center;">Payment Method</th>
+                        <th style="text-align: right;">Reference No.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if payment_details %}
+                        {% for payment in payment_details %}
+                        <tr>
+                            <td>{{ payment.date }}</td>
+                            <td style="text-align: right;">{{ "%.2f"|format(payment.amount) }}</td>
+                            <td style="text-align: center;">{{ payment.method }}</td>
+                            <td style="text-align: right;">{{ payment.reference or '' }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align: center;">No payments found</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+            <div class="text-right mt-2">
+                <strong>Total Paid: {{ "%.2f"|format(total_paid_all) }}</strong>
             </div>
-            {% else %}
-            <p class="text-gray-500 italic">No fee structure available for this student.</p>
-            {% endif %}
         </div>
 
         <!-- Payment Summary -->
-        {% if fee_structure %}
-        <div class="px-8 py-6 bg-gradient-to-r from-gray-50 to-gray-100 border-t-2 border-gray-300">
-            <div class="max-w-md ml-auto">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Payment Summary</h3>
-                <div class="space-y-3 bg-white p-4 rounded-lg shadow-sm">
-                    {% if balance_brought_forward and balance_brought_forward > 0 %}
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Balance Brought Forward:</span>
-                        <span class="font-semibold text-gray-800">{{ "%.2f"|format(balance_brought_forward) }} KES</span>
-                    </div>
-                    {% endif %}
-                    {% if carry_forward and carry_forward > 0 %}
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Carry Forward (Overpayment):</span>
-                        <span class="font-semibold text-green-600">-{{ "%.2f"|format(carry_forward) }} KES</span>
-                    </div>
-                    {% endif %}
-                    <div class="flex justify-between text-base border-b border-gray-200 pb-2">
-                        <span class="font-semibold text-gray-700">Fee Total:</span>
-                        <span class="font-semibold text-gray-800">{{ "%.2f"|format(fee_structure.total_amount) }} KES</span>
-                    </div>
-                    {% if total_paid > 0 %}
-                    <div class="flex justify-between text-base bg-green-50 p-2 rounded">
-                        <span class="font-semibold text-gray-700">Total Paid:</span>
-                        <span class="font-bold text-green-600 text-lg">{{ "%.2f"|format(total_paid) }} KES</span>
-                    </div>
-                    {% endif %}
-                    <div class="border-t-2 border-gray-400 pt-3 mt-2">
-                        <div class="flex justify-between text-xl">
-                            <span class="font-bold text-gray-800">Balance Due:</span>
-                            <span class="font-bold {% if balance > 0 %}text-red-600{% else %}text-green-600{% endif %}">
-                                {{ "%.2f"|format(balance) }} KES
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div class="payment-summary">
+            <p><strong><u>Payment Summary</u></strong></p>
+            <p><strong>Total fees:</strong> {{ "%.2f"|format(total_fees) }}</p>
+            <p><strong>Total Paid:</strong> {{ "%.2f"|format(total_paid_all) }}</p>
+            <hr style="margin: 8px 0; border-top: 1px solid #000;">
+            <p><strong>Balance Due:</strong> {{ "%.2f"|format(balance_due) }}</p>
         </div>
-        {% endif %}
-
-        <!-- Payment Transactions / Receipt -->
-        {% if payment_transactions %}
-        <div class="px-8 py-6 border-t border-gray-200 bg-white">
-            <h3 class="text-xl font-bold text-gray-800 mb-4">
-                <i class="fas fa-receipt mr-2 text-[#800020]"></i>Payment Receipt Details
-            </h3>
-            <div class="overflow-x-auto">
-                <table class="w-full border-collapse text-sm">
-                    <thead>
-                        <tr class="bg-[#800020] text-white">
-                            <th class="px-4 py-3 text-left font-semibold">Date</th>
-                            <th class="px-4 py-3 text-left font-semibold">Amount</th>
-                            <th class="px-4 py-3 text-left font-semibold">Payment Method</th>
-                            <th class="px-4 py-3 text-left font-semibold">Reference/Transaction ID</th>
-                            <th class="px-4 py-3 text-left font-semibold">Cheque #</th>
-                            <th class="px-4 py-3 text-left font-semibold">Notes</th>
-                            <th class="px-4 py-3 text-left font-semibold">Received By</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for transaction in payment_transactions %}
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3 text-gray-700 font-medium">{{ transaction.date }}</td>
-                            <td class="px-4 py-3 font-bold text-green-600">{{ "%.2f"|format(transaction.amount) }} KES</td>
-                            <td class="px-4 py-3 text-gray-700">
-                                <span class="px-2 py-1 bg-red-100 text-[#800020] rounded text-xs font-medium">{{ transaction.method }}</span>
-                            </td>
-                            <td class="px-4 py-3 text-gray-600">
-                                {% if transaction.reference %}
-                                    <div><span class="font-medium">Ref:</span> {{ transaction.reference }}</div>
-                                {% endif %}
-                                {% if transaction.transaction_id %}
-                                    <div class="text-xs mt-1"><span class="font-medium">Txn:</span> {{ transaction.transaction_id }}</div>
-                                {% endif %}
-                                {% if not transaction.reference and not transaction.transaction_id %}
-                                    <span class="text-gray-400">-</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-3 text-gray-600">{{ transaction.cheque or '-' }}</td>
-                            <td class="px-4 py-3 text-gray-600 text-xs">{{ transaction.notes or '-' }}</td>
-                            <td class="px-4 py-3 text-gray-600">{{ transaction.received_by }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    <tfoot>
-                        <tr class="bg-gray-100 font-bold">
-                            <td class="px-4 py-3 text-right" colspan="6">Total Paid:</td>
-                            <td class="px-4 py-3 text-green-600 text-lg">{{ "%.2f"|format(total_paid) }} KES</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-        {% endif %}
 
         <!-- Footer -->
-        <div class="px-8 py-6 bg-gray-800 text-white text-center text-sm">
-            <p class="mb-2">Thank you for your payment!</p>
-            <p class="text-gray-400">This is a computer-generated invoice. No signature required.</p>
-            <p class="text-gray-400 mt-2">Generated on {{ invoice_date }} at {{ invoice_time }}</p>
+        <div class="mt-8 text-center text-sm text-gray-600">
+            <p class="mb-1">Thank you for your payment!</p>
+            <p>This is a computer-generated invoice. No signature required.</p>
         </div>
     </div>
 
     <!-- Action Buttons -->
     <div class="max-w-4xl mx-auto mt-6 no-print">
         <div class="flex flex-wrap justify-center gap-3">
-            <button onclick="window.print()" class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-print"></i> Print
+            <button onclick="window.print()" 
+                    class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-print"></i> Print Invoice
             </button>
-            <button onclick="downloadInvoicePDF()" class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+            <a href="{{ url_for('generate_invoice', student_id=student.student_id) }}?format=pdf&download=true" 
+               download
+               class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
                 <i class="fas fa-download"></i> Download PDF
-            </button>
-            <button onclick="shareInvoice()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-share-alt"></i> Share
-            </button>
-            <a href="{{ url_for('student_fees') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-arrow-left"></i> Back
+            </a>
+            <a href="{{ url_for('student_fees') }}" 
+               class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
+                <i class="fas fa-arrow-left"></i> Back to Fees
             </a>
         </div>
     </div>
-
-    <script>
-        function downloadInvoicePDF() {
-            const pdfUrl = "{{ url_for('generate_invoice', student_id=student.student_id, format='pdf', download='true') }}";
-            window.location.href = pdfUrl;
-        }
-        
-        function shareInvoice() {
-            const url = window.location.href;
-            const title = 'Invoice - {{ student.full_name }}';
-            
-            if (navigator.share) {
-                // Use Web Share API if available
-                navigator.share({
-                    title: title,
-                    text: 'Invoice for {{ student.full_name }}',
-                    url: url
-                }).catch(err => {
-                    console.log('Error sharing:', err);
-                    copyToClipboard(url);
-                });
-            } else {
-                // Fallback to copy to clipboard
-                copyToClipboard(url);
-            }
-        }
-        
-        function copyToClipboard(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).then(() => {
-                    alert('Link copied to clipboard!');
-                }).catch(err => {
-                    console.error('Failed to copy:', err);
-                    fallbackCopy(text);
-                });
-            } else {
-                fallbackCopy(text);
-            }
-        }
-        
-        function fallbackCopy(text) {
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.opacity = '0';
-            document.body.appendChild(textArea);
-            textArea.select();
-            try {
-                document.execCommand('copy');
-                alert('Link copied to clipboard!');
-            } catch (err) {
-                alert('Please copy this link manually: ' + text);
-            }
-            document.body.removeChild(textArea);
-        }
-    </script>
 </body>
 </html>
-
