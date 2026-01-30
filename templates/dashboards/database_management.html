@@ -2,22 +2,23 @@
 
 {% block extra_scripts %}
 <script>
-function viewTableDetails(tableName) {
-    const tables = {{ tables|tojson }};
+    function viewTableDetails(tableName) {
+        const tables = {{ tables| tojson
+    }};
     const selectedTable = tables.find(t => t.name === tableName);
-    
+
     if (selectedTable && selectedTable.columns) {
         document.getElementById('selectedTableName').textContent = tableName;
         const tbody = document.getElementById('tableStructureBody');
         tbody.innerHTML = '';
-        
+
         selectedTable.columns.forEach(col => {
             const field = col.Field || (Array.isArray(col) ? col[0] : '');
             const type = col.Type || (Array.isArray(col) ? col[1] : '');
             const nullVal = col.Null || (Array.isArray(col) ? col[2] : '');
             const key = col.Key || (Array.isArray(col) ? col[3] : '');
             const defaultVal = col.Default !== undefined ? col.Default : (Array.isArray(col) ? col[4] : 'NULL');
-            
+
             const row = document.createElement('tr');
             row.className = 'hover:bg-gray-50 dark:hover:bg-gray-700';
             row.innerHTML = `
@@ -29,7 +30,7 @@ function viewTableDetails(tableName) {
             `;
             tbody.appendChild(row);
         });
-        
+
         document.getElementById('tableDetails').style.display = 'block';
         document.getElementById('tableDetails').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -47,20 +48,20 @@ function viewTableDetails(tableName) {
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
+<a href="/role-switch"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
-<a href="/system-settings" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+<a href="/system-settings"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
     <i class="fas fa-cog w-5"></i>
     <span>System Settings</span>
 </a>
-<a href="{{ url_for('database_management') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
-   style="border-color: var(--role-primary);">
+<a href="{{ url_for('database_management') }}"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+    style="border-color: var(--role-primary);">
     <i class="fas fa-database w-5"></i>
     <span>Database</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
@@ -68,38 +69,39 @@ function viewTableDetails(tableName) {
 
 <!-- Database Management Links -->
 <div class="mt-4 pt-4 border-t border-gray-700/50">
-    <p class="px-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Database Management</p>
-    
-    <a href="{{ url_for('database_backup_restore') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_backup_restore' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'database_backup_restore' %}style="border-color: var(--role-primary);"{% endif %}>
+    <p class="px-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Database
+        Management</p>
+
+    <a href="{{ url_for('database_backup_restore') }}"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_backup_restore' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+        {% if request.endpoint=='database_backup_restore' %}style="border-color: var(--role-primary);" {% endif %}>
         <i class="fas fa-download w-5"></i>
         <span>Database Backup & Restore</span>
         <span class="ml-auto text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Core</span>
     </a>
-    
-    <a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+
+    <a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
         <i class="fas fa-shield-alt w-5"></i>
         <span>Data Integrity & Maintenance</span>
     </a>
-    
-    <a href="{{ url_for('database_health_status') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'database_health_status' %}style="border-color: var(--role-primary);"{% endif %}>
+
+    <a href="{{ url_for('database_health_status') }}"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+        {% if request.endpoint=='database_health_status' %}style="border-color: var(--role-primary);" {% endif %}>
         <i class="fas fa-heartbeat w-5"></i>
         <span>Database Health & Status</span>
     </a>
-    
-    <a href="{{ url_for('logs_audit_trails') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'logs_audit_trails' %}style="border-color: var(--role-primary);"{% endif %}>
+
+    <a href="{{ url_for('logs_audit_trails') }}"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+        {% if request.endpoint=='logs_audit_trails' %}style="border-color: var(--role-primary);" {% endif %}>
         <i class="fas fa-history w-5"></i>
         <span>Logs & Audit Trails</span>
     </a>
-    
-    <a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 border-2 border-yellow-500/50 hover:border-yellow-500">
+
+    <a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true"
+        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 border-2 border-yellow-500/50 hover:border-yellow-500">
         <i class="fas fa-lock w-5 text-yellow-400"></i>
         <span class="font-semibold">Access Control</span>
         <span class="ml-auto text-xs bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">Very Important</span>
@@ -126,14 +128,15 @@ function viewTableDetails(tableName) {
     </div>
 
     <!-- Database Data Analysis Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 mb-6 border border-gray-200 dark:border-gray-700">
+    <div
+        class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 mb-6 border border-gray-200 dark:border-gray-700">
         <div class="mb-4">
             <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
                 <i class="fas fa-chart-bar text-blue-500 mr-2"></i>
                 Database Data Analysis
             </h3>
         </div>
-        
+
         <!-- Key Business Metrics -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <!-- Total Students -->
@@ -144,7 +147,7 @@ function viewTableDetails(tableName) {
                 <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_students) }}</div>
                 <div class="text-sm opacity-90">Total Students</div>
             </div>
-            
+
             <!-- Total Employees -->
             <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -153,7 +156,7 @@ function viewTableDetails(tableName) {
                 <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_employees) }}</div>
                 <div class="text-sm opacity-90">Total Employees</div>
             </div>
-            
+
             <!-- Total Parents -->
             <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -162,7 +165,7 @@ function viewTableDetails(tableName) {
                 <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_parents) }}</div>
                 <div class="text-sm opacity-90">Total Parents</div>
             </div>
-            
+
             <!-- Academic Levels (Classes) -->
             <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -173,7 +176,7 @@ function viewTableDetails(tableName) {
                 <div class="text-xs opacity-75 mt-1">{{ data_analysis.active_academic_levels }} active</div>
             </div>
         </div>
-        
+
         <!-- Fees Analysis -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <!-- Fee Structures -->
@@ -185,7 +188,7 @@ function viewTableDetails(tableName) {
                 <div class="text-sm opacity-90">Fee Structures</div>
                 <div class="text-xs opacity-75 mt-1">{{ data_analysis.active_fee_structures }} active</div>
             </div>
-            
+
             <!-- Fee Items -->
             <div class="bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -194,7 +197,7 @@ function viewTableDetails(tableName) {
                 <div class="text-3xl font-bold mb-1">{{ data_analysis.total_fee_items }}</div>
                 <div class="text-sm opacity-90">Fee Items</div>
             </div>
-            
+
             <!-- Total Fee Revenue -->
             <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -203,7 +206,7 @@ function viewTableDetails(tableName) {
                 <div class="text-2xl font-bold mb-1">KSh {{ "{:,.2f}".format(data_analysis.total_fee_revenue) }}</div>
                 <div class="text-sm opacity-90">Total Revenue</div>
             </div>
-            
+
             <!-- Pending Fees -->
             <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-4 text-white">
                 <div class="flex items-center justify-between mb-2">
@@ -213,7 +216,7 @@ function viewTableDetails(tableName) {
                 <div class="text-sm opacity-90">Pending Fees</div>
             </div>
         </div>
-        
+
         <!-- Detailed Analysis -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <!-- Students by Status -->
@@ -235,7 +238,7 @@ function viewTableDetails(tableName) {
                 <p class="text-gray-500 dark:text-gray-400 text-sm">No data available</p>
                 {% endif %}
             </div>
-            
+
             <!-- Employees by Role -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
                 <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
@@ -256,89 +259,95 @@ function viewTableDetails(tableName) {
                 {% endif %}
             </div>
         </div>
-        
+
         <!-- Database Name -->
         <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             <p class="text-sm text-gray-600 dark:text-gray-400">
-                <span class="font-medium">Database Name:</span> 
+                <span class="font-medium">Database Name:</span>
                 <span class="text-gray-900 dark:text-white">{{ db_info.name }}</span>
             </p>
         </div>
     </div>
 
     <!-- Tables List -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div
+        class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
                 <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
                 Database Tables
             </h2>
         </div>
-        
+
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-900">
                     <tr>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th
+                            class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Table Name
                         </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th
+                            class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Rows
                         </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th
+                            class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Size
                         </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th
+                            class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Columns
                         </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th
+                            class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Actions
                         </th>
                     </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {% if tables %}
-                        {% for table in tables %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <div class="flex items-center">
-                                    <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
-                                    <span class="text-sm font-medium text-gray-900 dark:text-white">
-                                        {{ table.name }}
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ "{:,}".format(table.row_count) }}
+                    {% for table in tables %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <div class="flex items-center">
+                                <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
+                                <span class="text-sm font-medium text-gray-900 dark:text-white">
+                                    {{ table.name }}
                                 </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ "%.2f"|format(table.size_mb) }} MB
-                                </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ table.columns|length }} columns
-                                </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
-                                <button onclick="viewTableDetails('{{ table.name }}')" 
-                                        class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mr-3">
-                                    <i class="fas fa-eye mr-1"></i>
-                                    View
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
+                            </div>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ "{:,}".format(table.row_count) }}
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ "%.2f"|format(table.size_mb) }} MB
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                            <span class="text-sm text-gray-900 dark:text-white">
+                                {{ table.columns|length }} columns
+                            </span>
+                        </td>
+                        <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
+                            <button onclick="viewTableDetails('{{ table.name }}')"
+                                class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mr-3">
+                                <i class="fas fa-eye mr-1"></i>
+                                View
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
                     {% else %}
-                        <tr>
-                            <td colspan="5" class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                <i class="fas fa-inbox text-4xl mb-2"></i>
-                                <p>No tables found</p>
-                            </td>
-                        </tr>
+                    <tr>
+                        <td colspan="5" class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                            <i class="fas fa-inbox text-4xl mb-2"></i>
+                            <p>No tables found</p>
+                        </td>
+                    </tr>
                     {% endif %}
                 </tbody>
             </table>
@@ -346,7 +355,9 @@ function viewTableDetails(tableName) {
     </div>
 
     <!-- Table Details Section -->
-    <div id="tableDetails" class="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden" style="display: none;">
+    <div id="tableDetails"
+        class="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+        style="display: none;">
         <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
             <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
                 <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
@@ -357,14 +368,20 @@ function viewTableDetails(tableName) {
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-900">
                     <tr>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Field</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Null</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Key</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Default</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Field</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Type</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Null</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Key</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                            Default</th>
                     </tr>
                 </thead>
-                <tbody id="tableStructureBody" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody id="tableStructureBody"
+                    class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 </tbody>
             </table>
         </div>
@@ -372,378 +389,3 @@ function viewTableDetails(tableName) {
 </div>
 
 {% endblock %}
-
-
-{% block extra_scripts %}
-<script>
-function viewTableDetails(tableName) {
-    const tables = {{ tables|tojson }};
-    const selectedTable = tables.find(t => t.name === tableName);
-    
-    if (selectedTable && selectedTable.columns) {
-        document.getElementById('selectedTableName').textContent = tableName;
-        const tbody = document.getElementById('tableStructureBody');
-        tbody.innerHTML = '';
-        
-        selectedTable.columns.forEach(col => {
-            const field = col.Field || (Array.isArray(col) ? col[0] : '');
-            const type = col.Type || (Array.isArray(col) ? col[1] : '');
-            const nullVal = col.Null || (Array.isArray(col) ? col[2] : '');
-            const key = col.Key || (Array.isArray(col) ? col[3] : '');
-            const defaultVal = col.Default !== undefined ? col.Default : (Array.isArray(col) ? col[4] : 'NULL');
-            
-            const row = document.createElement('tr');
-            row.className = 'hover:bg-gray-50 dark:hover:bg-gray-700';
-            row.innerHTML = `
-                <td class="px-4 py-2 text-sm text-gray-900 dark:text-white">${field}</td>
-                <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">${type}</td>
-                <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">${nullVal}</td>
-                <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">${key || ''}</td>
-                <td class="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">${defaultVal !== null ? defaultVal : 'NULL'}</td>
-            `;
-            tbody.appendChild(row);
-        });
-        
-        document.getElementById('tableDetails').style.display = 'block';
-        document.getElementById('tableDetails').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-}
-</script>
-{% endblock %}
-
-{% block title %}Database Management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
-{% block sidebar_content %}
-{% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
-    <i class="fas fa-exchange-alt w-5"></i>
-    <span>Role Switch</span>
-</a>
-
-<a href="/system-settings" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-    <i class="fas fa-cog w-5"></i>
-    <span>System Settings</span>
-</a>
-<a href="{{ url_for('database_management') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
-   style="border-color: var(--role-primary);">
-    <i class="fas fa-database w-5"></i>
-    <span>Database</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-
-<!-- Database Management Links -->
-<div class="mt-4 pt-4 border-t border-gray-700/50">
-    <p class="px-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2">Database Management</p>
-    
-    <a href="{{ url_for('database_backup_restore') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_backup_restore' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'database_backup_restore' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-download w-5"></i>
-        <span>Database Backup & Restore</span>
-        <span class="ml-auto text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Core</span>
-    </a>
-    
-    <a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
-        <i class="fas fa-shield-alt w-5"></i>
-        <span>Data Integrity & Maintenance</span>
-    </a>
-    
-    <a href="{{ url_for('database_health_status') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'database_health_status' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-heartbeat w-5"></i>
-        <span>Database Health & Status</span>
-    </a>
-    
-    <a href="{{ url_for('logs_audit_trails') }}" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'logs_audit_trails' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-history w-5"></i>
-        <span>Logs & Audit Trails</span>
-    </a>
-    
-    <a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 border-2 border-yellow-500/50 hover:border-yellow-500">
-        <i class="fas fa-lock w-5 text-yellow-400"></i>
-        <span class="font-semibold">Access Control</span>
-        <span class="ml-auto text-xs bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">Very Important</span>
-    </a>
-</div>
-{% endif %}
-{% endblock %}
-
-{% block content %}
-<div class="max-w-7xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-6 sm:mb-8">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                    <i class="fas fa-database text-green-600 dark:text-green-400 mr-2"></i>
-                    Database Management
-                </h1>
-                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-                    Manage and monitor your database tables and structure
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Database Data Analysis Card -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <div class="mb-4">
-            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                <i class="fas fa-chart-bar text-blue-500 mr-2"></i>
-                Database Data Analysis
-            </h3>
-        </div>
-        
-        <!-- Key Business Metrics -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <!-- Total Students -->
-            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-user-graduate text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_students) }}</div>
-                <div class="text-sm opacity-90">Total Students</div>
-            </div>
-            
-            <!-- Total Employees -->
-            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-user-tie text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_employees) }}</div>
-                <div class="text-sm opacity-90">Total Employees</div>
-            </div>
-            
-            <!-- Total Parents -->
-            <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-users text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ "{:,}".format(data_analysis.total_parents) }}</div>
-                <div class="text-sm opacity-90">Total Parents</div>
-            </div>
-            
-            <!-- Academic Levels (Classes) -->
-            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-chalkboard-teacher text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ data_analysis.total_academic_levels }}</div>
-                <div class="text-sm opacity-90">Classes/Levels</div>
-                <div class="text-xs opacity-75 mt-1">{{ data_analysis.active_academic_levels }} active</div>
-            </div>
-        </div>
-        
-        <!-- Fees Analysis -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <!-- Fee Structures -->
-            <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-file-invoice-dollar text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ data_analysis.total_fee_structures }}</div>
-                <div class="text-sm opacity-90">Fee Structures</div>
-                <div class="text-xs opacity-75 mt-1">{{ data_analysis.active_fee_structures }} active</div>
-            </div>
-            
-            <!-- Fee Items -->
-            <div class="bg-gradient-to-br from-pink-500 to-pink-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-list text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ data_analysis.total_fee_items }}</div>
-                <div class="text-sm opacity-90">Fee Items</div>
-            </div>
-            
-            <!-- Total Fee Revenue -->
-            <div class="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-money-bill-wave text-2xl opacity-80"></i>
-                </div>
-                <div class="text-2xl font-bold mb-1">KSh {{ "{:,.2f}".format(data_analysis.total_fee_revenue) }}</div>
-                <div class="text-sm opacity-90">Total Revenue</div>
-            </div>
-            
-            <!-- Pending Fees -->
-            <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-4 text-white">
-                <div class="flex items-center justify-between mb-2">
-                    <i class="fas fa-exclamation-triangle text-2xl opacity-80"></i>
-                </div>
-                <div class="text-3xl font-bold mb-1">{{ data_analysis.pending_fees }}</div>
-                <div class="text-sm opacity-90">Pending Fees</div>
-            </div>
-        </div>
-        
-        <!-- Detailed Analysis -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <!-- Students by Status -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                    <i class="fas fa-user-graduate text-blue-500 mr-2"></i>
-                    Students by Status
-                </h4>
-                {% if data_analysis.students_by_status %}
-                <div class="space-y-2">
-                    {% for status, count in data_analysis.students_by_status.items() %}
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="text-gray-600 dark:text-gray-400 capitalize">{{ status.replace('_', ' ') }}</span>
-                        <span class="text-gray-900 dark:text-white font-medium">{{ "{:,}".format(count) }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="text-gray-500 dark:text-gray-400 text-sm">No data available</p>
-                {% endif %}
-            </div>
-            
-            <!-- Employees by Role -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center">
-                    <i class="fas fa-user-tie text-green-500 mr-2"></i>
-                    Employees by Role
-                </h4>
-                {% if data_analysis.employees_by_role %}
-                <div class="space-y-2 max-h-48 overflow-y-auto">
-                    {% for role, count in data_analysis.employees_by_role.items() %}
-                    <div class="flex justify-between items-center text-sm">
-                        <span class="text-gray-600 dark:text-gray-400 capitalize">{{ role.replace('_', ' ') }}</span>
-                        <span class="text-gray-900 dark:text-white font-medium">{{ "{:,}".format(count) }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="text-gray-500 dark:text-gray-400 text-sm">No data available</p>
-                {% endif %}
-            </div>
-        </div>
-        
-        <!-- Database Name -->
-        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                <span class="font-medium">Database Name:</span> 
-                <span class="text-gray-900 dark:text-white">{{ db_info.name }}</span>
-            </p>
-        </div>
-    </div>
-
-    <!-- Tables List -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
-                <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
-                Database Tables
-            </h2>
-        </div>
-        
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Table Name
-                        </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Rows
-                        </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Size
-                        </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Columns
-                        </th>
-                        <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Actions
-                        </th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {% if tables %}
-                        {% for table in tables %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <div class="flex items-center">
-                                    <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
-                                    <span class="text-sm font-medium text-gray-900 dark:text-white">
-                                        {{ table.name }}
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ "{:,}".format(table.row_count) }}
-                                </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ "%.2f"|format(table.size_mb) }} MB
-                                </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
-                                <span class="text-sm text-gray-900 dark:text-white">
-                                    {{ table.columns|length }} columns
-                                </span>
-                            </td>
-                            <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
-                                <button onclick="viewTableDetails('{{ table.name }}')" 
-                                        class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mr-3">
-                                    <i class="fas fa-eye mr-1"></i>
-                                    View
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="5" class="px-4 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
-                                <i class="fas fa-inbox text-4xl mb-2"></i>
-                                <p>No tables found</p>
-                            </td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Table Details Section -->
-    <div id="tableDetails" class="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden" style="display: none;">
-        <div class="px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-                <i class="fas fa-table text-green-600 dark:text-green-400 mr-2"></i>
-                Table Structure: <span id="selectedTableName"></span>
-            </h3>
-        </div>
-        <div class="overflow-x-auto p-6">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Field</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Null</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Key</th>
-                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Default</th>
-                    </tr>
-                </thead>
-                <tbody id="tableStructureBody" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
-{% endblock %}
-

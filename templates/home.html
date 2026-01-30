@@ -5,9 +5,15 @@
 {% block content %}
 <!-- Hero Section -->
 <section class="relative bg-white py-24 md:py-32 overflow-hidden">
+    <!-- Modern School Image Background - Using Unsplash Sample -->
+    <div class="hero-image-background" style="background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80');">
+        <div class="hero-image-overlay"></div>
+    </div>
+    <!-- Fallback Gradient Background if no image -->
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/10 via-transparent to-brand-secondary/10" style="display: none;"></div>
     <!-- Decorative Background Elements -->
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
+    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl z-0"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl z-0"></div>
     
     <div class="container mx-auto px-4 lg:px-8 relative z-10">
         <div class="max-w-5xl mx-auto text-center">
@@ -88,7 +94,7 @@
                     <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
                         <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                             <i class="fas fa-graduation-cap text-white text-3xl"></i>
-                        </div>
+        </div>
                         <h3 class="text-2xl font-bold text-gray-900 mb-4">Quality Education</h3>
                         <p class="text-gray-600 leading-relaxed text-lg">
                             World-class curriculum designed to prepare students for success in the modern world.
@@ -99,7 +105,7 @@
                     <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
                         <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                             <i class="fas fa-users text-white text-3xl"></i>
-                        </div>
+            </div>
                         <h3 class="text-2xl font-bold text-gray-900 mb-4">Expert Faculty</h3>
                         <p class="text-gray-600 leading-relaxed text-lg">
                             Experienced and dedicated teachers committed to student growth and development.
@@ -110,7 +116,7 @@
                     <div class="bg-gradient-to-br from-gray-50 to-white p-10 rounded-3xl shadow-sm hover:shadow-xl transition-all border border-gray-100 h-full">
                         <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
                             <i class="fas fa-laptop text-white text-3xl"></i>
-                        </div>
+            </div>
                         <h3 class="text-2xl font-bold text-gray-900 mb-4">Modern Facilities</h3>
                         <p class="text-gray-600 leading-relaxed text-lg">
                             State-of-the-art technology and facilities to enhance the learning experience.
@@ -129,7 +135,7 @@
             <div class="text-center mb-16">
                 <h2 class="text-4xl md:text-5xl font-bold mb-5 text-gray-900">Our Impact</h2>
                 <p class="text-xl text-gray-600">Transforming lives through education and community support</p>
-            </div>
+        </div>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div class="text-center p-8 bg-white rounded-3xl shadow-sm border border-gray-100 hover:shadow-md transition-all">
                     <div class="text-5xl md:text-6xl font-bold mb-3 text-brand-primary">500+</div>
@@ -161,8 +167,8 @@
                 Join us today and unlock your potential
             </p>
             <a href="/admission" class="inline-block px-12 py-5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
-                <i class="fas fa-arrow-right mr-2"></i>Apply for Admission
-            </a>
+            <i class="fas fa-arrow-right mr-2"></i>Apply for Admission
+        </a>
         </div>
     </div>
 </section>
@@ -170,11 +176,11 @@
 <!-- Next Button -->
 <div class="bg-white border-t border-gray-200">
     <div class="container mx-auto px-4 lg:px-8 py-8">
-        <div class="flex justify-end">
+    <div class="flex justify-end">
             <a href="/about" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
-                <span>Next</span>
-                <i class="fas fa-arrow-right"></i>
-            </a>
+            <span>Next</span>
+            <i class="fas fa-arrow-right"></i>
+        </a>
         </div>
     </div>
 </div>

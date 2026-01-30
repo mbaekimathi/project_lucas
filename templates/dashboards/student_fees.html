@@ -1827,6 +1827,12 @@ window.feeStructureCreateModal = function() {
                             
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <button type="button"
+                                        @click="openEditAmount(transaction)"
+                                        class="inline-flex items-center px-5 py-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors font-medium border border-amber-200 dark:border-amber-700">
+                                    <i class="fas fa-edit mr-2"></i>
+                                    <span>Edit amount</span>
+                                </button>
                                 <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
                                    target="_blank" 
                                    class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all font-medium shadow-md">
@@ -1843,6 +1849,30 @@ window.feeStructureCreateModal = function() {
                             </div>
                         </div>
                     </template>
+                </div>
+                
+                <!-- Edit amount modal (inside transactions modal) -->
+                <div x-show="showEditModal" x-cloak
+                     class="fixed inset-0 z-20 flex items-center justify-center p-4 bg-black/50"
+                     @click.self="closeEditAmount()">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
+                         @click.stop>
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Edit paid amount</h3>
+                        <p x-show="editAmountError" class="text-sm text-red-600 dark:text-red-400 mb-3" x-text="editAmountError"></p>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Amount (KES)</label>
+                        <input type="number" step="0.01" min="0.01"
+                               x-model="editAmount"
+                               class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500">
+                        <div class="flex gap-3 mt-4">
+                            <button type="button" @click="closeEditAmount()"
+                                    class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+                            <button type="button" @click="saveEditAmount()" :disabled="editAmountLoading"
+                                    class="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-medium">
+                                <span x-show="!editAmountLoading">Save</span>
+                                <span x-show="editAmountLoading">Saving...</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1991,11 +2021,17 @@ function transactionsModal() {
         transactions: [],
         loading: false,
         error: '',
+        showEditModal: false,
+        editingTransactionId: null,
+        editAmount: '',
+        editAmountError: '',
+        editAmountLoading: false,
         async openTransactionsModal(studentId, studentName) {
             this.studentId = studentId;
             this.studentName = studentName;
             this.transactions = [];
             this.error = '';
+            this.showEditModal = false;
             this.isOpen = true;
             this.loading = true;
             
@@ -2016,6 +2052,49 @@ function transactionsModal() {
         },
         close() {
             this.isOpen = false;
+            this.showEditModal = false;
+        },
+        openEditAmount(transaction) {
+            this.editingTransactionId = transaction.id;
+            this.editAmount = String(transaction.amount_paid);
+            this.editAmountError = '';
+            this.showEditModal = true;
+        },
+        closeEditAmount() {
+            this.showEditModal = false;
+            this.editingTransactionId = null;
+            this.editAmount = '';
+            this.editAmountError = '';
+        },
+        async saveEditAmount() {
+            const amount = parseFloat(this.editAmount);
+            if (isNaN(amount) || amount <= 0) {
+                this.editAmountError = 'Please enter a valid amount greater than zero.';
+                return;
+            }
+            this.editAmountLoading = true;
+            this.editAmountError = '';
+            try {
+                const formData = new FormData();
+                formData.append('payment_id', this.editingTransactionId);
+                formData.append('student_id', this.studentId);
+                formData.append('amount_paid', amount);
+                const response = await fetch('/dashboard/employee/student-fees/update-payment', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.closeEditAmount();
+                    window.location.reload();
+                } else {
+                    this.editAmountError = data.message || 'Failed to update amount.';
+                }
+            } catch (error) {
+                this.editAmountError = 'An error occurred. Please try again.';
+            } finally {
+                this.editAmountLoading = false;
+            }
         }
     };
 }
@@ -2311,6 +2390,12 @@ document.addEventListener('alpine:init', () => {
                             
                             <!-- Action Buttons -->
                             <div class="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                <button type="button"
+                                        @click="openEditAmount(transaction)"
+                                        class="inline-flex items-center px-5 py-2.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-xl hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors font-medium border border-amber-200 dark:border-amber-700">
+                                    <i class="fas fa-edit mr-2"></i>
+                                    <span>Edit amount</span>
+                                </button>
                                 <a :href="'/dashboard/employee/student-fees/download-receipt/' + studentId + '/' + transaction.id" 
                                    target="_blank" 
                                    class="inline-flex items-center px-5 py-2.5 bg-gradient-to-r from-[#800020] to-[#5C0016] text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all font-medium shadow-md">
@@ -2327,6 +2412,30 @@ document.addEventListener('alpine:init', () => {
                             </div>
                         </div>
                     </template>
+                </div>
+                
+                <!-- Edit amount modal (inside transactions modal) -->
+                <div x-show="showEditModal" x-cloak
+                     class="fixed inset-0 z-20 flex items-center justify-center p-4 bg-black/50"
+                     @click.self="closeEditAmount()">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm p-6"
+                         @click.stop>
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Edit paid amount</h3>
+                        <p x-show="editAmountError" class="text-sm text-red-600 dark:text-red-400 mb-3" x-text="editAmountError"></p>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Amount (KES)</label>
+                        <input type="number" step="0.01" min="0.01"
+                               x-model="editAmount"
+                               class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500">
+                        <div class="flex gap-3 mt-4">
+                            <button type="button" @click="closeEditAmount()"
+                                    class="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">Cancel</button>
+                            <button type="button" @click="saveEditAmount()" :disabled="editAmountLoading"
+                                    class="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-lg font-medium">
+                                <span x-show="!editAmountLoading">Save</span>
+                                <span x-show="editAmountLoading">Saving...</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2475,11 +2584,17 @@ function transactionsModal() {
         transactions: [],
         loading: false,
         error: '',
+        showEditModal: false,
+        editingTransactionId: null,
+        editAmount: '',
+        editAmountError: '',
+        editAmountLoading: false,
         async openTransactionsModal(studentId, studentName) {
             this.studentId = studentId;
             this.studentName = studentName;
             this.transactions = [];
             this.error = '';
+            this.showEditModal = false;
             this.isOpen = true;
             this.loading = true;
             
@@ -2500,6 +2615,49 @@ function transactionsModal() {
         },
         close() {
             this.isOpen = false;
+            this.showEditModal = false;
+        },
+        openEditAmount(transaction) {
+            this.editingTransactionId = transaction.id;
+            this.editAmount = String(transaction.amount_paid);
+            this.editAmountError = '';
+            this.showEditModal = true;
+        },
+        closeEditAmount() {
+            this.showEditModal = false;
+            this.editingTransactionId = null;
+            this.editAmount = '';
+            this.editAmountError = '';
+        },
+        async saveEditAmount() {
+            const amount = parseFloat(this.editAmount);
+            if (isNaN(amount) || amount <= 0) {
+                this.editAmountError = 'Please enter a valid amount greater than zero.';
+                return;
+            }
+            this.editAmountLoading = true;
+            this.editAmountError = '';
+            try {
+                const formData = new FormData();
+                formData.append('payment_id', this.editingTransactionId);
+                formData.append('student_id', this.studentId);
+                formData.append('amount_paid', amount);
+                const response = await fetch('/dashboard/employee/student-fees/update-payment', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (data.success) {
+                    this.closeEditAmount();
+                    window.location.reload();
+                } else {
+                    this.editAmountError = data.message || 'Failed to update amount.';
+                }
+            } catch (error) {
+                this.editAmountError = 'An error occurred. Please try again.';
+            } finally {
+                this.editAmountLoading = false;
+            }
         }
     };
 }

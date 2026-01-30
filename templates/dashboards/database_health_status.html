@@ -10,19 +10,19 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() in ['technician', 'principal'] %}
-<a href="{{ url_for('database_management') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+<a href="{{ url_for('database_management') }}"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
     <i class="fas fa-database w-5"></i>
     <span>Database Management</span>
 </a>
-<a href="{{ url_for('database_backup_restore') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+<a href="{{ url_for('database_backup_restore') }}"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
     <i class="fas fa-download w-5"></i>
     <span>Backup & Restore</span>
 </a>
-<a href="{{ url_for('database_health_status') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
-   style="border-color: var(--role-primary);">
+<a href="{{ url_for('database_health_status') }}"
+    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
+    style="border-color: var(--role-primary);">
     <i class="fas fa-heartbeat w-5"></i>
     <span>Health & Status</span>
 </a>
@@ -43,8 +43,8 @@
                     Monitor database performance, health metrics, and system status
                 </p>
             </div>
-            <button onclick="location.reload()" 
-                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
+            <button onclick="location.reload()"
+                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
                 <i class="fas fa-sync-alt"></i>
                 <span>Refresh</span>
             </button>
@@ -68,7 +68,7 @@
                 {% endif %}
             </div>
         </div>
-        
+
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Connection Status -->
             <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
@@ -154,16 +154,26 @@
     <!-- Table Health Analysis -->
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
         <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Table Health Analysis</h2>
-        
+
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-900">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Table Name</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rows</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size (MB)</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Indexes</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Table Name</th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Rows</th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Size (MB)</th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Indexes</th>
+                        <th
+                            class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Status</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -179,22 +189,26 @@
                             <span class="text-sm text-gray-900 dark:text-white">{{ "{:,}".format(table.rows) }}</span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb) }}</span>
+                            <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb)
+                                }}</span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <span class="text-sm text-gray-900 dark:text-white">{{ table.index_count }}</span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             {% if table.status == 'healthy' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
                                 <i class="fas fa-check-circle mr-1"></i>Healthy
                             </span>
                             {% elif table.status == 'warning' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                                 <i class="fas fa-exclamation-triangle mr-1"></i>Warning
                             </span>
                             {% else %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
                                 <i class="fas fa-times-circle mr-1"></i>Issue
                             </span>
                             {% endif %}
@@ -215,19 +229,25 @@
                 <div>
                     <div class="flex justify-between mb-2">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Data Size</span>
-                        <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(health_status.data_size_mb) }} MB</span>
+                        <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(health_status.data_size_mb)
+                            }} MB</span>
                     </div>
                     <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full" style="width: {{ (health_status.data_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%"></div>
+                        <div class="bg-blue-600 h-2 rounded-full"
+                            style="width: {{ (health_status.data_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%">
+                        </div>
                     </div>
                 </div>
                 <div>
                     <div class="flex justify-between mb-2">
                         <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Index Size</span>
-                        <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(health_status.index_size_mb) }} MB</span>
+                        <span class="text-sm text-gray-900 dark:text-white">{{
+                            "%.2f"|format(health_status.index_size_mb) }} MB</span>
                     </div>
                     <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div class="bg-green-600 h-2 rounded-full" style="width: {{ (health_status.index_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%"></div>
+                        <div class="bg-green-600 h-2 rounded-full"
+                            style="width: {{ (health_status.index_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -244,7 +264,8 @@
                         <span class="text-sm font-medium text-gray-900 dark:text-white">{{ table.name }}</span>
                     </div>
                     <div class="text-right">
-                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb) }} MB</p>
+                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb)
+                            }} MB</p>
                         <p class="text-xs text-gray-500 dark:text-gray-400">{{ "{:,}".format(table.rows) }} rows</p>
                     </div>
                 </div>
@@ -262,7 +283,8 @@
         </h2>
         <div class="space-y-3">
             {% for recommendation in health_status.recommendations %}
-            <div class="flex items-start space-x-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
+            <div
+                class="flex items-start space-x-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
                 <i class="fas fa-info-circle text-yellow-600 dark:text-yellow-400 mt-1"></i>
                 <p class="text-sm text-gray-700 dark:text-gray-300">{{ recommendation }}</p>
             </div>
@@ -272,292 +294,3 @@
     {% endif %}
 </div>
 {% endblock %}
-
-
-
-
-
-
-
-
-
-{% block title %}Database Health & Status - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
-{% block sidebar_content %}
-{% if session.get('role', '').lower() in ['technician', 'principal'] %}
-<a href="{{ url_for('database_management') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
-    <i class="fas fa-database w-5"></i>
-    <span>Database Management</span>
-</a>
-<a href="{{ url_for('database_backup_restore') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
-    <i class="fas fa-download w-5"></i>
-    <span>Backup & Restore</span>
-</a>
-<a href="{{ url_for('database_health_status') }}" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
-   style="border-color: var(--role-primary);">
-    <i class="fas fa-heartbeat w-5"></i>
-    <span>Health & Status</span>
-</a>
-{% endif %}
-{% endblock %}
-
-{% block content %}
-<div class="max-w-7xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-6 sm:mb-8">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                    <i class="fas fa-heartbeat text-red-600 dark:text-red-400 mr-2"></i>
-                    Database Health & Status
-                </h1>
-                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-                    Monitor database performance, health metrics, and system status
-                </p>
-            </div>
-            <button onclick="location.reload()" 
-                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
-                <i class="fas fa-sync-alt"></i>
-                <span>Refresh</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Overall Health Status -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Overall Health Status</h2>
-            <div class="flex items-center space-x-2">
-                {% if health_status.overall_status == 'healthy' %}
-                <span class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></span>
-                <span class="text-green-600 dark:text-green-400 font-semibold">Healthy</span>
-                {% elif health_status.overall_status == 'warning' %}
-                <span class="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></span>
-                <span class="text-yellow-600 dark:text-yellow-400 font-semibold">Warning</span>
-                {% else %}
-                <span class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
-                <span class="text-red-600 dark:text-red-400 font-semibold">Critical</span>
-                {% endif %}
-            </div>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <!-- Connection Status -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Connection</span>
-                    {% if health_status.connection_status %}
-                    <i class="fas fa-check-circle text-green-500"></i>
-                    {% else %}
-                    <i class="fas fa-times-circle text-red-500"></i>
-                    {% endif %}
-                </div>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {% if health_status.connection_status %}Active{% else %}Failed{% endif %}
-                </p>
-            </div>
-
-            <!-- Database Size -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Database Size</span>
-                    <i class="fas fa-database text-blue-500"></i>
-                </div>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ "%.2f"|format(health_status.database_size_mb) }} MB
-                </p>
-            </div>
-
-            <!-- Total Tables -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Tables</span>
-                    <i class="fas fa-table text-purple-500"></i>
-                </div>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ health_status.total_tables }}
-                </p>
-            </div>
-
-            <!-- Total Records -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-                <div class="flex items-center justify-between mb-2">
-                    <span class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Records</span>
-                    <i class="fas fa-list text-indigo-500"></i>
-                </div>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white">
-                    {{ "{:,}".format(health_status.total_records) }}
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Database Information -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Database Information</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Database Name</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.db_name }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">MySQL Version</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.mysql_version }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Character Set</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.character_set }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Collation</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.collation }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Uptime</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.uptime }}</p>
-            </div>
-            <div>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-1">Last Checked</p>
-                <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ health_status.last_checked }}</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Table Health Analysis -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Table Health Analysis</h2>
-        
-        <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-900">
-                    <tr>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Table Name</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rows</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Size (MB)</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Indexes</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {% for table in health_status.tables %}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <div class="flex items-center">
-                                <i class="fas fa-table text-blue-500 mr-2"></i>
-                                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ table.name }}</span>
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="text-sm text-gray-900 dark:text-white">{{ "{:,}".format(table.rows) }}</span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb) }}</span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="text-sm text-gray-900 dark:text-white">{{ table.index_count }}</span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            {% if table.status == 'healthy' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                <i class="fas fa-check-circle mr-1"></i>Healthy
-                            </span>
-                            {% elif table.status == 'warning' %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
-                                <i class="fas fa-exclamation-triangle mr-1"></i>Warning
-                            </span>
-                            {% else %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                                <i class="fas fa-times-circle mr-1"></i>Issue
-                            </span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- Performance Metrics -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <!-- Storage Usage -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Storage Usage</h2>
-            <div class="space-y-4">
-                <div>
-                    <div class="flex justify-between mb-2">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Data Size</span>
-                        <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(health_status.data_size_mb) }} MB</span>
-                    </div>
-                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div class="bg-blue-600 h-2 rounded-full" style="width: {{ (health_status.data_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%"></div>
-                    </div>
-                </div>
-                <div>
-                    <div class="flex justify-between mb-2">
-                        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Index Size</span>
-                        <span class="text-sm text-gray-900 dark:text-white">{{ "%.2f"|format(health_status.index_size_mb) }} MB</span>
-                    </div>
-                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div class="bg-green-600 h-2 rounded-full" style="width: {{ (health_status.index_size_mb / health_status.database_size_mb * 100) if health_status.database_size_mb > 0 else 0 }}%"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Top Tables by Size -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Largest Tables</h2>
-            <div class="space-y-3">
-                {% for table in health_status.largest_tables[:5] %}
-                <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div class="flex items-center space-x-3">
-                        <i class="fas fa-table text-blue-500"></i>
-                        <span class="text-sm font-medium text-gray-900 dark:text-white">{{ table.name }}</span>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ "%.2f"|format(table.size_mb) }} MB</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ "{:,}".format(table.rows) }} rows</p>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </div>
-
-    <!-- Health Recommendations -->
-    {% if health_status.recommendations %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-            <i class="fas fa-lightbulb text-yellow-500 mr-2"></i>
-            Recommendations
-        </h2>
-        <div class="space-y-3">
-            {% for recommendation in health_status.recommendations %}
-            <div class="flex items-start space-x-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded">
-                <i class="fas fa-info-circle text-yellow-600 dark:text-yellow-400 mt-1"></i>
-                <p class="text-sm text-gray-700 dark:text-gray-300">{{ recommendation }}</p>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-</div>
-{% endblock %}
-
-
-
-
-
-
-
-

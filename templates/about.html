@@ -5,8 +5,14 @@
 {% block content %}
 <!-- Hero Section -->
 <section class="relative bg-white py-24 md:py-32 overflow-hidden">
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
+    <!-- Modern School Image Background - Using Unsplash Sample -->
+    <div class="hero-image-background" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1920&q=80');">
+        <div class="hero-image-overlay"></div>
+    </div>
+    <!-- Fallback Gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/10 via-transparent to-brand-secondary/10" style="display: none;"></div>
+    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl z-0"></div>
+    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl z-0"></div>
     
     <div class="container mx-auto px-4 lg:px-8 relative z-10">
         <div class="max-w-4xl mx-auto text-center">
@@ -127,11 +133,11 @@
 <!-- Next Button -->
 <div class="bg-white border-t border-gray-200">
     <div class="container mx-auto px-4 lg:px-8 py-8">
-        <div class="flex justify-end">
+    <div class="flex justify-end">
             <a href="/programs" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
-                <span>Next</span>
-                <i class="fas fa-arrow-right"></i>
-            </a>
+            <span>Next</span>
+            <i class="fas fa-arrow-right"></i>
+        </a>
         </div>
     </div>
 </div>

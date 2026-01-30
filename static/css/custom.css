@@ -36,8 +36,227 @@
 body {
     font-family: 'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     color: var(--text-dark);
-    background-color: var(--bg-light);
     line-height: 1.6;
+    position: relative;
+    min-height: 100vh;
+    overflow-x: hidden;
+    /* Modern Creative Professional Background - Mesh Gradient */
+    background: 
+        radial-gradient(ellipse at 0% 0%, rgba(128, 0, 32, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 0%, rgba(160, 0, 48, 0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 100%, rgba(201, 169, 97, 0.05) 0%, transparent 50%),
+        linear-gradient(135deg, #fafbfc 0%, #f5f7fa 25%, #eef2f6 50%, #f8fafc 75%, #ffffff 100%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+}
+
+/* Modern Geometric Pattern Layer 1 - Animated Orbs */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at 15% 30%, rgba(128, 0, 32, 0.12) 0%, transparent 35%),
+        radial-gradient(circle at 85% 70%, rgba(160, 0, 48, 0.10) 0%, transparent 35%),
+        radial-gradient(circle at 50% 10%, rgba(201, 169, 97, 0.08) 0%, transparent 30%),
+        radial-gradient(circle at 20% 80%, rgba(128, 0, 32, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 90% 20%, rgba(160, 0, 48, 0.07) 0%, transparent 35%);
+    background-size: 800px 800px, 1000px 1000px, 600px 600px, 1200px 1200px, 900px 900px;
+    background-position: 0% 0%, 100% 100%, 50% 0%, 0% 100%, 100% 0%;
+    pointer-events: none;
+    z-index: 0;
+    animation: backgroundFloat 20s ease-in-out infinite;
+    opacity: 0.7;
+}
+
+/* Modern Geometric Pattern Layer 2 - Dot Grid with Gradient */
+body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle, rgba(128, 0, 32, 0.03) 1px, transparent 1px),
+        radial-gradient(circle, rgba(160, 0, 48, 0.02) 1px, transparent 1px);
+    background-size: 40px 40px, 60px 60px;
+    background-position: 0 0, 20px 20px;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+    animation: gridPulse 8s ease-in-out infinite;
+}
+
+/* Animated Background Elements */
+@keyframes backgroundFloat {
+    0%, 100% {
+        background-position: 0% 0%, 100% 100%, 50% 0%, 0% 100%, 100% 0%;
+        transform: translate(0, 0);
+    }
+    33% {
+        background-position: 5% 5%, 95% 95%, 55% 5%, 5% 95%, 95% 5%;
+        transform: translate(-10px, -10px);
+    }
+    66% {
+        background-position: -5% -5%, 105% 105%, 45% -5%, -5% 105%, 105% -5%;
+        transform: translate(10px, 10px);
+    }
+}
+
+@keyframes gridPulse {
+    0%, 100% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.8;
+        transform: scale(1.02);
+    }
+}
+
+/* Dark mode - Creative Professional Background */
+.dark body {
+    background: 
+        radial-gradient(ellipse at 0% 0%, rgba(160, 0, 48, 0.15) 0%, transparent 50%),
+        radial-gradient(ellipse at 100% 0%, rgba(128, 0, 32, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 100%, rgba(201, 169, 97, 0.10) 0%, transparent 50%),
+        linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #1e293b 75%, #0f172a 100%);
+    background-attachment: fixed;
+    background-size: 100% 100%;
+}
+
+.dark body::before {
+    background-image: 
+        radial-gradient(circle at 15% 30%, rgba(160, 0, 48, 0.20) 0%, transparent 35%),
+        radial-gradient(circle at 85% 70%, rgba(128, 0, 32, 0.18) 0%, transparent 35%),
+        radial-gradient(circle at 50% 10%, rgba(201, 169, 97, 0.15) 0%, transparent 30%),
+        radial-gradient(circle at 20% 80%, rgba(160, 0, 48, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 90% 20%, rgba(201, 169, 97, 0.14) 0%, transparent 35%);
+    opacity: 0.8;
+}
+
+.dark body::after {
+    background-image: 
+        radial-gradient(circle, rgba(160, 0, 48, 0.08) 1px, transparent 1px),
+        radial-gradient(circle, rgba(201, 169, 97, 0.05) 1px, transparent 1px);
+    opacity: 0.7;
+}
+
+/* Ensure content is above background */
+body > header,
+body > aside,
+body > main,
+body > footer {
+    position: relative;
+    z-index: 1;
+}
+
+/* Modern Image Background Integration - Using Unsplash Sample Images */
+body.has-school-images {
+    background-image: 
+        url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1200&q=80'),
+        url('https://images.unsplash.com/photo-1580582932707-520a154937e0?w=1200&q=80'),
+        url('https://images.unsplash.com/photo-1588072432836-e10032774350?w=1200&q=80');
+    background-size: 35% auto, 40% auto, 45% auto;
+    background-position: 
+        0% 20%,
+        70% 50%,
+        30% 80%;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-blend-mode: multiply;
+    filter: brightness(0.95);
+}
+
+body.has-school-images::before {
+    background-image: 
+        radial-gradient(circle at 15% 30%, rgba(128, 0, 32, 0.15) 0%, transparent 35%),
+        radial-gradient(circle at 85% 70%, rgba(160, 0, 48, 0.12) 0%, transparent 35%),
+        radial-gradient(circle at 50% 10%, rgba(201, 169, 97, 0.10) 0%, transparent 30%),
+        radial-gradient(circle at 20% 80%, rgba(128, 0, 32, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 20%, rgba(160, 0, 48, 0.09) 0%, transparent 35%);
+    opacity: 0.6;
+    mix-blend-mode: overlay;
+}
+
+body.has-school-images::after {
+    background-image: 
+        radial-gradient(circle, rgba(128, 0, 32, 0.02) 1px, transparent 1px),
+        radial-gradient(circle, rgba(160, 0, 48, 0.015) 1px, transparent 1px);
+    opacity: 0.4;
+}
+
+.dark body.has-school-images {
+    filter: brightness(0.7);
+}
+
+.dark body.has-school-images::before {
+    background-image: 
+        radial-gradient(circle at 15% 30%, rgba(160, 0, 48, 0.25) 0%, transparent 35%),
+        radial-gradient(circle at 85% 70%, rgba(128, 0, 32, 0.22) 0%, transparent 35%),
+        radial-gradient(circle at 50% 10%, rgba(201, 169, 97, 0.18) 0%, transparent 30%),
+        radial-gradient(circle at 20% 80%, rgba(160, 0, 48, 0.15) 0%, transparent 40%),
+        radial-gradient(circle at 90% 20%, rgba(201, 169, 97, 0.17) 0%, transparent 35%);
+    opacity: 0.7;
+}
+
+/* Enhanced section backgrounds with glassmorphism */
+section.bg-white,
+section.bg-gray-50 {
+    position: relative;
+    z-index: 1;
+}
+
+/* Modern glassmorphism effect for sections */
+section.bg-white {
+    background: rgba(255, 255, 255, 0.85) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.06);
+}
+
+.dark section.bg-white {
+    background: rgba(17, 24, 39, 0.85) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+section.bg-gray-50 {
+    background: rgba(249, 250, 251, 0.75) !important;
+    backdrop-filter: blur(15px) saturate(150%);
+    -webkit-backdrop-filter: blur(15px) saturate(150%);
+}
+
+.dark section.bg-gray-50 {
+    background: rgba(31, 41, 55, 0.75) !important;
+}
+
+/* Smooth background transitions */
+@media (prefers-reduced-motion: no-preference) {
+    body,
+    body::before,
+    body::after {
+        transition: background 0.6s cubic-bezier(0.4, 0, 0.2, 1), 
+                    background-image 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.6s ease;
+    }
+}
+
+/* Disable animations for reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+    body::before,
+    body::after {
+        animation: none;
+    }
+    
+    body::before {
+        background-position: 0% 0%, 100% 100%, 50% 0%, 0% 100%, 100% 0%;
+    }
 }
 
 h1, h2, h3, h4, h5, h6 {

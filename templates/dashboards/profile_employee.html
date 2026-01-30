@@ -39,26 +39,26 @@
             <!-- Profile Picture -->
             <div class="relative" x-data="{ preview: null }">
                 <label for="profile_picture_input" class="cursor-pointer block">
-                    <div class="relative">
-                        {% if user_data.get('profile_picture') %}
+            <div class="relative">
+                {% if user_data.get('profile_picture') %}
                         <img id="profile_preview" 
                              src="{{ url_for('static', filename=user_data.profile_picture) }}" 
-                             alt="Profile" 
+                     alt="Profile" 
                              class="w-32 h-32 rounded-full border-4 border-gray-200 dark:border-gray-700 object-cover shadow-lg"
                              x-show="!preview">
-                        {% else %}
+                {% else %}
                         <div id="profile_preview" 
                              class="w-32 h-32 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center border-4 border-gray-200 dark:border-gray-700 shadow-lg"
                              x-show="!preview">
-                            <i class="fas fa-user text-white text-5xl"></i>
-                        </div>
-                        {% endif %}
+                    <i class="fas fa-user text-white text-5xl"></i>
+                </div>
+                {% endif %}
                         <img x-show="preview" 
                              x-bind:src="preview" 
                              alt="Profile Preview" 
                              class="w-32 h-32 rounded-full border-4 border-gray-200 dark:border-gray-700 object-cover shadow-lg">
                         <div class="absolute bottom-0 right-0 w-10 h-10 bg-green-600 hover:bg-green-700 text-white rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-all pointer-events-none">
-                            <i class="fas fa-camera text-sm"></i>
+                    <i class="fas fa-camera text-sm"></i>
                         </div>
                     </div>
                 </label>

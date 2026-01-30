@@ -5835,6 +5835,99 @@ def get_student_transactions(student_id):
     finally:
         connection.close()
 
+
+@app.route('/dashboard/employee/student-fees/update-payment', methods=['POST'])
+@login_required
+def update_payment_amount():
+    """Update the amount_paid for an existing student payment (with audit log)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+
+    has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+
+    if not (is_accountant or is_technician or has_process_payments_permission):
+        return jsonify({'success': False, 'message': 'You do not have permission to update payments.'}), 403
+
+    try:
+        if request.is_json:
+            data = request.get_json()
+            payment_id = data.get('payment_id')
+            student_id = data.get('student_id')
+            amount_paid = float(data.get('amount_paid', 0))
+        else:
+            payment_id = request.form.get('payment_id')
+            student_id = request.form.get('student_id')
+            amount_paid = float(request.form.get('amount_paid', 0))
+
+        if not payment_id or not student_id:
+            return jsonify({'success': False, 'message': 'Missing payment_id or student_id.'}), 400
+        if amount_paid <= 0:
+            return jsonify({'success': False, 'message': 'Amount paid must be greater than zero.'}), 400
+
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT amount_paid FROM student_payments WHERE id = %s AND student_id = %s",
+                    (payment_id, student_id)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return jsonify({'success': False, 'message': 'Payment not found.'}), 404
+
+                old_value = row.get('amount_paid') if isinstance(row, dict) else row[0]
+                try:
+                    old_value = float(old_value) if old_value is not None else 0.0
+                except (TypeError, ValueError):
+                    old_value = 0.0
+
+                cursor.execute(
+                    "UPDATE student_payments SET amount_paid = %s WHERE id = %s AND student_id = %s",
+                    (amount_paid, payment_id, student_id)
+                )
+                if cursor.rowcount == 0:
+                    return jsonify({'success': False, 'message': 'Payment not updated.'}), 400
+
+                received_by_id = None
+                if employee_id:
+                    cursor.execute(
+                        "SELECT id FROM employees WHERE id = %s OR employee_id = %s LIMIT 1",
+                        (employee_id, employee_id)
+                    )
+                    emp = cursor.fetchone()
+                    if emp:
+                        received_by_id = emp.get('id') if isinstance(emp, dict) else emp[0]
+
+                cursor.execute("""
+                    INSERT INTO student_payment_audit
+                    (payment_id, student_id, action_type, field_name, old_value, new_value, changed_by)
+                    VALUES (%s, %s, 'UPDATE', 'amount_paid', %s, %s, %s)
+                """, (payment_id, student_id, str(old_value), str(amount_paid), received_by_id))
+
+                connection.commit()
+                return jsonify({'success': True, 'amount_paid': amount_paid})
+        except Exception as e:
+            connection.rollback()
+            print(f"Error updating payment: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': str(e)}), 500
+        finally:
+            connection.close()
+    except ValueError as e:
+        return jsonify({'success': False, 'message': 'Invalid amount.'}), 400
+    except Exception as e:
+        print(f"Error in update_payment_amount: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'An error occurred while updating payment.'}), 500
+
 @app.route('/dashboard/employee/student-fees/fee-structure/<int:structure_id>/update', methods=['POST'])
 @login_required
 def update_fee_structure(structure_id):

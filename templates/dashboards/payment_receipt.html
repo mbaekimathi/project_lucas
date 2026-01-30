@@ -26,17 +26,29 @@
                 max-width: 100% !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                min-height: auto !important;
             }
             @page {
                 margin: 1cm;
                 size: A4;
             }
         }
+        html, body {
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            background: white;
+        }
         .receipt-container {
             max-width: 210mm;
+            min-height: 100vh;
             margin: 0 auto;
             background: white;
-            padding: 20px;
+            padding: 32px 40px;
+            box-sizing: border-box;
+            font-size: 15px;
         }
         .receipt-border {
             border: 1px solid #e5e7eb;
@@ -47,7 +59,7 @@
         }
         table th, table td {
             border: 1px solid #000;
-            padding: 8px;
+            padding: 10px 12px;
             text-align: left;
         }
         table th {
@@ -66,8 +78,8 @@
         }
     </style>
 </head>
-<body class="bg-gray-100 py-8">
-    <div class="receipt-container bg-white shadow-xl rounded-lg overflow-hidden receipt-border">
+<body>
+    <div class="receipt-container shadow-xl receipt-border">
         <!-- Header Section -->
         <div class="mb-6">
             <div class="flex justify-between items-start">
@@ -94,7 +106,7 @@
                         <p class="text-sm">{{ school_settings.school_phone }}</p>
                         {% endif %}
                     </div>
-                    <h1 class="text-2xl font-bold">PAYMENT RECEIPT</h1>
+                    <h1 class="text-3xl font-bold">PAYMENT RECEIPT</h1>
                 </div>
             </div>
         </div>
