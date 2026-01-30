@@ -675,7 +675,7 @@ def init_db():
                     if not cursor.fetchone():
                         cursor.execute("ALTER TABLE academic_levels ADD INDEX idx_level_status (level_status)")
                     connection.commit()
-                    print("✓ Migrated academic_levels.status to level_status")
+                    print("OK: Migrated academic_levels.status to level_status")
             except Exception as e:
                 # Column might not exist or already renamed
                 print(f"Migration note: {e}")
@@ -742,7 +742,7 @@ def init_db():
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER is_current")
                     cursor.execute("ALTER TABLE academic_years ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
-                    print("✓ Added is_locked and locked_at columns to academic_years table")
+                    print("OK: Added is_locked and locked_at columns to academic_years table")
             except Exception as e:
                 print(f"Migration note for academic_years.is_locked: {e}")
                 pass
@@ -753,7 +753,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("✓ Updated academic_years.status enum to include 'suspended'")
+                    print("OK: Updated academic_years.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for academic_years.status enum: {e}")
                 pass
@@ -788,7 +788,7 @@ def init_db():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
-                    print("✓ Added is_locked and locked_at columns to terms table")
+                    print("OK: Added is_locked and locked_at columns to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_locked: {e}")
                 pass
@@ -799,7 +799,7 @@ def init_db():
                 status_col = cursor.fetchone()
                 if status_col and 'suspended' not in str(status_col):
                     cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("✓ Updated terms.status enum to include 'suspended'")
+                    print("OK: Updated terms.status enum to include 'suspended'")
             except Exception as e:
                 print(f"Migration note for terms.status enum: {e}")
                 pass
@@ -810,7 +810,7 @@ def init_db():
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE terms ADD COLUMN is_current BOOLEAN DEFAULT FALSE AFTER status")
                     cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
-                    print("✓ Added is_current column to terms table")
+                    print("OK: Added is_current column to terms table")
             except Exception as e:
                 print(f"Migration note for terms.is_current: {e}")
                 pass
@@ -841,7 +841,7 @@ def init_db():
                     cursor.execute("ALTER TABLE fee_structures ADD FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_term (term_id)")
                     cursor.execute("ALTER TABLE fee_structures ADD INDEX idx_academic_year (academic_year_id)")
-                    print("✓ Added term_id and academic_year_id to fee_structures")
+                    print("OK: Added term_id and academic_year_id to fee_structures")
             except Exception as e:
                 print(f"Migration note for fee_structures: {e}")
                 pass
@@ -851,7 +851,7 @@ def init_db():
                 cursor.execute("SHOW COLUMNS FROM fee_structures LIKE 'category'")
                 if not cursor.fetchone():
                     cursor.execute("ALTER TABLE fee_structures ADD COLUMN category VARCHAR(50) NULL DEFAULT 'both' AFTER fee_name")
-                    print("✓ Added category column to fee_structures")
+                    print("OK: Added category column to fee_structures")
             except Exception as e:
                 print(f"Migration note for fee_structures category: {e}")
                 pass
@@ -868,7 +868,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN student_category VARCHAR(50) NULL AFTER special_needs")
-                    print("✓ Added student_category column to students table")
+                    print("OK: Added student_category column to students table")
             except Exception as e:
                 print(f"Migration note for student_category: {e}")
                 pass
@@ -884,7 +884,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_name VARCHAR(255) NULL AFTER student_category")
-                    print("✓ Added sponsor_name column to students table")
+                    print("OK: Added sponsor_name column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_name: {e}")
                 pass
@@ -901,7 +901,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_phone VARCHAR(50) NULL AFTER sponsor_name")
-                    print("✓ Added sponsor_phone column to students table")
+                    print("OK: Added sponsor_phone column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_phone: {e}")
                 pass
@@ -918,7 +918,7 @@ def init_db():
                 result = cursor.fetchone()
                 if result and result[0] == 0:
                     cursor.execute("ALTER TABLE students ADD COLUMN sponsor_email VARCHAR(255) NULL AFTER sponsor_phone")
-                    print("✓ Added sponsor_email column to students table")
+                    print("OK: Added sponsor_email column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_email: {e}")
                 pass
@@ -8754,20 +8754,20 @@ def system_settings():
                                 'updated_at': row.get('updated_at')
                             }
                             academic_levels.append(level_data)
-                        print(f"✓ Successfully fetched {len(academic_levels)} academic level(s)")
+                        print(f"OK: Successfully fetched {len(academic_levels)} academic level(s)")
                     else:
-                        print("ℹ No academic levels found in database (table exists but is empty)")
+                        print("Info: No academic levels found in database (table exists but is empty)")
                 except pymysql.err.ProgrammingError as e:
                     # Table doesn't exist (error 1146)
                     error_code = e.args[0] if e.args else 0
                     if error_code == 1146 or "doesn't exist" in str(e).lower():
-                        print("⚠ Academic levels table does not exist yet")
+                        print("Warning: Academic levels table does not exist yet")
                     else:
-                        print(f"⚠ SQL Error: {e}")
+                        print(f"Warning: SQL Error: {e}")
                         import traceback
                         traceback.print_exc()
                 except Exception as e:
-                    print(f"⚠ Error fetching academic levels: {e}")
+                    print(f"Warning: Error fetching academic levels: {e}")
                     import traceback
                     traceback.print_exc()
                 
@@ -8783,7 +8783,7 @@ def system_settings():
                     """, (today,))
                     if cursor.rowcount > 0:
                         connection.commit()
-                        print(f"✓ Auto-locked {cursor.rowcount} academic year(s) that have ended")
+                        print(f"OK: Auto-locked {cursor.rowcount} academic year(s) that have ended")
                     
                     cursor.execute("""
                         SELECT id, year_name, start_date, end_date, status, is_current, is_locked, locked_at
@@ -8902,7 +8902,7 @@ def system_settings():
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
         except Exception as e:
-            print(f"❌ Error fetching data: {e}")
+            print(f"Error fetching data: {e}")
             print(f"Error type: {type(e).__name__}")
             print(f"Error args: {e.args}")
             import traceback
