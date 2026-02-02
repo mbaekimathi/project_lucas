@@ -6003,8 +6003,8 @@ def update_payment_amount():
 
         if not payment_id or not student_id:
             return jsonify({'success': False, 'message': 'Missing payment_id or student_id.'}), 400
-        if amount_paid <= 0:
-            return jsonify({'success': False, 'message': 'Amount paid must be greater than zero.'}), 400
+        if amount_paid < 0:
+            return jsonify({'success': False, 'message': 'Amount paid cannot be negative.'}), 400
 
         connection = get_db_connection()
         if not connection:

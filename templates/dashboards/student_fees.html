@@ -299,7 +299,7 @@
                                     {% endif %}
                                     {% if student.get('previous_term_balance', 0) > 0 %}
                                     <div class="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
-                                        (Includes KES {{ "{:,.2f}".format(student.previous_term_balance) }} from previous term)
+                                        Balance from last term: KES {{ "{:,.2f}".format(student.previous_term_balance) }}
                                     </div>
                                     {% endif %}
                                 {% else %}
@@ -2078,8 +2078,8 @@ function transactionsModal() {
         },
         async saveEditAmount() {
             const amount = parseFloat(this.editAmount);
-            if (isNaN(amount) || amount <= 0) {
-                this.editAmountError = 'Please enter a valid amount greater than zero.';
+            if (isNaN(amount) || amount < 0) {
+                this.editAmountError = 'Please enter a valid amount (zero or greater).';
                 return;
             }
             this.editAmountLoading = true;
@@ -2641,8 +2641,8 @@ function transactionsModal() {
         },
         async saveEditAmount() {
             const amount = parseFloat(this.editAmount);
-            if (isNaN(amount) || amount <= 0) {
-                this.editAmountError = 'Please enter a valid amount greater than zero.';
+            if (isNaN(amount) || amount < 0) {
+                this.editAmountError = 'Please enter a valid amount (zero or greater).';
                 return;
             }
             this.editAmountLoading = true;
