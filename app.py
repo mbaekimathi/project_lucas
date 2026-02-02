@@ -1056,6 +1056,8 @@ def check_permission_or_role(permission_key, allowed_roles=None):
     
     # First, get the actual employee ID from database (handle both id and employee_id fields)
     actual_employee_id = None
+    total_permissions = 0
+    
     if employee_id:
         connection = get_db_connection()
         if connection:
@@ -1071,8 +1073,18 @@ def check_permission_or_role(permission_key, allowed_roles=None):
                     result = cursor.fetchone()
                     if result:
                         actual_employee_id = result.get('id') if isinstance(result, dict) else result[0]
+                        
+                        # Check if employee has ANY permissions assigned (do this in same query for efficiency)
+                        cursor.execute("""
+                            SELECT COUNT(*) as count 
+                            FROM employee_permissions 
+                            WHERE employee_id = %s
+                        """, (actual_employee_id,))
+                        perm_result = cursor.fetchone()
+                        if perm_result:
+                            total_permissions = perm_result.get('count', 0) if isinstance(perm_result, dict) else perm_result[0] if isinstance(perm_result, tuple) else 0
             except Exception as e:
-                print(f"Error finding employee ID: {e}")
+                print(f"Error finding employee ID or checking permissions: {e}")
             finally:
                 if connection:
                     try:
@@ -1083,39 +1095,52 @@ def check_permission_or_role(permission_key, allowed_roles=None):
     # Check if employee has specific permission assigned
     if actual_employee_id:
         has_specific_permission = has_permission(actual_employee_id, permission_key)
+        
+        # Debug logging
+        print(f"DEBUG check_permission_or_role('{permission_key}'):")
+        print(f"  - actual_employee_id: {actual_employee_id}")
+        print(f"  - user_role: {user_role}")
+        print(f"  - has_specific_permission: {has_specific_permission}")
+        print(f"  - total_permissions: {total_permissions}")
+        
         if has_specific_permission:
+            print(f"  - RESULT: GRANTED (has specific permission)")
             return True
         
-        # Check if employee has ANY permissions assigned
-        connection = get_db_connection()
-        if connection:
-            try:
-                with connection.cursor() as cursor:
-                    cursor.execute("""
-                        SELECT COUNT(*) as count 
-                        FROM employee_permissions 
-                        WHERE employee_id = %s
-                    """, (actual_employee_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        total_permissions = result.get('count', 0) if isinstance(result, dict) else result[0] if isinstance(result, tuple) else 0
-                        # If employee has any permissions assigned, we're in permission-based mode
-                        # So if they don't have this specific permission, deny access
-                        if total_permissions > 0:
-                            return False  # Permission-based mode: no permission = no access
-            except Exception as e:
-                print(f"Error checking total permissions: {e}")
-            finally:
-                if connection:
-                    try:
-                        connection.close()
-                    except:
-                        pass
+        # If employee has ANY permissions assigned, we're in permission-based mode
+        # So if they don't have this specific permission, deny access
+        if total_permissions > 0:
+            print(f"  - RESULT: DENIED (permission-based mode, no specific permission)")
+            return False  # Permission-based mode: no permission = no access
+        
+        # IMPORTANT: For accountants, principals, and other roles that use permissions,
+        # if they have been to the permissions page (even if all toggled off),
+        # we should check if they've ever had permissions assigned
+        # Check if this employee has ever had permissions (check audit or use a flag)
+        # For now, if they're an accountant/principal and have 0 permissions, 
+        # we'll still allow role-based fallback BUT only if they've never had permissions managed
+        
+        # Check if employee has ever had any permissions (by checking if they exist in the table at all)
+        # Actually, we can't easily check "ever had" without an audit table
+        # So for now: if accountant/principal with 0 permissions, deny access (require explicit permissions)
+        if user_role in ['accountant', 'principal'] and total_permissions == 0:
+            # For accountants/principals, require explicit permissions - no role fallback
+            print(f"  - RESULT: DENIED (accountant/principal with no permissions - requires explicit permission)")
+            return False
     
-    # Fall back to role-based access only if no permissions are assigned (backward compatibility)
+    # Fall back to role-based access only if:
+    # 1. No permissions are assigned AND
+    # 2. User is not an accountant/principal (they require explicit permissions)
     if allowed_roles and user_role in allowed_roles:
-        return True
+        # Only allow role fallback for non-accountant/principal roles
+        if user_role not in ['accountant', 'principal']:
+            print(f"  - RESULT: GRANTED (role-based fallback: {user_role} in {allowed_roles})")
+            return True
+        else:
+            print(f"  - RESULT: DENIED (accountant/principal requires explicit permission, no role fallback)")
+            return False
     
+    print(f"  - RESULT: DENIED (no permission, no role match)")
     return False
 
 def get_employee_permissions_list(employee_id):
@@ -3213,7 +3238,8 @@ def finance_overview():
     has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_principal or is_technician or has_view_fees_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -3318,8 +3344,9 @@ def student_fees():
     can_edit_fee_structure = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
     can_delete_fee_structure = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
     
-    # Allow access if: has role-based access OR has permission-based access
-    if not (is_accountant or is_principal or is_technician or has_view_fees_permission or has_manage_fees_permission):
+    # Allow access if: technician OR has permission-based access (permission check handles role fallback)
+    # Note: check_permission_or_role already handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         print(f"  - Access DENIED: user_role={user_role}, viewing_as_role={viewing_as_role}, is_accountant={is_accountant}, is_technician={is_technician}")
         flash('You do not have permission to access this page. Only accountants, principals, or users with fee viewing permissions can access Student Fees.', 'error')
         return redirect(url_for('dashboard_employee'))
@@ -3933,6 +3960,9 @@ def student_fees():
         finally:
             connection.close()
     
+    # Check additional permissions
+    can_generate_invoices = check_permission_or_role('generate_invoices', ['accountant', 'principal'])
+    
     return render_template('dashboards/student_fees.html', 
                          students=students, 
                          academic_levels=academic_levels,
@@ -3946,7 +3976,8 @@ def student_fees():
                          can_record_payments=can_record_payments,
                          can_add_fee_structure=can_add_fee_structure,
                          can_edit_fee_structure=can_edit_fee_structure,
-                         can_delete_fee_structure=can_delete_fee_structure)
+                         can_delete_fee_structure=can_delete_fee_structure,
+                         can_generate_invoices=can_generate_invoices)
 
 @app.route('/dashboard/employee/student-fees/generate-invoice/<student_id>')
 @login_required
@@ -3963,7 +3994,8 @@ def generate_invoice(student_id):
     # Check permission-based access
     has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
     
-    if not (is_accountant or is_technician or has_generate_invoices_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_generate_invoices_permission):
         flash('You do not have permission to generate invoices.', 'error')
         return redirect(url_for('student_fees'))
     
@@ -4675,14 +4707,13 @@ def download_payment_receipt(student_id, payment_id):
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Check if user is accountant or viewing as accountant
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
     # Check permission-based access
     has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
     
-    if not (is_accountant or is_technician or has_generate_invoices_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_generate_invoices_permission):
         flash('You do not have permission to download receipts.', 'error')
         return redirect(url_for('student_fees'))
     
@@ -5187,14 +5218,13 @@ def download_payment_receipt_pdf(student_id, payment_id):
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Check if user is accountant or viewing as accountant
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
     # Check permission-based access
     has_generate_invoices_permission = check_permission_or_role('generate_invoices', ['accountant'])
     
-    if not (is_accountant or is_technician or has_generate_invoices_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_generate_invoices_permission):
         flash('You do not have permission to download receipts.', 'error')
         return redirect(url_for('student_fees'))
     
@@ -5249,12 +5279,12 @@ def check_fee_structure():
     employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check permission to view fee structure details
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     has_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'principal'])
     has_view_fees = check_permission_or_role('view_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_view_fee_structure_details or has_view_fees):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fee_structure_details or has_view_fees):
         return jsonify({'success': False, 'message': 'You do not have permission to view fee structure details. Please contact your administrator.'}), 403
     
     academic_year_id = request.args.get('academic_year_id')
@@ -5350,7 +5380,8 @@ def create_fee_structure():
     has_add_fee_structure_permission = check_permission_or_role('add_fee_structure', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_add_fee_structure_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_add_fee_structure_permission or has_manage_fees_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to add fee structures. Please contact your administrator.'}), 403
     
     try:
@@ -5504,7 +5535,8 @@ def fee_structures():
     has_view_fees_permission = check_permission_or_role('view_fees', ['accountant'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant'])
     
-    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -5643,7 +5675,8 @@ def payments_audit():
     has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -5762,15 +5795,24 @@ def record_payment():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     employee_id = session.get('employee_id') or session.get('user_id')
     
-    # Check permissions
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
     # Check permission-based access
     has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
     
-    if not (is_accountant or is_technician or has_process_payments_permission):
+    # Debug logging
+    print(f"DEBUG record_payment:")
+    print(f"  - user_role: {user_role}")
+    print(f"  - employee_id: {employee_id}")
+    print(f"  - is_technician: {is_technician}")
+    print(f"  - has_process_payments_permission: {has_process_payments_permission}")
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_process_payments_permission):
+        print(f"  - ACCESS DENIED: No permission to record payments")
         return jsonify({'success': False, 'message': 'You do not have permission to record payments.'}), 403
+    
+    print(f"  - ACCESS GRANTED: Allowing payment recording")
     
     try:
         # Get form data
@@ -5983,11 +6025,11 @@ def update_payment_amount():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     employee_id = session.get('employee_id') or session.get('user_id')
 
-    has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
+    has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
 
-    if not (is_accountant or is_technician or has_process_payments_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_process_payments_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to update payments.'}), 403
 
     try:
@@ -6082,7 +6124,8 @@ def update_fee_structure(structure_id):
     has_edit_fee_structure_permission = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_edit_fee_structure_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_edit_fee_structure_permission or has_manage_fees_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to edit fee structures. Please contact your administrator.'}), 403
     
     try:
@@ -6207,7 +6250,8 @@ def delete_fee_structure(structure_id):
     has_delete_fee_structure_permission = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_delete_fee_structure_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_delete_fee_structure_permission or has_manage_fees_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to delete fee structures. Please contact your administrator.'}), 403
     
     connection = get_db_connection()
@@ -6242,10 +6286,12 @@ def staff_and_salaries():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
+    is_technician = user_role == 'technician'
     has_salary_permission = check_permission_or_role('manage_salaries', 
                                                      ['accountant', 'principal', 'super admin'])
     
-    if not (is_accountant or is_principal or is_super_admin or is_technician or has_salary_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_salary_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -7982,7 +8028,7 @@ def student_management():
     
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_students', ['principal', 'deputy principal', 'academic coordinator'])
-    can_edit = check_permission_or_role('edit_students', ['principal', 'deputy principal', 'academic coordinator', 'teachers'])
+    can_edit = check_permission_or_role('edit_students', ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant'])
     can_delete = check_permission_or_role('delete_students', ['principal', 'deputy principal'])
     
     # Fetch all students with parent information
@@ -9143,7 +9189,8 @@ def academic_settings():
     has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
     
-    if not (is_accountant or is_technician or has_view_fees_permission or has_manage_fees_permission):
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -10378,7 +10425,7 @@ def get_employee_permissions(employee_id):
     all_permissions = [
         {'key': 'view_students', 'name': 'View Students', 'description': 'View student information and records', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager']},
         {'key': 'add_students', 'name': 'Add Students', 'description': 'Add new students to the system', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
-        {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
+        {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant']},
         {'key': 'delete_students', 'name': 'Delete Students', 'description': 'Remove students from the system', 'roles': ['principal', 'deputy principal']},
         {'key': 'view_student_fees', 'name': 'View Student Fees', 'description': 'View student fee information', 'roles': ['principal', 'accountant', 'deputy principal']},
         {'key': 'view_fee_structure_details', 'name': 'View Fee Structure Details', 'description': 'View detailed fee structure information', 'roles': ['principal', 'accountant', 'deputy principal']},
@@ -10397,6 +10444,15 @@ def get_employee_permissions(employee_id):
         {'key': 'generate_invoices', 'name': 'Generate Invoices', 'description': 'Create and generate invoices', 'roles': ['principal', 'accountant']},
         {'key': 'view_academic_levels', 'name': 'View Academic Levels', 'description': 'View academic levels and grades', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
         {'key': 'manage_academic_levels', 'name': 'Manage Academic Levels', 'description': 'Create and edit academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
+        {'key': 'add_academic_level', 'name': 'Add Academic Level', 'description': 'Create new academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'edit_academic_level', 'name': 'Edit Academic Level', 'description': 'Edit existing academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'delete_academic_level', 'name': 'Delete Academic Level', 'description': 'Delete academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'add_academic_year', 'name': 'Add Academic Year', 'description': 'Create new academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'edit_academic_year', 'name': 'Edit Academic Year', 'description': 'Edit existing academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'delete_academic_year', 'name': 'Delete Academic Year', 'description': 'Delete academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'add_term', 'name': 'Add Term', 'description': 'Create new terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'edit_term', 'name': 'Edit Term', 'description': 'Edit existing terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
+        {'key': 'delete_term', 'name': 'Delete Term', 'description': 'Delete terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
         {'key': 'view_exams', 'name': 'View Exams', 'description': 'View exam information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
         {'key': 'manage_exams', 'name': 'Manage Exams', 'description': 'Create and edit exams', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
         {'key': 'view_results', 'name': 'View Results', 'description': 'View exam and academic results', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
@@ -10651,9 +10707,14 @@ def add_academic_level():
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_add_academic_level_permission = check_permission_or_role('add_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_add_academic_level_permission or has_manage_academic_levels_permission):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
     
     # Get form data and convert to uppercase
     level_category = request.form.get('level_category', '').strip().upper()
@@ -10758,7 +10819,12 @@ def update_academic_level(level_id):
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_edit_academic_level_permission = check_permission_or_role('edit_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_edit_academic_level_permission or has_manage_academic_levels_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Get JSON data
@@ -10817,9 +10883,18 @@ def update_academic_level(level_id):
 def delete_academic_level(level_id):
     """Delete an academic level"""
     user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Only technicians can delete academic levels
-    if user_role != 'technician':
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    
+    # Check permission-based access
+    has_delete_academic_level_permission = check_permission_or_role('delete_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_delete_academic_level_permission or has_manage_academic_levels_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Delete from database
@@ -10865,9 +10940,13 @@ def create_academic_year():
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_add_academic_year_permission = check_permission_or_role('add_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_add_academic_year_permission):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
     
     year_name = request.form.get('year_name', '').strip()
     start_date = request.form.get('start_date', '').strip()
@@ -10918,7 +10997,11 @@ def update_academic_year(year_id):
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_edit_academic_year_permission = check_permission_or_role('edit_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_edit_academic_year_permission):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     data = request.get_json()
@@ -11098,7 +11181,11 @@ def delete_academic_year(year_id):
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_delete_academic_year_permission = check_permission_or_role('delete_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_delete_academic_year_permission):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
@@ -11155,9 +11242,13 @@ def create_term():
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_add_term_permission = check_permission_or_role('add_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_add_term_permission):
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('academic_settings') if is_accountant else url_for('system_settings'))
+        return redirect(url_for('academic_settings') if user_role == 'accountant' or viewing_as_role == 'accountant' else url_for('system_settings'))
     
     term_name = request.form.get('term_name', '').strip()
     academic_year_id = request.form.get('academic_year_id', '').strip()
@@ -11267,7 +11358,11 @@ def update_term(term_id):
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_edit_term_permission = check_permission_or_role('edit_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_edit_term_permission):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     data = request.get_json()
@@ -11419,7 +11514,11 @@ def delete_term(term_id):
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    if not (is_technician or is_accountant):
+    # Check permission-based access
+    has_delete_term_permission = check_permission_or_role('delete_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_delete_term_permission):
         return jsonify({'success': False, 'message': 'Permission denied.'}), 403
     
     connection = get_db_connection()
