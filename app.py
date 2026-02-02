@@ -5273,7 +5273,7 @@ def get_fee_items():
 @app.route('/dashboard/employee/student-fees/check-fee-structure', methods=['GET'])
 @login_required
 def check_fee_structure():
-    """Check if a fee structure exists for the given academic year, term, and academic level combination"""
+    """Check if a fee structure exists for the given academic year, term, academic level, and category combination"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     employee_id = session.get('employee_id') or session.get('user_id')
@@ -5290,8 +5290,13 @@ def check_fee_structure():
     academic_year_id = request.args.get('academic_year_id')
     term_id = request.args.get('term_id')
     academic_level_id = request.args.get('academic_level_id')
+    category = request.args.get('category', '').strip().lower()
     
-    if not academic_year_id or not term_id or not academic_level_id:
+    if not academic_year_id or not term_id or not academic_level_id or not category:
+        return jsonify({'exists': False}), 200
+    
+    # Validate category
+    if category not in ['self sponsored', 'sponsored', 'both']:
         return jsonify({'exists': False}), 200
     
     connection = get_db_connection()
@@ -5300,14 +5305,16 @@ def check_fee_structure():
     
     try:
         with connection.cursor() as cursor:
+            # Check for existing fee structure with same academic_year_id, term_id, academic_level_id, and category
             cursor.execute("""
                 SELECT id, fee_name
                 FROM fee_structures 
                 WHERE academic_year_id = %s
                 AND term_id = %s
                 AND academic_level_id = %s 
+                AND category = %s
                 AND status = 'active'
-            """, (academic_year_id, term_id, academic_level_id))
+            """, (academic_year_id, term_id, academic_level_id, category))
             
             existing_structure = cursor.fetchone()
             if existing_structure:
@@ -5327,11 +5334,16 @@ def check_fee_structure():
 @app.route('/dashboard/employee/student-fees/check-fee-structures-for-term', methods=['GET'])
 @login_required
 def check_fee_structures_for_term():
-    """Get list of academic level IDs that have fee structures for the given term and academic year"""
+    """Get list of academic level IDs that have fee structures for the given term, academic year, and category"""
     academic_year_id = request.args.get('academic_year_id')
     term_id = request.args.get('term_id')
+    category = request.args.get('category', '').strip().lower()
     
-    if not academic_year_id or not term_id:
+    if not academic_year_id or not term_id or not category:
+        return jsonify({'academic_levels_with_structure': []}), 200
+    
+    # Validate category
+    if category not in ['self sponsored', 'sponsored', 'both']:
         return jsonify({'academic_levels_with_structure': []}), 200
     
     connection = get_db_connection()
@@ -5340,13 +5352,15 @@ def check_fee_structures_for_term():
     
     try:
         with connection.cursor() as cursor:
+            # Check for fee structures with same academic_year_id, term_id, and category
             cursor.execute("""
                 SELECT DISTINCT academic_level_id
                 FROM fee_structures 
                 WHERE academic_year_id = %s
                 AND term_id = %s
+                AND category = %s
                 AND status = 'active'
-            """, (academic_year_id, term_id))
+            """, (academic_year_id, term_id, category))
             
             results = cursor.fetchall()
             academic_level_ids = []
@@ -5429,28 +5443,32 @@ def create_fee_structure():
                 # Use term end_date as payment deadline
                 payment_deadline = term_end_date
                 
-                # Check if a fee structure already exists for this academic year, term, and academic level combination
+                # Get category from request data (must be provided)
+                category = data.get('category', '').strip().lower()
+                if category not in ['self sponsored', 'sponsored', 'both']:
+                    return jsonify({
+                        'success': False, 
+                        'message': 'Invalid category. Please select a valid category (Self Sponsored, Sponsored, or Both).'
+                    }), 400
+                
+                # Check if a fee structure already exists for this academic year, term, academic level, and category combination
                 cursor.execute("""
                     SELECT id, fee_name
                     FROM fee_structures 
                     WHERE academic_year_id = %s
                     AND term_id = %s
                     AND academic_level_id = %s 
+                    AND category = %s
                     AND status = 'active'
-                """, (academic_year_id, term_id, academic_level_id))
+                """, (academic_year_id, term_id, academic_level_id, category))
                 
                 existing_structure = cursor.fetchone()
                 if existing_structure:
                     existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
                     return jsonify({
                         'success': False, 
-                        'message': f'A fee structure already exists for this Academic Level in this Term. Each academic level must have a different fee structure in each term, and a term that has a fee structure for an academic level cannot have another one. You cannot create more than one fee structure for the same Academic Year, Term, and Academic Level combination. Existing structure: {existing_name}. Please select a different term or academic level, or edit the existing structure.'
+                        'message': f'A fee structure already exists for this Category ({category}), Academic Level, Term, and Academic Year combination. Each academic level can have one fee structure per category per term. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit the existing structure.'
                     }), 400
-                
-                # Get category from request data
-                category = data.get('category', 'both').strip().lower()
-                if category not in ['self sponsored', 'sponsored', 'both']:
-                    category = 'both'  # Default to 'both' if invalid
                 
                 # Insert fee structure
                 cursor.execute("""
