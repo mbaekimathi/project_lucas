@@ -5305,23 +5305,74 @@ def check_fee_structure():
     
     try:
         with connection.cursor() as cursor:
-            # Check for existing fee structure with same academic_year_id, term_id, academic_level_id, and category
-            cursor.execute("""
-                SELECT id, fee_name
-                FROM fee_structures 
-                WHERE academic_year_id = %s
-                AND term_id = %s
-                AND academic_level_id = %s 
-                AND category = %s
-                AND status = 'active'
-            """, (academic_year_id, term_id, academic_level_id, category))
+            # Check for category conflicts:
+            # 1. If checking "both", check if "self sponsored" or "sponsored" exists
+            # 2. If checking "self sponsored" or "sponsored", check if "both" exists
+            # 3. Check if exact same category already exists
             
-            existing_structure = cursor.fetchone()
-            if existing_structure:
-                existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
+            conflict_exists = False
+            conflict_message = ''
+            existing_name = ''
+            
+            if category == 'both':
+                # Check if "self sponsored" or "sponsored" exists
+                cursor.execute("""
+                    SELECT id, fee_name, category
+                    FROM fee_structures 
+                    WHERE academic_year_id = %s
+                    AND term_id = %s
+                    AND academic_level_id = %s 
+                    AND category IN ('self sponsored', 'sponsored')
+                    AND status = 'active'
+                """, (academic_year_id, term_id, academic_level_id))
+                
+                existing_individual = cursor.fetchone()
+                if existing_individual:
+                    conflict_exists = True
+                    existing_name = existing_individual.get('fee_name') if isinstance(existing_individual, dict) else existing_individual[1]
+                    existing_category = existing_individual.get('category') if isinstance(existing_individual, dict) else existing_individual[2]
+                    conflict_message = f'Cannot use "Both" category because a fee structure exists for "{existing_category.title()}" category. The "Both" category covers both self-sponsored and sponsored students, so it cannot coexist with individual category fee structures.'
+            else:
+                # Check if "both" exists
+                cursor.execute("""
+                    SELECT id, fee_name
+                    FROM fee_structures 
+                    WHERE academic_year_id = %s
+                    AND term_id = %s
+                    AND academic_level_id = %s 
+                    AND category = 'both'
+                    AND status = 'active'
+                """, (academic_year_id, term_id, academic_level_id))
+                
+                existing_both = cursor.fetchone()
+                if existing_both:
+                    conflict_exists = True
+                    existing_name = existing_both.get('fee_name') if isinstance(existing_both, dict) else existing_both[1]
+                    conflict_message = f'Cannot use "{category.title()}" category because a fee structure exists for "Both" category. The "Both" category covers both self-sponsored and sponsored students, so individual category fee structures cannot be created when "Both" exists.'
+            
+            # Check if exact same category already exists
+            if not conflict_exists:
+                cursor.execute("""
+                    SELECT id, fee_name
+                    FROM fee_structures 
+                    WHERE academic_year_id = %s
+                    AND term_id = %s
+                    AND academic_level_id = %s 
+                    AND category = %s
+                    AND status = 'active'
+                """, (academic_year_id, term_id, academic_level_id, category))
+                
+                existing_structure = cursor.fetchone()
+                if existing_structure:
+                    conflict_exists = True
+                    existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
+                    conflict_message = f'A fee structure already exists for this Category ({category}), Academic Level, Term, and Academic Year combination.'
+            
+            if conflict_exists:
                 return jsonify({
                     'exists': True,
-                    'fee_name': existing_name
+                    'fee_name': existing_name,
+                    'conflict_message': conflict_message
                 }), 200
             else:
                 return jsonify({'exists': False}), 200
@@ -5451,7 +5502,52 @@ def create_fee_structure():
                         'message': 'Invalid category. Please select a valid category (Self Sponsored, Sponsored, or Both).'
                     }), 400
                 
-                # Check if a fee structure already exists for this academic year, term, academic level, and category combination
+                # Check for category conflicts:
+                # 1. If creating "both", check if "self sponsored" or "sponsored" exists
+                # 2. If creating "self sponsored" or "sponsored", check if "both" exists
+                # 3. Check if exact same category already exists
+                
+                if category == 'both':
+                    # Check if "self sponsored" or "sponsored" exists
+                    cursor.execute("""
+                        SELECT id, fee_name, category
+                        FROM fee_structures 
+                        WHERE academic_year_id = %s
+                        AND term_id = %s
+                        AND academic_level_id = %s 
+                        AND category IN ('self sponsored', 'sponsored')
+                        AND status = 'active'
+                    """, (academic_year_id, term_id, academic_level_id))
+                    
+                    existing_individual = cursor.fetchone()
+                    if existing_individual:
+                        existing_name = existing_individual.get('fee_name') if isinstance(existing_individual, dict) else existing_individual[1]
+                        existing_category = existing_individual.get('category') if isinstance(existing_individual, dict) else existing_individual[2]
+                        return jsonify({
+                            'success': False, 
+                            'message': f'Cannot create a fee structure for "Both" category because a fee structure already exists for "{existing_category.title()}" category. The "Both" category covers both self-sponsored and sponsored students, so it cannot coexist with individual category fee structures. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing structure first.'
+                        }), 400
+                else:
+                    # Check if "both" exists
+                    cursor.execute("""
+                        SELECT id, fee_name
+                        FROM fee_structures 
+                        WHERE academic_year_id = %s
+                        AND term_id = %s
+                        AND academic_level_id = %s 
+                        AND category = 'both'
+                        AND status = 'active'
+                    """, (academic_year_id, term_id, academic_level_id))
+                    
+                    existing_both = cursor.fetchone()
+                    if existing_both:
+                        existing_name = existing_both.get('fee_name') if isinstance(existing_both, dict) else existing_both[1]
+                        return jsonify({
+                            'success': False, 
+                            'message': f'Cannot create a fee structure for "{category.title()}" category because a fee structure already exists for "Both" category. The "Both" category covers both self-sponsored and sponsored students, so individual category fee structures cannot be created when "Both" exists. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing "Both" structure first.'
+                        }), 400
+                
+                # Check if exact same category already exists
                 cursor.execute("""
                     SELECT id, fee_name
                     FROM fee_structures 
