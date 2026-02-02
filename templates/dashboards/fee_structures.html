@@ -31,6 +31,7 @@
 <script>
 // Store structures globally for modal access
 window.feeStructuresData = {{ fee_structures|tojson|safe }};
+window.academicYearsData = {{ academic_years|tojson|safe }};
 </script>
 
 <script>
@@ -47,8 +48,17 @@ document.addEventListener('alpine:init', () => {
     searchQuery: '',
     filterStatus: 'all',
     filterCategory: 'all',
+    selectedYearId: null,
+    get academicYears() {
+        return window.academicYearsData || [];
+    },
     get filteredStructures() {
         let structures = window.feeStructuresData || [];
+        
+        // Filter by selected academic year
+        if (this.selectedYearId) {
+            structures = structures.filter(s => s.academic_year_id == this.selectedYearId);
+        }
         
         // Filter by search query
         if (this.searchQuery) {
@@ -56,7 +66,8 @@ document.addEventListener('alpine:init', () => {
             structures = structures.filter(s => 
                 s.fee_name?.toLowerCase().includes(query) ||
                 s.level_name?.toLowerCase().includes(query) ||
-                s.category?.toLowerCase().includes(query)
+                s.category?.toLowerCase().includes(query) ||
+                s.academic_year_name?.toLowerCase().includes(query)
             );
         }
         
@@ -71,6 +82,47 @@ document.addEventListener('alpine:init', () => {
         }
         
         return structures;
+    },
+    get structuresByYear() {
+        const structures = window.feeStructuresData || [];
+        const years = window.academicYearsData || [];
+        const grouped = {};
+        
+        // Initialize groups for all years
+        years.forEach(year => {
+            grouped[year.id] = {
+                year: year,
+                structures: []
+            };
+        });
+        
+        // Add structures without year to 'unassigned'
+        grouped['unassigned'] = {
+            year: { id: null, year_name: 'Unassigned', is_current: false },
+            structures: []
+        };
+        
+        // Group structures by year
+        structures.forEach(structure => {
+            const yearId = structure.academic_year_id || 'unassigned';
+            if (!grouped[yearId]) {
+                grouped[yearId] = {
+                    year: structure.academic_year_name ? 
+                        { id: structure.academic_year_id, year_name: structure.academic_year_name, is_current: structure.year_is_current } :
+                        { id: null, year_name: 'Unassigned', is_current: false },
+                    structures: []
+                };
+            }
+            grouped[yearId].structures.push(structure);
+        });
+        
+        return grouped;
+    },
+    selectYear(yearId) {
+        this.selectedYearId = this.selectedYearId === yearId ? null : yearId;
+    },
+    clearYearFilter() {
+        this.selectedYearId = null;
     },
     openEditModal(structureId) {
         const structure = window.feeStructuresData.find(s => s.id === structureId);
@@ -92,21 +144,49 @@ document.addEventListener('alpine:init', () => {
 }">
     <!-- Header -->
     <div class="mb-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                    <i class="fas fa-list-alt text-green-600 mr-3"></i>
-                    Fee Structures
-                </h1>
-                <p class="text-sm text-gray-600 dark:text-gray-400">View and manage all fee structures</p>
-            </div>
-            <a href="/dashboard/employee/student-fees" 
-               class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors shadow-md hover:shadow-lg">
-                <i class="fas fa-plus mr-2"></i>
-                Add New Structure
-            </a>
+        <div class="mb-4">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                <i class="fas fa-list-alt text-green-600 mr-3"></i>
+                Fee Structures
+            </h1>
+            <p class="text-sm text-gray-600 dark:text-gray-400">View and manage all fee structures</p>
         </div>
         
+        <!-- Academic Year Filter Section -->
+        <div class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-green-200 dark:border-green-800">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                    <i class="fas fa-calendar-check text-green-600 mr-2"></i>
+                    Filter by Academic Year
+                </h3>
+                <button x-show="selectedYearId" 
+                        @click="clearYearFilter()"
+                        class="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors flex items-center space-x-1">
+                    <i class="fas fa-times"></i>
+                    <span>Clear Filter</span>
+                </button>
+            </div>
+            <div class="flex flex-wrap gap-2 sm:gap-3">
+                <button @click="selectYear(null)"
+                        :class="selectedYearId === null ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'"
+                        class="px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center space-x-2 border-2"
+                        :style="selectedYearId === null ? 'border-color: transparent;' : 'border-color: #e5e7eb;'">
+                    <i class="fas fa-list"></i>
+                    <span>All Years</span>
+                </button>
+                <template x-for="year in academicYears" :key="year.id">
+                    <button @click="selectYear(year.id)"
+                            :class="selectedYearId == year.id ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'"
+                            class="px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center space-x-2 border-2"
+                            :style="selectedYearId == year.id ? 'border-color: transparent;' : 'border-color: #e5e7eb;'">
+                        <i class="fas fa-calendar-alt"></i>
+                        <span x-text="year.year_name"></span>
+                        <span x-show="year.is_current" class="ml-1 px-1.5 py-0.5 bg-blue-500 text-white text-xs rounded-full">Current</span>
+                    </button>
+                </template>
+            </div>
+        </div>
+
         <!-- Search and Filters -->
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -152,7 +232,8 @@ document.addEventListener('alpine:init', () => {
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800">
                     <tr>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
+                            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Category</th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Period</th>
@@ -168,6 +249,11 @@ document.addEventListener('alpine:init', () => {
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <div class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.fee_name"></div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400" x-text="(structure.items || structure['items'] || []).length + ' item(s)'"></div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full"
+                                      :class="structure.academic_year_name ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
+                                      x-text="structure.academic_year_name || 'Unassigned'"></span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300" x-text="structure.level_name || 'N/A'"></span>
@@ -219,7 +305,7 @@ document.addEventListener('alpine:init', () => {
                         </tr>
                     </template>
                     <tr x-show="filteredStructures.length === 0">
-                        <td colspan="8" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                        <td colspan="9" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                             <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                             <p class="text-lg font-medium">No fee structures found</p>
                             <p class="text-sm mt-1" x-text="searchQuery || filterStatus !== 'all' || filterCategory !== 'all' ? 'Try adjusting your filters' : 'Create your first fee structure to get started'"></p>
@@ -248,6 +334,12 @@ document.addEventListener('alpine:init', () => {
                     
                     <!-- Details Grid -->
                     <div class="grid grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Academic Year</p>
+                            <span class="px-2 py-1 text-xs font-semibold rounded-full"
+                                  :class="structure.academic_year_name ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300'"
+                                  x-text="structure.academic_year_name || 'Unassigned'"></span>
+                        </div>
                         <div>
                             <p class="text-xs text-gray-600 dark:text-gray-400 mb-1">Academic Level</p>
                             <span class="text-sm font-semibold text-gray-900 dark:text-white" x-text="structure.level_name || 'N/A'"></span>
@@ -402,11 +494,6 @@ document.addEventListener('alpine:init', () => {
                                             title="View Details">
                                         <i class="fas fa-eye"></i>
                                     </button>
-                                    <button @click="openEditModal({{ structure.id }})" 
-                                            class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                            title="Edit">
-                                        <i class="fas fa-edit"></i>
-                                    </button>
                                     <button @click="confirmDelete({{ structure.id }}, '{{ structure.fee_name|replace("'", "\\'")|replace('"', '&quot;') }}')" 
                                             class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                                             title="Delete">
@@ -494,6 +581,10 @@ document.addEventListener('alpine:init', () => {
                         <div>
                             <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Fee Name</label>
                             <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.fee_name || 'N/A'"></p>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Academic Year</label>
+                            <p class="text-base font-semibold text-gray-900 dark:text-white" x-text="structure?.academic_year_name || 'Unassigned'"></p>
                         </div>
                         <div>
                             <label class="text-sm font-medium text-gray-500 dark:text-gray-400">Academic Level</label>
@@ -993,160 +1084,6 @@ function editModalData() {
                     </button>
                 </div>
             </div>
-        </div>
-    </div>
-</div>
-
-                    <i class="fas fa-exclamation-circle mr-2"></i>
-                    <span x-text="error"></span>
-                </div>
-                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 px-4 py-3 rounded-lg">
-                    <i class="fas fa-check-circle mr-2"></i>
-                    <span x-text="success"></span>
-                </div>
-                
-                <!-- Academic Level -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Academic Level <span class="text-red-500">*</span>
-                    </label>
-                    <select x-model="academicLevelId" required
-                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                        <option value="">Select Academic Level</option>
-                        {% for level in academic_levels %}
-                        <option value="{{ level.id }}">{{ level.level_name }} ({{ level.level_category }})</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                
-                <!-- Fee Name -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Fee Name <span class="text-red-500">*</span>
-                    </label>
-                    <input type="text" x-model="feeName" required
-                           placeholder="e.g., TERM 1 FEES 2024"
-                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
-                           style="text-transform: uppercase;">
-                </div>
-                
-                <!-- Category -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Category <span class="text-red-500">*</span>
-                    </label>
-                    <select x-model="category" required
-                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                        <option value="both">Both (Self Sponsored & Sponsored)</option>
-                        <option value="self sponsored">Self Sponsored Only</option>
-                        <option value="sponsored">Sponsored Only</option>
-                    </select>
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        <i class="fas fa-info-circle mr-1"></i>Select which student category this fee structure applies to
-                    </p>
-                </div>
-                
-                <!-- Date Range -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Start Date <span class="text-red-500">*</span>
-                        </label>
-                        <input type="date" x-model="startDate" required
-                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            End Date <span class="text-red-500">*</span>
-                        </label>
-                        <input type="date" x-model="endDate" required
-                               :min="startDate"
-                               class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                    </div>
-                </div>
-                
-                <!-- Payment Deadline -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Payment Deadline <span class="text-red-500">*</span>
-                    </label>
-                    <input type="date" x-model="paymentDeadline" required
-                           class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                </div>
-                
-                <!-- Fee Items -->
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Fee Items <span class="text-red-500">*</span>
-                        </label>
-                        <button type="button" @click="feeItems.push({ itemName: '', itemDescription: '', amount: '' }); calculateTotal()"
-                                class="px-3 py-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm flex items-center space-x-1">
-                            <i class="fas fa-plus"></i>
-                            <span>Add Item</span>
-                        </button>
-                    </div>
-                    
-                    <div class="space-y-3">
-                        <template x-for="(item, index) in feeItems" :key="index">
-                            <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
-                                <div class="flex items-start justify-between mb-3">
-                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Item <span x-text="index + 1"></span></span>
-                                    <button type="button" @click="feeItems.splice(index, 1); calculateTotal()"
-                                            x-show="feeItems.length > 1"
-                                            class="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 transition-colors">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div class="md:col-span-2">
-                                        <input type="text" x-model="item.itemName" 
-                                               @input="item.itemName = item.itemName.toUpperCase()"
-                                               placeholder="Item Name (e.g., TUITION FEE)"
-                                               required
-                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all uppercase"
-                                               style="text-transform: uppercase;">
-                                    </div>
-                                    <div>
-                                        <input type="number" x-model="item.amount" 
-                                               @input="calculateTotal()"
-                                               placeholder="Amount (KES)"
-                                               step="0.01" min="0"
-                                               required
-                                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
-                                    </div>
-                                </div>
-                                <div class="mt-2">
-                                    <input type="text" x-model="item.itemDescription"
-                                           placeholder="Description (optional)"
-                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm">
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-                
-                <!-- Total Amount -->
-                <div class="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 p-4 rounded-lg border-2 border-blue-200 dark:border-blue-700">
-                    <div class="flex items-center justify-between">
-                        <span class="text-lg font-bold text-gray-900 dark:text-white">Total Amount:</span>
-                        <span class="text-2xl font-bold text-blue-600 dark:text-blue-400" x-text="'KES ' + totalAmount.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
-                    </div>
-                </div>
-                
-                <!-- Actions -->
-                <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <button type="button" @click="editModalOpen = false"
-                            class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
-                        Cancel
-                    </button>
-                    <button type="submit" :disabled="loading"
-                            class="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
-                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                        <span x-text="loading ? 'Updating...' : 'Update Fee Structure'"></span>
-                    </button>
-                </div>
-            </form>
         </div>
     </div>
 </div>

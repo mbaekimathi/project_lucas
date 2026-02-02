@@ -5397,17 +5397,20 @@ def fee_structures():
     connection = get_db_connection()
     fee_structures_list = []
     academic_levels = []
+    academic_years = []
     
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Fetch all fee structures with academic level info
+                # Fetch all fee structures with academic level and academic year info
                 cursor.execute("""
-                    SELECT fs.id, fs.academic_level_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
+                    SELECT fs.id, fs.academic_level_id, fs.academic_year_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
                            fs.payment_deadline, fs.total_amount, fs.status, fs.created_at,
-                           al.level_name, al.level_category
+                           al.level_name, al.level_category,
+                           ay.year_name as academic_year_name, ay.is_current as year_is_current
                     FROM fee_structures fs
                     LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                    LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
                     ORDER BY fs.created_at DESC
                 """)
                 structures = cursor.fetchall()
@@ -5445,6 +5448,7 @@ def fee_structures():
                     fee_structures_list.append({
                         'id': row.get('id'),
                         'academic_level_id': row.get('academic_level_id'),
+                        'academic_year_id': row.get('academic_year_id'),
                         'fee_name': row.get('fee_name', ''),
                         'category': row.get('category', 'both'),
                         'start_date': start_date,
@@ -5455,6 +5459,8 @@ def fee_structures():
                         'created_at': row.get('created_at'),
                         'level_name': row.get('level_name', ''),
                         'level_category': row.get('level_category', ''),
+                        'academic_year_name': row.get('academic_year_name', ''),
+                        'year_is_current': row.get('year_is_current', False),
                         'items': [{
                             'id': item.get('id'),
                             'item_name': item.get('item_name', ''),
@@ -5479,6 +5485,24 @@ def fee_structures():
                         'level_name': row.get('level_name', ''),
                         'level_description': row.get('level_description', '')
                     })
+                
+                # Fetch all academic years for filtering
+                cursor.execute("""
+                    SELECT id, year_name, start_date, end_date, status, is_current
+                    FROM academic_years
+                    ORDER BY start_date DESC
+                """)
+                academic_years_results = cursor.fetchall()
+                
+                for row in academic_years_results:
+                    academic_years.append({
+                        'id': row.get('id'),
+                        'year_name': row.get('year_name', ''),
+                        'start_date': row.get('start_date'),
+                        'end_date': row.get('end_date'),
+                        'status': row.get('status', 'active'),
+                        'is_current': row.get('is_current', False)
+                    })
         except Exception as e:
             print(f"Error fetching fee structures: {e}")
         finally:
@@ -5486,7 +5510,8 @@ def fee_structures():
     
     return render_template('dashboards/fee_structures.html', 
                          fee_structures=fee_structures_list, 
-                         academic_levels=academic_levels)
+                         academic_levels=academic_levels,
+                         academic_years=academic_years)
 
 @app.route('/dashboard/employee/student-fees/payments-audit')
 @login_required
