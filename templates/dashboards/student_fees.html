@@ -290,11 +290,16 @@
                             <td class="px-6 py-4 whitespace-nowrap">
                                 {% if student.fee_structure %}
                                     <div class="text-sm font-semibold text-gray-900 dark:text-white">
-                                        KES {{ "{:,.2f}".format(student.fee_structure.total_amount) }}
+                                        KES {{ "{:,.2f}".format(student.total_amount_due or student.fee_structure.total_amount) }}
                                     </div>
                                     {% if student.fee_structure.fee_name %}
                                     <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                         {{ student.fee_structure.fee_name }}
+                                    </div>
+                                    {% endif %}
+                                    {% if student.get('previous_term_balance', 0) > 0 %}
+                                    <div class="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                                        (Includes KES {{ "{:,.2f}".format(student.previous_term_balance) }} from previous term)
                                     </div>
                                     {% endif %}
                                 {% else %}
@@ -358,7 +363,7 @@
                                 <div class="flex items-center justify-end space-x-2">
                                     {% if student.fee_structure %}
                                     <button type="button" 
-                                            @click="$store.paymentModal && $store.paymentModal.openPaymentModal('{{ student.student_id }}', {{ student.fee_structure.id }}, '{{ student.full_name }}', {{ student.fee_structure.total_amount }}, {{ student.balance }})"
+                                            @click="$store.paymentModal && $store.paymentModal.openPaymentModal('{{ student.student_id }}', {{ student.fee_structure.id }}, '{{ student.full_name }}', {{ student.total_amount_due or student.fee_structure.total_amount }}, {{ student.balance }})"
                                             class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20 touch-manipulation"
                                             title="Record Payment">
                                         <i class="fas fa-money-check-alt"></i>
@@ -457,8 +462,13 @@
                             <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Fee Amount</p>
                             {% if student.fee_structure %}
                                 <p class="text-sm font-bold text-gray-900 dark:text-white">
-                                    KES {{ "{:,.0f}".format(student.fee_structure.total_amount) }}
+                                    KES {{ "{:,.0f}".format(student.total_amount_due or student.fee_structure.total_amount) }}
                                 </p>
+                                {% if student.get('previous_term_balance', 0) > 0 %}
+                                <p class="text-xs text-orange-600 dark:text-orange-400 mt-0.5">
+                                    +{{ "{:,.0f}".format(student.previous_term_balance) }} prev
+                                </p>
+                                {% endif %}
                             {% else %}
                                 <p class="text-xs text-gray-400 dark:text-gray-500 italic">N/A</p>
                             {% endif %}
@@ -515,7 +525,7 @@
                     <div class="flex items-center justify-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                         {% if student.fee_structure %}
                         <button type="button" 
-                                @click="$store.paymentModal && $store.paymentModal.openPaymentModal('{{ student.student_id }}', {{ student.fee_structure.id }}, '{{ student.full_name }}', {{ student.fee_structure.total_amount }}, {{ student.balance }})"
+                                @click="$store.paymentModal && $store.paymentModal.openPaymentModal('{{ student.student_id }}', {{ student.fee_structure.id }}, '{{ student.full_name }}', {{ student.total_amount_due or student.fee_structure.total_amount }}, {{ student.balance }})"
                                 class="flex-1 px-3 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm hover:shadow-md touch-manipulation flex items-center justify-center gap-2">
                             <i class="fas fa-money-check-alt"></i>
                             <span>Record Payment</span>
