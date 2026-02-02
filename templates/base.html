@@ -534,8 +534,13 @@
     <header class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
-                <!-- Left: Logo and Sidebar Toggle -->
+                <!-- Left: Back Button, Logo and Sidebar Toggle -->
                 <div class="flex items-center space-x-3 flex-1 min-w-0">
+                    <button onclick="window.history.back(); return false;" 
+                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                            title="Go back">
+                        <i class="fas fa-arrow-left text-xl"></i>
+                    </button>
                     <button @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen" 
                             class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation">
                         <i class="fas fa-bars text-xl" x-show="!sidebarOpen"></i>
