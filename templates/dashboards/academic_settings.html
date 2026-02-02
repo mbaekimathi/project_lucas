@@ -826,7 +826,8 @@
                                             data-term-academic-year-id="{{ term.academic_year_id }}"
                                             data-term-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}"
                                             data-term-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}"
-                                            data-term-status="{{ term.status }}">
+                                            data-term-status="{{ term.status }}"
+                                            data-term-is-current="{{ 'true' if term.is_current else 'false' }}">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                     <button type="button" 
@@ -894,7 +895,8 @@
                                 data-term-academic-year-id="{{ term.academic_year_id }}"
                                 data-term-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}"
                                 data-term-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}"
-                                data-term-status="{{ term.status }}">
+                                data-term-status="{{ term.status }}"
+                                data-term-is-current="{{ 'true' if term.is_current else 'false' }}">
                             <i class="fas fa-edit mr-2"></i>Edit Term
                         </button>
                         <button type="button" 
@@ -915,6 +917,117 @@
             </div>
             {% endif %}
         </div>
+
+        <!-- Edit Term Modal -->
+        <div id="editTermModal" 
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden"
+             onclick="if(event.target === this) closeEditTermModal()">
+            <div class="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-purple-500 to-purple-600 p-4 sm:p-5 md:p-6 rounded-t-xl sm:rounded-t-2xl flex-shrink-0">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center">
+                                <i class="fas fa-edit text-white text-lg sm:text-xl"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-lg sm:text-xl font-bold text-white">Edit Term</h3>
+                                <p class="text-xs sm:text-sm text-purple-100">Update term details</p>
+                            </div>
+                        </div>
+                        <button type="button" 
+                                onclick="closeEditTermModal()"
+                                class="text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-2 rounded-lg hover:bg-white/20 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Scrollable Content -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar">
+                    <form id="editTermForm" class="p-4 sm:p-5 md:p-6 space-y-4 sm:space-y-5">
+                        <input type="hidden" id="edit_term_id" name="term_id">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="edit_term_name" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Term Name <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="edit_term_name" name="term_name" required
+                                       placeholder="E.G. TERM 1, TERM 2, TERM 3"
+                                       class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all uppercase"
+                                       style="text-transform: uppercase;">
+                            </div>
+                            <div>
+                                <label for="edit_term_academic_year_id" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Academic Year <span class="text-red-500">*</span>
+                                </label>
+                                <select id="edit_term_academic_year_id" name="academic_year_id" required
+                                        class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                                    <option value="">Select Academic Year</option>
+                                    {% for year in academic_years %}
+                                    <option value="{{ year.id }}">{{ year.year_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="edit_term_start_date" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Start Date <span class="text-red-500">*</span>
+                                </label>
+                                <input type="date" id="edit_term_start_date" name="start_date" required
+                                       class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                            </div>
+                            <div>
+                                <label for="edit_term_end_date" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    End Date <span class="text-red-500">*</span>
+                                </label>
+                                <input type="date" id="edit_term_end_date" name="end_date" required
+                                       class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                            </div>
+                        </div>
+                        <div>
+                            <label for="edit_term_status" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                Status <span class="text-red-500">*</span>
+                            </label>
+                            <select id="edit_term_status" name="status" required
+                                    class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all">
+                                <option value="draft">Draft</option>
+                                <option value="active">Active</option>
+                                <option value="suspended">Suspended</option>
+                                <option value="closed">Closed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border-2 border-gray-200 dark:border-gray-600">
+                                <div class="flex items-center space-x-3">
+                                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                        <i class="fas fa-star text-purple-600 mr-2"></i>
+                                        Is Current Term
+                                    </span>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" id="edit_term_is_current" name="is_current" class="sr-only peer">
+                                    <div class="w-14 h-7 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="flex flex-col-reverse sm:flex-row justify-end space-y-2 space-y-reverse sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <button type="button" 
+                                    onclick="closeEditTermModal()"
+                                    class="w-full sm:w-auto px-4 sm:px-6 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all touch-manipulation min-h-[48px] flex items-center justify-center">
+                                <i class="fas fa-times mr-2"></i>Cancel
+                            </button>
+                            <button type="submit" 
+                                    class="w-full sm:w-auto px-4 sm:px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-300 touch-manipulation min-h-[48px] flex items-center justify-center">
+                                <i class="fas fa-save mr-2"></i>
+                                Update Term
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -934,6 +1047,15 @@ function closeEditYearModal() {
     if (editYearModal) {
         editYearModal.classList.add('hidden');
         editYearModal.style.display = 'none';
+    }
+}
+
+// Close Edit Term Modal Function
+function closeEditTermModal() {
+    const editTermModal = document.getElementById('editTermModal');
+    if (editTermModal) {
+        editTermModal.classList.add('hidden');
+        editTermModal.style.display = 'none';
     }
 }
 
@@ -1200,42 +1322,81 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Edit Term
     const editTermButtons = document.querySelectorAll('.edit-term-btn');
+    const editTermModal = document.getElementById('editTermModal');
+    const editTermForm = document.getElementById('editTermForm');
+    
     editTermButtons.forEach(button => {
         button.addEventListener('click', function() {
             const termId = this.getAttribute('data-term-id');
             const termName = this.getAttribute('data-term-name');
+            const academicYearId = this.getAttribute('data-term-academic-year-id');
+            const startDate = this.getAttribute('data-term-start-date');
+            const endDate = this.getAttribute('data-term-end-date');
+            const status = this.getAttribute('data-term-status');
+            const isCurrent = this.getAttribute('data-term-is-current') === 'true';
             
-            const newTermName = prompt('Enter new term name:', termName);
-            if (newTermName && newTermName.trim() !== '') {
-                const updateData = {
-                    term_name: newTermName.trim().toUpperCase(),
-                    academic_year_id: this.getAttribute('data-term-academic-year-id'),
-                    start_date: this.getAttribute('data-term-start-date'),
-                    end_date: this.getAttribute('data-term-end-date'),
-                    status: this.getAttribute('data-term-status')
-                };
-                
-                fetch(`/system-settings/term/${termId}/update`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(updateData),
-                    credentials: 'same-origin'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        window.location.reload();
-                    } else {
-                        alert(data.message || 'Failed to update term.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('An error occurred while updating the term.');
-                });
-            }
+            // Populate form fields
+            document.getElementById('edit_term_id').value = termId;
+            document.getElementById('edit_term_name').value = termName || '';
+            document.getElementById('edit_term_academic_year_id').value = academicYearId || '';
+            document.getElementById('edit_term_start_date').value = startDate || '';
+            document.getElementById('edit_term_end_date').value = endDate || '';
+            document.getElementById('edit_term_status').value = status || 'draft';
+            document.getElementById('edit_term_is_current').checked = isCurrent;
+            
+            // Show modal
+            editTermModal.classList.remove('hidden');
+            editTermModal.style.display = 'flex';
         });
     });
+
+    // Handle edit term form submission
+    if (editTermForm) {
+        editTermForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const termId = formData.get('term_id');
+            const updateData = {
+                term_name: formData.get('term_name').trim().toUpperCase(),
+                academic_year_id: formData.get('academic_year_id'),
+                academic_level_ids: [], // Empty array for now, can be enhanced later
+                start_date: formData.get('start_date'),
+                end_date: formData.get('end_date'),
+                status: formData.get('status'),
+                is_current: document.getElementById('edit_term_is_current').checked
+            };
+            
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
+            
+            fetch(`/system-settings/term/${termId}/update`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(updateData),
+                credentials: 'same-origin'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closeEditTermModal();
+                    window.location.reload();
+                } else {
+                    alert(data.message || 'Failed to update term.');
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while updating the term.');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            });
+        });
+    }
 
     // Delete Term
     const deleteTermButtons = document.querySelectorAll('.delete-term-btn');
@@ -1300,8 +1461,20 @@ document.addEventListener('DOMContentLoaded', function() {
             if (editYearModal && !editYearModal.classList.contains('hidden')) {
                 closeEditYearModal();
             }
+            if (editTermModal && !editTermModal.classList.contains('hidden')) {
+                closeEditTermModal();
+            }
         }
     });
+
+    // Close edit term modal when clicking outside
+    if (editTermModal) {
+        editTermModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeEditTermModal();
+            }
+        });
+    }
 });
 </script>
 {% endblock %}
