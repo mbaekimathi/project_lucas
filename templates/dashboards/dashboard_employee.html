@@ -97,6 +97,11 @@
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
+    <a href="/admission" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+        <i class="fas fa-user-plus w-5"></i>
+        <span>Register Student</span>
+    </a>
     <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chalkboard-teacher w-5"></i>
@@ -244,6 +249,11 @@
        {% if request.endpoint == 'student_fees' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Student Fees</span>
+    </a>
+    <a href="/admission" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+        <i class="fas fa-user-plus w-5"></i>
+        <span>Register Student</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Payments / Invoices'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">

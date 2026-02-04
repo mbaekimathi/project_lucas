@@ -923,6 +923,29 @@ def init_db():
                 print(f"Migration note for sponsor_email: {e}")
                 pass
             
+            # Update students table status ENUM to include 'transferred'
+            try:
+                cursor.execute("""
+                    SELECT COLUMN_TYPE 
+                    FROM information_schema.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'students' 
+                    AND COLUMN_NAME = 'status'
+                """)
+                result = cursor.fetchone()
+                if result:
+                    current_enum = result.get('COLUMN_TYPE', '') if isinstance(result, dict) else result[0]
+                    if 'transferred' not in current_enum.lower():
+                        cursor.execute("""
+                            ALTER TABLE students 
+                            MODIFY COLUMN status ENUM('pending approval', 'in session', 'suspended', 'expelled', 'transferred', 'alumni') 
+                            DEFAULT 'pending approval'
+                        """)
+                        print("OK: Updated students.status ENUM to include 'transferred'")
+            except Exception as e:
+                print(f"Migration note for students.status ENUM: {e}")
+                pass
+            
             connection.commit()
             
             # Verify tables were created
@@ -2042,41 +2065,44 @@ def normalize_text(value, uppercase=True, allow_empty=False):
 @app.route('/admission', methods=['GET', 'POST'])
 def admission():
     if request.method == 'POST':
-        # Get form data and convert to proper case
+        # Get form data directly from students table column names
         # All text fields to UPPERCASE except email (lowercase)
         # Normalize spacing: multiple spaces become single space
-        student_full_name = normalize_text(request.form.get('student_full_name', ''))
-        date_of_birth = request.form.get('date_of_birth')
-        gender = normalize_text(request.form.get('gender'), allow_empty=True) if request.form.get('gender') else None
-        current_grade = normalize_text(request.form.get('current_grade'), allow_empty=True) if request.form.get('current_grade') else None
-        previous_school = normalize_text(request.form.get('previous_school'), allow_empty=True) if request.form.get('previous_school') else None
-        parent_name = normalize_text(request.form.get('parent_name', ''))
-        relationship = normalize_text(request.form.get('relationship'), allow_empty=True) if request.form.get('relationship') else None
-        parent_phone = normalize_text(request.form.get('parent_phone', ''))
-        parent_email = normalize_text(request.form.get('parent_email', ''), uppercase=False, allow_empty=True)
-        if parent_email:
-            parent_email = parent_email.lower()  # Email in lowercase
-        address = normalize_text(request.form.get('address'), allow_empty=True) if request.form.get('address') else None
-        emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None
-        medical_info = normalize_text(request.form.get('medical_conditions'), allow_empty=True) if request.form.get('medical_conditions') else None
-        special_needs = normalize_text(request.form.get('special_needs'), allow_empty=True) if request.form.get('special_needs') else None
-        student_category = normalize_text(request.form.get('student_category'), uppercase=False, allow_empty=True)
+        full_name = normalize_text(request.form.get('full_name', ''))  # students.full_name
+        date_of_birth = request.form.get('date_of_birth')  # students.date_of_birth
+        gender = normalize_text(request.form.get('gender'), allow_empty=True) if request.form.get('gender') else None  # students.gender
+        current_grade = normalize_text(request.form.get('current_grade'), allow_empty=True) if request.form.get('current_grade') else None  # students.current_grade
+        previous_school = normalize_text(request.form.get('previous_school'), allow_empty=True) if request.form.get('previous_school') else None  # students.previous_school
+        address = normalize_text(request.form.get('address'), allow_empty=True) if request.form.get('address') else None  # students.address
+        medical_info = normalize_text(request.form.get('medical_info'), allow_empty=True) if request.form.get('medical_info') else None  # students.medical_info
+        special_needs = normalize_text(request.form.get('special_needs'), allow_empty=True) if request.form.get('special_needs') else None  # students.special_needs
+        student_category = normalize_text(request.form.get('student_category'), uppercase=False, allow_empty=True)  # students.student_category
         if student_category:
             student_category = student_category.lower()
-        sponsor_name = normalize_text(request.form.get('sponsor_name'), allow_empty=True) if request.form.get('sponsor_name') else None
-        sponsor_phone = normalize_text(request.form.get('sponsor_phone'), uppercase=False, allow_empty=True) if request.form.get('sponsor_phone') else None
-        sponsor_email = normalize_text(request.form.get('sponsor_email', ''), uppercase=False, allow_empty=True)
+        sponsor_name = normalize_text(request.form.get('sponsor_name'), allow_empty=True) if request.form.get('sponsor_name') else None  # students.sponsor_name
+        sponsor_phone = normalize_text(request.form.get('sponsor_phone'), uppercase=False, allow_empty=True) if request.form.get('sponsor_phone') else None  # students.sponsor_phone
+        sponsor_email = normalize_text(request.form.get('sponsor_email', ''), uppercase=False, allow_empty=True)  # students.sponsor_email
         if sponsor_email:
             sponsor_email = sponsor_email.lower()  # Email in lowercase
+        
+        # Parent/Guardian information (from parents table)
+        parent_name = normalize_text(request.form.get('parent_name', ''))  # parents.full_name
+        relationship = normalize_text(request.form.get('relationship'), allow_empty=True) if request.form.get('relationship') else None  # parents.relationship
+        parent_phone = normalize_text(request.form.get('parent_phone', ''))  # parents.phone
+        parent_email = normalize_text(request.form.get('parent_email', ''), uppercase=False, allow_empty=True)  # parents.email
+        if parent_email:
+            parent_email = parent_email.lower()  # Email in lowercase
+        emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None  # parents.emergency_contact
+        
         consent = request.form.get('consent')
         
         # Validate required fields
-        if not all([student_full_name, date_of_birth, parent_name, relationship, parent_phone, parent_email, consent, student_category]):
+        if not all([full_name, date_of_birth, parent_name, relationship, parent_phone, parent_email, consent, student_category]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('admission'))
         
-        # Validate sponsor_name if category is sponsored
-        if student_category == 'sponsored' and not sponsor_name:
+        # Validate sponsor_name if category is sponsored or both
+        if student_category in ['sponsored', 'both'] and not sponsor_name:
             flash('Please provide sponsor name/company for sponsored students.', 'error')
             return redirect(url_for('admission'))
         
@@ -2088,7 +2114,7 @@ def admission():
                     # Generate unique student ID
                     student_id = generate_student_id(connection)
                     
-                    # Insert student data into students table
+                    # Insert student data into students table (using exact column names from students table)
                     student_sql = """
                         INSERT INTO students 
                         (student_id, full_name, date_of_birth, gender, current_grade, previous_school,
@@ -2096,7 +2122,7 @@ def admission():
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
                     """
                     cursor.execute(student_sql, (
-                        student_id, student_full_name, date_of_birth, gender, current_grade, 
+                        student_id, full_name, date_of_birth, gender, current_grade, 
                         previous_school, address, medical_info, special_needs, student_category, 
                         sponsor_name, sponsor_phone, sponsor_email
                     ))
@@ -2115,7 +2141,7 @@ def admission():
                     
                     # Send email notification to parent
                     try:
-                        send_admission_confirmation_email(parent_email, parent_name, student_full_name, student_id)
+                        send_admission_confirmation_email(parent_email, parent_name, full_name, student_id)
                     except Exception as email_error:
                         print(f"Error sending email: {email_error}")
                         # Don't fail the submission if email fails
@@ -3537,6 +3563,47 @@ def student_fees():
                                               fs.created_at DESC
                                             LIMIT 1
                                         """, (academic_level_id,))
+                                elif student_category == 'both':
+                                    # Students with category 'both' can see all fee structures
+                                    # Priority: 'both' first, then category-specific, then NULL
+                                    if current_academic_year_id and current_term_id:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                            FROM fee_structures fs
+                                            WHERE fs.academic_level_id = %s 
+                                              AND fs.status = 'active'
+                                              AND fs.academic_year_id = %s
+                                              AND fs.term_id = %s
+                                            ORDER BY 
+                                              CASE 
+                                                WHEN fs.category = 'both' THEN 1
+                                                WHEN fs.category = 'self sponsored' THEN 2
+                                                WHEN fs.category = 'sponsored' THEN 3
+                                                WHEN fs.category IS NULL THEN 4
+                                                ELSE 5
+                                              END,
+                                              fs.created_at DESC
+                                            LIMIT 1
+                                        """, (academic_level_id, current_academic_year_id, current_term_id))
+                                    else:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                            FROM fee_structures fs
+                                            WHERE fs.academic_level_id = %s 
+                                              AND fs.status = 'active'
+                                            ORDER BY 
+                                              CASE 
+                                                WHEN fs.category = 'both' THEN 1
+                                                WHEN fs.category = 'self sponsored' THEN 2
+                                                WHEN fs.category = 'sponsored' THEN 3
+                                                WHEN fs.category IS NULL THEN 4
+                                                ELSE 5
+                                              END,
+                                              fs.created_at DESC
+                                            LIMIT 1
+                                        """, (academic_level_id,))
                                 else:
                                     # If student has no category or unknown category, match 'both' or NULL only
                                     # Do not match category-specific fee structures
@@ -4485,8 +4552,32 @@ def generate_invoice(student_id):
                 })
                 total_paid_all += amount
             
-            # Calculate balance
-            balance_due = total_fees - total_paid_all
+            # Calculate balance properly:
+            # 1. Get current term fee structure
+            # 2. Calculate previous term unpaid balance (only from last term)
+            # 3. Calculate carry-forward (overpayments from all previous terms)
+            # 4. Balance = (Current Term Fee + Previous Term Unpaid Balance) - (Current Term Payments + Carry Forward)
+            
+            previous_term_balance = 0.0  # Unpaid balance from last term only
+            current_term_fee = 0.0
+            current_term_paid = 0.0
+            
+            if fee_structure:
+                current_term_fee = float(fee_structure.get('total_amount', 0) or 0)
+                current_term_paid = total_paid  # Payments for current fee structure only
+                
+                # Get previous term's unpaid balance (only the most recent previous term)
+                if previous_term_info:
+                    prev_balance = previous_term_info.get('closing_balance', 0.0)
+                    # Only add unpaid balance (positive), not overpayments (negative)
+                    if prev_balance > 0:
+                        previous_term_balance = prev_balance
+            
+            # Total amount due = Current Term Fee + Previous Term Unpaid Balance
+            total_amount_due = current_term_fee + previous_term_balance
+            
+            # Balance = Total Amount Due - (Current Term Payments + Carry Forward)
+            balance_due = total_amount_due - (current_term_paid + carry_forward)
             
     except Exception as e:
         print(f"Error generating invoice: {e}")
@@ -4513,8 +4604,13 @@ def generate_invoice(student_id):
                              total_paid_all=total_paid_all,
                              carry_forward=carry_forward,
                              balance_brought_forward=balance_brought_forward,
+                             previous_term_balance=previous_term_balance,
+                             current_term_fee=current_term_fee,
+                             current_term_paid=current_term_paid,
+                             total_amount_due=total_amount_due,
                              balance=balance,
                              balance_due=balance_due,
+                             previous_term_info=previous_term_info,
                              school_settings=school_settings,
                              invoice_date=invoice_date,
                              invoice_time=invoice_time,
@@ -5664,13 +5760,15 @@ def fee_structures():
             with connection.cursor() as cursor:
                 # Fetch all fee structures with academic level and academic year info
                 cursor.execute("""
-                    SELECT fs.id, fs.academic_level_id, fs.academic_year_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
+                    SELECT fs.id, fs.academic_level_id, fs.academic_year_id, fs.term_id, fs.fee_name, fs.category, fs.start_date, fs.end_date, 
                            fs.payment_deadline, fs.total_amount, fs.status, fs.created_at,
                            al.level_name, al.level_category,
-                           ay.year_name as academic_year_name, ay.is_current as year_is_current
+                           ay.year_name as academic_year_name, ay.is_current as year_is_current,
+                           t.term_name as term_name
                     FROM fee_structures fs
                     LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
                     LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                    LEFT JOIN terms t ON fs.term_id = t.id
                     ORDER BY fs.created_at DESC
                 """)
                 structures = cursor.fetchall()
@@ -5709,6 +5807,7 @@ def fee_structures():
                         'id': row.get('id'),
                         'academic_level_id': row.get('academic_level_id'),
                         'academic_year_id': row.get('academic_year_id'),
+                        'term_id': row.get('term_id'),
                         'fee_name': row.get('fee_name', ''),
                         'category': row.get('category', 'both'),
                         'start_date': start_date,
@@ -5720,6 +5819,7 @@ def fee_structures():
                         'level_name': row.get('level_name', ''),
                         'level_category': row.get('level_category', ''),
                         'academic_year_name': row.get('academic_year_name', ''),
+                        'term_name': row.get('term_name', ''),
                         'year_is_current': row.get('year_is_current', False),
                         'items': [{
                             'id': item.get('id'),
@@ -6245,7 +6345,12 @@ def update_fee_structure(structure_id):
     try:
         data = request.get_json()
         
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided in request'}), 400
+        
         academic_level_id = data.get('academic_level_id')
+        academic_year_id = data.get('academic_year_id')
+        term_id = data.get('term_id')
         fee_name = data.get('fee_name', '').strip().upper()
         category = data.get('category', 'both').strip().lower()
         if category not in ['self sponsored', 'sponsored', 'both']:
@@ -6255,8 +6360,24 @@ def update_fee_structure(structure_id):
         payment_deadline = data.get('payment_deadline')
         fee_items = data.get('fee_items', [])
         
-        if not academic_level_id or not fee_name or not start_date or not end_date or not payment_deadline:
-            return jsonify({'success': False, 'message': 'All required fields must be filled'}), 400
+        # Validate required fields
+        missing_fields = []
+        if not academic_level_id:
+            missing_fields.append('academic_level_id')
+        if not fee_name:
+            missing_fields.append('fee_name')
+        if not start_date:
+            missing_fields.append('start_date')
+        if not end_date:
+            missing_fields.append('end_date')
+        if not payment_deadline:
+            missing_fields.append('payment_deadline')
+        
+        if missing_fields:
+            return jsonify({
+                'success': False, 
+                'message': f'Missing required fields: {", ".join(missing_fields)}'
+            }), 400
         
         if not fee_items or len(fee_items) == 0:
             return jsonify({'success': False, 'message': 'At least one fee item is required'}), 400
@@ -6269,32 +6390,118 @@ def update_fee_structure(structure_id):
         
         try:
             with connection.cursor() as cursor:
-                # Check if another fee structure already exists for this academic level and term period (excluding current one)
+                # Get current structure's data (including academic_year_id and term_id if not provided)
                 cursor.execute("""
-                    SELECT id, fee_name, start_date, end_date 
-                    FROM fee_structures 
-                    WHERE academic_level_id = %s 
-                    AND start_date = %s 
-                    AND end_date = %s
-                    AND id != %s
-                    AND status = 'active'
-                """, (academic_level_id, start_date, end_date, structure_id))
+                    SELECT category, academic_year_id, term_id
+                    FROM fee_structures
+                    WHERE id = %s
+                """, (structure_id,))
+                current_structure = cursor.fetchone()
+                current_category = None
+                if current_structure:
+                    current_category = current_structure.get('category') if isinstance(current_structure, dict) else current_structure[0]
+                    # If academic_year_id or term_id not provided, get from existing structure
+                    if not academic_year_id:
+                        academic_year_id = current_structure.get('academic_year_id') if isinstance(current_structure, dict) else current_structure[1]
+                    if not term_id:
+                        term_id = current_structure.get('term_id') if isinstance(current_structure, dict) else current_structure[2]
                 
-                existing_structure = cursor.fetchone()
-                if existing_structure:
-                    existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
-                    return jsonify({
-                        'success': False, 
-                        'message': f'Another fee structure already exists for this academic level and term period. Existing structure: {existing_name}'
-                    }), 400
+                # Check for category conflicts (similar to create route) - only if we have academic_year_id and term_id
+                # 1. If updating to "both", check if "self sponsored" or "sponsored" exists (excluding current)
+                # 2. If updating to "self sponsored" or "sponsored", check if "both" exists (excluding current)
+                # 3. Check if exact same category already exists (excluding current)
+                if academic_year_id and term_id:
+                    if category == 'both':
+                        # Check if "self sponsored" or "sponsored" exists (excluding current structure)
+                        cursor.execute("""
+                            SELECT id, fee_name, category
+                            FROM fee_structures 
+                            WHERE academic_year_id = %s
+                            AND term_id = %s
+                            AND academic_level_id = %s 
+                            AND category IN ('self sponsored', 'sponsored')
+                            AND id != %s
+                            AND status = 'active'
+                        """, (academic_year_id, term_id, academic_level_id, structure_id))
+                        
+                        existing_individual = cursor.fetchone()
+                        if existing_individual:
+                            existing_name = existing_individual.get('fee_name') if isinstance(existing_individual, dict) else existing_individual[1]
+                            existing_category = existing_individual.get('category') if isinstance(existing_individual, dict) else existing_individual[2]
+                            return jsonify({
+                                'success': False, 
+                                'message': f'Cannot update fee structure to "Both" category because a fee structure already exists for "{existing_category.title()}" category. The "Both" category covers both self-sponsored and sponsored students, so it cannot coexist with individual category fee structures. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing structure first.'
+                            }), 400
+                    else:
+                        # Check if "both" exists (excluding current structure)
+                        cursor.execute("""
+                            SELECT id, fee_name
+                            FROM fee_structures 
+                            WHERE academic_year_id = %s
+                            AND term_id = %s
+                            AND academic_level_id = %s 
+                            AND category = 'both'
+                            AND id != %s
+                            AND status = 'active'
+                        """, (academic_year_id, term_id, academic_level_id, structure_id))
+                        
+                        existing_both = cursor.fetchone()
+                        if existing_both:
+                            existing_name = existing_both.get('fee_name') if isinstance(existing_both, dict) else existing_both[1]
+                            return jsonify({
+                                'success': False, 
+                                'message': f'Cannot update fee structure to "{category.title()}" category because a fee structure already exists for "Both" category. The "Both" category covers both self-sponsored and sponsored students, so individual category fee structures cannot be created when "Both" exists. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing "Both" structure first.'
+                            }), 400
+                    
+                    # Check if exact same category already exists (excluding current structure)
+                    cursor.execute("""
+                        SELECT id, fee_name
+                        FROM fee_structures 
+                        WHERE academic_year_id = %s
+                        AND term_id = %s
+                        AND academic_level_id = %s 
+                        AND category = %s
+                        AND id != %s
+                        AND status = 'active'
+                    """, (academic_year_id, term_id, academic_level_id, category, structure_id))
+                    
+                    existing_structure = cursor.fetchone()
+                    if existing_structure:
+                        existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
+                        return jsonify({
+                            'success': False, 
+                            'message': f'A fee structure already exists for this Category ({category}), Academic Level, Term, and Academic Year combination. Each academic level can have one fee structure per category per term. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit the existing structure.'
+                        }), 400
                 
                 # Update fee structure
-                cursor.execute("""
+                # Build update query dynamically to include academic_year_id and term_id if provided
+                update_fields = [
+                    "academic_level_id = %s",
+                    "fee_name = %s",
+                    "category = %s",
+                    "start_date = %s",
+                    "end_date = %s",
+                    "payment_deadline = %s",
+                    "total_amount = %s"
+                ]
+                update_values = [academic_level_id, fee_name, category, start_date, end_date, payment_deadline, total_amount]
+                
+                if academic_year_id:
+                    update_fields.append("academic_year_id = %s")
+                    update_values.append(academic_year_id)
+                
+                if term_id:
+                    update_fields.append("term_id = %s")
+                    update_values.append(term_id)
+                
+                update_values.append(structure_id)
+                
+                update_query = f"""
                     UPDATE fee_structures 
-                    SET academic_level_id = %s, fee_name = %s, category = %s, start_date = %s, 
-                        end_date = %s, payment_deadline = %s, total_amount = %s
+                    SET {', '.join(update_fields)}
                     WHERE id = %s
-                """, (academic_level_id, fee_name, category, start_date, end_date, payment_deadline, total_amount, structure_id))
+                """
+                cursor.execute(update_query, tuple(update_values))
                 
                 # Delete existing items
                 cursor.execute("DELETE FROM fee_items WHERE fee_structure_id = %s", (structure_id,))

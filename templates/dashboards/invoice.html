@@ -193,8 +193,20 @@
         <!-- Payment Summary -->
         <div class="payment-summary">
             <p><strong><u>Payment Summary</u></strong></p>
-            <p><strong>Total fees:</strong> {{ "%.2f"|format(total_fees) }}</p>
-            <p><strong>Total Paid:</strong> {{ "%.2f"|format(total_paid_all) }}</p>
+            {% if current_term_fee %}
+                <p><strong>Current Term Fee:</strong> {{ "%.2f"|format(current_term_fee) }}</p>
+                {% if previous_term_balance and previous_term_balance > 0 %}
+                <p><strong>Balance from Last Term:</strong> {{ "%.2f"|format(previous_term_balance) }}</p>
+                {% endif %}
+                <p><strong>Total Amount Due:</strong> {{ "%.2f"|format(total_amount_due) }}</p>
+                <p><strong>Payments (Current Term):</strong> {{ "%.2f"|format(current_term_paid) }}</p>
+                {% if carry_forward and carry_forward > 0 %}
+                <p><strong>Carry Forward (Overpayments):</strong> {{ "%.2f"|format(carry_forward) }}</p>
+                {% endif %}
+            {% else %}
+                <p><strong>Total fees:</strong> {{ "%.2f"|format(total_fees) }}</p>
+                <p><strong>Total Paid:</strong> {{ "%.2f"|format(total_paid_all) }}</p>
+            {% endif %}
             <hr style="margin: 8px 0; border-top: 1px solid #000;">
             <p><strong>Balance Due:</strong> {{ "%.2f"|format(balance_due) }}</p>
         </div>

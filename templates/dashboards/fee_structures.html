@@ -717,6 +717,8 @@ function editModalData() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     academic_level_id: this.academicLevelId,
+                    academic_year_id: this.academicYearId,
+                    term_id: this.termId,
                     fee_name: this.feeName,
                     category: this.category,
                     start_date: this.startDate,
@@ -753,6 +755,8 @@ function editModalData() {
             const structure = structureData;
             this.structureId = structure.id;
             this.academicLevelId = structure.academic_level_id;
+            this.academicYearId = structure.academic_year_id || null;
+            this.termId = structure.term_id || null;
             this.feeName = structure.fee_name;
             this.category = structure.category || 'both';
             
