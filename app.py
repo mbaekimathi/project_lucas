@@ -2097,7 +2097,7 @@ def admission():
         consent = request.form.get('consent')
         
         # Validate required fields
-        if not all([full_name, date_of_birth, parent_name, relationship, parent_phone, parent_email, consent, student_category]):
+        if not all([full_name, date_of_birth, parent_name, relationship, parent_phone, consent, student_category]):
             flash('Please fill in all required fields.', 'error')
             return redirect(url_for('admission'))
         
@@ -2740,7 +2740,7 @@ def parent_student_fees():
             with connection.cursor() as cursor:
                 # Get all students linked to this parent (by email)
                 cursor.execute("""
-                    SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status,
+                    SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
                            p.full_name as parent_name, p.phone as parent_phone, p.email as parent_email
                     FROM students s
                     INNER JOIN parents p ON s.student_id = p.student_id
@@ -2753,6 +2753,7 @@ def parent_student_fees():
                     for row in results:
                         student_grade = row.get('current_grade', '')
                         student_id = row.get('student_id', '')
+                        student_category = row.get('student_category', '').lower().strip() if row.get('student_category') else ''
                         
                         # Find the academic level for this student's grade
                         academic_level = None
@@ -2781,16 +2782,69 @@ def parent_student_fees():
                                     'level_description': level_result.get('level_description', '')
                                 }
                                 
-                                # Find active fee structure for this academic level
-                                cursor.execute("""
-                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                           fs.payment_deadline, fs.total_amount, fs.status
-                                    FROM fee_structures fs
-                                    WHERE fs.academic_level_id = %s 
-                                      AND fs.status = 'active'
-                                    ORDER BY fs.created_at DESC
-                                    LIMIT 1
-                                """, (academic_level_id,))
+                                # Find active fee structure for this academic level matching student category
+                                if student_category == 'self sponsored':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'self sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            ELSE 3
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                elif student_category == 'sponsored':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            ELSE 3
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                elif student_category == 'both':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'both' THEN 1
+                                            WHEN fs.category = 'self sponsored' THEN 2
+                                            WHEN fs.category = 'sponsored' THEN 3
+                                            ELSE 4
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                else:
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND fs.category = 'both'
+                                        ORDER BY fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
                                 fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
@@ -3026,7 +3080,7 @@ def dashboard_student():
                 with connection.cursor() as cursor:
                     # Get student information
                     cursor.execute("""
-                        SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status
+                        SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category
                         FROM students s
                         WHERE s.student_id = %s AND s.status = 'in session'
                         LIMIT 1
@@ -3039,10 +3093,13 @@ def dashboard_student():
                             'student_id': student_result.get('student_id') if isinstance(student_result, dict) else student_result[1],
                             'full_name': student_result.get('full_name') if isinstance(student_result, dict) else student_result[2],
                             'current_grade': student_result.get('current_grade') if isinstance(student_result, dict) else student_result[3],
-                            'status': student_result.get('status') if isinstance(student_result, dict) else student_result[4]
+                            'status': student_result.get('status') if isinstance(student_result, dict) else student_result[4],
+                            'student_category': student_result.get('student_category') if isinstance(student_result, dict) else (student_result[5] if len(student_result) > 5 else None)
                         }
                         
                         student_grade = student_info.get('current_grade', '')
+                        student_category = student_info.get('student_category', '').lower().strip() if student_info.get('student_category') else ''
+                        
                         if student_grade:
                             # Get academic level
                             cursor.execute("""
@@ -3056,16 +3113,69 @@ def dashboard_student():
                             if level_result:
                                 academic_level_id = level_result.get('id') if isinstance(level_result, dict) else level_result[0]
                                 
-                                # Get fee structure
-                                cursor.execute("""
-                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                           fs.payment_deadline, fs.total_amount, fs.status
-                                    FROM fee_structures fs
-                                    WHERE fs.academic_level_id = %s 
-                                      AND fs.status = 'active'
-                                    ORDER BY fs.created_at DESC
-                                    LIMIT 1
-                                """, (academic_level_id,))
+                                # Get fee structure matching student category
+                                if student_category == 'self sponsored':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'self sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            ELSE 3
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                elif student_category == 'sponsored':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'sponsored' THEN 1
+                                            WHEN fs.category = 'both' THEN 2
+                                            ELSE 3
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                elif student_category == 'both':
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                        ORDER BY 
+                                          CASE 
+                                            WHEN fs.category = 'both' THEN 1
+                                            WHEN fs.category = 'self sponsored' THEN 2
+                                            WHEN fs.category = 'sponsored' THEN 3
+                                            ELSE 4
+                                          END,
+                                          fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
+                                else:
+                                    cursor.execute("""
+                                        SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
+                                               fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                                        FROM fee_structures fs
+                                        WHERE fs.academic_level_id = %s 
+                                          AND fs.status = 'active'
+                                          AND fs.category = 'both'
+                                        ORDER BY fs.created_at DESC
+                                        LIMIT 1
+                                    """, (academic_level_id,))
                                 fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
@@ -3463,7 +3573,8 @@ def student_fees():
                                 
                                 if student_category == 'self sponsored':
                                     # Match fee structures for self sponsored students
-                                    # Priority: 'self sponsored' first, then 'both', then NULL
+                                    # ONLY match 'self sponsored' or 'both' category structures
+                                    # Do NOT match 'sponsored' or NULL category structures
                                     if current_academic_year_id and current_term_id:
                                         cursor.execute("""
                                             SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
@@ -3475,16 +3586,13 @@ def student_fees():
                                               AND fs.term_id = %s
                                               AND (
                                                   fs.category = 'self sponsored' 
-                                                  OR fs.category = 'both' 
-                                                  OR fs.category IS NULL
+                                                  OR fs.category = 'both'
                                               )
-                                              AND fs.category != 'sponsored'
                                             ORDER BY 
                                               CASE 
                                                 WHEN fs.category = 'self sponsored' THEN 1
                                                 WHEN fs.category = 'both' THEN 2
-                                                WHEN fs.category IS NULL THEN 3
-                                                ELSE 4
+                                                ELSE 3
                                               END,
                                               fs.created_at DESC
                                             LIMIT 1
@@ -3498,23 +3606,21 @@ def student_fees():
                                               AND fs.status = 'active'
                                               AND (
                                                   fs.category = 'self sponsored' 
-                                                  OR fs.category = 'both' 
-                                                  OR fs.category IS NULL
+                                                  OR fs.category = 'both'
                                               )
-                                              AND fs.category != 'sponsored'
                                             ORDER BY 
                                               CASE 
                                                 WHEN fs.category = 'self sponsored' THEN 1
                                                 WHEN fs.category = 'both' THEN 2
-                                                WHEN fs.category IS NULL THEN 3
-                                                ELSE 4
+                                                ELSE 3
                                               END,
                                               fs.created_at DESC
                                             LIMIT 1
                                         """, (academic_level_id,))
                                 elif student_category == 'sponsored':
                                     # Match fee structures for sponsored students
-                                    # Priority: 'sponsored' first, then 'both', then NULL
+                                    # ONLY match 'sponsored' or 'both' category structures
+                                    # Do NOT match 'self sponsored' or NULL category structures
                                     if current_academic_year_id and current_term_id:
                                         cursor.execute("""
                                             SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
@@ -3526,16 +3632,13 @@ def student_fees():
                                               AND fs.term_id = %s
                                               AND (
                                                   fs.category = 'sponsored' 
-                                                  OR fs.category = 'both' 
-                                                  OR fs.category IS NULL
+                                                  OR fs.category = 'both'
                                               )
-                                              AND fs.category != 'self sponsored'
                                             ORDER BY 
                                               CASE 
                                                 WHEN fs.category = 'sponsored' THEN 1
                                                 WHEN fs.category = 'both' THEN 2
-                                                WHEN fs.category IS NULL THEN 3
-                                                ELSE 4
+                                                ELSE 3
                                               END,
                                               fs.created_at DESC
                                             LIMIT 1
@@ -3549,16 +3652,13 @@ def student_fees():
                                               AND fs.status = 'active'
                                               AND (
                                                   fs.category = 'sponsored' 
-                                                  OR fs.category = 'both' 
-                                                  OR fs.category IS NULL
+                                                  OR fs.category = 'both'
                                               )
-                                              AND fs.category != 'self sponsored'
                                             ORDER BY 
                                               CASE 
                                                 WHEN fs.category = 'sponsored' THEN 1
                                                 WHEN fs.category = 'both' THEN 2
-                                                WHEN fs.category IS NULL THEN 3
-                                                ELSE 4
+                                                ELSE 3
                                               END,
                                               fs.created_at DESC
                                             LIMIT 1
@@ -3605,8 +3705,8 @@ def student_fees():
                                             LIMIT 1
                                         """, (academic_level_id,))
                                 else:
-                                    # If student has no category or unknown category, match 'both' or NULL only
-                                    # Do not match category-specific fee structures
+                                    # If student has no category or unknown category, match 'both' category only
+                                    # Do not match category-specific fee structures (self sponsored or sponsored)
                                     if current_academic_year_id and current_term_id:
                                         cursor.execute("""
                                             SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
@@ -3616,7 +3716,7 @@ def student_fees():
                                               AND fs.status = 'active'
                                               AND fs.academic_year_id = %s
                                               AND fs.term_id = %s
-                                              AND (fs.category = 'both' OR fs.category IS NULL)
+                                              AND fs.category = 'both'
                                             ORDER BY fs.created_at DESC
                                             LIMIT 1
                                         """, (academic_level_id, current_academic_year_id, current_term_id))
@@ -3627,39 +3727,12 @@ def student_fees():
                                             FROM fee_structures fs
                                             WHERE fs.academic_level_id = %s 
                                               AND fs.status = 'active'
-                                              AND (fs.category = 'both' OR fs.category IS NULL)
+                                              AND fs.category = 'both'
                                             ORDER BY fs.created_at DESC
                                             LIMIT 1
                                         """, (academic_level_id,))
                                 
                                 fee_structure_result = cursor.fetchone()
-                                
-                                # Only fall back to any fee structure if student has no category and no 'both' structure exists
-                                # This ensures category-specific structures are never shown to wrong student categories
-                                if not fee_structure_result and not student_category:
-                                    if current_academic_year_id and current_term_id:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.academic_year_id = %s
-                                              AND fs.term_id = %s
-                                            ORDER BY fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id, current_academic_year_id, current_term_id))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                            ORDER BY fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id,))
-                                    fee_structure_result = cursor.fetchone()
                                 
                                 if fee_structure_result:
                                     # Format dates
@@ -3725,32 +3798,120 @@ def student_fees():
                             
                             # Calculate carry-forward from previous fee structures (overpayments and unpaid balances)
                             # Get all previous fee structures for this student's academic level that have ended
+                            # IMPORTANT: Filter by student category to only include relevant fee structures
                             if academic_level_id:
                                 current_start_date = fee_structure.get('start_date')
-                                if current_start_date:
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.total_amount,
-                                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                        FROM fee_structures fs
-                                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                        WHERE fs.academic_level_id = %s
-                                        AND fs.id != %s
-                                        AND fs.status = 'active'
-                                        AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                                        GROUP BY fs.id, fs.total_amount
-                                    """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
+                                student_category = row.get('student_category', '').lower().strip() if row.get('student_category') else ''
+                                
+                                # Build category filter based on student category
+                                if student_category == 'self sponsored':
+                                    if current_start_date:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                            AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
+                                    else:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND fs.end_date < CURDATE()
+                                            AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
+                                elif student_category == 'sponsored':
+                                    if current_start_date:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                            AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
+                                    else:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND fs.end_date < CURDATE()
+                                            AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
+                                elif student_category == 'both':
+                                    # Include all categories for students with category 'both'
+                                    if current_start_date:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
+                                    else:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND fs.end_date < CURDATE()
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
                                 else:
-                                    cursor.execute("""
-                                        SELECT fs.id, fs.total_amount,
-                                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                        FROM fee_structures fs
-                                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                        WHERE fs.academic_level_id = %s
-                                        AND fs.id != %s
-                                        AND fs.status = 'active'
-                                        AND fs.end_date < CURDATE()
-                                        GROUP BY fs.id, fs.total_amount
-                                    """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
+                                    # Only 'both' category for students with no category
+                                    if current_start_date:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                            AND fs.category = 'both'
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
+                                    else:
+                                        cursor.execute("""
+                                            SELECT fs.id, fs.total_amount,
+                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                            FROM fee_structures fs
+                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                            WHERE fs.academic_level_id = %s
+                                            AND fs.id != %s
+                                            AND fs.status = 'active'
+                                            AND fs.end_date < CURDATE()
+                                            AND fs.category = 'both'
+                                            GROUP BY fs.id, fs.total_amount
+                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
                                 
                                 previous_structures = cursor.fetchall()
                                 for prev_struct in previous_structures:
@@ -4130,15 +4291,184 @@ def generate_invoice(student_id):
                     academic_level_id = academic_level_result[0] if isinstance(academic_level_result, (list, tuple)) else academic_level_result.get('id')
             
             if academic_level_id:
+                # Get current academic year and term for filtering
                 cursor.execute("""
-                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
-                           fs.total_amount, al.level_name, al.level_category
-                    FROM fee_structures fs
-                    LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
-                    WHERE fs.academic_level_id = %s AND fs.status = 'active'
-                    ORDER BY fs.created_at DESC
+                    SELECT id, year_name, is_current
+                    FROM academic_years
+                    WHERE is_current = TRUE AND status = 'active'
                     LIMIT 1
-                """, (academic_level_id,))
+                """)
+                current_year_result = cursor.fetchone()
+                current_academic_year_id = None
+                if current_year_result:
+                    current_academic_year_id = current_year_result.get('id') if isinstance(current_year_result, dict) else current_year_result[0]
+                
+                current_term_id = None
+                if current_academic_year_id:
+                    cursor.execute("""
+                        SELECT id, term_name, is_current
+                        FROM terms
+                        WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                        LIMIT 1
+                    """, (current_academic_year_id,))
+                    current_term_result = cursor.fetchone()
+                    if current_term_result:
+                        current_term_id = current_term_result.get('id') if isinstance(current_term_result, dict) else current_term_result[0]
+                
+                # Match fee structure category with student category
+                student_category = student.get('student_category', '').lower().strip() if student.get('student_category') else ''
+                
+                if student_category == 'self sponsored':
+                    # Match fee structures for self sponsored students
+                    # ONLY match 'self sponsored' or 'both' category structures
+                    if current_academic_year_id and current_term_id:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND fs.academic_year_id = %s
+                              AND fs.term_id = %s
+                              AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'self sponsored' THEN 1
+                                WHEN fs.category = 'both' THEN 2
+                                ELSE 3
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id, current_academic_year_id, current_term_id))
+                    else:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'self sponsored' THEN 1
+                                WHEN fs.category = 'both' THEN 2
+                                ELSE 3
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id,))
+                elif student_category == 'sponsored':
+                    # Match fee structures for sponsored students
+                    # ONLY match 'sponsored' or 'both' category structures
+                    if current_academic_year_id and current_term_id:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND fs.academic_year_id = %s
+                              AND fs.term_id = %s
+                              AND (fs.category = 'sponsored' OR fs.category = 'both')
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'sponsored' THEN 1
+                                WHEN fs.category = 'both' THEN 2
+                                ELSE 3
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id, current_academic_year_id, current_term_id))
+                    else:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND (fs.category = 'sponsored' OR fs.category = 'both')
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'sponsored' THEN 1
+                                WHEN fs.category = 'both' THEN 2
+                                ELSE 3
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id,))
+                elif student_category == 'both':
+                    # Students with category 'both' can see all fee structures
+                    if current_academic_year_id and current_term_id:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND fs.academic_year_id = %s
+                              AND fs.term_id = %s
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'both' THEN 1
+                                WHEN fs.category = 'self sponsored' THEN 2
+                                WHEN fs.category = 'sponsored' THEN 3
+                                ELSE 4
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id, current_academic_year_id, current_term_id))
+                    else:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                            ORDER BY 
+                              CASE 
+                                WHEN fs.category = 'both' THEN 1
+                                WHEN fs.category = 'self sponsored' THEN 2
+                                WHEN fs.category = 'sponsored' THEN 3
+                                ELSE 4
+                              END,
+                              fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id,))
+                else:
+                    # If student has no category, match 'both' category only
+                    if current_academic_year_id and current_term_id:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND fs.academic_year_id = %s
+                              AND fs.term_id = %s
+                              AND fs.category = 'both'
+                            ORDER BY fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id, current_academic_year_id, current_term_id))
+                    else:
+                        cursor.execute("""
+                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, fs.payment_deadline,
+                                   fs.total_amount, al.level_name, al.level_category, fs.category
+                            FROM fee_structures fs
+                            LEFT JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.academic_level_id = %s 
+                              AND fs.status = 'active'
+                              AND fs.category = 'both'
+                            ORDER BY fs.created_at DESC
+                            LIMIT 1
+                        """, (academic_level_id,))
+                
                 fee_structure_result = cursor.fetchone()
                 
                 if fee_structure_result:
@@ -4267,32 +4597,119 @@ def generate_invoice(student_id):
                         total_paid += 0.0
                 
                 # Calculate carry-forward from previous fee structures (overpayments)
+                # IMPORTANT: Filter by student category to only include relevant fee structures
                 if academic_level_id:
                     current_start_date = fee_structure.get('start_date')
-                    if current_start_date:
-                        cursor.execute("""
-                            SELECT fs.id, fs.total_amount,
-                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                            FROM fee_structures fs
-                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                            WHERE fs.academic_level_id = %s
-                            AND fs.id != %s
-                            AND fs.status = 'active'
-                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                            GROUP BY fs.id, fs.total_amount
-                        """, (student_id, academic_level_id, fee_structure['id'], current_start_date))
+                    student_category = student.get('student_category', '').lower().strip() if student.get('student_category') else ''
+                    
+                    if student_category == 'self sponsored':
+                        if current_start_date:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id'], current_start_date))
+                        else:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id']))
+                    elif student_category == 'sponsored':
+                        if current_start_date:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id'], current_start_date))
+                        else:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id']))
+                    elif student_category == 'both':
+                        # Include all categories for students with category 'both'
+                        if current_start_date:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id'], current_start_date))
+                        else:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id']))
                     else:
-                        cursor.execute("""
-                            SELECT fs.id, fs.total_amount,
-                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                            FROM fee_structures fs
-                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                            WHERE fs.academic_level_id = %s
-                            AND fs.id != %s
-                            AND fs.status = 'active'
-                            AND fs.end_date < CURDATE()
-                            GROUP BY fs.id, fs.total_amount
-                        """, (student_id, academic_level_id, fee_structure['id']))
+                        # Only 'both' category for students with no category
+                        if current_start_date:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                AND fs.category = 'both'
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id'], current_start_date))
+                        else:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                AND fs.category = 'both'
+                                GROUP BY fs.id, fs.total_amount
+                            """, (student_id, academic_level_id, fee_structure['id']))
                     
                     previous_structures = cursor.fetchall()
                     for prev_struct in previous_structures:
@@ -4309,10 +4726,13 @@ def generate_invoice(student_id):
                             carry_forward += abs(prev_balance)
                 
                 # Calculate balance brought forward from previous fee structures (for ledger)
+                # IMPORTANT: Filter by student category to only include relevant fee structures
                 balance_brought_forward = 0.0
                 previous_term_info = None  # Store previous term's closing info
                 if academic_level_id and fee_structure:
                     current_start_date = fee_structure.get('start_date')
+                    student_category = student.get('student_category', '').lower().strip() if student.get('student_category') else ''
+                    
                     if current_start_date:
                         try:
                             if hasattr(current_start_date, 'strftime'):
@@ -4320,6 +4740,127 @@ def generate_invoice(student_id):
                             else:
                                 start_date_str = str(current_start_date).split(' ')[0]
                             
+                            if student_category == 'self sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                    AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id'], start_date_str))
+                            elif student_category == 'sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                    AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id'], start_date_str))
+                            elif student_category == 'both':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id'], start_date_str))
+                            else:
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                    AND fs.category = 'both'
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id'], start_date_str))
+                        except:
+                            if student_category == 'self sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND fs.end_date < CURDATE()
+                                    AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id']))
+                            elif student_category == 'sponsored':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND fs.end_date < CURDATE()
+                                    AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id']))
+                            elif student_category == 'both':
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND fs.end_date < CURDATE()
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id']))
+                            else:
+                                cursor.execute("""
+                                    SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                           COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                    FROM fee_structures fs
+                                    LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                    WHERE fs.academic_level_id = %s
+                                    AND fs.id != %s
+                                    AND fs.status = 'active'
+                                    AND fs.end_date < CURDATE()
+                                    AND fs.category = 'both'
+                                    GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                    ORDER BY fs.end_date DESC
+                                    LIMIT 1
+                                """, (student_id, academic_level_id, fee_structure['id']))
+                    else:
+                        if student_category == 'self sponsored':
                             cursor.execute("""
                                 SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
                                        COALESCE(SUM(sp.amount_paid), 0) as total_paid
@@ -4328,12 +4869,28 @@ def generate_invoice(student_id):
                                 WHERE fs.academic_level_id = %s
                                 AND fs.id != %s
                                 AND fs.status = 'active'
-                                AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                                AND fs.end_date < CURDATE()
+                                AND (fs.category = 'self sponsored' OR fs.category = 'both')
                                 GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
                                 ORDER BY fs.end_date DESC
                                 LIMIT 1
-                            """, (student_id, academic_level_id, fee_structure['id'], start_date_str))
-                        except:
+                            """, (student_id, academic_level_id, fee_structure['id']))
+                        elif student_category == 'sponsored':
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                AND (fs.category = 'sponsored' OR fs.category = 'both')
+                                GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                ORDER BY fs.end_date DESC
+                                LIMIT 1
+                            """, (student_id, academic_level_id, fee_structure['id']))
+                        elif student_category == 'both':
                             cursor.execute("""
                                 SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
                                        COALESCE(SUM(sp.amount_paid), 0) as total_paid
@@ -4347,20 +4904,21 @@ def generate_invoice(student_id):
                                 ORDER BY fs.end_date DESC
                                 LIMIT 1
                             """, (student_id, academic_level_id, fee_structure['id']))
-                    else:
-                        cursor.execute("""
-                            SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
-                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                            FROM fee_structures fs
-                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                            WHERE fs.academic_level_id = %s
-                            AND fs.id != %s
-                            AND fs.status = 'active'
-                            AND fs.end_date < CURDATE()
-                            GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
-                            ORDER BY fs.end_date DESC
-                            LIMIT 1
-                        """, (student_id, academic_level_id, fee_structure['id']))
+                        else:
+                            cursor.execute("""
+                                SELECT fs.id, fs.total_amount, fs.fee_name, fs.end_date,
+                                       COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                                FROM fee_structures fs
+                                LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                                WHERE fs.academic_level_id = %s
+                                AND fs.id != %s
+                                AND fs.status = 'active'
+                                AND fs.end_date < CURDATE()
+                                AND fs.category = 'both'
+                                GROUP BY fs.id, fs.total_amount, fs.fee_name, fs.end_date
+                                ORDER BY fs.end_date DESC
+                                LIMIT 1
+                            """, (student_id, academic_level_id, fee_structure['id']))
                     
                     previous_term_result = cursor.fetchone()
                     if previous_term_result:
@@ -4444,20 +5002,68 @@ def generate_invoice(student_id):
             invoice_number = f"INV-{student_id}-{now.strftime('%Y%m%d%H%M%S')}"
             
             # Fetch all fee structures for this student (for fee breakdown table)
+            # IMPORTANT: Filter by student category to only show relevant fee structures
             fee_breakdown = []
             total_fees = 0.0
             if academic_level_id:
-                cursor.execute("""
-                    SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
-                           fs.term_id, fs.academic_year_id,
-                           t.term_name, t.start_date as term_start, t.end_date as term_end,
-                           ay.year_name
-                    FROM fee_structures fs
-                    LEFT JOIN terms t ON fs.term_id = t.id
-                    LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
-                    WHERE fs.academic_level_id = %s AND fs.status = 'active'
-                    ORDER BY fs.start_date DESC, fs.created_at DESC
-                """, (academic_level_id,))
+                student_category = student.get('student_category', '').lower().strip() if student.get('student_category') else ''
+                
+                if student_category == 'self sponsored':
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s 
+                          AND fs.status = 'active'
+                          AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                elif student_category == 'sponsored':
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s 
+                          AND fs.status = 'active'
+                          AND (fs.category = 'sponsored' OR fs.category = 'both')
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                elif student_category == 'both':
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s 
+                          AND fs.status = 'active'
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                else:
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s 
+                          AND fs.status = 'active'
+                          AND fs.category = 'both'
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                
                 fee_structures_results = cursor.fetchall()
                 
                 for fs_row in fee_structures_results:
