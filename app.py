@@ -369,7 +369,7 @@ def init_db():
                     student_id VARCHAR(20) NOT NULL,
                     full_name VARCHAR(255) NOT NULL,
                     phone VARCHAR(50) NOT NULL,
-                    email VARCHAR(255) NOT NULL,
+                    email VARCHAR(255),
                     relationship VARCHAR(50),
                     emergency_contact VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -378,6 +378,14 @@ def init_db():
                     INDEX idx_student_id (student_id)
                 )
             """)
+            
+            # Migrate existing parents table to allow NULL email (if table exists)
+            try:
+                cursor.execute("ALTER TABLE parents MODIFY COLUMN email VARCHAR(255) NULL")
+                print("Parents table email column updated to allow NULL.")
+            except Exception as e:
+                # Column might already be nullable or table might not exist yet
+                pass
             
             # Keep admissions table for backward compatibility (optional - can be removed later)
             cursor.execute("""
@@ -2084,6 +2092,8 @@ def admission():
         sponsor_email = normalize_text(request.form.get('sponsor_email', ''), uppercase=False, allow_empty=True)  # students.sponsor_email
         if sponsor_email:
             sponsor_email = sponsor_email.lower()  # Email in lowercase
+        else:
+            sponsor_email = None  # Convert empty string to None for database
         
         # Parent/Guardian information (from parents table)
         parent_name = normalize_text(request.form.get('parent_name', ''))  # parents.full_name
@@ -2092,6 +2102,8 @@ def admission():
         parent_email = normalize_text(request.form.get('parent_email', ''), uppercase=False, allow_empty=True)  # parents.email
         if parent_email:
             parent_email = parent_email.lower()  # Email in lowercase
+        else:
+            parent_email = None  # Convert empty string to None for database
         emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None  # parents.emergency_contact
         
         consent = request.form.get('consent')
@@ -2139,12 +2151,13 @@ def admission():
                     
                     connection.commit()
                     
-                    # Send email notification to parent
-                    try:
-                        send_admission_confirmation_email(parent_email, parent_name, full_name, student_id)
-                    except Exception as email_error:
-                        print(f"Error sending email: {email_error}")
-                        # Don't fail the submission if email fails
+                    # Send email notification to parent (only if email is provided)
+                    if parent_email:
+                        try:
+                            send_admission_confirmation_email(parent_email, parent_name, full_name, student_id)
+                        except Exception as email_error:
+                            print(f"Error sending email: {email_error}")
+                            # Don't fail the submission if email fails
                     
                     flash(f'Application submitted successfully! Your Student ID is: {student_id}. We will review it and get back to you soon.', 'success')
             except Exception as e:
@@ -3781,6 +3794,18 @@ def student_fees():
                                     } for item in fee_items]
                         
                         # Calculate total paid and balance
+                        # First, get ALL payments for this student (for display in paid column)
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+                            FROM student_payments
+                            WHERE student_id = %s
+                        """, (row.get('student_id'),))
+                        all_payments_result = cursor.fetchone()
+                        total_paid_all = 0.00
+                        if all_payments_result:
+                            total_paid_all = float(all_payments_result.get('total_paid', 0) if isinstance(all_payments_result, dict) else all_payments_result[0] or 0)
+                        
+                        # For balance calculation, use payments for current fee structure only
                         total_paid = 0.00
                         carry_forward = 0.00  # Overpayments from previous fee structures
                         previous_term_balance = 0.00  # Unpaid balances from previous fee structures
@@ -3970,7 +3995,8 @@ def student_fees():
                             'academic_level': academic_level,
                             'fee_structure': fee_structure,
                             'payment_status': payment_status,
-                            'total_paid': total_paid,
+                            'total_paid': total_paid_all,  # Show all payments in paid column
+                            'total_paid_current': total_paid,  # Payments for current fee structure (for balance calculation)
                             'carry_forward': carry_forward,
                             'previous_term_balance': previous_term_balance,
                             'total_amount_due': total_amount_due,
@@ -5556,9 +5582,10 @@ def download_payment_receipt(student_id, payment_id):
             
             receipt_number = f"RCP-{student_id}-{payment_id}-{datetime.now().strftime('%Y%m%d')}"
             
-            # Get student's academic level to fetch all fee structures
+            # Get student's academic level to fetch fee structures
             # First get the student's current_grade, then match it with academic_levels
             student_grade = student.get('current_grade', '')
+            student_category = student.get('student_category', '').lower().strip() if student.get('student_category') else ''
             academic_level_id = None
             if student_grade:
                 cursor.execute("""
@@ -5571,28 +5598,74 @@ def download_payment_receipt(student_id, payment_id):
                 if academic_level_result:
                     academic_level_id = academic_level_result.get('id') if isinstance(academic_level_result, dict) else academic_level_result[0]
             
-            # Fetch all fee structures for this student (based on academic level)
+            # Fetch fee structures for this student (based on academic level AND student category)
             fee_breakdown = []
             total_fees = 0.0
             if academic_level_id:
-                cursor.execute("""
-                    SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
-                           fs.term_id, fs.academic_year_id,
-                           t.term_name, t.start_date as term_start, t.end_date as term_end,
-                           ay.year_name
-                    FROM fee_structures fs
-                    LEFT JOIN terms t ON fs.term_id = t.id
-                    LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
-                    WHERE fs.academic_level_id = %s AND fs.status = 'active'
-                    ORDER BY fs.start_date DESC, fs.created_at DESC
-                """, (academic_level_id,))
+                # Build category filter based on student category
+                if student_category == 'self sponsored':
+                    # Only match 'self sponsored' or 'both' category structures
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                        AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                elif student_category == 'sponsored':
+                    # Only match 'sponsored' or 'both' category structures
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                        AND (fs.category = 'sponsored' OR fs.category = 'both')
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                elif student_category == 'both':
+                    # Students with category 'both' can see all fee structures
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
+                else:
+                    # If student has no category or unknown category, match 'both' category only
+                    cursor.execute("""
+                        SELECT fs.id, fs.fee_name, fs.total_amount, fs.start_date, fs.end_date,
+                               fs.term_id, fs.academic_year_id,
+                               t.term_name, t.start_date as term_start, t.end_date as term_end,
+                               ay.year_name
+                        FROM fee_structures fs
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.academic_level_id = %s AND fs.status = 'active'
+                        AND fs.category = 'both'
+                        ORDER BY fs.start_date DESC, fs.created_at DESC
+                    """, (academic_level_id,))
                 fee_structures_results = cursor.fetchall()
                 
                 for fs_row in fee_structures_results:
                     if isinstance(fs_row, dict):
                         fee_id = fs_row.get('id')
                         fee_name = fs_row.get('fee_name', '')
-                        total_amount = float(fs_row.get('total_amount', 0))
+                        total_amount_val = fs_row.get('total_amount')
+                        total_amount = float(total_amount_val if total_amount_val is not None else 0)
                         term_name = fs_row.get('term_name', '')
                         year_name = fs_row.get('year_name', '')
                         start_date = fs_row.get('start_date')
@@ -5600,7 +5673,8 @@ def download_payment_receipt(student_id, payment_id):
                     else:
                         fee_id = fs_row[0]
                         fee_name = fs_row[1] if len(fs_row) > 1 else ''
-                        total_amount = float(fs_row[2] if len(fs_row) > 2 else 0)
+                        total_amount_val = fs_row[2] if len(fs_row) > 2 else None
+                        total_amount = float(total_amount_val if total_amount_val is not None else 0)
                         start_date = fs_row[3] if len(fs_row) > 3 else None
                         end_date = fs_row[4] if len(fs_row) > 4 else None
                         term_id = fs_row[5] if len(fs_row) > 5 else None
@@ -5656,13 +5730,15 @@ def download_payment_receipt(student_id, payment_id):
             for pay_row in payments_results:
                 if isinstance(pay_row, dict):
                     pay_id = pay_row.get('id')
-                    amount = float(pay_row.get('amount_paid', 0))
+                    amount_paid_val = pay_row.get('amount_paid')
+                    amount = float(amount_paid_val if amount_paid_val is not None else 0)
                     method = pay_row.get('payment_method', '')
                     reference = pay_row.get('reference_number', '') or pay_row.get('transaction_id', '')
                     pay_date = pay_row.get('payment_date')
                 else:
                     pay_id = pay_row[0]
-                    amount = float(pay_row[1] if len(pay_row) > 1 else 0)
+                    amount_paid_val = pay_row[1] if len(pay_row) > 1 else None
+                    amount = float(amount_paid_val if amount_paid_val is not None else 0)
                     method = pay_row[2] if len(pay_row) > 2 else ''
                     reference = pay_row[3] if len(pay_row) > 3 else (pay_row[4] if len(pay_row) > 4 else '')
                     pay_date = pay_row[5] if len(pay_row) > 5 else None
@@ -5684,11 +5760,12 @@ def download_payment_receipt(student_id, payment_id):
             balance_due = total_fees - total_paid
             
             # Prepare single payment transaction for template (current payment)
+            amount_paid = payment.get('amount_paid')
             payment_transaction = {
                 'date': payment_date_str,
                 'date_short': payment_date_short,
                 'method': payment.get('payment_method', ''),
-                'amount': float(payment.get('amount_paid', 0)),
+                'amount': float(amount_paid if amount_paid is not None else 0),
                 'reference': payment.get('reference_number', '') or payment.get('transaction_id', ''),
                 'transaction_id': payment.get('transaction_id', ''),
                 'cheque': payment.get('cheque_number', ''),
@@ -5697,9 +5774,10 @@ def download_payment_receipt(student_id, payment_id):
             }
             
             # Prepare fee structure for template (for backward compatibility)
+            total_amount = payment.get('total_amount')
             fee_structure = {
                 'fee_name': payment.get('fee_name', ''),
-                'total_amount': float(payment.get('total_amount', 0)),
+                'total_amount': float(total_amount if total_amount is not None else 0),
                 'start_date': payment.get('start_date'),
                 'end_date': payment.get('end_date'),
                 'payment_deadline': payment.get('payment_deadline'),
@@ -6928,6 +7006,101 @@ def update_payment_amount():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'An error occurred while updating payment.'}), 500
+
+@app.route('/dashboard/employee/student-fees/delete-payment', methods=['POST'])
+@login_required
+def delete_payment():
+    """Delete a student payment (with audit log)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    employee_id = session.get('employee_id') or session.get('user_id')
+
+    is_technician = user_role == 'technician'
+    has_process_payments_permission = check_permission_or_role('process_payments', ['accountant'])
+
+    # Permission check handles role fallback if no permissions are assigned
+    if not (is_technician or has_process_payments_permission):
+        return jsonify({'success': False, 'message': 'You do not have permission to delete payments.'}), 403
+
+    try:
+        if request.is_json:
+            data = request.get_json()
+            payment_id = data.get('payment_id')
+            student_id = data.get('student_id')
+        else:
+            payment_id = request.form.get('payment_id')
+            student_id = request.form.get('student_id')
+
+        if not payment_id or not student_id:
+            return jsonify({'success': False, 'message': 'Missing payment_id or student_id.'}), 400
+
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+        try:
+            with connection.cursor() as cursor:
+                # Get employee database ID (not employee_id code)
+                received_by_id = None
+                employee_identifier = session.get('employee_id') or session.get('user_id')
+                if employee_identifier:
+                    cursor.execute("""
+                        SELECT id FROM employees 
+                        WHERE id = %s OR employee_id = %s
+                        LIMIT 1
+                    """, (employee_identifier, employee_identifier))
+                    emp_result = cursor.fetchone()
+                    if emp_result:
+                        received_by_id = emp_result.get('id') if isinstance(emp_result, dict) else emp_result[0]
+
+                # Get payment details before deletion for audit log
+                cursor.execute("""
+                    SELECT id, student_id, fee_structure_id, amount_paid, payment_method, 
+                           reference_number, cheque_number, transaction_id, payment_date, notes
+                    FROM student_payments
+                    WHERE id = %s AND student_id = %s
+                    LIMIT 1
+                """, (payment_id, student_id))
+                payment_result = cursor.fetchone()
+
+                if not payment_result:
+                    return jsonify({'success': False, 'message': 'Payment not found.'}), 404
+
+                # Create audit log entry before deletion
+                payment_details = f"Amount: KES {payment_result.get('amount_paid', 0) if isinstance(payment_result, dict) else payment_result[3] or 0}, Method: {payment_result.get('payment_method', '') if isinstance(payment_result, dict) else payment_result[4] or ''}, Date: {payment_result.get('payment_date', '') if isinstance(payment_result, dict) else payment_result[8] or ''}"
+                
+                # Log audit entry for payment deletion BEFORE deleting the payment
+                # This ensures the foreign key constraint is satisfied
+                cursor.execute("""
+                    INSERT INTO student_payment_audit 
+                    (payment_id, student_id, action_type, field_name, old_value, new_value, changed_by)
+                    VALUES (%s, %s, 'DELETE', 'Payment Deleted', %s, NULL, %s)
+                """, (payment_id, student_id, payment_details, received_by_id))
+                
+                # Delete the payment after audit log is created
+                cursor.execute("""
+                    DELETE FROM student_payments
+                    WHERE id = %s AND student_id = %s
+                """, (payment_id, student_id))
+
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'message': 'Payment deleted successfully.'
+                })
+        except Exception as e:
+            connection.rollback()
+            print(f"Error deleting payment: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'message': f'Error deleting payment: {str(e)}'}), 500
+        finally:
+            connection.close()
+    except Exception as e:
+        print(f"Error in delete_payment: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'An error occurred while deleting payment.'}), 500
 
 @app.route('/dashboard/employee/student-fees/fee-structure/<int:structure_id>/update', methods=['POST'])
 @login_required

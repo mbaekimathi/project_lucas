@@ -108,7 +108,7 @@ def create_tables():
                     student_id VARCHAR(20) NOT NULL,
                     full_name VARCHAR(255) NOT NULL,
                     phone VARCHAR(50) NOT NULL,
-                    email VARCHAR(255) NOT NULL,
+                    email VARCHAR(255),
                     relationship VARCHAR(50),
                     emergency_contact VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -118,6 +118,14 @@ def create_tables():
                 )
             """)
             print("Parents table created.")
+            
+            # Migrate existing parents table to allow NULL email (if table exists)
+            try:
+                cursor.execute("ALTER TABLE parents MODIFY COLUMN email VARCHAR(255) NULL")
+                print("Parents table email column updated to allow NULL.")
+            except Exception as e:
+                # Column might already be nullable or table might not exist yet
+                pass
             
             # Keep admissions table for backward compatibility (optional - can be removed later)
             cursor.execute("""
