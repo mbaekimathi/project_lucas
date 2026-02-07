@@ -7,10 +7,27 @@ import os
 
 def is_hosted():
     """Check if running on hosted server"""
+    # Check environment variables first
+    if os.environ.get('DB_USER') and os.environ.get('DB_USER') != 'root':
+        return True
     # Check for common hosting indicators
     if os.path.exists('/home'):
         # Check for common hosting paths
         if os.path.exists('/home/projectl_school') or os.path.exists('/home/projectl'):
+            return True
+    # Check username
+    try:
+        import getpass
+        username = getpass.getuser()
+        if username and username != 'root' and username.startswith('projectl'):
+            return True
+    except:
+        pass
+    # If not on Windows (Linux server), default to hosted unless explicitly set to local
+    if os.name != 'nt':
+        # Default to hosted on Linux servers unless DB_USER is explicitly 'root'
+        db_user = os.environ.get('DB_USER', '')
+        if db_user != 'root':
             return True
     return False
 
@@ -71,5 +88,8 @@ def migrate_parents_email():
 
 if __name__ == '__main__':
     print("Migrating parents.email column to allow NULL values...")
+    print(f"Detected environment: {'Hosted' if is_hosted() else 'Local'}")
+    print(f"Using database: {DB_CONFIG['database']}")
+    print(f"Using user: {DB_CONFIG['user']}")
     migrate_parents_email()
 
