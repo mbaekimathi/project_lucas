@@ -634,6 +634,27 @@ def init_db():
                     VALUES ('Modern School', '', '', '', 'PROJECT LUCAS')
                 """)
             
+            # Create integration_settings table (WhatsApp, Email, SMS integrations)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS integration_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    integration_type VARCHAR(50) NOT NULL,
+                    settings_json TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_integration_type (integration_type)
+                )
+            """)
+            # Ensure we have placeholder rows for each integration type so the page can load
+            for itype in ('whatsapp', 'email', 'sms'):
+                try:
+                    cursor.execute(
+                        "INSERT IGNORE INTO integration_settings (integration_type, settings_json) VALUES (%s, %s)",
+                        (itype, '{}')
+                    )
+                except Exception:
+                    pass
+            
             # Create academic_coordinator_settings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS academic_coordinator_settings (
@@ -14253,26 +14274,24 @@ def integration_settings():
                 # Check if integration_settings table exists and fetch data
                 cursor.execute("""
                     SELECT integration_type, settings_json 
-                    FROM integration_settings 
-                    WHERE id = 1
+                    FROM integration_settings
                 """)
-                result = cursor.fetchone()
-                if result:
-                    # Parse JSON settings if stored as JSON
+                results = cursor.fetchall()
+                if results:
                     import json
-                    if isinstance(result, dict):
-                        integration_type = result.get('integration_type', '')
-                        settings_json = result.get('settings_json', '{}')
-                    else:
-                        integration_type = result[0] if len(result) > 0 else ''
-                        settings_json = result[1] if len(result) > 1 else '{}'
-                    
-                    try:
-                        settings = json.loads(settings_json) if settings_json else {}
-                        if integration_type in integration_data:
-                            integration_data[integration_type].update(settings)
-                    except:
-                        pass
+                    for result in results:
+                        if isinstance(result, dict):
+                            integration_type = result.get('integration_type', '')
+                            settings_json = result.get('settings_json', '{}')
+                        else:
+                            integration_type = result[0] if len(result) > 0 else ''
+                            settings_json = result[1] if len(result) > 1 else '{}'
+                        try:
+                            settings = json.loads(settings_json) if settings_json else {}
+                            if integration_type in integration_data:
+                                integration_data[integration_type].update(settings)
+                        except Exception:
+                            pass
         except Exception as e:
             # Table might not exist yet, that's okay
             print(f"Integration settings table may not exist: {e}")

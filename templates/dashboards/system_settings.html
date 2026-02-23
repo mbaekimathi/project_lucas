@@ -8,40 +8,40 @@
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System Configuration</h3>
     </div>
 
-    <a href="#school-profile"
-        @click="currentHash = '#school-profile'; if(!isDesktop) { sidebarOpen = false; }"
+    <a href="{{ url_for('system_settings') }}#school-profile"
+        @click.prevent="currentHash = '#school-profile'; window.location.hash = 'school-profile'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#school-profile' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
         <i class="fas fa-school w-5 text-center"></i>
         <span>School Profile</span>
     </a>
 
-    <a href="#general-settings"
-        @click="currentHash = '#general-settings'; if(!isDesktop) { sidebarOpen = false; }"
+    <a href="{{ url_for('system_settings') }}#general-settings"
+        @click.prevent="currentHash = '#general-settings'; window.location.hash = 'general-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#general-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
         <i class="fas fa-sliders-h w-5 text-center"></i>
         <span>General Settings</span>
     </a>
 
-    <a href="#academic-year"
-        @click="currentHash = '#academic-year'; if(!isDesktop) { sidebarOpen = false; }"
+    <a href="{{ url_for('system_settings') }}#academic-year"
+        @click.prevent="currentHash = '#academic-year'; window.location.hash = 'academic-year'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#academic-year' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
         <i class="fas fa-calendar-alt w-5 text-center"></i>
         <span>Academic Year</span>
     </a>
 
-    <a href="#theme-colors"
-        @click="currentHash = '#theme-colors'; if(!isDesktop) { sidebarOpen = false; }"
+    <a href="{{ url_for('system_settings') }}#theme-colors"
+        @click.prevent="currentHash = '#theme-colors'; window.location.hash = 'theme-colors'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#theme-colors' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
         <i class="fas fa-palette w-5 text-center"></i>
         <span>Theme & Colors</span>
     </a>
 
-    <a href="#login-settings"
-        @click="currentHash = '#login-settings'; if(!isDesktop) { sidebarOpen = false; }"
+    <a href="{{ url_for('system_settings') }}#login-settings"
+        @click.prevent="currentHash = '#login-settings'; window.location.hash = 'login-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#login-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
         <i class="fas fa-sign-in-alt w-5 text-center"></i>
@@ -54,14 +54,12 @@
     </div>
 
     <a href="{{ url_for('integration_settings') }}"
-        @click="if(!isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800">
         <i class="fas fa-plug w-5 text-center"></i>
         <span>Integrations</span>
     </a>
 
     <a href="{{ url_for('database_management') }}"
-        @click="if(!isDesktop) { sidebarOpen = false; }"
         class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary hover:bg-gray-100 dark:hover:bg-gray-800">
         <i class="fas fa-database w-5 text-center"></i>
         <span>Database</span>
