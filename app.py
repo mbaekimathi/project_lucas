@@ -16611,33 +16611,24 @@ def toggle_term_lock(term_id):
     finally:
         connection.close()
 
-if __name__ == '__main__':
-    # Initialize database on startup
-    print("Initializing database...")
+
+def _ensure_db_schema():
+    """Run init_db and migrations so tables/columns are applied after git pull. Runs on every app load."""
     try:
-        if init_db():
-            print("Database initialized successfully!")
-        else:
-            print("Database initialization failed. Please check your database configuration.")
-            print("The application will continue, but some features may not work correctly.")
+        init_db()
     except Exception as e:
-        print(f"Error during database initialization: {e}")
-        import traceback
-        traceback.print_exc()
-        print("The application will continue, but some features may not work correctly.")
-    
-    # Run database migrations automatically on startup
+        print(f"Database init on load: {e}")
     try:
-        print("Running database migrations...")
         from migrations.migration_manager import run_all_migrations
         run_all_migrations()
-        print("Migrations completed.")
     except Exception as e:
-        print(f"Warning: Error running migrations: {e}")
-        import traceback
-        traceback.print_exc()
-        print("The application will continue, but database may not be up to date.")
-    
+        print(f"Migrations on load: {e}")
+
+
+# Apply schema and migrations when app is loaded (so git pull + restart updates DB)
+_ensure_db_schema()
+
+if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
 
 
