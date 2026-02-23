@@ -54,6 +54,13 @@ This will:
 - Create all required tables
 - Optionally create sample users for testing
 
+**After git pull or clone** – update database tables and columns (does not alter or delete existing data):
+```bash
+python update_db.py
+```
+Or with Flask CLI: `flask update-db`
+This only creates missing tables, adds missing columns, and runs migrations; your data is not modified or removed.
+
 ## Running the Application
 
 1. **Start the Flask development server**:

@@ -14047,6 +14047,8 @@ def students_by_academic_level(level_id):
     academic_level = None
     students = []
     subjects = []
+    exams = []
+    student_marks = {}
     
     if connection:
         try:
@@ -17070,18 +17072,40 @@ def toggle_term_lock(term_id):
 def _ensure_db_schema():
     """Run init_db and migrations so tables/columns are applied after git pull. Runs on every app load."""
     try:
-        init_db()
+        if init_db():
+            print("[DB] Tables created/verified")
+        else:
+            print("[DB] init_db returned False - check connection")
     except Exception as e:
-        print(f"Database init on load: {e}")
+        print(f"[DB] init_db failed: {e}")
     try:
         from migrations.migration_manager import run_all_migrations
-        run_all_migrations()
+        if run_all_migrations():
+            print("[DB] Migrations applied")
+        else:
+            print("[DB] Some migrations failed - run: python update_db.py")
     except Exception as e:
-        print(f"Migrations on load: {e}")
+        print(f"[DB] Migrations failed: {e}")
 
 
 # Apply schema and migrations when app is loaded (so git pull + restart updates DB)
 _ensure_db_schema()
+
+
+@app.cli.command('update-db')
+def flask_update_db():
+    """Create/update DB tables and run migrations. Run after git pull."""
+    print("Updating database...")
+    try:
+        if init_db():
+            print("Tables OK")
+        from migrations.migration_manager import run_all_migrations
+        run_all_migrations()
+        print("Done. Database is up to date.")
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
+
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

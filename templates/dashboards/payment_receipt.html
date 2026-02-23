@@ -3,202 +3,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Receipt - {{ student.student_id }}</title>
+    <title>Receipt - {{ student.student_id }}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        @media print {
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            body {
-                margin: 0;
-                padding: 0;
-                background: white;
-            }
-            .no-print {
-                display: none !important;
-            }
-            .receipt-container {
-                box-shadow: none !important;
-                border: none !important;
-                max-width: 100% !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                min-height: auto !important;
-            }
-            @page {
-                margin: 1cm;
-                size: A4;
-            }
-        }
-        html, body {
-            min-height: 100vh;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; }
         body {
-            background: white;
-        }
-        .receipt-container {
-            max-width: 210mm;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 24px 16px;
+            background: #f1f5f9;
             min-height: 100vh;
+        }
+        .receipt {
+            max-width: 400px;
             margin: 0 auto;
-            background: white;
-            padding: 32px 40px;
-            box-sizing: border-box;
-            font-size: 15px;
+            background: #fff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
         }
-        .receipt-border {
-            border: 1px solid #e5e7eb;
+        .receipt__header {
+            padding: 28px 24px 20px;
+            text-align: center;
+            border-bottom: 1px dashed #e2e8f0;
         }
-        table {
+        .receipt__logo {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+        }
+        .receipt__logo img {
             width: 100%;
-            border-collapse: collapse;
+            height: 100%;
+            object-fit: contain;
         }
-        table th, table td {
-            border: 1px solid #000;
-            padding: 10px 12px;
-            text-align: left;
+        .receipt__logo span {
+            font-size: 10px;
+            font-weight: 600;
+            color: #94a3b8;
         }
-        table th {
-            background-color: #f3f4f6;
-            font-weight: bold;
+        .receipt__school {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.02em;
+            margin-bottom: 4px;
         }
-        table td:last-child {
+        .receipt__meta {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.4;
+        }
+        .receipt__title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #64748b;
+            margin-top: 16px;
+        }
+        .receipt__body {
+            padding: 20px 24px 24px;
+        }
+        .receipt__row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 14px;
+        }
+        .receipt__row:last-child { border-bottom: none; }
+        .receipt__label {
+            color: #64748b;
+            font-weight: 500;
+        }
+        .receipt__value {
+            color: #0f172a;
+            font-weight: 600;
             text-align: right;
         }
-        .payment-summary {
-            text-align: right;
-            margin-top: 20px;
+        .receipt__divider {
+            height: 1px;
+            background: repeating-linear-gradient(90deg, #e2e8f0 0, #e2e8f0 4px, transparent 4px, transparent 8px);
+            margin: 20px 0;
         }
-        .payment-summary p {
-            margin: 4px 0;
+        .receipt__table-head {
+            display: grid;
+            grid-template-columns: 1fr 80px 1fr 1fr;
+            gap: 8px;
+            padding: 8px 0 10px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #64748b;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .receipt__table-row {
+            display: grid;
+            grid-template-columns: 1fr 80px 1fr 1fr;
+            gap: 8px;
+            padding: 12px 0;
+            font-size: 13px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .receipt__table-row .amt { font-weight: 600; color: #0f172a; text-align: right; }
+        .receipt__footer {
+            padding: 20px 24px 28px;
+            text-align: center;
+            border-top: 1px dashed #e2e8f0;
+        }
+        .receipt__thanks {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .receipt__note {
+            font-size: 11px;
+            color: #94a3b8;
+        }
+        .actions {
+            max-width: 400px;
+            margin: 20px auto 0;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+        }
+        .actions a, .actions button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .actions a:hover, .actions button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .btn-print { background: #0f172a; color: #fff; }
+        .btn-pdf { background: #059669; color: #fff; }
+        .btn-back { background: #e2e8f0; color: #475569; }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .receipt { box-shadow: none; max-width: 100%; }
+            .actions { display: none !important; }
         }
     </style>
 </head>
 <body>
-    <div class="receipt-container shadow-xl receipt-border">
-        <!-- Header Section -->
-        <div class="mb-6">
-            <div class="flex justify-between items-start">
-                <!-- Logo Section -->
-                <div class="flex items-center">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                         alt="Logo" 
-                         class="h-20 w-20 object-contain border border-gray-300 p-2">
-                    {% else %}
-                    <div class="h-20 w-20 border-2 border-gray-400 flex items-center justify-center bg-gray-100">
-                        <span class="text-xs font-bold text-gray-600">LOGO</span>
-                    </div>
-                    {% endif %}
-                </div>
-                
-                <!-- Contact Info and Title -->
-                <div class="flex-1 text-right">
-                    <div class="mb-4">
-                        {% if school_settings.school_address %}
-                        <p class="text-sm">{{ school_settings.school_address }}</p>
-                        {% endif %}
-                        {% if school_settings.school_phone %}
-                        <p class="text-sm">{{ school_settings.school_phone }}</p>
-                        {% endif %}
-                    </div>
-                    <h1 class="text-3xl font-bold">PAYMENT RECEIPT</h1>
-                </div>
+    <div class="receipt">
+        <div class="receipt__header">
+            <div class="receipt__logo">
+                {% if school_settings.school_logo %}
+                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="">
+                {% else %}
+                <span>LOGO</span>
+                {% endif %}
             </div>
-        </div>
-
-        <!-- Student Information -->
-        <div class="mb-6">
-            <table style="border: none;">
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>NAME:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ student.full_name }}</td>
-                </tr>
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>GRADE:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ student.current_grade or 'N/A' }}</td>
-                </tr>
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>PAID ON:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ receipt_date }}</td>
-                </tr>
-                <tr style="border: none;">
-                    <td style="border: none; padding: 4px 8px;"><strong>PAYMENT FOR:</strong></td>
-                    <td style="border: none; padding: 4px 8px;">{{ payment_for_display|default('N/A') }}</td>
-                </tr>
-            </table>
-        </div>
-
-        <!-- Payment Details Table -->
-        <div class="mb-4">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Paid on</th>
-                        <th style="text-align: right;">Amount</th>
-                        <th style="text-align: center;">Payment Method</th>
-                        <th style="text-align: right;">Reference No.</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if payment_details %}
-                        {% for payment in payment_details %}
-                        <tr>
-                            <td>{{ payment.date }}</td>
-                            <td style="text-align: right;">{{ "%.2f"|format(payment.amount) }}</td>
-                            <td style="text-align: center;">{{ payment.method }}</td>
-                            <td style="text-align: right;">{{ payment.reference or '' }}</td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="4" style="text-align: center;">No payments found</td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-            <div class="text-right mt-2">
-                <strong>Total Paid: {{ "%.2f"|format(total_paid) }}</strong>
+            <div class="receipt__school">{{ school_settings.school_name or 'School' }}</div>
+            <div class="receipt__meta">
+                {% if school_settings.school_address %}{{ school_settings.school_address }}{% endif %}
+                {% if school_settings.school_phone %} · {{ school_settings.school_phone }}{% endif %}
             </div>
+            <div class="receipt__title">Payment Receipt</div>
         </div>
 
-        <!-- Payment Summary -->
-        <div class="payment-summary">
-            <p><strong><u>Payment Summary</u></strong></p>
-            <p><strong>Total fees:</strong> {{ "%.2f"|format(total_fees) }}</p>
-            <p><strong>Total Paid:</strong> {{ "%.2f"|format(total_paid) }}</p>
-            <hr style="margin: 8px 0; border-top: 1px solid #000;">
-            <p><strong>Balance Due:</strong> {{ "%.2f"|format(balance_due) }}</p>
+        <div class="receipt__body">
+            <div class="receipt__row">
+                <span class="receipt__label">Name</span>
+                <span class="receipt__value">{{ student.full_name }}</span>
+            </div>
+            <div class="receipt__row">
+                <span class="receipt__label">Student ID</span>
+                <span class="receipt__value">{{ student.student_id }}</span>
+            </div>
+            <div class="receipt__row">
+                <span class="receipt__label">Grade</span>
+                <span class="receipt__value">{{ student.current_grade or '—' }}</span>
+            </div>
+            <div class="receipt__row">
+                <span class="receipt__label">Payment for</span>
+                <span class="receipt__value">{{ payment_for_display|default('—') }}</span>
+            </div>
+            <div class="receipt__row">
+                <span class="receipt__label">Date</span>
+                <span class="receipt__value">{{ receipt_date }}</span>
+            </div>
+
+            <div class="receipt__divider"></div>
+
+            <div class="receipt__table-head">
+                <span>Date</span>
+                <span class="amt">Amount</span>
+                <span>Method</span>
+                <span>Reference</span>
+            </div>
+            {% if payment_details %}
+                {% for p in payment_details %}
+                <div class="receipt__table-row">
+                    <span>{{ p.date }}</span>
+                    <span class="amt">{{ "%.2f"|format(p.amount) }}</span>
+                    <span>{{ p.method }}</span>
+                    <span>{{ p.reference or '—' }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="receipt__table-row" style="grid-template-columns: 1fr;">
+                    <span style="color: #94a3b8;">No payment details</span>
+                </div>
+            {% endif %}
         </div>
 
-        <!-- Footer -->
-        <div class="mt-8 text-center text-sm text-gray-600">
-            <p class="mb-1">Thank you for your payment!</p>
-            <p>This is a computer-generated receipt. No signature required.</p>
+        <div class="receipt__footer">
+            <div class="receipt__thanks">Thank you for your payment</div>
+            <div class="receipt__note">Computer-generated receipt · No signature required</div>
         </div>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="max-w-4xl mx-auto mt-6 no-print">
-        <div class="flex flex-wrap justify-center gap-3">
-            <button onclick="window.print()" 
-                    class="bg-[#800020] hover:bg-[#5C0016] text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-print"></i> Print Receipt
-            </button>
-            <a href="{{ url_for('download_payment_receipt', student_id=student.student_id, payment_id=payment.id) }}?format=pdf&download=true" 
-               download
-               class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-download"></i> Download PDF
-            </a>
-            <a href="{{ url_for('student_fees') }}" 
-               class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg font-semibold shadow-lg transition-all duration-200 flex items-center gap-2">
-                <i class="fas fa-arrow-left"></i> Back to Fees
-            </a>
-        </div>
+    <div class="actions no-print">
+        <button type="button" onclick="window.print()" class="btn-print">
+            <i class="fas fa-print"></i> Print
+        </button>
+        <a href="{{ url_for('download_payment_receipt', student_id=student.student_id, payment_id=payment.id) }}?format=pdf&download=true" download class="btn-pdf">
+            <i class="fas fa-download"></i> Download PDF
+        </a>
+        <a href="{{ url_for('student_fees') }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Back to Fees
+        </a>
     </div>
 </body>
 </html>
