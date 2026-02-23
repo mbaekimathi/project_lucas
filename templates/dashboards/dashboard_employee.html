@@ -106,10 +106,11 @@
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/classes-subjects"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chalkboard-teacher w-5"></i>
-        <span>Classes & Sections</span>
+        <span>Classes & Subjects</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
@@ -122,8 +123,9 @@
         <i class="fas fa-table w-5"></i>
         <span>Timetable Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Exams & Results'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/exams-assessments"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Results</span>
     </a>
@@ -180,10 +182,11 @@
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/classes-subjects"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chalkboard-teacher w-5"></i>
-        <span>Classes & Sections</span>
+        <span>Classes & Subjects</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
@@ -196,8 +199,9 @@
         <i class="fas fa-table w-5"></i>
         <span>Timetable Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Exams & Results'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/exams-assessments"
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Results</span>
     </a>
@@ -248,18 +252,6 @@
         <i class="fas fa-book w-5"></i>
         <span>Classes & Subjects</span>
     </a>
-    <a href="/dashboard/employee/subject-class-allocation" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-tasks w-5"></i>
-        <span>Subject & Class Allocation Panel</span>
-    </a>
-    <a href="/dashboard/employee/teacher-management" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'teacher_management' or request.path == '/dashboard/employee/teacher-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'teacher_management' or request.path == '/dashboard/employee/teacher-management' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-user-tie w-5"></i>
-        <span>Teacher Management</span>
-    </a>
     <a href="/student-management" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_management' or request.path == '/student-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'student_management' or request.path == '/student-management' %}style="border-color: var(--role-primary);"{% endif %}>
@@ -271,12 +263,6 @@
        {% if request.endpoint == 'timetable_management' or request.path == '/dashboard/employee/timetable-management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Timetable Management</span>
-    </a>
-    <a href="/dashboard/employee/attendance" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'attendance' or request.path == '/dashboard/employee/attendance' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'attendance' or request.path == '/dashboard/employee/attendance' %}style="border-color: var(--role-primary);"{% endif %}>
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Attendance</span>
     </a>
     <a href="/dashboard/employee/exams-assessments" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}text-white bg-gray-700/50 border-l-4{% endif %}"

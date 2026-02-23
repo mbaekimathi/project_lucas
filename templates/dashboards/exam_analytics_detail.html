@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+
+{% block title %}{{ exam.exam_name }} - Exam Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Sticky columns for Students Marks table (same as exams-assessments level students) */
+.sticky-col { position: sticky; z-index: 10; }
+.sticky-col-1 { left: 0; }
+.sticky-col-2 { left: 40px; }
+thead .sticky-col { z-index: 20; }
+tbody tr:nth-child(odd) .sticky-col { background: #fff; }
+tbody tr:nth-child(even) .sticky-col { background: #f9fafb; }
+tbody tr:hover .sticky-col { background: #f3f4f6; }
+.dark tbody tr:nth-child(odd) .sticky-col { background: #1f2937; }
+.dark tbody tr:nth-child(even) .sticky-col { background: #111827; }
+.dark tbody tr:hover .sticky-col { background: #374151; }
+.sticky-col-2 { border-right: 2px solid #d1d5db; }
+.dark .sticky-col-2 { border-right-color: #4b5563; }
+@media (max-width: 640px) { .sticky-col-2 { left: 32px; } }
+</style>
+{% endblock %}
+
+{% block sidebar_content %}
+<a href="{{ url_for('exam_analytics') }}"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Exam Analytics</span>
+</a>
+<a href="{{ url_for('exams_assessments') }}"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Exams & Assessments</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="{ activeTab: 'students_marks' }">
+    <div class="mb-6">
+        <a href="{{ url_for('exam_analytics') }}" class="inline-flex items-center text-sm text-green-600 dark:text-green-400 hover:underline mb-4">
+            <i class="fas fa-arrow-left mr-2"></i> Back to Exam Analytics
+        </a>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-700 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                <i class="fas fa-clipboard-check text-white text-xl"></i>
+            </div>
+            {{ exam.exam_name }}
+        </h1>
+        <div class="flex flex-wrap gap-3 text-sm text-gray-600 dark:text-gray-400 ml-15 mb-4">
+            <span><i class="fas fa-calendar mr-1"></i> {{ exam.exam_date }}</span>
+            <span><i class="fas fa-layer-group mr-1"></i> {{ exam.term_name or '—' }} / {{ exam.year_name or '—' }}</span>
+            <span><i class="fas fa-graduation-cap mr-1"></i> {{ exam.level_name or '—' }}</span>
+            <span class="px-2 py-0.5 text-xs font-medium rounded-full
+                {% if exam.status == 'completed' %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300
+                {% elif exam.status == 'ongoing' %}bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300
+                {% elif exam.status == 'cancelled' %}bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300
+                {% else %}bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300{% endif %}">
+                {{ exam.status|title }}
+            </span>
+        </div>
+        {% if levels and levels|length > 0 %}
+        <div class="ml-15 mb-4">
+            <label for="level-select" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic level</label>
+            <select id="level-select"
+                    onchange="var v = this.value; if (v) window.location.href = '{{ url_for('exam_analytics_detail', exam_id=exam_id) }}?level_id=' + v;"
+                    class="w-full max-w-md px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-medium">
+                {% for lv in levels %}
+                <option value="{{ lv.id }}" {% if selected_level_id == lv.id %}selected{% endif %}>{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div class="border-b border-gray-200 dark:border-gray-700">
+            <nav class="flex flex-wrap gap-0" aria-label="Tabs">
+                <button type="button"
+                        @click="activeTab = 'students_marks'"
+                        :class="activeTab === 'students_marks' ? 'border-green-600 text-green-600 dark:text-green-400 bg-green-50/50 dark:bg-green-900/20' : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-300'"
+                        class="px-5 py-4 text-sm font-semibold border-b-2 transition-colors">
+                    <i class="fas fa-user-graduate mr-2"></i>Students Marks
+                </button>
+                <button type="button"
+                        @click="activeTab = 'subject_analytics'"
+                        :class="activeTab === 'subject_analytics' ? 'border-green-600 text-green-600 dark:text-green-400 bg-green-50/50 dark:bg-green-900/20' : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-300'"
+                        class="px-5 py-4 text-sm font-semibold border-b-2 transition-colors">
+                    <i class="fas fa-book-open mr-2"></i>Subject Analytics
+                </button>
+                <button type="button"
+                        @click="activeTab = 'teacher_analytics'"
+                        :class="activeTab === 'teacher_analytics' ? 'border-green-600 text-green-600 dark:text-green-400 bg-green-50/50 dark:bg-green-900/20' : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-300'"
+                        class="px-5 py-4 text-sm font-semibold border-b-2 transition-colors">
+                    <i class="fas fa-chalkboard-teacher mr-2"></i>Teacher Analytics
+                </button>
+            </nav>
+        </div>
+
+        <div class="p-6 sm:p-8">
+            <!-- Tab: Students Marks -->
+            <div x-show="activeTab === 'students_marks'" x-cloak>
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <i class="fas fa-user-graduate text-green-600 mr-2"></i>
+                    Students in this level and their marks
+                </h2>
+                {% if students_marks and students_marks|length > 0 and distinct_subjects and distinct_subjects|length > 0 %}
+                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                    <i class="fas fa-chart-line text-green-600 mr-2"></i>Class mean: <span class="text-green-700 dark:text-green-400">{{ "%.2f"|format(class_mean|float) }}</span>
+                </p>
+                <div class="overflow-x-auto rounded-lg shadow" style="max-height: calc(100vh - 280px);">
+                    <table class="w-full text-sm border-collapse">
+                        <thead class="bg-gray-100 dark:bg-gray-700">
+                            <tr>
+                                <th class="sticky-col sticky-col-1 px-2 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 w-10">#</th>
+                                <th class="sticky-col sticky-col-2 px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 min-w-[140px]">Student Name</th>
+                                {% for subj in distinct_subjects %}
+                                <th class="px-1 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase min-w-[72px]" title="{{ subj.subject_name or '—' }}">{{ (subj.subject_name or '—')[:15] }}{% if (subj.subject_name or '')|length > 15 %}…{% endif %}</th>
+                                {% endfor %}
+                                <th class="px-3 py-3 text-center text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 min-w-[70px]">Total</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 min-w-[60px]">Rank</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                            {% for sm in students_marks %}
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                                <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-gray-500 dark:text-gray-400 font-medium">{{ loop.index }}</td>
+                                <td class="sticky-col sticky-col-2 px-3 py-2">
+                                    <span class="font-medium text-gray-900 dark:text-white text-sm">{{ sm.full_name }}</span>
+                                    <span class="text-gray-500 dark:text-gray-400 font-normal text-xs block">({{ sm.student_id }})</span>
+                                </td>
+                                {% for m in sm.marks_list %}
+                                <td class="px-1 py-2 text-center text-gray-900 dark:text-white font-semibold text-base">{% if m.marks is not none %}{{ "%.0f"|format(m.marks|float) }}{% else %}—{% endif %}</td>
+                                {% endfor %}
+                                <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">{{ "%.0f"|format(sm.total_marks|float) }}</td>
+                                <td class="px-3 py-2 text-center text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20">
+                                    {% if sm.position == 1 %}<i class="fas fa-medal text-yellow-500 mr-1"></i>{% elif sm.position == 2 %}<i class="fas fa-medal text-gray-400 mr-1"></i>{% elif sm.position == 3 %}<i class="fas fa-medal text-amber-600 mr-1"></i>{% endif %}
+                                    {{ sm.position }}{% if sm.position == 1 %}st{% elif sm.position == 2 %}nd{% elif sm.position == 3 %}rd{% elif sm.position %}th{% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% elif not selected_level_id %}
+                <p class="text-gray-600 dark:text-gray-400">Select an academic level above to view students and marks.</p>
+                {% else %}
+                <p class="text-gray-600 dark:text-gray-400">No students or marks found for this level.</p>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Subject Analytics -->
+            <div x-show="activeTab === 'subject_analytics'" x-cloak>
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <i class="fas fa-book-open text-green-600 mr-2"></i>
+                    Top 10 students per subject
+                </h2>
+                {% if subject_analytics and subject_analytics|length > 0 %}
+                <div class="space-y-6">
+                    {% for subj in subject_analytics %}
+                    <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <div class="px-4 py-3 bg-gray-100 dark:bg-gray-700 font-semibold text-gray-900 dark:text-white">
+                            {{ subj.subject_name }}
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                                    <tr>
+                                        <th class="p-3 text-left font-semibold">#</th>
+                                        <th class="p-3 text-left font-semibold">Student</th>
+                                        <th class="p-3 text-right font-semibold">Marks</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                                    {% for s in subj.top_students %}
+                                    <tr class="hover:bg-gray-50/50 dark:hover:bg-gray-900/10">
+                                        <td class="p-3 font-medium text-gray-900 dark:text-white">
+                                            {% if s.rank == 1 %}<i class="fas fa-medal text-yellow-500 mr-1"></i>{% elif s.rank == 2 %}<i class="fas fa-medal text-gray-400 mr-1"></i>{% elif s.rank == 3 %}<i class="fas fa-medal text-amber-600 mr-1"></i>{% endif %}
+                                            {{ s.rank }}
+                                        </td>
+                                        <td class="p-3 text-gray-900 dark:text-white">{{ s.full_name }} <span class="text-gray-500 dark:text-gray-400 font-normal">({{ s.student_id }})</span></td>
+                                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{% if s.marks is not none %}{{ "%.2f"|format(s.marks|float) }}{% else %}—{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if subj.top_students|length == 0 %}
+                                    <tr><td colspan="3" class="p-4 text-center text-gray-500 dark:text-gray-400">No marks recorded</td></tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% elif not selected_level_id %}
+                <p class="text-gray-600 dark:text-gray-400">Select an academic level above to view subject analytics.</p>
+                {% else %}
+                <p class="text-gray-600 dark:text-gray-400">No subject analytics for this level.</p>
+                {% endif %}
+            </div>
+
+            <!-- Tab: Teacher Analytics -->
+            <div x-show="activeTab === 'teacher_analytics'" x-cloak>
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                    <i class="fas fa-chalkboard-teacher text-green-600 mr-2"></i>
+                    Teacher analytics (by subject mean grade)
+                </h2>
+                {% if top_teachers and top_teachers|length > 0 %}
+                <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gradient-to-r from-green-600 to-emerald-700 text-white">
+                            <tr>
+                                <th class="p-3 text-left font-semibold">#</th>
+                                <th class="p-3 text-left font-semibold">Subject</th>
+                                <th class="p-3 text-left font-semibold">Teacher</th>
+                                <th class="p-3 text-right font-semibold">Mean Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                            {% for t in top_teachers %}
+                            <tr class="hover:bg-green-50/50 dark:hover:bg-green-900/10">
+                                <td class="p-3 font-medium text-gray-900 dark:text-white">
+                                    {% if t.position == 1 %}<i class="fas fa-medal text-yellow-500 mr-1"></i>{% elif t.position == 2 %}<i class="fas fa-medal text-gray-400 mr-1"></i>{% elif t.position == 3 %}<i class="fas fa-medal text-amber-600 mr-1"></i>{% endif %}
+                                    {{ t.position }}
+                                </td>
+                                <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.subject_name or '—' }}</td>
+                                <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.supervisor_name }}</td>
+                                <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{{ "%.2f"|format(t.mean_grade) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% elif not selected_level_id %}
+                <p class="text-gray-600 dark:text-gray-400">Select an academic level above to view teacher analytics.</p>
+                {% else %}
+                <p class="text-gray-600 dark:text-gray-400">No teacher analytics for this level.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Exam Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee/exam-evaluation"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam Registration</span>
+</a>
+<a href="/dashboard/employee/exams-assessments"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Exams & Assessments</span>
+</a>
+<a href="/dashboard/employee/exam-analytics"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Exam Analytics</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a href="/dashboard/employee"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div class="mb-6 sm:mb-8">
+        <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-emerald-700 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                <i class="fas fa-chart-line text-white text-xl sm:text-2xl"></i>
+            </div>
+            Exam Analytics
+        </h1>
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-[4.25rem]">
+            View analytics and insights for exams and assessments.
+        </p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-list text-green-600 mr-2"></i>
+            All Registered Exams <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">(by name, no repetition)</span>
+        </h2>
+        {% if exams and exams|length > 0 %}
+        <!-- Desktop: one row per exam name only -->
+        <div class="hidden md:block overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <table class="w-full text-sm">
+                <thead class="bg-gradient-to-r from-green-600 to-emerald-700 text-white">
+                    <tr>
+                        <th class="p-3 text-left font-semibold">Exam Name</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for exam in exams %}
+                    <tr class="hover:bg-green-50/50 dark:hover:bg-green-900/10 cursor-pointer"
+                        onclick="window.location.href='{{ url_for('exam_analytics_detail', exam_id=exam.link_id) }}'">
+                        <td class="p-3 font-medium text-gray-900 dark:text-white">{{ exam.exam_name }} <i class="fas fa-chevron-right text-green-600 text-xs ml-1"></i></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- Mobile: one card per exam name (clickable) -->
+        <div class="md:hidden space-y-3">
+            {% for exam in exams %}
+            <a href="{{ url_for('exam_analytics_detail', exam_id=exam.link_id) }}" class="block border border-gray-200 dark:border-gray-700 rounded-xl p-4 bg-gray-50/50 dark:bg-gray-800/50 hover:border-green-500/50 transition-colors">
+                <div class="font-semibold text-gray-900 dark:text-white">{{ exam.exam_name }} <i class="fas fa-chevron-right text-green-600 text-xs ml-1"></i></div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-clipboard-list text-gray-400 text-3xl"></i>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400">No registered exams yet.</p>
+            <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">Exams will appear here once registered via Exam & Evaluation.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

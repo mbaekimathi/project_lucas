@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject_name }} - Class Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="{{ url_for('exam_analytics_detail', exam_id=exam_id) }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Exam</span>
+</a>
+<a href="{{ url_for('exam_analytics') }}" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Exam Analytics</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div class="mb-6">
+        <a href="{{ url_for('exam_analytics_detail', exam_id=exam_id) }}" class="inline-flex items-center text-sm text-green-600 dark:text-green-400 hover:underline mb-4">
+            <i class="fas fa-arrow-left mr-2"></i> Back to {{ exam.exam_name }}
+        </a>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-700 rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                <i class="fas fa-book-open text-white text-xl"></i>
+            </div>
+            {{ subject_name }}
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 ml-15">{{ exam.exam_name }} · {{ exam.exam_date }}</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
+            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Mean Grade</div>
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ "%.2f"|format(mean_grade) }}</div>
+            <div class="text-xs text-gray-500 mt-1">{{ count_marks }} mark{{ 's' if count_marks != 1 else '' }} recorded</div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
+            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Position</div>
+            <div class="text-2xl font-bold text-gray-900 dark:text-white">{% if position %}{{ position }}{% if position == 1 %}st{% elif position == 2 %}nd{% elif position == 3 %}rd{% else %}th{% endif %}{% else %}—{% endif %}</div>
+            <div class="text-xs text-gray-500 mt-1">among {{ top_teachers|length }} subject{{ 's' if (top_teachers|length) != 1 else '' }}</div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
+            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Teacher</div>
+            <div class="text-lg font-semibold text-gray-900 dark:text-white">{{ supervisor_name or '—' }}</div>
+        </div>
+    </div>
+
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-trophy text-green-600 mr-2"></i>
+            Top ranking teachers (by subject mean grade)
+        </h2>
+        {% if top_teachers and top_teachers|length > 0 %}
+        <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+            <table class="w-full text-sm">
+                <thead class="bg-gradient-to-r from-green-600 to-emerald-700 text-white">
+                    <tr>
+                        <th class="p-3 text-left font-semibold">#</th>
+                        <th class="p-3 text-left font-semibold">Subject</th>
+                        <th class="p-3 text-left font-semibold">Teacher</th>
+                        <th class="p-3 text-right font-semibold">Mean Grade</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for t in top_teachers %}
+                    <tr class="hover:bg-green-50/50 dark:hover:bg-green-900/10 {% if t.subject_name == subject_name %}bg-green-50 dark:bg-green-900/20{% endif %}">
+                        <td class="p-3 font-medium text-gray-900 dark:text-white">
+                            {% if t.position == 1 %}<i class="fas fa-medal text-yellow-500 mr-1"></i>{% elif t.position == 2 %}<i class="fas fa-medal text-gray-400 mr-1"></i>{% elif t.position == 3 %}<i class="fas fa-medal text-amber-600 mr-1"></i>{% endif %}
+                            {{ t.position }}
+                        </td>
+                        <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.subject_name or '—' }}</td>
+                        <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.supervisor_name }}</td>
+                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{{ "%.2f"|format(t.mean_grade) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-gray-600 dark:text-gray-400">No teacher rankings for this exam yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

@@ -13586,6 +13586,435 @@ def exams_assessments():
     
     return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
 
+# Exam Analytics Route
+@app.route('/dashboard/employee/exam-analytics')
+@login_required
+def exam_analytics():
+    """Exam analytics page - list all registered exams (one row per exam, latest first)"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    exams = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.status,
+                           e.academic_year_id, e.term_id,
+                           ay.year_name, t.term_name
+                    FROM exams e
+                    LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                    LEFT JOIN terms t ON e.term_id = t.id
+                    ORDER BY e.exam_date DESC, e.created_at DESC
+                """)
+                rows = cursor.fetchall()
+                # Unique by exam_name only: keep one row per exam name (most recent by exam_date)
+                grouped = {}
+                for row in rows:
+                    exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[1] or '')
+                    if not exam_name:
+                        continue
+                    exam_date_val = row.get('exam_date') if isinstance(row, dict) else row[3]
+                    exam_date_str = exam_date_val.strftime('%Y-%m-%d') if exam_date_val and hasattr(exam_date_val, 'strftime') else (str(exam_date_val) if exam_date_val else '')
+                    row_id = row.get('id') if isinstance(row, dict) else row[0]
+                    if exam_name not in grouped or (exam_date_str and (grouped[exam_name].get('exam_date') or '') < exam_date_str):
+                        grouped[exam_name] = {
+                            'link_id': row_id,
+                            'exam_name': exam_name,
+                            'exam_date': exam_date_str,
+                            'exam_type': (row.get('exam_type', '') if isinstance(row, dict) else row[2]),
+                            'status': row.get('status', 'scheduled') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'scheduled'),
+                            'year_name': row.get('year_name', '') if isinstance(row, dict) else (row[7] if len(row) > 7 else ''),
+                            'term_name': row.get('term_name', '') if isinstance(row, dict) else (row[8] if len(row) > 8 else ''),
+                        }
+                exams = list(grouped.values())
+                exams.sort(key=lambda x: (x.get('exam_date') or ''), reverse=True)
+        except Exception as e:
+            print(f"Error fetching exams for analytics: {e}")
+        finally:
+            connection.close()
+    return render_template('dashboards/exam_analytics.html', role=user_role, exams=exams)
+
+# Exam Analytics - single exam detail (all slots for that exam)
+@app.route('/dashboard/employee/exam-analytics/exam/<int:exam_id>')
+@login_required
+def exam_analytics_detail(exam_id):
+    """View details for one exam (all subject/supervisor slots for that exam)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    connection = get_db_connection()
+    if not connection:
+        flash('Database error.', 'error')
+        return redirect(url_for('exam_analytics'))
+    top_teachers = []
+    levels = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.academic_year_id, e.term_id, e.academic_level_id,
+                       al.level_name, ay.year_name, t.term_name
+                FROM exams e
+                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                LEFT JOIN terms t ON e.term_id = t.id
+                WHERE e.id = %s
+            """, (exam_id,))
+            row = cursor.fetchone()
+            if not row:
+                flash('Exam not found.', 'error')
+                return redirect(url_for('exam_analytics'))
+            exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[1] or '').strip()
+            exam_date_val = row.get('exam_date') if isinstance(row, dict) else row[3]
+            exam_date_str = exam_date_val.strftime('%Y-%m-%d') if exam_date_val and hasattr(exam_date_val, 'strftime') else str(exam_date_val) if exam_date_val else ''
+            ay_id = row.get('academic_year_id') if isinstance(row, dict) else row[4]
+            term_id = row.get('term_id') if isinstance(row, dict) else row[5]
+            default_level_id = row.get('academic_level_id') if isinstance(row, dict) else row[6]
+            # All academic levels that have this exam (same name, year, term – any date)
+            cursor.execute("""
+                SELECT DISTINCT e.academic_level_id, al.level_name, al.level_category
+                FROM exams e
+                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                WHERE TRIM(COALESCE(e.exam_name,'')) = %s AND e.academic_year_id = %s AND e.term_id = %s AND e.academic_level_id IS NOT NULL
+                ORDER BY al.level_name
+            """, (exam_name, ay_id, term_id))
+            level_rows = cursor.fetchall()
+            for lr in level_rows:
+                lid = lr.get('academic_level_id') if isinstance(lr, dict) else lr[0]
+                lname = lr.get('level_name', '') if isinstance(lr, dict) else (lr[1] if len(lr) > 1 else '')
+                lcat = lr.get('level_category', '') if isinstance(lr, dict) else (lr[2] if len(lr) > 2 else '')
+                levels.append({'id': lid, 'level_name': lname, 'level_category': lcat})
+            selected_level_id = request.args.get('level_id', type=int) or default_level_id
+            if not any(l['id'] == selected_level_id for l in levels):
+                selected_level_id = default_level_id if levels else None
+            if not selected_level_id and levels:
+                selected_level_id = levels[0]['id']
+            cursor.execute("""
+                SELECT e.id, e.subject_id, e.supervisor_id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
+                       e.duration_minutes, e.venue, e.status, e.instructions,
+                       al.level_name, al.level_category,
+                       s.subject_name, s.subject_code,
+                       ay.year_name, t.term_name,
+                       emp.full_name as supervisor_name
+                FROM exams e
+                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                LEFT JOIN subjects s ON e.subject_id = s.id
+                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                LEFT JOIN terms t ON e.term_id = t.id
+                LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                WHERE TRIM(COALESCE(e.exam_name,'')) = %s AND e.academic_year_id = %s AND e.term_id = %s AND e.academic_level_id = %s
+                ORDER BY e.exam_date, e.start_time
+            """, (exam_name, ay_id, term_id, selected_level_id))
+            rows = cursor.fetchall()
+        slots = []
+        for r in rows:
+            start_time_val = r.get('start_time') if isinstance(r, dict) else r[7]
+            end_time_val = r.get('end_time') if isinstance(r, dict) else r[8]
+            if start_time_val:
+                if isinstance(start_time_val, timedelta):
+                    sec = int(start_time_val.total_seconds())
+                    start_str = f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}"
+                elif hasattr(start_time_val, 'strftime'):
+                    start_str = start_time_val.strftime('%H:%M')
+                else:
+                    start_str = str(start_time_val)
+            else:
+                start_str = ''
+            if end_time_val:
+                if isinstance(end_time_val, timedelta):
+                    sec = int(end_time_val.total_seconds())
+                    end_str = f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}"
+                elif hasattr(end_time_val, 'strftime'):
+                    end_str = end_time_val.strftime('%H:%M')
+                else:
+                    end_str = str(end_time_val)
+            else:
+                end_str = ''
+            subject_id = r.get('subject_id') if isinstance(r, dict) else (r[1] if len(r) > 1 else None)
+            slot_id = r.get('id') if isinstance(r, dict) else r[0]
+            subject_name = (r.get('subject_name') or r.get('subject_code') or '') if isinstance(r, dict) else ((r[15] or r[16] or '') if len(r) > 16 else '')
+            supervisor_name = r.get('supervisor_name', '') if isinstance(r, dict) else (r[19] if len(r) > 19 else '')
+            slots.append({
+                'id': slot_id,
+                'subject_id': subject_id,
+                'subject_name': subject_name,
+                'supervisor_id': r.get('supervisor_id') if isinstance(r, dict) else (r[2] if len(r) > 2 else None),
+                'supervisor_name': supervisor_name,
+                'start_time': start_str,
+                'end_time': end_str,
+                'duration_minutes': r.get('duration_minutes') if isinstance(r, dict) else r[9],
+                'venue': r.get('venue', '') if isinstance(r, dict) else r[10],
+                'status': r.get('status', '') if isinstance(r, dict) else (r[11] if len(r) > 11 else ''),
+            })
+        # Compute mean grade per slot and position (rank by mean descending)
+        try:
+            with connection.cursor() as cur2:
+                for slot in slots:
+                    cur2.execute("""
+                        SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade,
+                               COUNT(*) as count_marks
+                        FROM student_marks WHERE exam_id = %s
+                    """, (slot['id'],))
+                    m = cur2.fetchone()
+                    slot['mean_grade'] = float(m.get('mean_grade', 0) if isinstance(m, dict) else (m[0] if m and len(m) > 0 else 0))
+                    slot['count_marks'] = int(m.get('count_marks', 0) if isinstance(m, dict) else (m[1] if m and len(m) > 1 else 0))
+                # Sort by mean descending and assign position
+                slots_sorted = sorted(slots, key=lambda x: x['mean_grade'], reverse=True)
+                for pos, slot in enumerate(slots_sorted, 1):
+                    slot['position'] = pos
+                # Top ranking teachers (by subject mean grade)
+                top_teachers = [{'position': s['position'], 'subject_name': s['subject_name'], 'supervisor_name': s['supervisor_name'] or '—', 'mean_grade': s['mean_grade']} for s in slots_sorted]
+        except Exception as e:
+            print(f"Note: student_marks or mean computation: {e}")
+            for slot in slots:
+                slot['mean_grade'] = 0.0
+                slot['count_marks'] = 0
+                slot['position'] = 0
+            top_teachers = []
+        # Distinct subjects (one per subject_id) for display; each may have multiple slot ids (e.g. Paper 1 + Paper 2)
+        distinct_subjects = []
+        seen_subject_ids = set()
+        for slot in slots:
+            sid = slot.get('subject_id')
+            if sid is not None and sid not in seen_subject_ids:
+                seen_subject_ids.add(sid)
+                slot_ids_for_subject = [s['id'] for s in slots if s.get('subject_id') == sid]
+                distinct_subjects.append({
+                    'subject_id': sid,
+                    'subject_name': slot.get('subject_name') or '—',
+                    'slot_ids': slot_ids_for_subject
+                })
+        # If no subject_id in slots, keep one column per slot (fallback)
+        if not distinct_subjects:
+            for slot in slots:
+                distinct_subjects.append({
+                    'subject_id': slot.get('id'),
+                    'subject_name': slot.get('subject_name') or '—',
+                    'slot_ids': [slot['id']]
+                })
+        # All slot (exam) ids for this exam name/year/term/level – marks may be stored under any of these (e.g. exams-assessments uses one exam_id per name)
+        all_slot_ids = [s['id'] for s in slots]
+        # Students Marks: ALL students in this level, one column per subject (look up by subject_id + any exam_id in this exam so all subjects show)
+        students_marks = []
+        subject_analytics = []
+        class_mean = 0.0
+        level_name_for_students = ''
+        for lev in levels:
+            if lev['id'] == selected_level_id:
+                level_name_for_students = (lev.get('level_name') or '').strip()
+                break
+        try:
+            with connection.cursor() as cur2:
+                cur2.execute("""
+                    SELECT student_id, full_name FROM students
+                    WHERE current_grade = %s AND status = 'in session'
+                    ORDER BY full_name ASC
+                """, (level_name_for_students,))
+                all_students_rows = cur2.fetchall()
+                for srow in all_students_rows:
+                    sid = srow.get('student_id') if isinstance(srow, dict) else srow[0]
+                    full_name = (srow.get('full_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else sid)) if srow else sid
+                    marks_list = []
+                    for subj in distinct_subjects:
+                        total_for_subject = None
+                        # Look up by (student_id, subject_id) and exam_id IN all slots – so marks saved under any slot (e.g. same exam_id for all subjects on exams-assessments) are found
+                        if all_slot_ids and subj.get('subject_id') is not None:
+                            placeholders = ','.join(['%s'] * len(all_slot_ids))
+                            cur2.execute("""
+                                SELECT marks FROM student_marks
+                                WHERE student_id = %s AND subject_id = %s AND exam_id IN (""" + placeholders + """)
+                            """, [sid, subj['subject_id']] + all_slot_ids)
+                            for mrow in cur2.fetchall():
+                                mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
+                                if mval is not None:
+                                    total_for_subject = (total_for_subject or 0) + float(mval)
+                        else:
+                            # Fallback: match by exam_id only (one slot per subject)
+                            for exam_id in subj.get('slot_ids', []):
+                                cur2.execute("""
+                                    SELECT marks FROM student_marks WHERE student_id = %s AND exam_id = %s
+                                """, (sid, exam_id))
+                                mrow = cur2.fetchone()
+                                mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
+                                if mval is not None:
+                                    total_for_subject = (total_for_subject or 0) + float(mval)
+                        marks_list.append({'subject_name': subj['subject_name'], 'marks': total_for_subject})
+                    students_marks.append({'student_id': sid, 'full_name': full_name, 'marks_list': marks_list})
+                for sm in students_marks:
+                    sm['total_marks'] = sum((m.get('marks') or 0) for m in sm['marks_list'])
+                students_marks.sort(key=lambda x: x['total_marks'], reverse=True)
+                for pos, sm in enumerate(students_marks, 1):
+                    sm['position'] = pos
+                all_marks_flat = [m.get('marks') for sm in students_marks for m in sm['marks_list'] if m.get('marks') is not None]
+                class_mean = (sum(all_marks_flat) / len(all_marks_flat)) if all_marks_flat else 0.0
+                # Subject Analytics: top 10 students per subject (marks for subject from any slot in this exam)
+                for subj in distinct_subjects:
+                    subj_id = subj.get('subject_id')
+                    if subj_id is None or not all_slot_ids:
+                        continue
+                    placeholders = ','.join(['%s'] * len(all_slot_ids))
+                    cur2.execute("""
+                        SELECT sm.student_id, SUM(CAST(COALESCE(sm.marks, 0) AS DECIMAL(10,2))) as total_marks, st.full_name
+                        FROM student_marks sm
+                        LEFT JOIN students st ON sm.student_id = st.student_id
+                        WHERE sm.subject_id = %s AND sm.exam_id IN (""" + placeholders + """)
+                        GROUP BY sm.student_id, st.full_name
+                        ORDER BY total_marks DESC
+                        LIMIT 10
+                    """, [subj_id] + all_slot_ids)
+                    top_rows = cur2.fetchall()
+                    top_students = []
+                    for idx, tr in enumerate(top_rows, 1):
+                        sid = tr.get('student_id') if isinstance(tr, dict) else tr[0]
+                        marks_val = tr.get('total_marks') if isinstance(tr, dict) else (tr[1] if len(tr) > 1 else None)
+                        fn = tr.get('full_name', '') if isinstance(tr, dict) else (tr[2] if len(tr) > 2 else '')
+                        top_students.append({'rank': idx, 'student_id': sid, 'full_name': fn or sid, 'marks': marks_val})
+                    subject_analytics.append({'subject_id': subj_id, 'subject_name': subj.get('subject_name') or '—', 'top_students': top_students})
+                # Teacher Analytics: mean grade per subject (marks from any exam_id in this exam), rank by mean
+                teacher_analytics_list = []
+                for subj in distinct_subjects:
+                    subj_id = subj.get('subject_id')
+                    supervisor_name = '—'
+                    for s in slots:
+                        if s.get('subject_id') == subj_id or s.get('id') == subj_id:
+                            supervisor_name = s.get('supervisor_name') or '—'
+                            break
+                    if subj_id is None or not all_slot_ids:
+                        teacher_analytics_list.append({'subject_name': subj.get('subject_name') or '—', 'supervisor_name': supervisor_name, 'mean_grade': 0.0})
+                        continue
+                    placeholders = ','.join(['%s'] * len(all_slot_ids))
+                    cur2.execute("""
+                        SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade, COUNT(*) as cnt
+                        FROM student_marks
+                        WHERE subject_id = %s AND exam_id IN (""" + placeholders + """)
+                    """, [subj_id] + all_slot_ids)
+                    mrow = cur2.fetchone()
+                    mean_grade = float(mrow.get('mean_grade', 0) if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else 0))
+                    teacher_analytics_list.append({'subject_name': subj.get('subject_name') or '—', 'supervisor_name': supervisor_name, 'mean_grade': mean_grade})
+                teacher_analytics_list.sort(key=lambda x: x['mean_grade'], reverse=True)
+                top_teachers = [{'position': i, 'subject_name': t['subject_name'], 'supervisor_name': t['supervisor_name'], 'mean_grade': t['mean_grade']} for i, t in enumerate(teacher_analytics_list, 1)]
+        except Exception as e:
+            print(f"Note: students_marks/subject_analytics: {e}")
+            students_marks = []
+            subject_analytics = []
+            class_mean = 0.0
+            top_teachers = []
+        selected_level_name = ''
+        for lev in levels:
+            if lev['id'] == selected_level_id:
+                selected_level_name = lev.get('level_name', '') or ''
+                if lev.get('level_category'):
+                    selected_level_name = (selected_level_name + ' (' + lev['level_category'] + ')').strip()
+                break
+        first_row = rows[0] if rows else row
+        exam_summary = {
+            'exam_name': exam_name,
+            'exam_date': exam_date_str,
+            'exam_type': first_row.get('exam_type', '') if isinstance(first_row, dict) else (first_row[2] if len(first_row) > 2 else ''),
+            'level_name': selected_level_name or (first_row.get('level_name', '') if isinstance(first_row, dict) else (first_row[13] if len(first_row) > 13 else '')),
+            'term_name': first_row.get('term_name', '') if isinstance(first_row, dict) else (first_row[18] if len(first_row) > 18 else ''),
+            'year_name': first_row.get('year_name', '') if isinstance(first_row, dict) else (first_row[17] if len(first_row) > 17 else ''),
+            'status': first_row.get('status', '') if isinstance(first_row, dict) else (first_row[11] if len(first_row) > 11 else ''),
+        }
+    except Exception as e:
+        print(f"Error fetching exam detail: {e}")
+        flash('Error loading exam details.', 'error')
+        return redirect(url_for('exam_analytics'))
+    finally:
+        connection.close()
+    return render_template('dashboards/exam_analytics_detail.html', role=user_role, exam=exam_summary, slots=slots, distinct_subjects=distinct_subjects, top_teachers=top_teachers, exam_id=exam_id, levels=levels, selected_level_id=selected_level_id, students_marks=students_marks, subject_analytics=subject_analytics, class_mean=class_mean)
+
+# Exam Analytics - single class/subject analytics (mean grade, position, top teachers)
+@app.route('/dashboard/employee/exam-analytics/exam/<int:exam_id>/slot/<int:slot_id>')
+@login_required
+def exam_analytics_slot(exam_id, slot_id):
+    """View analytics for one class (subject): mean grade, position, top ranking teachers."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    connection = get_db_connection()
+    if not connection:
+        flash('Database error.', 'error')
+        return redirect(url_for('exam_analytics'))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.id, e.subject_id, e.supervisor_id, e.exam_name, e.exam_date,
+                       s.subject_name, s.subject_code, emp.full_name as supervisor_name
+                FROM exams e
+                LEFT JOIN subjects s ON e.subject_id = s.id
+                LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                WHERE e.id = %s
+            """, (slot_id,))
+            row = cursor.fetchone()
+            if not row:
+                flash('Class/slot not found.', 'error')
+                return redirect(url_for('exam_analytics_detail', exam_id=exam_id))
+            subject_name = (row.get('subject_name') or row.get('subject_code') or '') if isinstance(row, dict) else (row[5] or row[6] or '')
+            exam_name = row.get('exam_name', '') if isinstance(row, dict) else row[3]
+            exam_date_val = row.get('exam_date') if isinstance(row, dict) else row[4]
+            exam_date_str = exam_date_val.strftime('%Y-%m-%d') if exam_date_val and hasattr(exam_date_val, 'strftime') else str(exam_date_val) if exam_date_val else ''
+            supervisor_name = row.get('supervisor_name', '') if isinstance(row, dict) else (row[7] if len(row) > 7 else '')
+            cursor.execute("""
+                SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade, COUNT(*) as count_marks
+                FROM student_marks WHERE exam_id = %s
+            """, (slot_id,))
+            m = cursor.fetchone()
+            mean_grade = float(m.get('mean_grade', 0) if isinstance(m, dict) else (m[0] if m and len(m) > 0 else 0))
+            count_marks = int(m.get('count_marks', 0) if isinstance(m, dict) else (m[1] if m and len(m) > 1 else 0))
+            cursor.execute("""
+                SELECT e.id, e.subject_id, e.supervisor_id,
+                       s.subject_name, s.subject_code, emp.full_name as supervisor_name
+                FROM exams e
+                LEFT JOIN subjects s ON e.subject_id = s.id
+                LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                WHERE e.exam_name = %s AND e.exam_date = %s AND e.academic_year_id = (SELECT academic_year_id FROM exams WHERE id = %s)
+                  AND e.term_id = (SELECT term_id FROM exams WHERE id = %s) AND e.academic_level_id = (SELECT academic_level_id FROM exams WHERE id = %s)
+            """, (exam_name, exam_date_val, slot_id, slot_id, slot_id))
+            all_slots = cursor.fetchall()
+            slot_means = []
+            for r in all_slots:
+                sid = r.get('id') if isinstance(r, dict) else r[0]
+                cursor.execute("SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade FROM student_marks WHERE exam_id = %s", (sid,))
+                mm = cursor.fetchone()
+                smean = float(mm.get('mean_grade', mm[0] if mm and len(mm) > 0 else 0) if isinstance(mm, dict) else (float(mm[0]) if mm and len(mm) > 0 else 0))
+                sname = (r.get('subject_name') or r.get('subject_code') or '') if isinstance(r, dict) else (r[4] or r[5] or '')
+                sup_name = r.get('supervisor_name', '') if isinstance(r, dict) else (r[6] if len(r) > 6 else '')
+                slot_means.append({'slot_id': sid, 'subject_name': sname, 'supervisor_name': sup_name, 'mean_grade': smean})
+            slot_means.sort(key=lambda x: x['mean_grade'], reverse=True)
+            position = 0
+            for idx, s in enumerate(slot_means, 1):
+                if s['slot_id'] == slot_id:
+                    position = idx
+                    break
+            top_teachers = [{'position': i, 'subject_name': s['subject_name'], 'supervisor_name': s['supervisor_name'] or '—', 'mean_grade': s['mean_grade']} for i, s in enumerate(slot_means, 1)]
+        exam_summary = {'exam_name': exam_name, 'exam_date': exam_date_str}
+    except Exception as e:
+        print(f"Error fetching slot analytics: {e}")
+        flash('Error loading class analytics.', 'error')
+        return redirect(url_for('exam_analytics_detail', exam_id=exam_id))
+    finally:
+        connection.close()
+    return render_template('dashboards/exam_analytics_slot.html', role=user_role, exam=exam_summary, slot_id=slot_id,
+                          subject_name=subject_name, supervisor_name=supervisor_name, mean_grade=mean_grade,
+                          count_marks=count_marks, position=position, top_teachers=top_teachers, exam_id=exam_id)
+
 # Students by Academic Level Route
 @app.route('/dashboard/employee/exams-assessments/level/<int:level_id>/students')
 @login_required
@@ -13660,28 +14089,48 @@ def students_by_academic_level(level_id):
                         'full_name': row.get('full_name') if isinstance(row, dict) else row[2]
                     })
                 
-                # Get subjects linked to this academic level
-                # For teachers, only show subjects assigned to them
-                # For others (academic coordinators, principals, technicians), show all subjects
+                # Get only subjects registered for this academic level:
+                # Prefer subjects that appear in exams for this level; else subjects allocated via teacher_subject_assignments
                 if is_teacher and teacher_id:
+                    # Teacher: subjects from exams for this level that they are assigned to, else their assigned subjects
                     cursor.execute("""
                         SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
                         FROM subjects s
-                        INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
-                        WHERE tsa.academic_level_id = %s 
-                          AND tsa.teacher_id = %s
-                          AND s.status = 'active'
+                        INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
+                        INNER JOIN teacher_subject_assignments tsa ON tsa.subject_id = s.id AND tsa.academic_level_id = %s AND tsa.teacher_id = %s
+                        WHERE s.status = 'active'
                         ORDER BY s.subject_name ASC
-                    """, (level_id, teacher_id))
+                    """, (level_id, level_id, teacher_id))
+                    subjects_results = cursor.fetchall()
+                    if not subjects_results:
+                        cursor.execute("""
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                            FROM subjects s
+                            INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
+                            WHERE tsa.academic_level_id = %s AND tsa.teacher_id = %s AND s.status = 'active'
+                            ORDER BY s.subject_name ASC
+                        """, (level_id, teacher_id))
+                        subjects_results = cursor.fetchall()
                 else:
+                    # Non-teacher: subjects that appear in exams for this level (registered for exams)
                     cursor.execute("""
                         SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
                         FROM subjects s
-                        INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
-                        WHERE tsa.academic_level_id = %s AND s.status = 'active'
+                        INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
+                        WHERE s.status = 'active'
                         ORDER BY s.subject_name ASC
                     """, (level_id,))
-                subjects_results = cursor.fetchall()
+                    subjects_results = cursor.fetchall()
+                    if not subjects_results:
+                        # Fallback: subjects allocated to this level via subject-class allocation
+                        cursor.execute("""
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                            FROM subjects s
+                            INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
+                            WHERE tsa.academic_level_id = %s AND s.status = 'active'
+                            ORDER BY s.subject_name ASC
+                        """, (level_id,))
+                        subjects_results = cursor.fetchall()
                 
                 for row in subjects_results:
                     subjects.append({
@@ -13692,33 +14141,38 @@ def students_by_academic_level(level_id):
                         'status': row.get('status') if isinstance(row, dict) else row[4]
                     })
                 
-                # Get distinct exam names for this academic level
+                # Get exams for this academic level: unique by exam_name only (one row per exam name)
                 # For teachers, only show exams for their assigned subjects
                 exams = []
                 try:
                     if is_teacher and teacher_id:
                         cursor.execute("""
-                            SELECT DISTINCT e.exam_name, e.id
+                            SELECT e.exam_name, e.id
                             FROM exams e
                             INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
                                 AND e.subject_id = tsa.subject_id
                             WHERE e.academic_level_id = %s 
                               AND tsa.teacher_id = %s
-                            ORDER BY e.exam_name ASC
+                            ORDER BY e.exam_name ASC, e.id ASC
                         """, (level_id, teacher_id))
                     else:
                         cursor.execute("""
-                            SELECT DISTINCT exam_name, id
+                            SELECT exam_name, id
                             FROM exams
                             WHERE academic_level_id = %s
-                            ORDER BY exam_name ASC
+                            ORDER BY exam_name ASC, id ASC
                         """, (level_id,))
                     exams_results = cursor.fetchall()
-                    
+                    # Unique by exam_name: keep first id per name
+                    seen_names = set()
                     for row in exams_results:
+                        exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[0] or '').strip()
+                        if not exam_name or exam_name in seen_names:
+                            continue
+                        seen_names.add(exam_name)
                         exams.append({
                             'id': row.get('id') if isinstance(row, dict) else row[1],
-                            'exam_name': row.get('exam_name') if isinstance(row, dict) else row[0]
+                            'exam_name': exam_name
                         })
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
@@ -13797,8 +14251,8 @@ def students_by_academic_level(level_id):
         flash('Database connection failed.', 'error')
         return redirect(url_for('exams_assessments'))
     
-    # Check if user is a teacher (for edit permissions)
-    can_edit = is_teacher
+    # Academic coordinators and principals can input/edit marks; teachers can edit for their level
+    can_edit = is_teacher or is_academic_coordinator or is_principal
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -13975,21 +14429,23 @@ def save_marks():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
     
-    # Only teachers can save marks
-    if not is_teacher:
+    # Teachers, academic coordinators, and principals can save marks
+    if not (is_teacher or is_academic_coordinator or is_principal):
         return jsonify({'success': False, 'message': 'You do not have permission to save marks.'}), 403
     
-    # Get teacher ID
-    is_technician = user_role == 'technician'
-    if is_technician:
-        teacher_id = session.get('viewing_as_employee_id')
-    else:
-        # Use user_id (database primary key) not employee_id (string like "333333")
-        teacher_id = session.get('user_id')
-    
-    if not teacher_id:
-        return jsonify({'success': False, 'message': 'Teacher ID not found.'}), 400
+    # Get teacher ID (only used when user is a teacher, for assignment check)
+    teacher_id = None
+    if is_teacher:
+        is_technician = user_role == 'technician'
+        if is_technician:
+            teacher_id = session.get('viewing_as_employee_id')
+        else:
+            teacher_id = session.get('user_id')
+        if not teacher_id:
+            return jsonify({'success': False, 'message': 'Teacher ID not found.'}), 400
     
     try:
         data = request.get_json()
@@ -14003,22 +14459,21 @@ def save_marks():
         if not all([student_id, subject_id, exam_id is not None, level_id]):
             return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
         
-        # Validate that teacher is assigned to this subject and level
         connection = get_db_connection()
         if not connection:
             return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
         
         try:
             with connection.cursor() as cursor:
-                # Check if teacher is assigned to this subject and level
-                cursor.execute("""
-                    SELECT id FROM teacher_subject_assignments
-                    WHERE teacher_id = %s AND subject_id = %s AND academic_level_id = %s
-                """, (teacher_id, subject_id, level_id))
-                assignment = cursor.fetchone()
-                
-                if not assignment:
-                    return jsonify({'success': False, 'message': 'You are not assigned to this subject for this level.'}), 403
+                # Teachers must be assigned to this subject and level; coordinators/principals can save any
+                if is_teacher and teacher_id:
+                    cursor.execute("""
+                        SELECT id FROM teacher_subject_assignments
+                        WHERE teacher_id = %s AND subject_id = %s AND academic_level_id = %s
+                    """, (teacher_id, subject_id, level_id))
+                    assignment = cursor.fetchone()
+                    if not assignment:
+                        return jsonify({'success': False, 'message': 'You are not assigned to this subject for this level.'}), 403
                 
                 # Validate marks (should be numeric or empty/null)
                 marks_value = None
