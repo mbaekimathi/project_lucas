@@ -129,34 +129,6 @@
             </table>
         </div>
 
-        <!-- Fee Breakdown Table -->
-        <div class="mb-6">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Fee Breakdown</th>
-                        <th style="text-align: center;">Description</th>
-                        <th style="text-align: right;">Amount</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% if fee_breakdown %}
-                        {% for fee in fee_breakdown %}
-                        <tr>
-                            <td>{{ fee.term }}</td>
-                            <td style="text-align: center;">{{ fee.description }}</td>
-                            <td style="text-align: right;">{{ "%.2f"|format(fee.amount) }}</td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        <tr>
-                            <td colspan="3" style="text-align: center;">No fee structures found</td>
-                        </tr>
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-
         <!-- Payment Details Table -->
         <div class="mb-4">
             <table>

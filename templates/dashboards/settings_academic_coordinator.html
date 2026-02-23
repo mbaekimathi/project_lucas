@@ -1,0 +1,593 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Academic Coordinator - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block role_display %}Academic Coordinator{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a href="/profile/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all">
+    <i class="fas fa-user w-5"></i>
+    <span>Profile</span>
+</a>
+<a href="/settings/academic coordinator" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4" style="border-color: var(--role-primary);">
+    <i class="fas fa-cog w-5"></i>
+    <span>Settings</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto" x-data="academicCoordinatorSettings()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">Academic Settings</h1>
+        <p class="text-gray-600 dark:text-gray-400">Configure academic schedule and time allocations</p>
+    </div>
+
+    <!-- Academic Schedule Settings -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Academic Schedule Configuration</h3>
+        
+        <form method="POST" action="/settings/academic coordinator/save" class="space-y-6" @submit.prevent="saveSettings()">
+            <!-- Days of the Week for Studying -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                    Days of the Week for Studying <span class="text-red-500">*</span>
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <template x-for="day in weekDays" :key="day.value">
+                        <label class="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all"
+                               :class="selectedDays.includes(day.value) 
+                                   ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                                   : 'border-gray-300 dark:border-gray-600 hover:border-green-400'">
+                            <input type="checkbox" 
+                                   :value="day.value" 
+                                   x-model="selectedDays"
+                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300" x-text="day.label"></span>
+                        </label>
+                    </template>
+                </div>
+                <input type="hidden" name="study_days" :value="selectedDays.join(',')">
+            </div>
+
+            <!-- Duration of Class -->
+            <div>
+                <label for="class_duration" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Duration of Class (minutes) <span class="text-red-500">*</span>
+                </label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Enter the duration of each class period in minutes. This will be used for all class time slots.</p>
+                <input type="number" 
+                       id="class_duration" 
+                       name="class_duration" 
+                       x-model="classDuration"
+                       @change="recalculateAllClassEndTimes()"
+                       min="1"
+                       required
+                       class="w-full md:w-64 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter the duration in minutes (minimum 1 minute)</p>
+            </div>
+
+            <!-- Class Time Slots Configuration -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Class Time Slots <span class="text-red-500">*</span>
+                    </label>
+                    <button type="button" 
+                            @click="addClassTime()"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Add Class Time
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Configure multiple class time slots. End times are automatically calculated. Overlapping times are not allowed.</p>
+                
+                <!-- Overlap Warning -->
+                <div x-show="hasOverlaps" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
+                        <p class="text-sm text-red-700 dark:text-red-300 font-medium">Warning: Some class time slots overlap. Please adjust the times to avoid conflicts.</p>
+                    </div>
+                </div>
+                
+                <!-- Class Times List -->
+                <div class="space-y-4" x-show="classTimes.length > 0">
+                    <template x-for="(classTime, index) in classTimes" :key="classTime.id">
+                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
+                             :class="{'border-red-400 dark:border-red-600': isOverlapping(index)}">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <!-- Start Time -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Start Time <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="time" 
+                                           x-model="classTime.start_time"
+                                           @change="validateAndCalculateClassTime(index)"
+                                           :class="isOverlapping(index) ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                                           class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    <p x-show="isOverlapping(index)" class="text-xs text-red-600 dark:text-red-400 mt-1">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>
+                                        <span x-show="isOverlappingWithClass(index)">Overlaps with another class slot</span>
+                                        <span x-show="isOverlappingWithActivity(index)">Overlaps with an activity</span>
+                                    </p>
+                                </div>
+                                
+                                <!-- End Time (Auto-calculated) -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        End Time (Auto-calculated)
+                                    </label>
+                                    <input type="text" 
+                                           x-model="classTime.end_time"
+                                           readonly
+                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm cursor-not-allowed">
+                                </div>
+                                
+                                <!-- Remove Button -->
+                                <div class="flex items-end">
+                                    <button type="button" 
+                                            @click="removeClassTime(index)"
+                                            class="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                        <i class="fas fa-trash mr-1"></i>Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="classTimes.length === 0" class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                    <i class="fas fa-clock text-4xl text-gray-400 dark:text-gray-500 mb-2"></i>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">No class time slots configured. Click "Add Class Time" to get started.</p>
+                </div>
+                
+                <!-- Hidden input for form submission -->
+                <input type="hidden" name="class_times_json" :value="JSON.stringify(classTimes)">
+            </div>
+
+            <!-- Activities Configuration -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Activities (Short Breaks, Long Breaks, Preps) <span class="text-red-500">*</span>
+                    </label>
+                    <button type="button" 
+                            @click="addActivity()"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Add Activity
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Configure activities like short breaks, long breaks, and preps with their start times and durations.</p>
+                
+                <!-- Activity-Class Collision Warning -->
+                <div x-show="hasActivityClassCollisions" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
+                        <p class="text-sm text-red-700 dark:text-red-300 font-medium">Warning: Some activities overlap with class time slots. Please adjust the times to avoid conflicts.</p>
+                    </div>
+                </div>
+                
+                <!-- Activities List -->
+                <div class="space-y-4" x-show="activities.length > 0">
+                    <template x-for="(activity, index) in activities" :key="activity.id">
+                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
+                             :class="{'border-red-400 dark:border-red-600': activityCollidesWithClass(index)}">
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <!-- Activity Name -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Activity Name
+                                    </label>
+                                    <select x-model="activity.name" 
+                                            @change="calculateEndTime(index)"
+                                            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                        <option value="Short Break">Short Break</option>
+                                        <option value="Long Break">Long Break</option>
+                                        <option value="Prep">Prep</option>
+                                        <option value="Lunch">Lunch</option>
+                                        <option value="Assembly">Assembly</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                
+                                <!-- Start Time -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Start Time
+                                    </label>
+                                    <input type="time" 
+                                           x-model="activity.start_time"
+                                           @change="calculateEndTime(index)"
+                                           :class="activityCollidesWithClass(index) ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                                           class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    <p x-show="activityCollidesWithClass(index)" class="text-xs text-red-600 dark:text-red-400 mt-1">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>Overlaps with a class time slot
+                                    </p>
+                                </div>
+                                
+                                <!-- Duration -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Duration (minutes)
+                                    </label>
+                                    <input type="number" 
+                                           x-model="activity.duration"
+                                           @change="calculateEndTime(index)"
+                                           min="5" 
+                                           max="120" 
+                                           step="5"
+                                           :class="activityCollidesWithClass(index) ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                                           class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                </div>
+                                
+                                <!-- End Time (Auto-calculated) -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        End Time (Auto-calculated)
+                                    </label>
+                                    <input type="text" 
+                                           x-model="activity.end_time"
+                                           readonly
+                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm cursor-not-allowed">
+                                </div>
+                            </div>
+                            
+                            <!-- Remove Button -->
+                            <div class="mt-3 flex justify-end">
+                                <button type="button" 
+                                        @click="removeActivity(index)"
+                                        class="px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                    <i class="fas fa-trash mr-1"></i>Remove
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="activities.length === 0" class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                    <i class="fas fa-calendar-times text-4xl text-gray-400 dark:text-gray-500 mb-2"></i>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">No activities configured. Click "Add Activity" to get started.</p>
+                </div>
+                
+                <!-- Hidden input for form submission -->
+                <input type="hidden" name="activities_json" :value="JSON.stringify(activities)">
+            </div>
+
+            <!-- Summary Card -->
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">Settings Summary</h4>
+                <div class="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    <p><span class="font-medium">Study Days:</span> <span x-text="getSelectedDaysLabel()"></span></p>
+                    <p><span class="font-medium">Class Duration:</span> <span x-text="classDuration + ' minutes'"></span></p>
+                    <p><span class="font-medium">Class Time Slots:</span> <span x-text="classTimes.length + ' configured'"></span></p>
+                    <template x-if="classTimes.length > 0">
+                        <div class="mt-2 space-y-1">
+                            <template x-for="classTime in classTimes" :key="classTime.id">
+                                <p class="text-xs pl-4">
+                                    <span x-text="classTime.start_time"></span> - 
+                                    <span x-text="classTime.end_time"></span>
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                    <p><span class="font-medium">Activities:</span> <span x-text="activities.length + ' configured'"></span></p>
+                    <template x-if="activities.length > 0">
+                        <div class="mt-2 space-y-1">
+                            <template x-for="activity in activities" :key="activity.id">
+                                <p class="text-xs pl-4">
+                                    <span x-text="activity.name"></span>: 
+                                    <span x-text="activity.start_time"></span> - 
+                                    <span x-text="activity.end_time"></span> 
+                                    (<span x-text="activity.duration"></span> min)
+                                </p>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="flex items-center justify-end space-x-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" 
+                        @click="resetSettings()"
+                        class="px-6 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Reset
+                </button>
+                <button type="submit" 
+                        class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors shadow-md hover:shadow-lg">
+                    Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function academicCoordinatorSettings() {
+    return {
+        weekDays: [
+            { value: 'Monday', label: 'Monday' },
+            { value: 'Tuesday', label: 'Tuesday' },
+            { value: 'Wednesday', label: 'Wednesday' },
+            { value: 'Thursday', label: 'Thursday' },
+            { value: 'Friday', label: 'Friday' },
+            { value: 'Saturday', label: 'Saturday' },
+            { value: 'Sunday', label: 'Sunday' }
+        ],
+        selectedDays: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        classDuration: {% if settings and settings.class_duration %}{{ settings.class_duration }}{% else %}60{% endif %},
+        classTimes: (function() {
+            const classTimes = {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %};
+            // Ensure all class times have IDs
+            classTimes.forEach((classTime, index) => {
+                if (!classTime.id) {
+                    classTime.id = 'class_time_' + (index + 1);
+                }
+            });
+            return classTimes;
+        })(),
+        classTimeCounter: {% if settings and settings.class_times %}{{ settings.class_times|length }}{% else %}0{% endif %},
+        activities: (function() {
+            const activities = {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %};
+            // Ensure all activities have IDs
+            activities.forEach((activity, index) => {
+                if (!activity.id) {
+                    activity.id = 'activity_' + (index + 1);
+                }
+            });
+            return activities;
+        })(),
+        activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
+        getSelectedDaysLabel() {
+            if (this.selectedDays.length === 0) return 'No days selected';
+            return this.selectedDays.join(', ');
+        },
+        addClassTime() {
+            // Find the latest end time to suggest next start time
+            let suggestedStartTime = '08:00';
+            if (this.classTimes.length > 0) {
+                const sortedTimes = [...this.classTimes].sort((a, b) => a.start_time.localeCompare(b.start_time));
+                const lastTime = sortedTimes[sortedTimes.length - 1];
+                if (lastTime.end_time) {
+                    suggestedStartTime = lastTime.end_time;
+                }
+            }
+            
+            const newClassTime = {
+                id: 'class_time_' + (++this.classTimeCounter),
+                start_time: suggestedStartTime,
+                end_time: ''
+            };
+            this.classTimes.push(newClassTime);
+            this.validateAndCalculateClassTime(this.classTimes.length - 1);
+        },
+        removeClassTime(index) {
+            this.classTimes.splice(index, 1);
+        },
+        validateAndCalculateClassTime(index) {
+            if (index < 0 || index >= this.classTimes.length) return;
+            
+            const classTime = this.classTimes[index];
+            if (!classTime.start_time || !this.classDuration) {
+                classTime.end_time = '';
+                return;
+            }
+            
+            // Calculate end time
+            const [hours, minutes] = classTime.start_time.split(':').map(Number);
+            const startDate = new Date();
+            startDate.setHours(hours, minutes, 0, 0);
+            
+            const endDate = new Date(startDate.getTime() + (this.classDuration * 60000));
+            const endHours = String(endDate.getHours()).padStart(2, '0');
+            const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+            classTime.end_time = `${endHours}:${endMinutes}`;
+            
+            // Check for collisions after calculating end time
+            // This will trigger the visual feedback
+        },
+        recalculateAllClassEndTimes() {
+            this.classTimes.forEach((classTime, index) => {
+                this.validateAndCalculateClassTime(index);
+            });
+        },
+        isOverlapping(index) {
+            if (index < 0 || index >= this.classTimes.length) return false;
+            
+            const current = this.classTimes[index];
+            if (!current.start_time || !current.end_time) return false;
+            
+            // Check against all other class times
+            for (let i = 0; i < this.classTimes.length; i++) {
+                if (i === index) continue;
+                
+                const other = this.classTimes[i];
+                if (!other.start_time || !other.end_time) continue;
+                
+                // Check if times overlap
+                if ((current.start_time < other.end_time && current.end_time > other.start_time)) {
+                    return true;
+                }
+            }
+            
+            // Also check against activities
+            for (let i = 0; i < this.activities.length; i++) {
+                const activity = this.activities[i];
+                if (!activity.start_time || !activity.end_time) continue;
+                
+                // Check if class time overlaps with activity
+                if ((current.start_time < activity.end_time && current.end_time > activity.start_time)) {
+                    return true;
+                }
+            }
+            
+            return false;
+        },
+        get hasOverlaps() {
+            for (let i = 0; i < this.classTimes.length; i++) {
+                if (this.isOverlapping(i)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        isOverlappingWithClass(index) {
+            if (index < 0 || index >= this.classTimes.length) return false;
+            
+            const current = this.classTimes[index];
+            if (!current.start_time || !current.end_time) return false;
+            
+            // Check against all other class times only
+            for (let i = 0; i < this.classTimes.length; i++) {
+                if (i === index) continue;
+                
+                const other = this.classTimes[i];
+                if (!other.start_time || !other.end_time) continue;
+                
+                if ((current.start_time < other.end_time && current.end_time > other.start_time)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        isOverlappingWithActivity(index) {
+            if (index < 0 || index >= this.classTimes.length) return false;
+            
+            const current = this.classTimes[index];
+            if (!current.start_time || !current.end_time) return false;
+            
+            // Check against activities
+            for (let i = 0; i < this.activities.length; i++) {
+                const activity = this.activities[i];
+                if (!activity.start_time || !activity.end_time) continue;
+                
+                if ((current.start_time < activity.end_time && current.end_time > activity.start_time)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        activityCollidesWithClass(activityIndex) {
+            if (activityIndex < 0 || activityIndex >= this.activities.length) return false;
+            
+            const activity = this.activities[activityIndex];
+            if (!activity.start_time || !activity.end_time) return false;
+            
+            // Check against all class times
+            for (let i = 0; i < this.classTimes.length; i++) {
+                const classTime = this.classTimes[i];
+                if (!classTime.start_time || !classTime.end_time) continue;
+                
+                // Check if activity overlaps with class time
+                if ((activity.start_time < classTime.end_time && activity.end_time > classTime.start_time)) {
+                    return true;
+                }
+            }
+            
+            return false;
+        },
+        get hasActivityClassCollisions() {
+            for (let i = 0; i < this.activities.length; i++) {
+                if (this.activityCollidesWithClass(i)) {
+                    return true;
+                }
+            }
+            return false;
+        },
+        addActivity() {
+            const newActivity = {
+                id: 'activity_' + (++this.activityCounter),
+                name: 'Short Break',
+                start_time: '10:00',
+                duration: 15,
+                end_time: '10:15'
+            };
+            this.activities.push(newActivity);
+            this.calculateEndTime(this.activities.length - 1);
+        },
+        removeActivity(index) {
+            this.activities.splice(index, 1);
+        },
+        calculateEndTime(index) {
+            if (index < 0 || index >= this.activities.length) return;
+            
+            const activity = this.activities[index];
+            if (!activity.start_time || !activity.duration) {
+                activity.end_time = '';
+                return;
+            }
+            
+            // Parse start time
+            const [hours, minutes] = activity.start_time.split(':').map(Number);
+            const startDate = new Date();
+            startDate.setHours(hours, minutes, 0, 0);
+            
+            // Add duration in minutes
+            const endDate = new Date(startDate.getTime() + (activity.duration * 60000));
+            
+            // Format as HH:MM
+            const endHours = String(endDate.getHours()).padStart(2, '0');
+            const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
+            activity.end_time = `${endHours}:${endMinutes}`;
+            
+            // Check for collisions after calculating end time
+            // This will trigger the visual feedback
+        },
+        saveSettings() {
+            // Validate no overlaps before submission
+            if (this.hasOverlaps) {
+                alert('Please resolve overlapping class time slots before saving.');
+                return false;
+            }
+            
+            // Validate no activity-class collisions
+            if (this.hasActivityClassCollisions) {
+                alert('Please resolve activities that overlap with class time slots before saving.');
+                return false;
+            }
+            
+            // Calculate all end times before submission
+            this.classTimes.forEach((classTime, index) => {
+                this.validateAndCalculateClassTime(index);
+            });
+            this.activities.forEach((activity, index) => {
+                this.calculateEndTime(index);
+            });
+            
+            // Form will submit normally
+            this.$el.submit();
+        },
+        resetSettings() {
+            this.selectedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            this.classDuration = 60;
+            this.classTimes = [
+                { id: 'class_time_1', start_time: '08:00', end_time: '09:00' },
+                { id: 'class_time_2', start_time: '09:00', end_time: '10:00' },
+                { id: 'class_time_3', start_time: '10:15', end_time: '11:15' },
+                { id: 'class_time_4', start_time: '11:15', end_time: '12:15' }
+            ];
+            this.classTimeCounter = 4;
+            this.activities = [
+                { id: 'activity_1', name: 'Short Break', start_time: '10:00', duration: 15, end_time: '10:15' },
+                { id: 'activity_2', name: 'Long Break', start_time: '12:15', duration: 30, end_time: '12:45' },
+                { id: 'activity_3', name: 'Prep', start_time: '14:00', duration: 20, end_time: '14:20' }
+            ];
+            this.activityCounter = 3;
+        }
+    }
+}
+</script>
+{% endblock %}
+

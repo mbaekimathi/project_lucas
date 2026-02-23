@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Academic Subject Registration - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#800020{% endblock %}
+{% block role_secondary %}#A00030{% endblock %}
+{% block role_accent %}#5C0014{% endblock %}
+{% block role_gradient_start %}#800020{% endblock %}
+{% block role_gradient_end %}#5C0014{% endblock %}
+
+{% block sidebar_content %}
+<!-- Classes & Subjects Links -->
+<a href="/dashboard/employee/classes-subjects" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book w-5"></i>
+    <span>Classes & Subjects</span>
+</a>
+
+<a href="/dashboard/employee/subject-class-allocation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject & Class Allocation Panel</span>
+</a>
+
+<a href="/dashboard/employee/academic-subject-registration" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-book-open w-5"></i>
+    <span>Academic Subject Registration</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a href="/dashboard/employee/exam-evaluation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam & Evaluation</span>
+</a>
+
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dashboard-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(128, 0, 32, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .dashboard-card:hover {
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.1);
+    }
+    
+    .dark .dashboard-card {
+        background: rgba(17, 24, 39, 0.95);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .modern-input {
+        transition: all 0.3s ease;
+    }
+    
+    .modern-input:focus {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.15);
+    }
+    
+    .modern-btn {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .modern-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.25);
+    }
+    
+    @media (max-width: 768px) {
+        .responsive-table {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .responsive-table table {
+            min-width: 700px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="subjectRegistration()">
+    <div class="mb-6 sm:mb-8 scroll-reveal">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                        <i class="fas fa-book-open text-white text-xl sm:text-2xl"></i>
+                    </div>
+                    Academic Subject Registration
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Register, edit, and manage academic subjects. All inputs are automatically converted to uppercase.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register New Subject Form -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                <i class="fas fa-plus-circle text-white"></i>
+            </div>
+            <span x-text="editingSubject ? 'Edit Subject' : 'Register New Subject'"></span>
+        </h2>
+        
+        <form @submit.prevent="saveSubject()" class="space-y-5 sm:space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                <!-- Subject Name -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Subject Name <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" 
+                           x-model="formData.subject_name"
+                           @input="formData.subject_name = $event.target.value.toUpperCase()"
+                           required
+                           class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary uppercase"
+                           placeholder="E.G., MATHEMATICS"
+                           style="text-transform: uppercase;">
+                </div>
+                
+                <!-- Subject Code -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Subject Code (Optional)
+                    </label>
+                    <input type="text" 
+                           x-model="formData.subject_code"
+                           @input="formData.subject_code = $event.target.value.toUpperCase()"
+                           class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary uppercase"
+                           placeholder="E.G., MATH101"
+                           style="text-transform: uppercase;">
+                </div>
+            </div>
+            
+            <!-- Description -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Description (Optional)
+                </label>
+                <textarea x-model="formData.description"
+                          @input="formData.description = $event.target.value.toUpperCase()"
+                          rows="4"
+                          class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary uppercase resize-none"
+                          placeholder="SUBJECT DESCRIPTION..."
+                          style="text-transform: uppercase;"></textarea>
+            </div>
+            
+            <!-- Status (only when editing) -->
+            <div x-show="editingSubject">
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Status
+                </label>
+                <select x-model="formData.status"
+                        class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" 
+                        @click="resetForm()"
+                        class="modern-btn px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all font-semibold">
+                    <span x-text="editingSubject ? 'Cancel' : 'Reset'"></span>
+                </button>
+                <button type="submit" 
+                        :disabled="saving"
+                        class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                    <i class="fas fa-save mr-2"></i>
+                    <span x-text="saving ? 'Saving...' : (editingSubject ? 'Update Subject' : 'Register Subject')"></span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Subjects List -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                    <i class="fas fa-list text-white"></i>
+                </div>
+                Registered Subjects
+            </h2>
+            <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm">
+                <span x-text="subjects.length"></span> subject(s)
+            </span>
+        </div>
+        
+        <!-- Empty State -->
+        <div x-show="subjects.length === 0" class="text-center py-12">
+            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-inbox text-gray-400 text-3xl"></i>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">No subjects registered yet. Register your first subject above.</p>
+        </div>
+        
+        <!-- Subjects Table -->
+        <div x-show="subjects.length > 0" class="responsive-table">
+            <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Name</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Code</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden md:table-cell">Description</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Status</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="subject in subjects" :key="subject.id">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td class="p-3 sm:p-4 text-sm font-semibold text-gray-900 dark:text-white" x-text="subject.subject_name"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white" x-text="subject.subject_code || '—'"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden md:table-cell" x-text="subject.description || '—'"></td>
+                                <td class="p-3 sm:p-4 text-center">
+                                    <span class="px-3 py-1.5 rounded-full text-xs font-semibold"
+                                          :class="subject.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'"
+                                          x-text="subject.status === 'active' ? 'Active' : 'Inactive'"></span>
+                                </td>
+                                <td class="p-3 sm:p-4 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <button @click="editSubject(subject)"
+                                                class="modern-btn px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                            <i class="fas fa-edit mr-1"></i>Edit
+                                        </button>
+                                        <button @click="deleteSubject(subject.id)"
+                                                class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                            <i class="fas fa-trash mr-1"></i>Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function subjectRegistration() {
+    return {
+        subjects: {{ subjects|tojson|safe }},
+        formData: {
+            subject_id: null,
+            subject_name: '',
+            subject_code: '',
+            description: '',
+            status: 'active'
+        },
+        editingSubject: false,
+        saving: false,
+        
+        async saveSubject() {
+            if (!this.formData.subject_name.trim()) {
+                alert('Subject name is required');
+                return;
+            }
+            
+            // Ensure all fields are uppercase
+            const subjectData = {
+                subject_name: this.formData.subject_name.trim().toUpperCase(),
+                subject_code: this.formData.subject_code ? this.formData.subject_code.trim().toUpperCase() : '',
+                description: this.formData.description ? this.formData.description.trim().toUpperCase() : '',
+                status: this.formData.status
+            };
+            
+            if (this.editingSubject) {
+                subjectData.subject_id = this.formData.subject_id;
+            }
+            
+            this.saving = true;
+            
+            try {
+                const url = this.editingSubject 
+                    ? '/dashboard/employee/academic-subject-registration/update'
+                    : '/dashboard/employee/subject-class-allocation/create-subject';
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(subjectData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message || (this.editingSubject ? 'Subject updated successfully!' : 'Subject registered successfully!'));
+                    // Reload page to refresh subjects list
+                    window.location.reload();
+                } else {
+                    alert(result.message || 'Error saving subject');
+                }
+            } catch (error) {
+                console.error('Error saving subject:', error);
+                alert('Error saving subject. Please try again.');
+            } finally {
+                this.saving = false;
+            }
+        },
+        
+        editSubject(subject) {
+            this.formData = {
+                subject_id: subject.id,
+                subject_name: subject.subject_name,
+                subject_code: subject.subject_code || '',
+                description: subject.description || '',
+                status: subject.status
+            };
+            this.editingSubject = true;
+            
+            // Scroll to form
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
+        
+        async deleteSubject(subjectId) {
+            if (!confirm('Are you sure you want to delete this subject? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/dashboard/employee/academic-subject-registration/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        subject_id: subjectId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message || 'Subject deleted successfully!');
+                    // Reload page to refresh subjects list
+                    window.location.reload();
+                } else {
+                    alert(result.message || 'Error deleting subject');
+                }
+            } catch (error) {
+                console.error('Error deleting subject:', error);
+                alert('Error deleting subject. Please try again.');
+            }
+        },
+        
+        resetForm() {
+            this.formData = {
+                subject_id: null,
+                subject_name: '',
+                subject_code: '',
+                description: '',
+                status: 'active'
+            };
+            this.editingSubject = false;
+        }
+    }
+}
+</script>
+{% endblock %}
+

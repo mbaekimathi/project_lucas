@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+
+{% block title %}{{ academic_level.level_name }} - Marks{% endblock %}
+
+{% block role_primary %}#059669{% endblock %}
+{% block role_secondary %}#047857{% endblock %}
+{% block role_accent %}#10b981{% endblock %}
+{% block role_gradient_start %}#059669{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee/exams-assessments" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Exams</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Sticky columns */
+.sticky-col { position: sticky; z-index: 10; }
+.sticky-col-1 { left: 0; }
+.sticky-col-2 { left: 40px; }
+thead .sticky-col { z-index: 20; }
+
+/* Row backgrounds for sticky cells */
+tbody tr:nth-child(odd) .sticky-col { background: #fff; }
+tbody tr:nth-child(even) .sticky-col { background: #f9fafb; }
+tbody tr:hover .sticky-col { background: #f3f4f6; }
+.dark tbody tr:nth-child(odd) .sticky-col { background: #1f2937; }
+.dark tbody tr:nth-child(even) .sticky-col { background: #111827; }
+.dark tbody tr:hover .sticky-col { background: #374151; }
+
+/* Border on sticky student column */
+.sticky-col-2 { border-right: 2px solid #d1d5db; }
+.dark .sticky-col-2 { border-right-color: #4b5563; }
+
+/* Input styling */
+.mark-input {
+    width: 60px;
+    height: 32px;
+    padding: 2px 4px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    color: #111;
+}
+.dark .mark-input {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f3f4f6;
+}
+.mark-input:focus {
+    outline: none;
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.3);
+}
+.mark-input:disabled {
+    background: #f9fafb;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+}
+.dark .mark-input:disabled {
+    background: #1f2937;
+    color: #6b7280;
+}
+.mark-input.saving { border-color: #f59e0b; background: #fef3c7; color: #92400e; }
+.mark-input.saved { border-color: #10b981; background: #d1fae5; color: #065f46; }
+.mark-input.error { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+    .sticky-col-2 { left: 32px; }
+    .mark-input { width: 56px; height: 36px; font-size: 16px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="marksSheet()" x-init="init()" class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    
+    <!-- Top Bar -->
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <h1 class="text-lg font-bold text-gray-900 dark:text-white">{{ academic_level.level_name }}</h1>
+                <p class="text-sm text-gray-500">{{ students|length }} students · {{ subjects|length }} subjects</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <select x-model="selectedExam" @change="loadMarks()" 
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <option value="">Choose Exam</option>
+                    {% for exam in exams %}
+                    <option value="{{ exam.id }}">{{ exam.exam_name }}</option>
+                    {% endfor %}
+                </select>
+                <a href="/dashboard/employee/exams-assessments" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                    ← Back
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="p-4">
+        {% if students and subjects %}
+        
+        <!-- Info Message -->
+        <div x-show="!selectedExam" class="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <p class="text-sm text-amber-700 dark:text-amber-300">
+                <i class="fas fa-info-circle mr-2"></i>Select an exam above to enter or view marks.
+            </p>
+        </div>
+
+        <!-- Table Card -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto" style="max-height: calc(100vh - 180px);">
+                <table class="w-full text-sm border-collapse">
+                    <thead class="bg-gray-100 dark:bg-gray-700">
+                        <tr>
+                            <th class="sticky-col sticky-col-1 px-2 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 w-10">#</th>
+                            <th class="sticky-col sticky-col-2 px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 min-w-[140px]">Student Name</th>
+                            {% for subject in subjects %}
+                            <th class="px-1 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase min-w-[72px]" title="{{ subject.subject_name }}">{{ subject.subject_name[:4] }}</th>
+                            {% endfor %}
+                            <th class="px-3 py-3 text-center text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 min-w-[70px]">Total</th>
+                            <th class="px-3 py-3 text-center text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 min-w-[60px]">Rank</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for student in students %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-gray-500 dark:text-gray-400 font-medium">{{ loop.index }}</td>
+                            <td class="sticky-col sticky-col-2 px-3 py-2">
+                                <span class="font-medium text-gray-900 dark:text-white text-sm">{{ student.full_name }}</span>
+                            </td>
+                            {% for subject in subjects %}
+                            <td class="px-1 py-1 text-center">
+                                {% if can_edit %}
+                                <input type="text"
+                                       inputmode="numeric"
+                                       maxlength="3"
+                                       :value="getMark('{{ student.student_id }}', {{ subject.id }})"
+                                       @blur="saveMark('{{ student.student_id }}', {{ subject.id }}, $event.target.value)"
+                                       @keydown.enter="$event.target.blur()"
+                                       @keypress="$event.charCode >= 48 && $event.charCode <= 57 || $event.preventDefault()"
+                                       :disabled="!selectedExam"
+                                       :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
+                                       class="mark-input">
+                                {% else %}
+                                <span class="text-gray-900 dark:text-white font-semibold text-base" x-text="getMark('{{ student.student_id }}', {{ subject.id }}) || '-'"></span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                            <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" x-text="getTotal('{{ student.student_id }}') || '-'"></td>
+                            <td class="px-3 py-2 text-center text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" x-text="getRank('{{ student.student_id }}') || '-'"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div x-show="loading" class="fixed inset-0 bg-black/20 flex items-center justify-center z-50">
+            <div class="bg-white dark:bg-gray-800 rounded-lg px-6 py-4 shadow-lg">
+                <i class="fas fa-spinner fa-spin text-emerald-500 mr-2"></i>
+                <span class="text-gray-700 dark:text-gray-200">Loading...</span>
+            </div>
+        </div>
+
+        {% else %}
+        <!-- Empty State -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+            <i class="fas fa-clipboard-list text-4xl text-gray-300 dark:text-gray-600 mb-3"></i>
+            <p class="text-gray-500 dark:text-gray-400">
+                {% if not students %}No students enrolled in this level{% else %}No subjects assigned to this level{% endif %}
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function marksSheet() {
+    return {
+        selectedExam: '',
+        marks: {{ (student_marks or {})|tojson|safe }},
+        loading: false,
+        saveStatus: {},
+        
+        subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
+        studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        levelId: {{ academic_level.id }},
+        canEdit: {{ 'true' if can_edit else 'false' }},
+
+        init() {},
+
+        getMark(studentId, subjectId) {
+            const studentMarks = this.marks[studentId];
+            if (!studentMarks || !studentMarks[subjectId]) return '';
+            
+            const subjectMark = studentMarks[subjectId];
+            if (typeof subjectMark === 'object') {
+                const val = this.selectedExam ? subjectMark[this.selectedExam] : null;
+                return val != null ? parseInt(val) : '';
+            }
+            return subjectMark != null ? parseInt(subjectMark) : '';
+        },
+
+        getTotal(studentId) {
+            if (!this.selectedExam) return null;
+            let total = 0, hasMarks = false;
+            
+            for (const subjectId of this.subjectIds) {
+                const mark = this.getMark(studentId, subjectId);
+                if (mark !== '' && !isNaN(mark)) {
+                    total += parseInt(mark);
+                    hasMarks = true;
+                }
+            }
+            return hasMarks ? total : null;
+        },
+
+        getRank(studentId) {
+            if (!this.selectedExam) return null;
+            
+            const totals = this.studentIds
+                .map(id => ({ id, total: this.getTotal(id) }))
+                .filter(x => x.total !== null)
+                .sort((a, b) => b.total - a.total);
+            
+            for (let i = 0; i < totals.length; i++) {
+                if (totals[i].id === studentId) {
+                    let rank = i + 1;
+                    // Handle ties
+                    while (i > 0 && totals[i-1].total === totals[i].total) {
+                        rank--;
+                        i--;
+                    }
+                    const suffix = (rank % 100 >= 11 && rank % 100 <= 13) ? 'th' :
+                                   (rank % 10 === 1) ? 'st' :
+                                   (rank % 10 === 2) ? 'nd' :
+                                   (rank % 10 === 3) ? 'rd' : 'th';
+                    return rank + suffix;
+                }
+            }
+            return null;
+        },
+
+        getStatusClass(studentId, subjectId) {
+            const status = this.saveStatus[`${studentId}_${subjectId}`];
+            if (status === 'saving') return 'saving';
+            if (status === 'saved') return 'saved';
+            if (status === 'error') return 'error';
+            return '';
+        },
+
+        async saveMark(studentId, subjectId, value) {
+            if (!this.selectedExam || !this.canEdit) return;
+            
+            const intValue = value ? parseInt(value.replace(/\D/g, '')) : null;
+            const key = `${studentId}_${subjectId}`;
+            
+            this.saveStatus[key] = 'saving';
+            
+            // Update local data
+            if (!this.marks[studentId]) this.marks[studentId] = {};
+            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+            this.marks[studentId][subjectId][this.selectedExam] = intValue;
+
+            try {
+                const response = await fetch('/dashboard/employee/exams-assessments/save-marks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        subject_id: subjectId,
+                        exam_id: this.selectedExam,
+                        marks: intValue,
+                        level_id: this.levelId
+                    })
+                });
+                const result = await response.json();
+                this.saveStatus[key] = result.success ? 'saved' : 'error';
+            } catch (error) {
+                this.saveStatus[key] = 'error';
+            }
+            
+            setTimeout(() => { this.saveStatus[key] = ''; }, 1500);
+        },
+
+        async loadMarks() {
+            this.loading = true;
+            
+            try {
+                const response = await fetch('/dashboard/employee/exams-assessments/get-marks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        level_id: this.levelId,
+                        exam_id: this.selectedExam || null
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.marks = result.marks || {};
+                }
+            } catch (error) {
+                console.error('Load error:', error);
+            }
+            
+            this.loading = false;
+        }
+    };
+}
+</script>
+{% endblock %}

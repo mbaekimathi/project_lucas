@@ -1,0 +1,1214 @@
+{% extends "base.html" %}
+
+{% block title %}Exam & Evaluation - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#800020{% endblock %}
+{% block role_secondary %}#A00030{% endblock %}
+{% block role_accent %}#5C0014{% endblock %}
+{% block role_gradient_start %}#800020{% endblock %}
+{% block role_gradient_end %}#5C0014{% endblock %}
+
+{% block sidebar_content %}
+<!-- Classes & Subjects Links -->
+<a href="/dashboard/employee/classes-subjects" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book w-5"></i>
+    <span>Classes & Subjects</span>
+</a>
+
+<a href="/dashboard/employee/subject-class-allocation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject & Class Allocation Panel</span>
+</a>
+
+<a href="/dashboard/employee/academic-subject-registration" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book-open w-5"></i>
+    <span>Academic Subject Registration</span>
+</a>
+
+<a href="/dashboard/employee/exam-evaluation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam & Evaluation</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dashboard-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(128, 0, 32, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .dashboard-card:hover {
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.1);
+    }
+    
+    .dark .dashboard-card {
+        background: rgba(17, 24, 39, 0.95);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .modern-input {
+        transition: all 0.3s ease;
+    }
+    
+    .modern-input:focus {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.15);
+    }
+    
+    .modern-btn {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .modern-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.25);
+    }
+    
+    .allocation-card {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(5px);
+        border: 2px solid rgba(128, 0, 32, 0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .allocation-card:hover {
+        border-color: rgba(128, 0, 32, 0.3);
+        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.1);
+    }
+    
+    .dark .allocation-card {
+        background: rgba(17, 24, 39, 0.8);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    @media (max-width: 768px) {
+        .responsive-table {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .responsive-table table {
+            min-width: 1000px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="examEvaluation()" x-init="init()">
+    <div class="mb-6 sm:mb-8 scroll-reveal">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                        <i class="fas fa-clipboard-check text-white text-xl sm:text-2xl"></i>
+                    </div>
+                    Exam & Evaluation
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Register an exam and allocate subjects + teachers + time in one save (per academic level).</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Exam + Allocations -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                <i class="fas fa-plus-circle text-white"></i>
+            </div>
+            Register Exam (with Allocations)
+        </h2>
+
+        <!-- Success Message -->
+        <div x-show="successMessage" x-cloak class="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm">
+            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-3 text-xl"></i>
+            <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
+        </div>
+
+        <!-- Error Message -->
+        <div x-show="errorMessage" x-cloak class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
+            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-3 text-xl"></i>
+            <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
+        </div>
+
+        <!-- Client conflict warning -->
+        <div x-show="clientConflictMessage" x-cloak class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center shadow-sm">
+            <i class="fas fa-exclamation-triangle text-yellow-700 dark:text-yellow-400 mr-3 text-xl"></i>
+            <span class="text-yellow-900 dark:text-yellow-200 font-medium" x-text="clientConflictMessage"></span>
+        </div>
+
+        <form @submit.prevent="saveExam()" class="space-y-5 sm:space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic Year <span class="text-red-500">*</span></label>
+                    <select x-model="examForm.academic_year_id"
+                            @change="loadTerms(); generateExamName()"
+                            required
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                        <option value="">Select Academic Year</option>
+                        <template x-for="year in academicYears" :key="year.id">
+                            <option :value="year.id" x-text="year.year_name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Term <span class="text-red-500">*</span></label>
+                    <select x-model="examForm.term_id"
+                            @change="generateExamName()"
+                            required
+                            :disabled="!examForm.academic_year_id"
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary disabled:opacity-50">
+                        <option value="">Select Term</option>
+                        <template x-for="term in terms" :key="term.id">
+                            <option :value="term.id" x-text="term.term_name"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Exam Type <span class="text-red-500">*</span></label>
+                    <select x-model="examForm.exam_type"
+                            @change="generateExamName()"
+                            required
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                        <option value="">Select Type</option>
+                        <option value="OPENING">Opening</option>
+                        <option value="MIDTERM">Midterm</option>
+                        <option value="CLOSING">Closing</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Exam Name <span class="text-red-500">*</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(Auto-generated)</span>
+                    </label>
+                    <input type="text"
+                           x-model="examForm.exam_name"
+                           readonly
+                           required
+                           class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed uppercase font-semibold"
+                           style="text-transform: uppercase;">
+                </div>
+            </div>
+
+            <!-- Academic Level Selection -->
+            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700">
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Academic Level <span class="text-red-500">*</span>
+                    </label>
+                    <select x-model="selectedAcademicLevel"
+                            @change="onAcademicLevelChange()"
+                            required
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                        <option value="">Select Academic Level</option>
+                        <template x-for="level in academicLevels" :key="level.id">
+                            <option :value="level.id" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
+                        </template>
+                    </select>
+                    <p x-show="selectedAcademicLevel" class="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-lg text-sm text-gray-700 dark:text-gray-300">
+                        <i class="fas fa-info-circle mr-2 text-blue-600"></i>
+                        Select subjects, teachers, dates, venues, and sessions for this academic level. Each subject can only be used once per level.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Allocations -->
+            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700" x-show="selectedAcademicLevel">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+                    <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                        <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                            <i class="fas fa-tasks text-white text-sm"></i>
+                        </div>
+                        Subject Allocations
+                    </h3>
+                    <button type="button"
+                            @click="addAllocation()"
+                            :disabled="!selectedAcademicLevel"
+                            class="modern-btn px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl text-sm font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center">
+                        <i class="fas fa-plus mr-2"></i>Add Allocation
+                    </button>
+                </div>
+
+                <!-- Mobile cards -->
+                <div class="space-y-4 md:hidden">
+                    <template x-for="(row, idx) in allocations" :key="row._key">
+                        <div class="allocation-card p-5 rounded-xl">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="text-sm font-semibold text-gray-900 dark:text-white">Allocation <span x-text="idx + 1"></span></div>
+                                <button type="button" @click="removeAllocation(idx)" class="text-red-600 hover:text-red-700 text-sm font-semibold">
+                                    <i class="fas fa-trash mr-1"></i>Remove
+                                </button>
+                            </div>
+
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Subject *</label>
+                                    <select x-model="row.subject_id"
+                                            @change="onRowChange()"
+                                            :class="getSubjectSelectClass(row)"
+                                            class="modern-input w-full px-3 py-2.5 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                        <option value="">Select Subject</option>
+                                        <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
+                                            <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
+                                        </template>
+                                    </select>
+                                    <p x-show="isSubjectDuplicate(row)" class="mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
+                                        <i class="fas fa-exclamation-triangle mr-1"></i>This subject is already used for this academic level.
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Teacher *</label>
+                                    <select x-model="row.teacher_id"
+                                            @change="onRowChange()"
+                                            class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                        <option value="">Select Teacher</option>
+                                        <template x-for="t in teachers" :key="t.id">
+                                            <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Date *</label>
+                                    <input type="date" 
+                                           x-model="row.exam_date"
+                                           @change="onRowChange()"
+                                           required
+                                           class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Venue</label>
+                                    <input type="text"
+                                           x-model="row.venue"
+                                           @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
+                                           class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
+                                           placeholder="E.G., HALL A"
+                                           style="text-transform: uppercase;">
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Session *</label>
+                                    <select x-model="row.session_type"
+                                            @change="applySessionPreset(row); onRowChange()"
+                                            class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                        <option value="">Select Session</option>
+                                        <option value="MORNING">Morning Session</option>
+                                        <option value="MIDDAY">Mid Day Session</option>
+                                        <option value="AFTERNOON">Afternoon Session</option>
+                                        <option value="EVENING">Evening Session</option>
+                                        <option value="CUSTOM">Custom Session</option>
+                                    </select>
+                                </div>
+
+                                <div class="grid grid-cols-1 gap-3">
+                                    <template x-if="row.session_type === 'CUSTOM'">
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Start *</label>
+                                                <input type="time" x-model="row.start_time" @input="autoEndForRow(row); onRowChange()"
+                                                       class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Duration (min) *</label>
+                                                <input type="number" min="1" x-model="row.duration_minutes" @input="autoEndForRow(row); onRowChange()"
+                                                       class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                            </div>
+                                            <div class="col-span-2">
+                                                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">End (auto)</label>
+                                                <input type="text" readonly x-model="row.end_time"
+                                                       class="w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white">
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-if="row.session_type && row.session_type !== 'CUSTOM'">
+                                        <div class="p-3 bg-brand-primary/10 rounded-xl">
+                                            <div class="text-xs text-gray-700 dark:text-gray-200 font-medium">
+                                                <span class="font-semibold">Time:</span>
+                                                <span x-text="row.start_time"></span>
+                                                <span> - </span>
+                                                <span x-text="row.end_time"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Desktop table -->
+                <div class="hidden md:block responsive-table">
+                    <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Teacher</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Date</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Venue</th>
+                                    <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Session / Time</th>
+                                    <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="(row, idx) in allocations" :key="row._key">
+                                    <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 align-top transition-colors" :class="{'bg-red-50 dark:bg-red-900/10': isSubjectDuplicate(row)}">
+                                    <td class="p-3 sm:p-4">
+                                        <select x-model="row.subject_id" @change="onRowChange()"
+                                                :class="getSubjectSelectClass(row)"
+                                                class="modern-input w-full px-3 py-2 border-2 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                            <option value="">Select Subject</option>
+                                            <template x-for="subject in getAvailableSubjects(row)" :key="subject.id">
+                                                <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
+                                            </template>
+                                        </select>
+                                        <p x-show="isSubjectDuplicate(row)" class="mt-1 text-xs text-red-600 dark:text-red-400 font-medium">
+                                            <i class="fas fa-exclamation-triangle mr-1"></i>Duplicate subject
+                                        </p>
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <select x-model="row.teacher_id" @change="onRowChange()"
+                                                class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                            <option value="">Select Teacher</option>
+                                            <template x-for="t in teachers" :key="t.id">
+                                                <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                            </template>
+                                        </select>
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <input type="date" 
+                                               x-model="row.exam_date"
+                                               @change="onRowChange()"
+                                               required
+                                               class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <input type="text"
+                                               x-model="row.venue"
+                                               @input="row.venue = $event.target.value.toUpperCase(); onRowChange()"
+                                               class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white uppercase focus:ring-2 focus:ring-brand-primary"
+                                               placeholder="E.G., HALL A"
+                                               style="text-transform: uppercase;">
+                                    </td>
+                                    <td class="p-3 sm:p-4">
+                                        <div class="grid grid-cols-1 gap-2">
+                                            <select x-model="row.session_type" @change="applySessionPreset(row); onRowChange()"
+                                                    class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                                                <option value="">Select Session</option>
+                                                <option value="MORNING">Morning Session</option>
+                                                <option value="MIDDAY">Mid Day Session</option>
+                                                <option value="AFTERNOON">Afternoon Session</option>
+                                                <option value="EVENING">Evening Session</option>
+                                                <option value="CUSTOM">Custom Session</option>
+                                            </select>
+
+                                            <template x-if="row.session_type === 'CUSTOM'">
+                                                <div class="grid grid-cols-3 gap-2">
+                                                    <input type="time" x-model="row.start_time" @input="autoEndForRow(row); onRowChange()"
+                                                           class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
+                                                           placeholder="Start">
+                                                    <input type="number" min="1" x-model="row.duration_minutes" @input="autoEndForRow(row); onRowChange()"
+                                                           class="modern-input w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
+                                                           placeholder="Duration">
+                                                    <input type="text" readonly x-model="row.end_time"
+                                                           class="w-full px-3 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white"
+                                                           placeholder="End">
+                                                </div>
+                                            </template>
+
+                                            <template x-if="row.session_type && row.session_type !== 'CUSTOM'">
+                                                <div class="text-xs text-gray-700 dark:text-gray-200 font-medium">
+                                                    <span class="font-semibold">Time:</span>
+                                                    <span x-text="row.start_time"></span>
+                                                    <span> - </span>
+                                                    <span x-text="row.end_time"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </td>
+                                    <td class="p-3 sm:p-4 text-center">
+                                        <button type="button" @click="removeAllocation(idx)"
+                                                class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all shadow-md">
+                                            <i class="fas fa-trash mr-1"></i>Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div x-show="allocations.length === 0" class="text-center py-8 text-sm text-gray-600 dark:text-gray-300">
+                    No allocations yet. Click <span class="font-semibold">Add Allocation</span>.
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t-2 border-gray-200 dark:border-gray-700">
+                <button type="button"
+                        @click="resetAll()"
+                        :disabled="savingExam"
+                        class="modern-btn px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
+                    <i class="fas fa-redo mr-2"></i>Reset
+                </button>
+                <button type="submit"
+                        :disabled="isRegisterDisabled"
+                        class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                    <i class="fas fa-save mr-2" x-show="!savingExam"></i>
+                    <i class="fas fa-spinner fa-spin mr-2" x-show="savingExam"></i>
+                    <span x-text="savingExam ? 'Registering...' : 'Register Exam & Save Allocations'"></span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Registered Exams (rows) -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                    <i class="fas fa-list text-white"></i>
+                </div>
+                Registered Exam Allocations
+            </h2>
+            <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm">
+                <span x-text="exams.length"></span> row(s)
+            </span>
+        </div>
+
+        <div x-show="exams.length === 0" class="text-center py-12">
+            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-inbox text-gray-400 text-3xl"></i>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">No exams registered yet.</p>
+        </div>
+
+        <div x-show="exams.length > 0" class="responsive-table">
+            <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Exam Name</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden lg:table-cell">Type</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden lg:table-cell">Year / Term</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Level</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden xl:table-cell">Teacher</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden md:table-cell">Session / Time</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Date</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden xl:table-cell">Venue</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Status</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="exam in exams" :key="exam.id">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td class="p-3 sm:p-4 text-sm font-semibold text-gray-900 dark:text-white" x-text="exam.exam_name"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden lg:table-cell" x-text="exam.exam_type || '—'"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                    <div x-text="exam.year_name || '—'"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="exam.term_name || '—'"></div>
+                                </td>
+                                <td class="p-3 sm:p-4 text-sm">
+                                    <div class="font-semibold text-gray-900 dark:text-white" x-text="exam.level_name"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="exam.level_category"></div>
+                                </td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white" x-text="exam.subject_name || '—'"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden xl:table-cell">
+                                    <div x-text="exam.supervisor_name || '—'"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="exam.supervisor_employee_id ? ('ID: ' + exam.supervisor_employee_id) : ''"></div>
+                                </td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden md:table-cell">
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="exam.session_type || '—'"></div>
+                                    <div class="font-medium" x-text="(exam.start_time || '—') + ' - ' + (exam.end_time || '—')"></div>
+                                </td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white" x-text="exam.exam_date || '—'"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden xl:table-cell" x-text="exam.venue || '—'"></td>
+                                <td class="p-3 sm:p-4 text-center">
+                                    <span class="px-3 py-1.5 rounded-full text-xs font-semibold"
+                                          :class="{
+                                              'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300': exam.status === 'scheduled',
+                                              'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300': exam.status === 'ongoing',
+                                              'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300': exam.status === 'completed',
+                                              'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300': exam.status === 'cancelled'
+                                          }"
+                                          x-text="exam.status || 'scheduled'"></span>
+                                </td>
+                                <td class="p-3 sm:p-4 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <button @click="editExam(exam)"
+                                                class="modern-btn px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                            <i class="fas fa-edit mr-1"></i>Edit
+                                        </button>
+                                        <button @click="deleteExam(exam.id)"
+                                                class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                            <i class="fas fa-trash mr-1"></i>Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Exam Modal -->
+    <div x-show="editingExam" 
+         x-cloak
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         @click.self="editingExam = null">
+        <div class="dashboard-card rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto" @click.stop>
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Edit Exam Allocation</h3>
+                    <button @click="editingExam = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form @submit.prevent="updateExam()" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Academic Level <span class="text-red-500">*</span>
+                            </label>
+                            <select x-model="editingExam.academic_level_id" 
+                                    required
+                                    class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="">Select Level</option>
+                                <template x-for="level in academicLevels" :key="level.id">
+                                    <option :value="level.id" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Subject <span class="text-red-500">*</span>
+                            </label>
+                            <select x-model="editingExam.subject_id"
+                                    required
+                                    class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="">Select Subject</option>
+                                <template x-for="subject in subjects" :key="subject.id">
+                                    <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Teacher <span class="text-red-500">*</span>
+                            </label>
+                            <select x-model="editingExam.supervisor_id" 
+                                    required
+                                    class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                <option value="">Select Teacher</option>
+                                <template x-for="t in teachers" :key="t.id">
+                                    <option :value="t.id" x-text="t.full_name + ' (' + t.employee_id + ')'"></option>
+                                </template>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                Exam Date <span class="text-red-500">*</span>
+                            </label>
+                            <input type="date" 
+                                   x-model="editingExam.exam_date"
+                                   required
+                                   class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Venue
+                        </label>
+                        <input type="text"
+                               x-model="editingExam.venue"
+                               @input="editingExam.venue = $event.target.value.toUpperCase()"
+                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white uppercase"
+                               placeholder="E.G., HALL A"
+                               style="text-transform: uppercase;">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Session <span class="text-red-500">*</span>
+                        </label>
+                        <select x-model="editingExam.session_type"
+                                @change="applySessionPresetToEdit()"
+                                required
+                                class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            <option value="">Select Session</option>
+                            <option value="MORNING">Morning Session</option>
+                            <option value="MIDDAY">Mid Day Session</option>
+                            <option value="AFTERNOON">Afternoon Session</option>
+                            <option value="EVENING">Evening Session</option>
+                            <option value="CUSTOM">Custom Session</option>
+                        </select>
+                    </div>
+                    
+                    <template x-if="editingExam && editingExam.session_type === 'CUSTOM'">
+                        <div class="grid grid-cols-3 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
+                                <input type="time" 
+                                       x-model="editingExam.start_time"
+                                       @input="autoEndForEdit()"
+                                       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Duration (min)</label>
+                                <input type="number" 
+                                       min="1"
+                                       x-model="editingExam.duration_minutes"
+                                       @input="autoEndForEdit()"
+                                       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">End Time (auto)</label>
+                                <input type="text" 
+                                       readonly
+                                       x-model="editingExam.end_time"
+                                       class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white">
+                            </div>
+                        </div>
+                    </template>
+                    
+                    <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t-2 border-gray-200 dark:border-gray-700">
+                        <button type="button" 
+                                @click="editingExam = null"
+                                :disabled="savingExam"
+                                class="modern-btn px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                :disabled="savingExam"
+                                class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                            <i class="fas fa-save mr-2"></i>Update Exam
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Page data (kept out of executable JS so linters don't choke on Jinja) -->
+<script type="application/json" id="exam-data-academic-years">{{ academic_years|tojson|safe }}</script>
+<script type="application/json" id="exam-data-terms">{{ terms|tojson|safe }}</script>
+<script type="application/json" id="exam-data-academic-levels">{{ academic_levels|tojson|safe }}</script>
+<script type="application/json" id="exam-data-subjects">{{ subjects|tojson|safe }}</script>
+<script type="application/json" id="exam-data-teachers">{{ teachers|tojson|safe }}</script>
+<script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
+
+<script>
+function examEvaluation() {
+    return {
+        academicYears: [],
+        termsAll: [],
+        terms: [],
+        academicLevels: [],
+        subjects: [],
+        teachers: [],
+        exams: [],
+
+        savingExam: false,
+        successMessage: '',
+        errorMessage: '',
+        clientConflictMessage: '',
+        editingExam: null,
+
+        sessionPresets: {
+            MORNING: { start: '08:00', end: '11:00' },
+            MIDDAY: { start: '11:30', end: '13:30' },
+            AFTERNOON: { start: '14:00', end: '16:00' },
+            EVENING: { start: '17:00', end: '19:00' },
+        },
+
+        examForm: {
+            exam_name: '',
+            exam_type: '',
+            academic_year_id: '',
+            term_id: '',
+        },
+
+        allocations: [],
+        selectedAcademicLevel: '',
+
+        init() {
+            this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
+            this.termsAll = JSON.parse(document.getElementById('exam-data-terms')?.textContent || '[]');
+            this.terms = this.termsAll;
+            this.academicLevels = JSON.parse(document.getElementById('exam-data-academic-levels')?.textContent || '[]');
+            this.subjects = JSON.parse(document.getElementById('exam-data-subjects')?.textContent || '[]');
+            this.teachers = JSON.parse(document.getElementById('exam-data-teachers')?.textContent || '[]');
+            this.exams = JSON.parse(document.getElementById('exam-data-exams')?.textContent || '[]');
+
+            // Start with one row
+            this.addAllocation();
+        },
+
+        get isHeaderValid() {
+            return !!(this.examForm.exam_name && this.examForm.exam_type && this.examForm.academic_year_id && this.examForm.term_id);
+        },
+
+        get areRowsValid() {
+            if (!this.selectedAcademicLevel || this.allocations.length === 0) return false;
+            return this.allocations.every(r => {
+                if (!r.subject_id || !r.teacher_id || !r.exam_date || !r.session_type) return false;
+                if (this.isSubjectDuplicate(r)) return false; // Reject duplicates
+                if (r.session_type === 'CUSTOM') {
+                    return !!(r.start_time && r.duration_minutes && parseInt(r.duration_minutes) > 0 && r.end_time);
+                }
+                return !!(r.start_time && r.end_time);
+            });
+        },
+
+        get isRegisterDisabled() {
+            return this.savingExam || !this.isHeaderValid || !this.selectedAcademicLevel || !this.areRowsValid || !!this.clientConflictMessage;
+        },
+
+        _makeKey() {
+            return Math.random().toString(36).slice(2) + Date.now().toString(36);
+        },
+
+        addAllocation() {
+            if (!this.selectedAcademicLevel) return;
+            this.allocations.push({
+                _key: this._makeKey(),
+                academic_level_id: this.selectedAcademicLevel,
+                subject_id: '',
+                teacher_id: '',
+                exam_date: '',
+                venue: '',
+                session_type: '',
+                start_time: '',
+                end_time: '',
+                duration_minutes: '',
+            });
+            this.onRowChange();
+        },
+
+        onAcademicLevelChange() {
+            // Clear all allocations when academic level changes
+            this.allocations = [];
+            this.clientConflictMessage = '';
+            if (this.selectedAcademicLevel) {
+                this.addAllocation();
+            }
+        },
+
+        getAvailableSubjects(row) {
+            if (!this.selectedAcademicLevel) return [];
+            // Get all subjects used for this academic level (excluding current row)
+            const usedSubjectIds = this.allocations
+                .filter(r => r._key !== row._key && r.academic_level_id === this.selectedAcademicLevel && r.subject_id)
+                .map(r => String(r.subject_id));
+            // Return subjects not already used
+            return this.subjects.filter(s => !usedSubjectIds.includes(String(s.id)));
+        },
+
+        isSubjectDuplicate(row) {
+            if (!row.subject_id || !this.selectedAcademicLevel) return false;
+            // Check if this subject is already used in another row for the same academic level
+            return this.allocations.some(r => 
+                r._key !== row._key && 
+                String(r.academic_level_id) === String(this.selectedAcademicLevel) && 
+                String(r.subject_id) === String(row.subject_id)
+            );
+        },
+
+        getSubjectSelectClass(row) {
+            if (this.isSubjectDuplicate(row)) {
+                return 'border-red-500 dark:border-red-500';
+            }
+            return 'border-gray-300 dark:border-gray-600';
+        },
+
+        removeAllocation(idx) {
+            this.allocations.splice(idx, 1);
+            this.onRowChange();
+        },
+
+        applySessionPreset(row) {
+            if (!row.session_type) {
+                row.start_time = '';
+                row.end_time = '';
+                row.duration_minutes = '';
+                return;
+            }
+
+            if (row.session_type === 'CUSTOM') {
+                row.start_time = row.start_time || '';
+                row.duration_minutes = row.duration_minutes || '';
+                this.autoEndForRow(row);
+                return;
+            }
+
+            const preset = this.sessionPresets[row.session_type];
+            if (!preset) return;
+            row.start_time = preset.start;
+            row.end_time = preset.end;
+            row.duration_minutes = '';
+        },
+
+        autoEndForRow(row) {
+            if (row.session_type !== 'CUSTOM') return;
+            if (!row.start_time || !row.duration_minutes) {
+                row.end_time = '';
+                return;
+            }
+            const duration = parseInt(row.duration_minutes);
+            if (isNaN(duration) || duration <= 0) {
+                row.end_time = '';
+                return;
+            }
+
+            const parts = String(row.start_time).split(':');
+            if (parts.length < 2) {
+                row.end_time = '';
+                return;
+            }
+            const h = parseInt(parts[0]);
+            const m = parseInt(parts[1]);
+            if (isNaN(h) || isNaN(m)) {
+                row.end_time = '';
+                return;
+            }
+            const endTotal = (h * 60 + m + duration) % (24 * 60);
+            const endH = Math.floor(endTotal / 60);
+            const endM = endTotal % 60;
+            row.end_time = String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0');
+        },
+
+        onRowChange() {
+            this.clientConflictMessage = '';
+            this.checkClientTeacherConflicts();
+        },
+
+        _timeToMinutes(t) {
+            if (!t) return null;
+            const parts = String(t).split(':');
+            if (parts.length < 2) return null;
+            const h = parseInt(parts[0]);
+            const m = parseInt(parts[1]);
+            if (isNaN(h) || isNaN(m)) return null;
+            return h * 60 + m;
+        },
+
+        checkClientTeacherConflicts() {
+            const slots = [];
+            for (let i = 0; i < this.allocations.length; i++) {
+                const r = this.allocations[i];
+                if (!r.teacher_id || !r.session_type || !r.exam_date) continue;
+                if (!r.start_time || !r.end_time) continue;
+                const s = this._timeToMinutes(r.start_time);
+                const eRaw = this._timeToMinutes(r.end_time);
+                if (s === null || eRaw === null) continue;
+                let e = eRaw;
+                if (e <= s) e += 24 * 60;
+                slots.push({ idx: i, teacher_id: String(r.teacher_id), exam_date: r.exam_date, s, e });
+            }
+
+            for (let i = 0; i < slots.length; i++) {
+                for (let j = i + 1; j < slots.length; j++) {
+                    const a = slots[i];
+                    const b = slots[j];
+                    if (a.teacher_id !== b.teacher_id) continue;
+                    if (a.exam_date !== b.exam_date) continue; // Different dates = no conflict
+                    const overlap = a.s < b.e && a.e > b.s;
+                    if (overlap) {
+                        this.clientConflictMessage = 'Teacher conflict: one teacher cannot supervise two exams in overlapping times on the same date. Please change teacher, date, or session/time.';
+                        return true;
+                    }
+                }
+            }
+            return false;
+        },
+
+        generateExamName() {
+            if (!this.examForm.academic_year_id || !this.examForm.term_id || !this.examForm.exam_type) {
+                this.examForm.exam_name = '';
+                return;
+            }
+            const year = this.academicYears.find(y => String(y.id) === String(this.examForm.academic_year_id));
+            const term = this.terms.find(t => String(t.id) === String(this.examForm.term_id));
+            if (!year || !term) {
+                this.examForm.exam_name = '';
+                return;
+            }
+            let typeText = 'EXAM';
+            switch (this.examForm.exam_type) {
+                case 'OPENING': typeText = 'OPENING EXAM'; break;
+                case 'MIDTERM': typeText = 'MIDTERM EXAM'; break;
+                case 'CLOSING': typeText = 'CLOSING EXAM'; break;
+                case 'OTHER': typeText = 'EXAM'; break;
+            }
+            this.examForm.exam_name = `${year.year_name} - ${term.term_name} - ${typeText}`.toUpperCase();
+        },
+
+        async loadTerms() {
+            if (!this.examForm.academic_year_id) {
+                this.terms = [];
+                this.examForm.term_id = '';
+                return;
+            }
+            try {
+                const response = await fetch('/dashboard/employee/exam-evaluation/get-terms', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ academic_year_id: parseInt(this.examForm.academic_year_id) })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.terms = result.terms;
+                    this.examForm.term_id = '';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        },
+
+        async saveExam() {
+            this.errorMessage = '';
+            this.successMessage = '';
+            this.clientConflictMessage = '';
+            this.checkClientTeacherConflicts();
+
+            if (this.isRegisterDisabled) {
+                this.errorMessage = 'Please complete all required fields and fix conflicts before saving.';
+                return;
+            }
+
+            const payload = {
+                exam_name: this.examForm.exam_name.trim().toUpperCase(),
+                exam_type: this.examForm.exam_type.trim().toUpperCase(),
+                academic_year_id: parseInt(this.examForm.academic_year_id),
+                term_id: parseInt(this.examForm.term_id),
+                allocations: this.allocations.map(r => ({
+                    academic_level_id: parseInt(this.selectedAcademicLevel),
+                    subject_id: parseInt(r.subject_id),
+                    teacher_id: parseInt(r.teacher_id),
+                    exam_date: r.exam_date,
+                    venue: r.venue ? r.venue.trim().toUpperCase() : '',
+                    session_type: r.session_type,
+                    start_time: r.session_type === 'CUSTOM' ? r.start_time : null,
+                    duration_minutes: r.session_type === 'CUSTOM' ? parseInt(r.duration_minutes || 0) : null
+                }))
+            };
+
+            this.savingExam = true;
+            try {
+                const response = await fetch('/dashboard/employee/exam-evaluation/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Saved successfully.';
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    this.errorMessage = result.message || 'Error saving.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Error saving. Please try again.';
+            } finally {
+                this.savingExam = false;
+            }
+        },
+
+        resetAll() {
+            this.examForm = {
+                exam_name: '',
+                exam_type: '',
+                academic_year_id: '',
+                term_id: '',
+            };
+            this.terms = this.termsAll;
+            this.selectedAcademicLevel = '';
+            this.allocations = [];
+            this.successMessage = '';
+            this.errorMessage = '';
+            this.clientConflictMessage = '';
+        },
+
+        editExam(exam) {
+            this.editingExam = {
+                id: exam.id,
+                academic_level_id: exam.academic_level_id || '',
+                subject_id: exam.subject_id || '',
+                supervisor_id: exam.supervisor_id || '',
+                exam_date: exam.exam_date || '',
+                venue: exam.venue || '',
+                session_type: exam.session_type || '',
+                start_time: exam.start_time || '',
+                end_time: exam.end_time || '',
+                duration_minutes: exam.duration_minutes || '',
+            };
+        },
+
+        applySessionPresetToEdit() {
+            if (!this.editingExam || !this.editingExam.session_type) return;
+            
+            if (this.editingExam.session_type === 'CUSTOM') {
+                this.autoEndForEdit();
+                return;
+            }
+            
+            const preset = this.sessionPresets[this.editingExam.session_type];
+            if (!preset) return;
+            this.editingExam.start_time = preset.start;
+            this.editingExam.end_time = preset.end;
+            this.editingExam.duration_minutes = '';
+        },
+
+        autoEndForEdit() {
+            if (!this.editingExam || this.editingExam.session_type !== 'CUSTOM') return;
+            if (!this.editingExam.start_time || !this.editingExam.duration_minutes) {
+                this.editingExam.end_time = '';
+                return;
+            }
+            const duration = parseInt(this.editingExam.duration_minutes);
+            if (isNaN(duration) || duration <= 0) {
+                this.editingExam.end_time = '';
+                return;
+            }
+            const parts = String(this.editingExam.start_time).split(':');
+            if (parts.length < 2) {
+                this.editingExam.end_time = '';
+                return;
+            }
+            const h = parseInt(parts[0]);
+            const m = parseInt(parts[1]);
+            if (isNaN(h) || isNaN(m)) {
+                this.editingExam.end_time = '';
+                return;
+            }
+            const totalMinutes = h * 60 + m + duration;
+            const endH = Math.floor(totalMinutes / 60) % 24;
+            const endM = totalMinutes % 60;
+            this.editingExam.end_time = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+        },
+
+        async updateExam() {
+            if (!this.editingExam) return;
+            this.errorMessage = '';
+            this.successMessage = '';
+            
+            if (!this.editingExam.academic_level_id || !this.editingExam.subject_id || 
+                !this.editingExam.supervisor_id || !this.editingExam.exam_date || !this.editingExam.session_type) {
+                this.errorMessage = 'Please fill all required fields.';
+                return;
+            }
+            
+            if (this.editingExam.session_type === 'CUSTOM') {
+                if (!this.editingExam.start_time || !this.editingExam.duration_minutes || !this.editingExam.end_time) {
+                    this.errorMessage = 'Custom session requires start time, duration, and end time.';
+                    return;
+                }
+            }
+            
+            this.savingExam = true;
+            try {
+                const payload = {
+                    exam_id: this.editingExam.id,
+                    academic_level_id: parseInt(this.editingExam.academic_level_id),
+                    subject_id: parseInt(this.editingExam.subject_id),
+                    supervisor_id: parseInt(this.editingExam.supervisor_id),
+                    exam_date: this.editingExam.exam_date,
+                    venue: this.editingExam.venue ? this.editingExam.venue.trim().toUpperCase() : '',
+                    session_type: this.editingExam.session_type,
+                    start_time: this.editingExam.session_type === 'CUSTOM' ? this.editingExam.start_time : null,
+                    duration_minutes: this.editingExam.session_type === 'CUSTOM' ? parseInt(this.editingExam.duration_minutes || 0) : null,
+                };
+                
+                const response = await fetch('/dashboard/employee/exam-evaluation/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Exam updated successfully.';
+                    this.editingExam = null;
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    this.errorMessage = result.message || 'Error updating exam.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Error updating exam. Please try again.';
+            } finally {
+                this.savingExam = false;
+            }
+        },
+
+        async deleteExam(examId) {
+            if (!confirm('Are you sure you want to delete this exam allocation? This action cannot be undone.')) {
+                return;
+            }
+            
+            this.errorMessage = '';
+            this.successMessage = '';
+            
+            try {
+                const response = await fetch('/dashboard/employee/exam-evaluation/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ exam_id: examId })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Exam deleted successfully.';
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    this.errorMessage = result.message || 'Error deleting exam.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Error deleting exam. Please try again.';
+            }
+        }
+    }
+}
+</script>
+{% endblock %}
+
+

@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block title %}Register Timetable{% endblock %}
+
+{% block role_primary %}#2563eb{% endblock %}
+{% block role_secondary %}#1d4ed8{% endblock %}
+{% block role_accent %}#3b82f6{% endblock %}
+{% block role_gradient_start %}#2563eb{% endblock %}
+{% block role_gradient_end %}#1d4ed8{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee/timetable-management" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Timetable Home</span>
+</a>
+<a href="/dashboard/employee/timetable-management/register-timetable" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-blue-600 dark:bg-blue-700">
+    <i class="fas fa-plus-circle w-5"></i>
+    <span>Register Timetable</span>
+</a>
+<a href="/dashboard/employee/timetable-management/manage-timetable" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+    <i class="fas fa-edit w-5"></i>
+    <span>Manage Timetable</span>
+</a>
+<a href="/dashboard/employee" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.timetable-grid { 
+    border-collapse: collapse; 
+    width: 100%; 
+    border: 2px solid #9ca3af;
+}
+.timetable-grid th, .timetable-grid td { 
+    border: 1px solid #9ca3af; 
+    padding: 8px; 
+    text-align: center; 
+}
+.dark .timetable-grid { border-color: #6b7280; }
+.dark .timetable-grid th, .dark .timetable-grid td { border-color: #6b7280; }
+.timetable-grid th { 
+    background: #2563eb; 
+    color: white; 
+    font-size: 12px; 
+    font-weight: 600;
+    border-color: #1d4ed8;
+}
+.timetable-grid th:first-child { 
+    background: #1e40af; 
+    min-width: 100px; 
+}
+.time-cell { 
+    background: #f1f5f9; 
+    font-weight: 600; 
+    font-size: 11px; 
+    color: #334155; 
+    text-align: left;
+    border-right: 2px solid #9ca3af !important;
+}
+.dark .time-cell { 
+    background: #1e293b; 
+    color: #cbd5e1;
+    border-right-color: #6b7280 !important;
+}
+.slot-btn { 
+    width: 100%; 
+    min-height: 60px; 
+    border: 2px dashed #94a3af; 
+    border-radius: 8px; 
+    transition: all 0.15s; 
+    cursor: pointer;
+    background: #fff;
+}
+.slot-btn:hover { border-color: #2563eb; background: #eff6ff; }
+.dark .slot-btn { border-color: #6b7280; background: #1f2937; }
+.dark .slot-btn:hover { background: #1e3a5f; }
+.slot-assigned { border-style: solid; border-color: #22c55e; background: #dcfce7; }
+.dark .slot-assigned { background: #14532d; border-color: #4ade80; }
+.activity-slot { background: #fef3c7; border: 2px solid #f59e0b; border-radius: 8px; }
+.dark .activity-slot { background: #78350f; border-color: #fbbf24; }
+
+/* Sticky first column */
+.timetable-grid th:first-child, .timetable-grid td:first-child { position: sticky; left: 0; z-index: 10; }
+.timetable-grid thead th:first-child { z-index: 20; }
+
+/* Alternating rows */
+.timetable-grid tbody tr:nth-child(even) td:not(.time-cell) { background: #f8fafc; }
+.dark .timetable-grid tbody tr:nth-child(even) td:not(.time-cell) { background: #111827; }
+
+@media (max-width: 640px) {
+    .timetable-grid th, .timetable-grid td { padding: 6px 4px; font-size: 11px; }
+    .slot-btn { min-height: 50px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="timetableApp()" class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    
+    <!-- Header -->
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <h1 class="text-lg font-bold text-gray-900 dark:text-white">
+                    <i class="fas fa-calendar-plus text-blue-600 mr-2"></i>Register Timetable
+                </h1>
+                <p class="text-sm text-gray-500">Create and assign teachers to class periods</p>
+            </div>
+            <a href="/dashboard/employee/timetable-management" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900">
+                ← Back to Timetable
+            </a>
+        </div>
+    </div>
+
+    <div class="p-4">
+        <!-- Selection Row -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Academic Year</label>
+                    <select x-model="yearId" @change="termId=''; showGrid=false" 
+                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select Year</option>
+                        {% for year in academic_years %}
+                        <option value="{{ year.id }}">{{ year.year_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Term</label>
+                    <select x-model="termId" @change="loadGrid()" :disabled="!yearId"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                        <option value="">Select Term</option>
+                        <template x-for="t in terms.filter(t => t.academic_year_id == yearId)" :key="t.id">
+                            <option :value="t.id" x-text="t.term_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Class/Level</label>
+                    <select x-model="levelId" @change="loadGrid()"
+                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Select Class</option>
+                        {% for level in academic_levels %}
+                        <option value="{{ level.id }}">{{ level.level_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- No Settings Warning -->
+        <div x-show="!hasSettings" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 mb-4">
+            <p class="text-sm text-amber-700 dark:text-amber-300">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                No class times configured. Please set up class times in 
+                <a href="/settings/academic coordinator" class="underline font-semibold">Academic Settings</a> first.
+            </p>
+        </div>
+
+        <!-- Timetable Grid -->
+        <div x-show="showGrid && hasSettings" class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="timetable-grid">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <template x-for="day in days" :key="day">
+                                <th x-text="day"></th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="slot in timeSlots" :key="slot.time">
+                            <tr>
+                                <td class="time-cell">
+                                    <div x-text="slot.label"></div>
+                                    <div x-show="slot.isActivity" class="text-xs text-amber-600 dark:text-amber-400" x-text="slot.activity"></div>
+                                </td>
+                                <template x-for="day in days" :key="day">
+                                    <td>
+                                        <template x-if="slot.isActivity">
+                                            <div class="activity-slot rounded-lg p-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                                                <i class="fas fa-coffee mr-1"></i><span x-text="slot.activity"></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="!slot.isActivity">
+                                            <button @click="openModal(day, slot.time)" 
+                                                    class="slot-btn" 
+                                                    :class="getSlot(day, slot.time) ? 'slot-assigned' : ''">
+                                                <template x-if="getSlot(day, slot.time)">
+                                                    <div class="text-xs p-1">
+                                                        <i class="fas fa-user text-green-600 dark:text-green-400"></i>
+                                                        <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).teacher_name"></div>
+                                                    </div>
+                                                </template>
+                                                <template x-if="!getSlot(day, slot.time)">
+                                                    <div class="text-gray-400 text-xs">
+                                                        <i class="fas fa-plus"></i>
+                                                        <div class="mt-1">Assign</div>
+                                                    </div>
+                                                </template>
+                                            </button>
+                                        </template>
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Save Bar -->
+            <div x-show="slots.length > 0" class="p-4 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800 flex items-center justify-between">
+                <span class="text-sm text-blue-700 dark:text-blue-300">
+                    <i class="fas fa-check-circle mr-1"></i><span x-text="slots.length"></span> slot(s) assigned
+                </span>
+                <button @click="save()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium">
+                    <i class="fas fa-save mr-2"></i>Save Timetable
+                </button>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div x-show="!showGrid && hasSettings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+            <i class="fas fa-calendar-alt text-4xl text-gray-300 dark:text-gray-600 mb-3"></i>
+            <p class="text-gray-500 dark:text-gray-400">Select Year, Term, and Class to view the timetable grid</p>
+        </div>
+    </div>
+
+    <!-- Teacher Modal -->
+    <div x-show="modal" x-cloak class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="modal=false">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-sm" @click.stop>
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Assign Teacher</h3>
+                    <button @click="modal=false" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i></button>
+                </div>
+                <p class="text-sm text-gray-500 mt-1">
+                    <span x-text="modalDay"></span> · <span x-text="getTimeLabel(modalTime)"></span>
+                </p>
+            </div>
+            <div class="p-4">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Teacher</label>
+                <select x-model="modalTeacher" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">Choose teacher...</option>
+                    {% for teacher in teachers %}
+                    <option value="{{ teacher.id }}">{{ teacher.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-b-xl flex items-center justify-between">
+                <button x-show="getSlot(modalDay, modalTime)" @click="removeSlot()" class="text-red-600 hover:text-red-700 text-sm">
+                    <i class="fas fa-trash mr-1"></i>Remove
+                </button>
+                <div class="flex gap-2 ml-auto">
+                    <button @click="modal=false" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg">Cancel</button>
+                    <button @click="assignTeacher()" :disabled="!modalTeacher" class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50">
+                        Assign
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function timetableApp() {
+    return {
+        yearId: '',
+        termId: '',
+        levelId: '',
+        showGrid: false,
+        modal: false,
+        modalDay: '',
+        modalTime: '',
+        modalTeacher: '',
+        slots: [],
+        
+        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        
+        classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
+        activities: {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %},
+        
+        terms: [{% for term in terms %}{id:{{ term.id }},term_name:'{{ term.term_name }}',academic_year_id:{{ term.academic_year_id }}}{% if not loop.last %},{% endif %}{% endfor %}],
+        
+        teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
+        
+        get hasSettings() {
+            return this.classTimes.length > 0;
+        },
+        
+        get timeSlots() {
+            let all = [];
+            this.classTimes.forEach((c, i) => {
+                if (c.start_time && c.end_time) {
+                    all.push({ time: c.start_time, label: `${c.start_time} - ${c.end_time}`, isActivity: false });
+                }
+            });
+            this.activities.forEach((a, i) => {
+                if (a.start_time && a.end_time) {
+                    all.push({ time: a.start_time, label: `${a.start_time} - ${a.end_time}`, isActivity: true, activity: a.name || 'Break' });
+                }
+            });
+            return all.sort((a, b) => a.time.localeCompare(b.time));
+        },
+        
+        async loadGrid() {
+            if (!this.termId || !this.levelId) {
+                this.showGrid = false;
+                return;
+            }
+            this.showGrid = true;
+            this.slots = [];
+            
+            try {
+                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/load', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ term_id: parseInt(this.termId), academic_level_id: parseInt(this.levelId) })
+                });
+                const data = await res.json();
+                if (data.success && data.entries) {
+                    this.slots = data.entries.map(e => ({ day: e.day, time: e.time, teacher_id: e.teacher_id, teacher_name: e.teacher_name }));
+                }
+            } catch (e) { console.error(e); }
+        },
+        
+        getSlot(day, time) {
+            return this.slots.find(s => s.day === day && s.time === time);
+        },
+        
+        getTimeLabel(time) {
+            const slot = this.timeSlots.find(s => s.time === time);
+            return slot ? slot.label : time;
+        },
+        
+        openModal(day, time) {
+            this.modalDay = day;
+            this.modalTime = time;
+            const existing = this.getSlot(day, time);
+            this.modalTeacher = existing ? existing.teacher_id : '';
+            this.modal = true;
+        },
+        
+        assignTeacher() {
+            if (!this.modalTeacher) return;
+            const teacher = this.teachers.find(t => t.id == this.modalTeacher);
+            const existing = this.slots.findIndex(s => s.day === this.modalDay && s.time === this.modalTime);
+            
+            if (existing >= 0) {
+                this.slots[existing].teacher_id = this.modalTeacher;
+                this.slots[existing].teacher_name = teacher ? teacher.name : '';
+            } else {
+                this.slots.push({ day: this.modalDay, time: this.modalTime, teacher_id: this.modalTeacher, teacher_name: teacher ? teacher.name : '' });
+            }
+            this.modal = false;
+        },
+        
+        removeSlot() {
+            this.slots = this.slots.filter(s => !(s.day === this.modalDay && s.time === this.modalTime));
+            this.modal = false;
+        },
+        
+        async save() {
+            if (!this.yearId || !this.termId || !this.levelId || this.slots.length === 0) {
+                alert('Please fill all fields and assign at least one teacher.');
+                return;
+            }
+            
+            try {
+                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_year_id: parseInt(this.yearId),
+                        term_id: parseInt(this.termId),
+                        academic_level_id: parseInt(this.levelId),
+                        slots: this.slots
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Timetable saved successfully!');
+                } else {
+                    alert(data.message || 'Error saving timetable.');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error saving timetable.');
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

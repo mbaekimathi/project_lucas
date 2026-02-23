@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Classes & Subjects - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#800020{% endblock %}
+{% block role_secondary %}#A00030{% endblock %}
+{% block role_accent %}#5C0014{% endblock %}
+{% block role_gradient_start %}#800020{% endblock %}
+{% block role_gradient_end %}#5C0014{% endblock %}
+
+{% block sidebar_content %}
+<!-- Classes & Subjects Links -->
+<a href="/dashboard/employee/classes-subjects" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-book w-5"></i>
+    <span>Classes & Subjects</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a href="/dashboard/employee/subject-class-allocation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject & Class Allocation Panel</span>
+</a>
+
+<a href="/dashboard/employee/academic-subject-registration" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book-open w-5"></i>
+    <span>Academic Subject Registration</span>
+</a>
+
+<a href="/dashboard/employee/exam-evaluation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam & Evaluation</span>
+</a>
+
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dashboard-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(128, 0, 32, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .dashboard-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(128, 0, 32, 0.15);
+        border-color: rgba(128, 0, 32, 0.3);
+    }
+    
+    .dark .dashboard-card {
+        background: rgba(17, 24, 39, 0.95);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .level-card {
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .level-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(128, 0, 32, 0.1), transparent);
+        transition: left 0.5s ease;
+    }
+    
+    .level-card:hover::before {
+        left: 100%;
+    }
+    
+    .level-card:hover {
+        transform: translateY(-2px) scale(1.02);
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <!-- Header with Modern Styling -->
+    <div class="mb-6 sm:mb-8 scroll-reveal">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                        <i class="fas fa-book text-white text-xl sm:text-2xl"></i>
+                    </div>
+                    Classes & Subjects Management
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Manage classes and subjects for each academic level.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Content Area with Modern Card -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-6 sm:p-8 md:p-10">
+        <div class="text-center py-8 sm:py-12">
+            <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-primary rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl transform hover:scale-110 transition-transform">
+                <i class="fas fa-book text-white text-3xl sm:text-4xl"></i>
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">Classes & Subjects</h2>
+            <p class="text-base sm:text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">This page will allow you to manage classes and subjects for each academic level.</p>
+            
+            {% if academic_levels %}
+            <div class="max-w-4xl mx-auto">
+                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-6">Available Academic Levels:</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                    {% for level in academic_levels %}
+                    <div class="level-card bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-5 sm:p-6 border-2 border-gray-200 dark:border-gray-600">
+                        <div class="flex items-center mb-3">
+                            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                                <i class="fas fa-graduation-cap text-white"></i>
+                            </div>
+                            <h4 class="font-bold text-lg text-gray-900 dark:text-white">{{ level.level_name }}</h4>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400 pl-13">{{ level.level_category }}</p>
+                        {% if level.level_description %}
+                        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2 pl-13">{{ level.level_description }}</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="py-8">
+                <i class="fas fa-inbox text-gray-400 dark:text-gray-500 text-5xl mb-4"></i>
+                <p class="text-gray-500 dark:text-gray-400 text-lg">No academic levels found. Please configure academic levels first.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+

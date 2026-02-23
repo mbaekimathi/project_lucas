@@ -1,0 +1,260 @@
+{% extends "base.html" %}
+
+{% block title %}Exams and Grades - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee/exams-and-grades" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exams and Grades</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6">
+    <div class="mb-4 sm:mb-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <div>
+                <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <i class="fas fa-clipboard-check text-green-600 mr-2 sm:mr-3"></i>
+                    Exams and Grades
+                </h1>
+                <p class="text-sm text-gray-600 dark:text-gray-400">Manage exams and student grades for your assigned subjects.</p>
+            </div>
+        </div>
+    </div>
+
+    {% if is_technician and not viewing_as_employee_info %}
+    <!-- Message for technician to select employee -->
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
+        <div class="flex items-start">
+            <i class="fas fa-info-circle text-blue-600 dark:text-blue-400 text-2xl mr-4 mt-1"></i>
+            <div>
+                <h3 class="text-lg font-semibold text-blue-900 dark:text-blue-300 mb-2">Select an Employee</h3>
+                <p class="text-blue-800 dark:text-blue-200">Please select an employee from the dropdown in the header to view their assigned academic levels and exams.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if is_technician and viewing_as_employee_info %}
+    <!-- Selected Employee Info -->
+    <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4">
+                    <i class="fas fa-chalkboard-teacher text-white text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-green-900 dark:text-green-300">{{ viewing_as_employee_info.full_name }}</h3>
+                    <p class="text-sm text-green-700 dark:text-green-400">Employee ID: {{ viewing_as_employee_info.employee_id }}</p>
+                </div>
+            </div>
+            <a href="/switch-employee/0?redirect={{ request.path }}" 
+               class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                <i class="fas fa-times mr-2"></i>
+                Clear Selection
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Academic Levels Assigned -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center justify-between">
+            <span class="flex items-center">
+                <i class="fas fa-graduation-cap text-green-600 mr-2"></i>
+                {% if is_technician and viewing_as_employee_info %}
+                Academic Levels ({{ viewing_as_employee_info.full_name }})
+                {% else %}
+                My Academic Levels
+                {% endif %}
+            </span>
+            {% if academic_levels and academic_levels|length > 0 %}
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                {{ academic_levels|length }} level{{ 's' if academic_levels|length != 1 else '' }}
+            </span>
+            {% endif %}
+        </h2>
+        
+        {% if academic_levels and academic_levels|length > 0 %}
+        <!-- Desktop Grid View -->
+        <div class="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for level in academic_levels %}
+            <div class="bg-gradient-to-br from-green-50 to-green-100 dark:from-gray-700 dark:to-gray-800 border-2 border-green-200 dark:border-gray-600 rounded-xl p-5 shadow-md hover:shadow-lg transition-shadow">
+                <div class="mb-4">
+                    <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mb-3">
+                        <i class="fas fa-graduation-cap text-white text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">{{ level.level_name }}</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">{{ level.level_category }}</p>
+                </div>
+                <div class="mb-4">
+                    <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">Subjects ({{ level.subjects|length }})</p>
+                    <div class="flex flex-wrap gap-2">
+                        {% for subject in level.subjects %}
+                        <span class="px-2 py-1 bg-white dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-600">
+                            {{ subject.subject_name }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                <a href="/dashboard/employee/exams-assessments/level/{{ level.id }}/students" 
+                   class="w-full inline-flex items-center justify-center px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                    <i class="fas fa-users mr-2"></i>
+                    View Students & Grades
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Mobile Card View -->
+        <div class="md:hidden space-y-4">
+            {% for level in academic_levels %}
+            <div class="bg-gradient-to-br from-green-50 to-green-100 dark:from-gray-700 dark:to-gray-800 border-2 border-green-200 dark:border-gray-600 rounded-xl p-5 shadow-md">
+                <div class="mb-4">
+                    <div class="flex items-center mb-3">
+                        <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3">
+                            <i class="fas fa-graduation-cap text-white"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">{{ level.level_category }}</p>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">Subjects ({{ level.subjects|length }})</p>
+                        <div class="flex flex-wrap gap-2">
+                            {% for subject in level.subjects %}
+                            <span class="px-2 py-1 bg-white dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-600">
+                                {{ subject.subject_name }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <a href="/dashboard/employee/exams-assessments/level/{{ level.id }}/students" 
+                   class="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                    <i class="fas fa-users mr-2"></i>
+                    View Students & Grades
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-12">
+            <div class="w-24 h-24 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <i class="fas fa-graduation-cap text-white text-4xl"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">No Academic Levels Assigned</h3>
+            <p class="text-gray-600 dark:text-gray-400">You don't have any academic level assignments yet.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- My Exams -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center justify-between">
+            <span class="flex items-center">
+                <i class="fas fa-file-alt text-green-600 mr-2"></i>
+                My Exams
+            </span>
+            {% if exams and exams|length > 0 %}
+            <span class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                Total: {{ exams|length }} exam{{ 's' if exams|length != 1 else '' }}
+            </span>
+            {% endif %}
+        </h2>
+        
+        {% if exams and exams|length > 0 %}
+        <!-- Desktop Table View -->
+        <div class="hidden md:block overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gradient-to-r from-green-50 to-green-100 dark:from-gray-700 dark:to-gray-800">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Exam Name</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Type</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Year / Term</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Date</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {% for exam in exams %}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
+                            {{ exam.exam_name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            {{ exam.exam_type or '-' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+                            {{ exam.level_name }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            <div>{{ exam.year_name or '-' }}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">{{ exam.term_name or '-' }}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
+                            {{ exam.exam_date or '-' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
+                               class="inline-flex items-center px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold transition-colors">
+                                <i class="fas fa-users mr-1"></i>
+                                View Students
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Mobile Card View -->
+        <div class="md:hidden space-y-4">
+            {% for exam in exams %}
+            <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-5 shadow-md">
+                <div class="mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ exam.exam_name }}</h3>
+                    <div class="space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                        <p><span class="font-semibold">Type:</span> {{ exam.exam_type or '-' }}</p>
+                        <p><span class="font-semibold">Level:</span> {{ exam.level_name }}</p>
+                        <p><span class="font-semibold">Year:</span> {{ exam.year_name or '-' }}</p>
+                        <p><span class="font-semibold">Term:</span> {{ exam.term_name or '-' }}</p>
+                        <p><span class="font-semibold">Date:</span> {{ exam.exam_date or '-' }}</p>
+                    </div>
+                </div>
+                <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
+                   class="w-full inline-flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                    <i class="fas fa-users mr-2"></i>
+                    View Students
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-8">
+            <i class="fas fa-file-alt text-gray-400 text-3xl mb-2"></i>
+            <p class="text-sm text-gray-600 dark:text-gray-400">No exams found for your assigned subjects.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+

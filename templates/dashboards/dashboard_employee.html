@@ -19,28 +19,33 @@
 
 {% if current_role == 'super admin' %}
     <!-- Super Admin Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-line w-5"></i>
         <span>Dashboard</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Users Management'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/users-roles" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'users_roles' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'users_roles' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-users-cog w-5"></i>
         <span>Users Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'School Settings'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/system-settings" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'system_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'system_settings' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-cog w-5"></i>
         <span>School Settings</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Academic Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/academic-settings" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'academic_settings' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-book-reader w-5"></i>
         <span>Academic Module</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Finance Module Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee/finance-overview" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'finance_overview' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'finance_overview' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-dollar-sign w-5"></i>
         <span>Finance Module</span>
     </a>
@@ -74,43 +79,48 @@
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Logs / Audit Trail'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/database/logs-audit-trails" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'logs_audit_trails' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-history w-5"></i>
         <span>Logs / Audit Trail</span>
     </a>
 
 {% elif current_role == 'principal' %}
     <!-- Principal Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
     <a href="/staff-management" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-user-tie w-5"></i>
         <span>Staff Management</span>
     </a>
     <a href="/student-management" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_management' or request.path == '/student-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_management' or request.path == '/student-management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
-    </a>
-    <a href="/admission" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-user-plus w-5"></i>
-        <span>Register Student</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-chalkboard-teacher w-5"></i>
         <span>Classes & Sections</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Academic Calendar & Timetable'; comingSoonModalOpen = true" 
+    <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
         <i class="fas fa-calendar-alt w-5"></i>
-        <span>Calendar & Timetable</span>
+        <span>Academic Calendar</span>
+    </a>
+    <a href="/dashboard/employee/timetable-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if 'timetable' in request.path %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if 'timetable' in request.path %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-table w-5"></i>
+        <span>Timetable Management</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Exams & Results'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
@@ -122,12 +132,6 @@
        {% if request.endpoint == 'finance_overview' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Finance Overview</span>
-    </a>
-    <a href="/dashboard/employee/staff-and-salaries" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_and_salaries' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'staff_and_salaries' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
-        <i class="fas fa-wallet w-5"></i>
-        <span>Staff and Salaries</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
@@ -156,37 +160,62 @@
         <span>Settings</span>
     </a>
 
-{% elif current_role == 'academic coordinator' %}
-    <!-- Academic Coordinator Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-chart-bar w-5"></i>
+{% elif current_role == 'deputy principal' %}
+    <!-- Deputy Principal Links (same as Principal) -->
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Classes & Subjects'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-book w-5"></i>
-        <span>Classes & Subjects</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Teacher Assignment'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/staff-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-user-tie w-5"></i>
-        <span>Teacher Assignment</span>
+        <span>Staff Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Student Academic Records'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/student-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_management' or request.path == '/student-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_management' or request.path == '/student-management' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-user-graduate w-5"></i>
-        <span>Student Records</span>
+        <span>Student Management</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
+    <a @click.prevent="comingSoonTitle = 'Classes & Sections'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Attendance</span>
+        <i class="fas fa-chalkboard-teacher w-5"></i>
+        <span>Classes & Sections</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Exams & Assessments'; comingSoonModalOpen = true" 
+    <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
-        <i class="fas fa-clipboard-list w-5"></i>
-        <span>Exams & Assessments</span>
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Academic Calendar</span>
+    </a>
+    <a href="/dashboard/employee/timetable-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if 'timetable' in request.path %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if 'timetable' in request.path %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-table w-5"></i>
+        <span>Timetable Management</span>
+    </a>
+    <a @click.prevent="comingSoonTitle = 'Exams & Results'; comingSoonModalOpen = true" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+        <i class="fas fa-clipboard-check w-5"></i>
+        <span>Exams & Results</span>
+    </a>
+    <a href="/dashboard/employee/finance-overview" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'finance_overview' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'finance_overview' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-money-bill-wave w-5"></i>
+        <span>Finance Overview</span>
+    </a>
+    <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+        <i class="fas fa-bed w-5"></i>
+        <span>Hostel Overview</span>
+    </a>
+    <a @click.prevent="comingSoonTitle = 'Transport Overview'; comingSoonModalOpen = true" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+        <i class="fas fa-bus w-5"></i>
+        <span>Transport Overview</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
@@ -198,16 +227,99 @@
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
+    <a href="/settings/deputy principal" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'deputy principal' or request.path == '/settings/deputy principal') %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'deputy principal' or request.path == '/settings/deputy principal') %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-cog w-5"></i>
+        <span>Settings</span>
+    </a>
+
+{% elif current_role == 'academic coordinator' %}
+    <!-- Academic Coordinator Links -->
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-chart-bar w-5"></i>
+        <span>Dashboard</span>
+    </a>
+    <a href="/dashboard/employee/classes-subjects" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-book w-5"></i>
+        <span>Classes & Subjects</span>
+    </a>
+    <a href="/dashboard/employee/subject-class-allocation" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-tasks w-5"></i>
+        <span>Subject & Class Allocation Panel</span>
+    </a>
+    <a href="/dashboard/employee/teacher-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'teacher_management' or request.path == '/dashboard/employee/teacher-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'teacher_management' or request.path == '/dashboard/employee/teacher-management' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-user-tie w-5"></i>
+        <span>Teacher Management</span>
+    </a>
+    <a href="/student-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_management' or request.path == '/student-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_management' or request.path == '/student-management' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-user-graduate w-5"></i>
+        <span>Student Academic</span>
+    </a>
+    <a href="/dashboard/employee/timetable-management" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'timetable_management' or request.path == '/dashboard/employee/timetable-management' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'timetable_management' or request.path == '/dashboard/employee/timetable-management' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Timetable Management</span>
+    </a>
+    <a href="/dashboard/employee/attendance" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'attendance' or request.path == '/dashboard/employee/attendance' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'attendance' or request.path == '/dashboard/employee/attendance' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-check-circle w-5"></i>
+        <span>Attendance</span>
+    </a>
+    <a href="/dashboard/employee/exams-assessments" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-clipboard-list w-5"></i>
+        <span>Exams & Assessments</span>
+    </a>
+    <a href="/dashboard/employee/reports" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'reports' or request.path == '/dashboard/employee/reports' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'reports' or request.path == '/dashboard/employee/reports' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-file-alt w-5"></i>
+        <span>Reports</span>
+    </a>
+    <a href="/dashboard/employee/communication" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-comments w-5"></i>
+        <span>Communication</span>
+    </a>
+    <a href="/dashboard/employee/notifications" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'notifications' or request.path == '/dashboard/employee/notifications' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'notifications' or request.path == '/dashboard/employee/notifications' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-bell w-5"></i>
+        <span>Notifications</span>
+    </a>
+    <a href="/settings/academic coordinator" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'academic coordinator' or request.path == '/settings/academic coordinator') %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'academic coordinator' or request.path == '/settings/academic coordinator') %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-cog w-5"></i>
+        <span>Settings</span>
+    </a>
 
 {% elif current_role == 'teachers' %}
     <!-- Teacher Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'My Classes / Timetable'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="{{ url_for('teacher_my_classes') }}" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'teacher_my_classes' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'teacher_my_classes' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-calendar-alt w-5"></i>
         <span>My Classes</span>
     </a>
@@ -221,8 +333,9 @@
         <i class="fas fa-tasks w-5"></i>
         <span>Assignments</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Exams & Grades'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="{{ url_for('exams_and_grades') }}" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exams_and_grades' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'exams_and_grades' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Grades</span>
     </a>
@@ -239,8 +352,9 @@
 
 {% elif current_role == 'accountant' %}
     <!-- Accountant Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-line w-5"></i>
         <span>Dashboard</span>
     </a>
@@ -251,7 +365,8 @@
         <span>Student Fees</span>
     </a>
     <a href="/admission" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'admission' or request.path == '/admission' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'admission' or request.path == '/admission' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-user-plus w-5"></i>
         <span>Register Student</span>
     </a>
@@ -284,8 +399,9 @@
 
 {% elif current_role == 'librarian' %}
     <!-- Librarian Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
@@ -317,8 +433,9 @@
 
 {% elif current_role == 'warden' %}
     <!-- Warden Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>
@@ -350,8 +467,9 @@
 
 {% elif current_role == 'transport manager' %}
     <!-- Transport Manager Links -->
-    <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/dashboard/employee" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'dashboard_employee' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'dashboard_employee' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-chart-pie w-5"></i>
         <span>Dashboard</span>
     </a>

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Communication - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#10b981{% endblock %}
+{% block role_secondary %}#059669{% endblock %}
+{% block role_accent %}#047857{% endblock %}
+{% block role_gradient_start %}#10b981{% endblock %}
+{% block role_gradient_end %}#047857{% endblock %}
+
+{% block sidebar_content %}
+<a href="/dashboard/employee/communication" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-comments w-5"></i>
+    <span>Communication</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6">
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-comments text-green-600 mr-2 sm:mr-3"></i>
+            Communication
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Communicate with students, parents, and staff.</p>
+    </div>
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+        <div class="text-center py-12">
+            <div class="w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
+                <i class="fas fa-comments text-white text-4xl"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Communication</h2>
+            <p class="text-gray-600 dark:text-gray-400">Send messages and communicate with students, parents, and staff here.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+
+
+
+
+
+
+
+

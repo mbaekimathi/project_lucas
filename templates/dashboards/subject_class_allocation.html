@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+
+{% block title %}Subject & Class Allocation Panel - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block role_primary %}#800020{% endblock %}
+{% block role_secondary %}#A00030{% endblock %}
+{% block role_accent %}#5C0014{% endblock %}
+{% block role_gradient_start %}#800020{% endblock %}
+{% block role_gradient_end %}#5C0014{% endblock %}
+
+{% block sidebar_content %}
+<!-- Classes & Subjects Links -->
+<a href="/dashboard/employee/classes-subjects" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book w-5"></i>
+    <span>Classes & Subjects</span>
+</a>
+
+<a href="/dashboard/employee/subject-class-allocation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject & Class Allocation Panel</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+
+<a href="/dashboard/employee/academic-subject-registration" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-book-open w-5"></i>
+    <span>Academic Subject Registration</span>
+</a>
+
+<a href="/dashboard/employee/exam-evaluation" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam & Evaluation</span>
+</a>
+
+<a href="/dashboard/employee" 
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dashboard-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(128, 0, 32, 0.1);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .dashboard-card:hover {
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.1);
+    }
+    
+    .dark .dashboard-card {
+        background: rgba(17, 24, 39, 0.95);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .modern-input {
+        transition: all 0.3s ease;
+    }
+    
+    .modern-input:focus {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(128, 0, 32, 0.15);
+    }
+    
+    .modern-btn {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .modern-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.25);
+    }
+    
+    @media (max-width: 768px) {
+        .responsive-table {
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .responsive-table table {
+            min-width: 600px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="subjectAllocation()" x-init="init()">
+    <div class="mb-6 sm:mb-8 scroll-reveal">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
+                        <i class="fas fa-tasks text-white text-xl sm:text-2xl"></i>
+                    </div>
+                    Subject & Class Allocation Panel
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Select an academic level and teacher, then allocate subjects to them. These allocations will be linked to the timetable.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 1: Select Academic Level and Teacher -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                <i class="fas fa-user-check text-white"></i>
+            </div>
+            Step 1: Select Academic Level and Teacher
+        </h2>
+        
+        <!-- Success Message -->
+        <div x-show="successMessage" 
+             x-cloak
+             class="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 rounded-lg flex items-center shadow-sm">
+            <i class="fas fa-check-circle text-green-600 dark:text-green-400 mr-3 text-xl"></i>
+            <span class="text-green-800 dark:text-green-300 font-medium" x-text="successMessage"></span>
+        </div>
+        
+        <!-- Error Message -->
+        <div x-show="errorMessage" 
+             x-cloak
+             class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
+            <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-3 text-xl"></i>
+            <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            <!-- Academic Level -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Academic Level <span class="text-red-500">*</span>
+                </label>
+                <select x-model="formData.academic_level_id" 
+                        @change="loadAvailableSubjects()"
+                        required
+                        class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    <option value="">Select Academic Level</option>
+                    <template x-for="level in academicLevels" :key="level.id">
+                        <option :value="level.id" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
+                    </template>
+                </select>
+            </div>
+            
+            <!-- Teacher -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Teacher <span class="text-red-500">*</span>
+                </label>
+                <select x-model="formData.teacher_id" 
+                        @change="loadAvailableSubjects()"
+                        required
+                        class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    <option value="">Select Teacher</option>
+                    <template x-for="teacher in teachers" :key="teacher.id">
+                        <option :value="teacher.id" x-text="teacher.full_name + ' (' + teacher.employee_id + ')'"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 2: Allocate Subjects -->
+    <div x-show="formData.academic_level_id && formData.teacher_id" 
+         x-cloak
+         class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                <i class="fas fa-book text-white"></i>
+            </div>
+            Step 2: Allocate Subjects
+        </h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Select one or more subjects to allocate to this teacher for the selected academic level.</p>
+        
+        <!-- Selected Teacher and Level Info -->
+        <div class="mb-6 p-4 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 dark:from-brand-primary/20 dark:to-brand-secondary/20 rounded-xl border-2 border-brand-primary/20">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex items-center">
+                    <i class="fas fa-graduation-cap text-brand-primary mr-2"></i>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Academic Level:</span>
+                    <span class="font-bold text-gray-900 dark:text-white ml-2" x-text="getSelectedLevelName()"></span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-chalkboard-teacher text-brand-primary mr-2"></i>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Teacher:</span>
+                    <span class="font-bold text-gray-900 dark:text-white ml-2" x-text="getSelectedTeacherName()"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Subject Selection -->
+        <div class="mb-6">
+            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Select Subject(s) <span class="text-red-500">*</span>
+            </label>
+            <select x-model="formData.subject_id" 
+                    required
+                    class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <option value="">Select Subject</option>
+                <template x-for="subject in availableSubjects" :key="subject.id">
+                    <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
+                </template>
+            </select>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                <a href="#" class="text-brand-primary hover:text-brand-maroon-dark font-medium transition-colors" @click.prevent="showAddSubjectModal = true">
+                    <i class="fas fa-plus mr-1"></i>Add New Subject
+                </a>
+            </p>
+        </div>
+        
+        <!-- Allocate Button -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
+            <button type="button" 
+                    @click="resetForm()"
+                    :disabled="saving"
+                    class="modern-btn px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold">
+                <i class="fas fa-redo mr-2"></i>Reset
+            </button>
+            <button type="button" 
+                    @click="saveAllocation()"
+                    :disabled="isSaveDisabled"
+                    class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
+                <i class="fas fa-save mr-2" x-show="!saving"></i>
+                <i class="fas fa-spinner fa-spin mr-2" x-show="saving"></i>
+                <span x-text="saving ? 'Allocating...' : 'Allocate Subject'"></span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Subject Modal -->
+    <div x-show="showAddSubjectModal" 
+         x-cloak
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         @click.self="showAddSubjectModal = false">
+        <div class="dashboard-card rounded-2xl shadow-2xl max-w-md w-full transform transition-all" @click.stop>
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Add New Subject</h3>
+                    <button @click="showAddSubjectModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form @submit.prevent="createSubject()" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Subject Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" 
+                               x-model="newSubject.subject_name"
+                               @input="newSubject.subject_name = $event.target.value.toUpperCase()"
+                               required
+                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 uppercase"
+                               placeholder="E.G., MATHEMATICS"
+                               style="text-transform: uppercase;">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Subject Code (Optional)
+                        </label>
+                        <input type="text" 
+                               x-model="newSubject.subject_code"
+                               @input="newSubject.subject_code = $event.target.value.toUpperCase()"
+                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 uppercase"
+                               placeholder="E.G., MATH101"
+                               style="text-transform: uppercase;">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Description (Optional)
+                        </label>
+                        <textarea x-model="newSubject.description"
+                                  @input="newSubject.description = $event.target.value.toUpperCase()"
+                                  rows="3"
+                                  class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 uppercase"
+                                  placeholder="SUBJECT DESCRIPTION..."
+                                  style="text-transform: uppercase;"></textarea>
+                    </div>
+                    
+                    <div class="flex items-center justify-end gap-3 pt-4">
+                        <button type="button" 
+                                @click="showAddSubjectModal = false; newSubject = {subject_name: '', subject_code: '', description: ''}"
+                                class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            Cancel
+                        </button>
+                        <button type="submit" 
+                                :disabled="creatingSubject"
+                                class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            <span x-text="creatingSubject ? 'Creating...' : 'Create Subject'"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing Allocations -->
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                    <i class="fas fa-list text-white"></i>
+                </div>
+                Existing Allocations
+            </h2>
+            <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm">
+                <span x-text="allocations.length"></span> allocation(s)
+            </span>
+        </div>
+        
+        <!-- Empty State -->
+        <div x-show="allocations.length === 0" class="text-center py-12">
+            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-inbox text-gray-400 text-3xl"></i>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">No allocations found. Create your first allocation above.</p>
+        </div>
+        
+        <!-- Allocations Table -->
+        <div x-show="allocations.length > 0" class="responsive-table">
+            <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Academic Level</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Teacher</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="allocation in allocations" :key="allocation.id">
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td class="p-3 sm:p-4">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.level_name"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="allocation.level_category"></div>
+                                </td>
+                                <td class="p-3 sm:p-4">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.subject_name"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-show="allocation.subject_code" x-text="'Code: ' + allocation.subject_code"></div>
+                                </td>
+                                <td class="p-3 sm:p-4">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.teacher_name"></div>
+                                    <div class="text-xs text-gray-600 dark:text-gray-400" x-text="'ID: ' + allocation.employee_id"></div>
+                                </td>
+                                <td class="p-3 sm:p-4 text-center">
+                                    <button @click="deleteAllocation(allocation.id)"
+                                            class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                        <i class="fas fa-trash mr-1"></i>Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function subjectAllocation() {
+    return {
+        academicLevels: {{ academic_levels|tojson|safe }},
+        subjects: {{ subjects|tojson|safe }},
+        teachers: {{ teachers|tojson|safe }},
+        allocations: {{ assignments|tojson|safe }},
+        availableSubjects: [],
+        formData: {
+            academic_level_id: '',
+            subject_id: '',
+            teacher_id: ''
+        },
+        saving: false,
+        showAddSubjectModal: false,
+        creatingSubject: false,
+        successMessage: '',
+        errorMessage: '',
+        newSubject: {
+            subject_name: '',
+            subject_code: '',
+            description: ''
+        },
+        
+        get isFormValid() {
+            return this.formData.academic_level_id && this.formData.subject_id && this.formData.teacher_id;
+        },
+        
+        get isSaveDisabled() {
+            return this.saving || !this.isFormValid;
+        },
+        
+        getSelectedLevelName() {
+            const level = this.academicLevels.find(l => l.id == this.formData.academic_level_id);
+            return level ? level.level_name + ' (' + level.level_category + ')' : '';
+        },
+        
+        getSelectedTeacherName() {
+            const teacher = this.teachers.find(t => t.id == this.formData.teacher_id);
+            return teacher ? teacher.full_name + ' (' + teacher.employee_id + ')' : '';
+        },
+        
+        loadAvailableSubjects() {
+            if (!this.formData.academic_level_id || !this.formData.teacher_id) {
+                this.availableSubjects = [];
+                return;
+            }
+            
+            // Get already allocated subjects for this teacher and level
+            const allocatedSubjectIds = this.allocations
+                .filter(a => a.academic_level_id == this.formData.academic_level_id && a.teacher_id == this.formData.teacher_id)
+                .map(a => a.subject_id);
+            
+            // Filter out already allocated subjects
+            this.availableSubjects = this.subjects.filter(s => !allocatedSubjectIds.includes(s.id));
+        },
+        
+        async saveAllocation() {
+            if (!this.formData.academic_level_id || !this.formData.subject_id || !this.formData.teacher_id) {
+                this.errorMessage = 'Please fill in all required fields: Academic Level, Teacher, and Subject';
+                setTimeout(() => { this.errorMessage = ''; }, 5000);
+                return;
+            }
+            
+            const allocationData = {
+                academic_level_id: parseInt(this.formData.academic_level_id),
+                subject_id: parseInt(this.formData.subject_id),
+                teacher_id: parseInt(this.formData.teacher_id)
+            };
+            
+            if (isNaN(allocationData.academic_level_id) || isNaN(allocationData.subject_id) || isNaN(allocationData.teacher_id)) {
+                this.errorMessage = 'Invalid selection. Please select valid options for all fields.';
+                setTimeout(() => { this.errorMessage = ''; }, 5000);
+                return;
+            }
+            
+            this.saving = true;
+            this.errorMessage = '';
+            this.successMessage = '';
+            
+            try {
+                const response = await fetch('/dashboard/employee/subject-class-allocation/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(allocationData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.successMessage = result.message || 'Subject allocated successfully!';
+                    this.errorMessage = '';
+                    // Reset subject selection but keep level and teacher
+                    this.formData.subject_id = '';
+                    // Reload page after delay to refresh allocations
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    this.errorMessage = result.message || 'Error allocating subject. Please try again.';
+                    this.successMessage = '';
+                    setTimeout(() => { this.errorMessage = ''; }, 5000);
+                }
+            } catch (error) {
+                console.error('Error saving allocation:', error);
+                this.errorMessage = 'Error saving allocation. Please check your connection and try again.';
+                this.successMessage = '';
+                setTimeout(() => { this.errorMessage = ''; }, 5000);
+            } finally {
+                this.saving = false;
+            }
+        },
+        
+        async deleteAllocation(allocationId) {
+            if (!confirm('Are you sure you want to delete this allocation?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/dashboard/employee/subject-class-allocation/delete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        assignment_id: allocationId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message || 'Allocation deleted successfully!');
+                    window.location.reload();
+                } else {
+                    alert(result.message || 'Error deleting allocation');
+                }
+            } catch (error) {
+                console.error('Error deleting allocation:', error);
+                alert('Error deleting allocation. Please try again.');
+            }
+        },
+        
+        async createSubject() {
+            if (!this.newSubject.subject_name.trim()) {
+                alert('Subject name is required');
+                return;
+            }
+            
+            const subjectData = {
+                subject_name: this.newSubject.subject_name.trim().toUpperCase(),
+                subject_code: this.newSubject.subject_code ? this.newSubject.subject_code.trim().toUpperCase() : '',
+                description: this.newSubject.description ? this.newSubject.description.trim().toUpperCase() : ''
+            };
+            
+            this.creatingSubject = true;
+            
+            try {
+                const response = await fetch('/dashboard/employee/subject-class-allocation/create-subject', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(subjectData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(result.message || 'Subject created successfully!');
+                    // Add new subject to the list
+                    this.subjects.push(result.subject);
+                    // Refresh available subjects
+                    this.loadAvailableSubjects();
+                    // Select the new subject
+                    this.formData.subject_id = result.subject.id;
+                    // Close modal and reset
+                    this.showAddSubjectModal = false;
+                    this.newSubject = {subject_name: '', subject_code: '', description: ''};
+                } else {
+                    alert(result.message || 'Error creating subject');
+                }
+            } catch (error) {
+                console.error('Error creating subject:', error);
+                alert('Error creating subject. Please try again.');
+            } finally {
+                this.creatingSubject = false;
+            }
+        },
+        
+        resetForm() {
+            this.formData = {
+                academic_level_id: '',
+                subject_id: '',
+                teacher_id: ''
+            };
+            this.availableSubjects = [];
+            this.successMessage = '';
+            this.errorMessage = '';
+        },
+        
+        init() {
+            // Initialize available subjects on page load
+            this.loadAvailableSubjects();
+        }
+    }
+}
+</script>
+{% endblock %}

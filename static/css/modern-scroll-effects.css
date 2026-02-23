@@ -1,0 +1,243 @@
+/* Modern Scroll Effects and Parallax Backgrounds */
+
+/* Parallax Scroll Container */
+.parallax-container {
+    position: relative;
+    overflow: hidden;
+    min-height: 100vh;
+}
+
+/* Parallax Background Layers */
+.parallax-bg {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 120%;
+    z-index: -1;
+    will-change: transform;
+}
+
+.parallax-bg-layer-1 {
+    background-image: 
+        linear-gradient(135deg, rgba(128, 0, 32, 0.15) 0%, transparent 50%),
+        url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    transform: translateZ(0);
+    filter: brightness(0.6) contrast(1.1) saturate(1.2);
+}
+
+.parallax-bg-layer-2 {
+    background-image: 
+        radial-gradient(circle at 20% 50%, rgba(160, 0, 48, 0.2) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(128, 0, 32, 0.15) 0%, transparent 50%);
+    background-size: 1200px 1200px, 1500px 1500px;
+    background-position: 0% 0%, 100% 100%;
+    animation: parallaxFloat 25s ease-in-out infinite;
+    opacity: 0.8;
+}
+
+.parallax-bg-layer-3 {
+    background-image: 
+        url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1920&q=80');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    opacity: 0.3;
+    filter: blur(2px) brightness(0.5);
+    mix-blend-mode: multiply;
+}
+
+/* Animated Gradient Overlay */
+.parallax-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: 
+        linear-gradient(180deg, 
+            rgba(128, 0, 32, 0.4) 0%, 
+            rgba(160, 0, 48, 0.2) 30%,
+            transparent 60%,
+            rgba(248, 250, 252, 0.9) 100%);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Scroll-triggered Animation */
+@keyframes parallaxFloat {
+    0%, 100% {
+        background-position: 0% 0%, 100% 100%;
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        background-position: 5% 5%, 95% 95%;
+        transform: translateY(-20px) scale(1.05);
+    }
+}
+
+/* Section Backgrounds with Scroll Effects */
+.section-bg-maroon {
+    position: relative;
+    background: linear-gradient(135deg, 
+        rgba(128, 0, 32, 0.05) 0%, 
+        rgba(160, 0, 48, 0.03) 50%,
+        rgba(248, 250, 252, 0.95) 100%);
+    overflow: hidden;
+}
+
+.section-bg-maroon::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background-image: 
+        radial-gradient(circle at 30% 40%, rgba(128, 0, 32, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 70% 60%, rgba(160, 0, 48, 0.08) 0%, transparent 50%);
+    animation: sectionFloat 20s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes sectionFloat {
+    0%, 100% {
+        transform: translate(0, 0) rotate(0deg);
+    }
+    33% {
+        transform: translate(30px, -30px) rotate(2deg);
+    }
+    66% {
+        transform: translate(-30px, 30px) rotate(-2deg);
+    }
+}
+
+/* Modern Card Hover Effects */
+.modern-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(128, 0, 32, 0.1);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+}
+
+.modern-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(128, 0, 32, 0.1), 
+        transparent);
+    transition: left 0.5s ease;
+}
+
+.modern-card:hover::before {
+    left: 100%;
+}
+
+.modern-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 20px 40px rgba(128, 0, 32, 0.15);
+    border-color: rgba(128, 0, 32, 0.3);
+}
+
+/* Glassmorphism Effect */
+.glass-effect {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(128, 0, 32, 0.1);
+}
+
+.dark .glass-effect {
+    background: rgba(17, 24, 39, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Scroll Reveal Animation */
+.scroll-reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scroll-reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Gradient Text Effect */
+.gradient-text-maroon {
+    background: linear-gradient(135deg, #800020 0%, #A00030 50%, #B00040 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Animated Background Pattern */
+.animated-pattern {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        repeating-linear-gradient(45deg, 
+            transparent, 
+            transparent 10px, 
+            rgba(128, 0, 32, 0.03) 10px, 
+            rgba(128, 0, 32, 0.03) 20px);
+    animation: patternMove 20s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes patternMove {
+    0% {
+        background-position: 0 0;
+    }
+    100% {
+        background-position: 40px 40px;
+    }
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .parallax-bg-layer-1,
+    .parallax-bg-layer-3 {
+        background-attachment: scroll;
+    }
+    
+    .parallax-bg {
+        height: 100%;
+    }
+    
+    .modern-card:hover {
+        transform: translateY(-4px) scale(1.01);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .parallax-bg-layer-2,
+    .section-bg-maroon::before,
+    .animated-pattern {
+        animation: none;
+    }
+    
+    .parallax-bg-layer-1,
+    .parallax-bg-layer-3 {
+        background-attachment: scroll;
+    }
+}
+
+
+

@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Timetable Management - {{ school_settings.school_name or 'School' }}{% endblock %}
+
+{% block role_primary %}#2563eb{% endblock %}
+{% block role_secondary %}#1d4ed8{% endblock %}
+{% block role_accent %}#3b82f6{% endblock %}
+{% block role_gradient_start %}#2563eb{% endblock %}
+{% block role_gradient_end %}#1d4ed8{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <a href="/dashboard/employee/timetable-management" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+       style="border-color: var(--role-primary);">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Timetable Management</span>
+        <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    </a>
+    
+    <a href="/dashboard/employee/timetable-management/register-timetable" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-plus-circle w-5"></i>
+        <span>Register Timetable</span>
+    </a>
+    
+    <a href="/dashboard/employee/timetable-management/manage-timetable" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-edit w-5"></i>
+        <span>Manage Timetable</span>
+    </a>
+    
+    <a href="/dashboard/employee/timetable-management/timetable-analytics" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/timetable-analytics' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.path == '/dashboard/employee/timetable-management/timetable-analytics' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-chart-bar w-5"></i>
+        <span>Timetable Analytics</span>
+    </a>
+    
+    <a href="/dashboard/employee" 
+       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+        <i class="fas fa-arrow-left w-5"></i>
+        <span>Back to Dashboard</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+/* Timetable Table */
+.tt-table { 
+    border-collapse: collapse; 
+    width: 100%; 
+    font-size: 11px;
+}
+.tt-table th, .tt-table td { 
+    border: 1px solid #d1d5db; 
+    padding: 6px 4px; 
+    text-align: center; 
+    min-width: 65px;
+}
+.dark .tt-table th, .dark .tt-table td { border-color: #4b5563; }
+.tt-table th { 
+    background: #2563eb; 
+    color: white; 
+    font-weight: 600; 
+    font-size: 10px;
+    text-transform: uppercase;
+}
+.tt-table th:first-child { 
+    background: #1e40af; 
+    min-width: 70px; 
+}
+.tt-table td:first-child { 
+    background: #f3f4f6; 
+    font-weight: 600; 
+    color: #374151;
+    font-size: 10px;
+}
+.dark .tt-table td:first-child { 
+    background: #374151; 
+    color: #e5e7eb;
+}
+.tt-table tbody tr:nth-child(even) { background: #f9fafb; }
+.dark .tt-table tbody tr:nth-child(even) { background: #1f2937; }
+
+.teacher-name { 
+    font-weight: 600; 
+    color: #1e40af; 
+    font-size: 10px;
+}
+.dark .teacher-name { color: #93c5fd; }
+.subject-name {
+    font-size: 9px;
+    color: #6b7280;
+}
+
+.class-header {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+.loading-pulse { animation: pulse 1.5s infinite; }
+
+@media print {
+    .no-print { display: none !important; }
+    .timetable-card { page-break-inside: avoid; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div x-data="timetablesApp()" x-init="loadAllTimetables()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
+    
+    <!-- Header -->
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 no-print">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+                <h1 class="text-lg font-bold text-gray-900 dark:text-white">
+                    <i class="fas fa-table text-blue-600 mr-2"></i>All Class Timetables
+                </h1>
+                <p class="text-sm text-gray-500">
+                    <span x-show="!loading" x-text="classesWithSchedule + ' of ' + Object.keys(timetables).length + ' classes have schedules'"></span>
+                    <span x-show="loading" class="loading-pulse">Loading timetables...</span>
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="window.print()" class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200">
+                    <i class="fas fa-print mr-1"></i>Print
+                </button>
+                <a href="/dashboard/employee/timetable-management/register-timetable" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
+                    <i class="fas fa-plus mr-1"></i>Add Timetable
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading State -->
+    <div x-show="loading" class="p-4">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <template x-for="i in 4" :key="i">
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                    <div class="h-14 bg-blue-500 loading-pulse"></div>
+                    <div class="p-4 space-y-3">
+                        <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded loading-pulse"></div>
+                        <div class="h-24 bg-gray-200 dark:bg-gray-700 rounded loading-pulse"></div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Timetables Grid -->
+    <div x-show="!loading" class="p-4">
+        {% if academic_levels and academic_levels|length > 0 %}
+        <div class="space-y-4">
+            {% for level in academic_levels %}
+            <div class="timetable-card bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+                <!-- Class Header -->
+                <div class="class-header px-4 py-2 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-graduation-cap text-white"></i>
+                        <h2 class="font-bold text-white">{{ level.level_name }}</h2>
+                    </div>
+                    <template x-if="timetables[{{ level.id }}] && timetables[{{ level.id }}].length > 0">
+                        <span class="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full" x-text="timetables[{{ level.id }}].length + ' slots'"></span>
+                    </template>
+                    <template x-if="!timetables[{{ level.id }}] || timetables[{{ level.id }}].length === 0">
+                        <span class="bg-red-500/60 text-white text-xs px-2 py-0.5 rounded-full">Empty</span>
+                    </template>
+                </div>
+
+                <!-- Timetable Content -->
+                <div class="p-2">
+                    <!-- Empty State -->
+                    <template x-if="!timetables[{{ level.id }}] || timetables[{{ level.id }}].length === 0">
+                        <div class="text-center py-6 text-gray-400">
+                            <i class="fas fa-calendar-times text-2xl mb-1"></i>
+                            <p class="text-xs">No timetable</p>
+                        </div>
+                    </template>
+
+                    <!-- Timetable Table -->
+                    <template x-if="timetables[{{ level.id }}] && timetables[{{ level.id }}].length > 0">
+                        <div class="overflow-x-auto">
+                            <table class="tt-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <template x-for="day in days" :key="day">
+                                            <th x-text="day.substring(0, 3)"></th>
+                                        </template>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="time in getTimeSlots({{ level.id }})" :key="time">
+                                        <tr>
+                                            <td x-text="formatTime(time)"></td>
+                                            <template x-for="day in days" :key="day">
+                                                <td>
+                                                    <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
+                                                        <div>
+                                                            <div class="teacher-name" x-text="entry.teacher_name || '—'"></div>
+                                                            <div x-show="entry.subject_name" class="subject-name" x-text="entry.subject_name"></div>
+                                                        </div>
+                                                    </template>
+                                                    <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>
+                                                </td>
+                                            </template>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <!-- No Classes -->
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
+            <i class="fas fa-school text-gray-300 text-5xl mb-4"></i>
+            <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">No Classes Found</h3>
+            <p class="text-gray-500 text-sm">No academic levels/classes configured yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function timetablesApp() {
+    return {
+        loading: true,
+        timetables: {},
+        academicLevels: {{ academic_levels | tojson | safe if academic_levels else '[]' }},
+        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
+        
+        get classesWithSchedule() {
+            let count = 0;
+            for (const key in this.timetables) {
+                if (this.timetables[key] && this.timetables[key].length > 0) count++;
+            }
+            return count;
+        },
+        
+        async loadAllTimetables() {
+            this.loading = true;
+            
+            const promises = this.academicLevels.map(async (level) => {
+                try {
+                    const res = await fetch('/dashboard/employee/timetable-management/manage-timetable/get-timetable', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ academic_level_id: level.id })
+                    });
+                    const result = await res.json();
+                    return { id: level.id, data: result.success ? (result.entries || []) : [] };
+                } catch (e) {
+                    return { id: level.id, data: [] };
+                }
+            });
+            
+            const results = await Promise.all(promises);
+            results.forEach(({ id, data }) => {
+                this.timetables[id] = data;
+            });
+            
+            this.loading = false;
+        },
+        
+        getTimeSlots(levelId) {
+            const data = this.timetables[levelId];
+            if (!data || !data.length) return [];
+            const times = [...new Set(data.map(e => e.time).filter(t => t))];
+            return times.sort((a, b) => {
+                const getHour = (t) => {
+                    const match = t.match(/(\d+)/);
+                    return match ? parseInt(match[1]) : 0;
+                };
+                return getHour(a) - getHour(b);
+            });
+        },
+        
+        getEntry(levelId, day, time) {
+            const data = this.timetables[levelId];
+            if (!data) return [];
+            return data.filter(e => e.day === day && e.time === time);
+        },
+        
+        formatTime(time) {
+            return time.replace(':00', '').replace(' - ', '-');
+        }
+    };
+}
+</script>
+{% endblock %}
