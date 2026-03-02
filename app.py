@@ -77,6 +77,13 @@ def allowed_payment_file(filename):
     """Check if payment proof file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PAYMENT_EXTENSIONS
 
+def _parse_student_id_digits(val):
+    """Parse student_id_digits to int between 1 and 6."""
+    try:
+        return max(1, min(6, int(val) if val is not None else 3))
+    except (TypeError, ValueError):
+        return 3
+
 def get_school_settings():
     """Get school settings from database (includes theme colors)"""
     school_data = {
@@ -91,6 +98,8 @@ def get_school_settings():
         'whatsapp_number': '',
         'school_location': '',
         'project_name': 'Elimu Centric',
+        'student_id_prefix': 'STU',
+        'student_id_digits': 3,
         'primary_color': '#800020',
         'secondary_color': '#A00030',
         'accent_color': '#5C0014',
@@ -129,6 +138,8 @@ def get_school_settings():
                                 'whatsapp_number': result.get('whatsapp_number') or '',
                                 'school_location': result.get('school_location') or '',
                                 'project_name': result.get('project_name') or 'Elimu Centric',
+                                'student_id_prefix': (result.get('student_id_prefix') or 'STU').strip().upper()[:10],
+                                'student_id_digits': _parse_student_id_digits(result.get('student_id_digits')),
                                 'primary_color': (result.get('primary_color') or '#800020').strip(),
                                 'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
                                 'accent_color': (result.get('accent_color') or '#5C0014').strip(),
@@ -340,32 +351,56 @@ def check_table_exists(connection, table_name):
         return False
 
 def generate_student_id(connection):
-    """Generate a unique student ID in format STU001, STU002, etc."""
+    """Generate a unique student ID using format from school_settings (prefix + padded number)."""
     try:
         with connection.cursor() as cursor:
-            # Get the highest student ID number
+            # Get prefix and digit count from school_settings (columns added by migration 007)
+            prefix = 'STU'
+            digits = 3
+            try:
+                cursor.execute("""
+                    SELECT student_id_prefix, student_id_digits 
+                    FROM school_settings ORDER BY id DESC LIMIT 1
+                """)
+                settings = cursor.fetchone()
+            except Exception:
+                settings = None
+            if settings:
+                p = (settings.get('student_id_prefix') if isinstance(settings, dict) else (settings[0] if len(settings) > 0 else None))
+                d = settings.get('student_id_digits') if isinstance(settings, dict) else (settings[1] if len(settings) > 1 else None)
+                if p and isinstance(p, str) and p.strip():
+                    prefix = str(p).strip().upper()[:10]  # Max 10 chars, uppercase
+                if d is not None:
+                    try:
+                        digits = max(1, min(6, int(d)))  # Between 1 and 6 digits
+                    except (TypeError, ValueError):
+                        pass
+            
+            prefix_len = len(prefix)
+            # Get the highest student ID number for this prefix
             cursor.execute("""
                 SELECT student_id FROM students 
-                WHERE student_id LIKE 'STU%' 
-                ORDER BY CAST(SUBSTRING(student_id, 4) AS UNSIGNED) DESC 
+                WHERE student_id LIKE %s 
+                ORDER BY CAST(SUBSTRING(student_id, %s) AS UNSIGNED) DESC 
                 LIMIT 1
-            """)
+            """, (prefix + '%', prefix_len + 1))
             result = cursor.fetchone()
             
             if result:
-                # Extract the number part and increment
-                last_number = int(result['student_id'][3:])  # Skip 'STU' prefix
+                sid = result['student_id'] if isinstance(result, dict) else result[0]
+                num_part = sid[prefix_len:] if len(sid) > prefix_len else ''
+                try:
+                    last_number = int(num_part) if num_part.isdigit() else 0
+                except ValueError:
+                    last_number = 0
                 new_number = last_number + 1
             else:
-                # First student
                 new_number = 1
             
-            # Format as STU001, STU002, etc. (3 digits minimum)
-            student_id = f"STU{new_number:03d}"
+            student_id = f"{prefix}{new_number:0{digits}d}"
             return student_id
     except Exception as e:
         print(f"Error generating student ID: {e}")
-        # Fallback: use timestamp-based ID if there's an error
         return f"STU{int(datetime.now().timestamp()) % 100000:05d}"
 
 def init_db():
@@ -646,6 +681,20 @@ def init_db():
                     if (cursor.fetchone() or {}).get('c', 0) == 0:
                         after = 'project_name' if col == 'primary_color' else 'primary_color' if col == 'secondary_color' else 'secondary_color' if col == 'accent_color' else 'accent_color'
                         cursor.execute(f"ALTER TABLE school_settings ADD COLUMN {col} VARCHAR(50) DEFAULT '{default}' AFTER {after}")
+                except Exception:
+                    pass
+            # Add student ID format columns if they don't exist
+            for col, col_def, after in [
+                ('student_id_prefix', "VARCHAR(10) DEFAULT 'STU'", 'project_name'),
+                ('student_id_digits', 'INT DEFAULT 3', 'student_id_prefix'),
+            ]:
+                try:
+                    cursor.execute("""
+                        SELECT COUNT(*) as c FROM information_schema.COLUMNS
+                        WHERE table_schema = %s AND table_name = 'school_settings' AND column_name = %s
+                    """, (DB_CONFIG['database'], col))
+                    if (cursor.fetchone() or {}).get('c', 0) == 0:
+                        cursor.execute(f"ALTER TABLE school_settings ADD COLUMN {col} {col_def} AFTER {after}")
                 except Exception:
                     pass
 
@@ -11353,6 +11402,8 @@ def system_settings():
                             'whatsapp_number': result.get('whatsapp_number', '') or '',
                             'school_location': result.get('school_location', '') or '',
                             'project_name': result.get('project_name', 'Elimu Centric') or 'Elimu Centric',
+                            'student_id_prefix': (result.get('student_id_prefix') or 'STU').strip().upper()[:10],
+                            'student_id_digits': _parse_student_id_digits(result.get('student_id_digits')),
                             'primary_color': (result.get('primary_color') or '#800020').strip(),
                             'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
                             'accent_color': (result.get('accent_color') or '#5C0014').strip(),
@@ -16667,6 +16718,8 @@ def update_school_profile():
     whatsapp_number = request.form.get('whatsapp_number', '').strip().upper()
     school_location = request.form.get('school_location', '').strip().upper()
     project_name = request.form.get('project_name', 'Elimu Centric').strip()
+    student_id_prefix = (request.form.get('student_id_prefix', 'STU') or 'STU').strip().upper()[:10]
+    student_id_digits = _parse_student_id_digits(request.form.get('student_id_digits', 3))
     
     # Handle logo upload
     school_logo = None
@@ -16693,40 +16746,88 @@ def update_school_profile():
                     # Get ID from result (handle both dict and tuple)
                     school_id = result['id'] if isinstance(result, dict) else result[0]
                     
-                    # Update existing
-                    if school_logo:
-                        cursor.execute("""
-                            UPDATE school_settings 
-                            SET school_name = %s, school_email = %s, school_phone = %s,
-                                school_logo = %s, twitter_url = %s, facebook_url = %s,
-                                instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
-                                school_location = %s, project_name = %s
-                            WHERE id = %s
-                        """, (school_name, school_email, school_phone, school_logo, 
-                              twitter_url, facebook_url, instagram_url, tiktok_url, 
-                              whatsapp_number, school_location, project_name, school_id))
-                    else:
-                        cursor.execute("""
-                            UPDATE school_settings 
-                            SET school_name = %s, school_email = %s, school_phone = %s,
-                                twitter_url = %s, facebook_url = %s,
-                                instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
-                                school_location = %s, project_name = %s
-                            WHERE id = %s
-                        """, (school_name, school_email, school_phone,
-                              twitter_url, facebook_url, instagram_url, tiktok_url, 
-                              whatsapp_number, school_location, project_name, school_id))
+                    # Update existing (include student_id settings if columns exist)
+                    try:
+                        if school_logo:
+                            cursor.execute("""
+                                UPDATE school_settings 
+                                SET school_name = %s, school_email = %s, school_phone = %s,
+                                    school_logo = %s, twitter_url = %s, facebook_url = %s,
+                                    instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
+                                    school_location = %s, project_name = %s,
+                                    student_id_prefix = %s, student_id_digits = %s
+                                WHERE id = %s
+                            """, (school_name, school_email, school_phone, school_logo, 
+                                  twitter_url, facebook_url, instagram_url, tiktok_url, 
+                                  whatsapp_number, school_location, project_name,
+                                  student_id_prefix, student_id_digits, school_id))
+                        else:
+                            cursor.execute("""
+                                UPDATE school_settings 
+                                SET school_name = %s, school_email = %s, school_phone = %s,
+                                    twitter_url = %s, facebook_url = %s,
+                                    instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
+                                    school_location = %s, project_name = %s,
+                                    student_id_prefix = %s, student_id_digits = %s
+                                WHERE id = %s
+                            """, (school_name, school_email, school_phone,
+                                  twitter_url, facebook_url, instagram_url, tiktok_url, 
+                                  whatsapp_number, school_location, project_name,
+                                  student_id_prefix, student_id_digits, school_id))
+                    except pymysql.err.OperationalError as oe:
+                        if 'Unknown column' in str(oe):
+                            # Columns don't exist yet - run without student_id fields
+                            if school_logo:
+                                cursor.execute("""
+                                    UPDATE school_settings 
+                                    SET school_name = %s, school_email = %s, school_phone = %s,
+                                        school_logo = %s, twitter_url = %s, facebook_url = %s,
+                                        instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
+                                        school_location = %s, project_name = %s
+                                    WHERE id = %s
+                                """, (school_name, school_email, school_phone, school_logo, 
+                                      twitter_url, facebook_url, instagram_url, tiktok_url, 
+                                      whatsapp_number, school_location, project_name, school_id))
+                            else:
+                                cursor.execute("""
+                                    UPDATE school_settings 
+                                    SET school_name = %s, school_email = %s, school_phone = %s,
+                                        twitter_url = %s, facebook_url = %s,
+                                        instagram_url = %s, tiktok_url = %s, whatsapp_number = %s,
+                                        school_location = %s, project_name = %s
+                                    WHERE id = %s
+                                """, (school_name, school_email, school_phone,
+                                      twitter_url, facebook_url, instagram_url, tiktok_url, 
+                                      whatsapp_number, school_location, project_name, school_id))
+                        else:
+                            raise
                 else:
-                    # Insert new
-                    cursor.execute("""
-                        INSERT INTO school_settings 
-                        (school_name, school_email, school_phone, school_logo, 
-                         twitter_url, facebook_url, instagram_url, tiktok_url, 
-                         whatsapp_number, school_location, project_name)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (school_name, school_email, school_phone, school_logo,
-                          twitter_url, facebook_url, instagram_url, tiktok_url,
-                          whatsapp_number, school_location, project_name))
+                    # Insert new (include student_id settings if columns exist)
+                    try:
+                        cursor.execute("""
+                            INSERT INTO school_settings 
+                            (school_name, school_email, school_phone, school_logo, 
+                             twitter_url, facebook_url, instagram_url, tiktok_url, 
+                             whatsapp_number, school_location, project_name,
+                             student_id_prefix, student_id_digits)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (school_name, school_email, school_phone, school_logo,
+                              twitter_url, facebook_url, instagram_url, tiktok_url,
+                              whatsapp_number, school_location, project_name,
+                              student_id_prefix, student_id_digits))
+                    except pymysql.err.OperationalError as oe:
+                        if 'Unknown column' in str(oe):
+                            cursor.execute("""
+                                INSERT INTO school_settings 
+                                (school_name, school_email, school_phone, school_logo, 
+                                 twitter_url, facebook_url, instagram_url, tiktok_url, 
+                                 whatsapp_number, school_location, project_name)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (school_name, school_email, school_phone, school_logo,
+                                  twitter_url, facebook_url, instagram_url, tiktok_url,
+                                  whatsapp_number, school_location, project_name))
+                        else:
+                            raise
                 
                 connection.commit()
                 flash('School profile updated successfully!', 'success')

@@ -171,7 +171,9 @@
       ">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="HandheldFriendly" content="true">
+    <meta name="MobileOptimized" content="width">
     <title>{% block title %}{{ school_settings.school_name or 'Modern School' }}{% endblock %}</title>
     
     <!-- Tailwind CSS -->
@@ -210,6 +212,8 @@
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
+    <!-- Page Enhancements - Modern UI/UX -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/page-enhancements.css') }}">
     <!-- Modern Background Images CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-background.css') }}">
     <!-- Modern Scroll Effects CSS -->
@@ -232,9 +236,16 @@
         
         [x-cloak] { display: none !important; }
         
-        /* Responsive base styles */
+        /* Responsive base styles - consistent zoom across all screens */
         * {
             box-sizing: border-box;
+        }
+        
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+            -ms-text-size-adjust: 100%;
+            text-size-adjust: 100%;
         }
         
         html, body {

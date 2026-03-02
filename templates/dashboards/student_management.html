@@ -42,7 +42,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-2 sm:p-3 md:p-4 lg:p-6 w-full max-w-full overflow-x-hidden" 
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 w-full max-w-full overflow-x-hidden page-content max-w-7xl mx-auto" 
      x-data="{ 
          searchQuery: '', 
          filterStatus: 'all',
@@ -169,21 +169,24 @@
              }
          }
      }">
-    <!-- Header Section -->
-    <div class="mb-4 sm:mb-5 md:mb-6">
-        <div class="mb-4 sm:mb-5 md:mb-6">
-            <h1 class="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2 flex items-center gap-2 sm:gap-3">
-                <div class="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg sm:rounded-xl flex items-center justify-center shadow-md sm:shadow-lg flex-shrink-0">
-                    <i class="fas fa-user-graduate text-white text-sm sm:text-base md:text-lg"></i>
+    <!-- Header Section - Modern Hero -->
+    <div class="page-hero mb-6 sm:mb-8">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div class="flex items-center gap-4">
+                <div class="page-hero-icon flex-shrink-0">
+                    <i class="fas fa-user-graduate text-white text-xl sm:text-2xl"></i>
                 </div>
-                <span class="truncate">Student Management</span>
-            </h1>
-            <p class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">Manage and monitor all student records</p>
+                <div>
+                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Student Management</h1>
+                    <p class="text-white/90 text-sm sm:text-base">Manage and monitor all student records</p>
+                </div>
+            </div>
         </div>
+    </div>
 
         <!-- Statistics Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-5 md:mb-6">
-            <div class="bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+        <div class="responsive-grid-1 mb-6">
+            <div class="stat-card bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl p-4 sm:p-5 shadow-lg">
                 <div class="flex items-center justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Total Students</p>
@@ -196,7 +199,7 @@
             </div>
             
             {% set in_session = students|selectattr('status', 'equalto', 'in session')|list|length %}
-            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+            <div class="stat-card bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 sm:p-5 shadow-lg">
                 <div class="flex items-center justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">In Session</p>
@@ -209,7 +212,7 @@
             </div>
             
             {% set pending = students|selectattr('status', 'equalto', 'pending approval')|list|length %}
-            <div class="bg-gradient-to-br from-yellow-500 to-amber-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+            <div class="stat-card bg-gradient-to-br from-yellow-500 to-amber-600 rounded-xl p-4 sm:p-5 shadow-lg">
                 <div class="flex items-center justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Pending</p>
@@ -222,7 +225,7 @@
             </div>
             
             {% set suspended = students|selectattr('status', 'equalto', 'suspended')|list|length + students|selectattr('status', 'equalto', 'expelled')|list|length %}
-            <div class="bg-gradient-to-br from-red-500 to-red-600 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 shadow-md sm:shadow-lg transform hover:scale-105 transition-all duration-300">
+            <div class="stat-card bg-gradient-to-br from-red-500 to-red-600 rounded-xl p-4 sm:p-5 shadow-lg">
                 <div class="flex items-center justify-between">
                     <div class="flex-1 min-w-0">
                         <p class="text-white/80 text-[10px] sm:text-xs md:text-sm font-medium mb-0.5 sm:mb-1 truncate">Suspended</p>
@@ -236,7 +239,7 @@
         </div>
 
         <!-- Search and Filter Bar -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md sm:shadow-lg border border-gray-200 dark:border-gray-700 p-2 sm:p-3 md:p-4 mb-4 sm:mb-5 md:mb-6">
+        <div class="modern-card p-4 sm:p-5 mb-6">
             <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 md:gap-4">
                 <div class="flex-1 relative min-w-0 w-full">
                     <div class="absolute inset-y-0 left-0 pl-2 sm:pl-3 flex items-center pointer-events-none">
@@ -245,11 +248,11 @@
                     <input type="text" 
                            x-model="searchQuery" 
                            placeholder="Search by name, ID, or parent..." 
-                           class="w-full pl-7 sm:pl-8 md:pl-10 pr-2 sm:pr-3 md:pr-4 py-1.5 sm:py-2 md:py-2.5 text-xs sm:text-sm md:text-base rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                           class="w-full modern-input pl-10 pr-4 py-2.5 text-sm sm:text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                 </div>
                 <div class="w-full sm:w-auto sm:min-w-[140px] md:min-w-[160px] lg:min-w-[180px]">
                     <select x-model="filterStatus" 
-                            class="w-full px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 md:py-2.5 text-xs sm:text-sm md:text-base rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                            class="w-full modern-input px-4 py-2.5 text-sm sm:text-base bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
                         <option value="all">All Status</option>
                         <option value="in session">In Session</option>
                         <option value="pending approval">Pending Approval</option>
@@ -265,7 +268,7 @@
 
     <!-- Students List - Simple List Format -->
     <!-- Mobile View (< 768px) -->
-    <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="md:hidden divide-y divide-gray-200 dark:divide-gray-700 modern-card overflow-hidden rounded-xl">
         {% if students %}
             {% for student in students %}
             <div class="student-card py-2 px-2.5"
@@ -380,7 +383,7 @@
     </div>
     
     <!-- Tablet View (768px - 1023px) -->
-    <div class="hidden md:block lg:hidden divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="hidden md:block lg:hidden divide-y divide-gray-200 dark:divide-gray-700 modern-card overflow-hidden rounded-xl">
         <!-- List Header -->
         <div class="grid grid-cols-6 gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-[10px] sm:text-xs text-gray-700 dark:text-gray-300">
             <div class="col-span-3">Student / ID / Gender</div>
@@ -501,7 +504,7 @@
     </div>
     
     <!-- Desktop View (≥ 1024px) - Simple List -->
-    <div class="hidden lg:block divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="hidden lg:block divide-y divide-gray-200 dark:divide-gray-700 modern-card overflow-hidden rounded-xl">
         <!-- List Header -->
         <div class="grid lg:grid-cols-10 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 bg-gray-50 dark:bg-gray-900/30 border-b border-gray-200 dark:border-gray-700 font-semibold text-xs xl:text-sm text-gray-700 dark:text-gray-300">
             <div class="col-span-4">Student / ID / Gender</div>
@@ -621,12 +624,12 @@
             </div>
             {% endfor %}
         {% else %}
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-12 sm:p-16 text-center">
-                <div class="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-full flex items-center justify-center">
-                    <i class="fas fa-user-graduate text-gray-400 text-4xl sm:text-5xl"></i>
+            <div class="empty-state modern-card">
+                <div class="empty-state-icon">
+                    <i class="fas fa-user-graduate text-gray-400 text-4xl"></i>
                 </div>
-                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-2">No Students Found</h3>
-                <p class="text-sm sm:text-base text-gray-500 dark:text-gray-400">Start by adding new student records</p>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Students Found</h3>
+                <p class="text-gray-500 dark:text-gray-400">Start by adding new student records</p>
             </div>
         {% endif %}
     </div>

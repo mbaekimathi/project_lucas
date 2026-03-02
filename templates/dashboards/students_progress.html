@@ -37,17 +37,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6" x-data="{ searchQuery: '', selectedClass: '' }">
-    <div class="mb-4 sm:mb-6">
-        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-            <i class="fas fa-chart-line text-brand-primary mr-2 sm:mr-3"></i>
-            Students Progress
-        </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Select a student by academic level to view their exam progress.</p>
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto" x-data="{ searchQuery: '', selectedClass: '' }">
+    <!-- Modern Hero Header -->
+    <div class="page-hero mb-6 sm:mb-8">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div class="flex items-center gap-4">
+                <div class="page-hero-icon flex-shrink-0">
+                    <i class="fas fa-chart-line text-white text-xl sm:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Students Progress</h1>
+                    <p class="text-white/90 text-sm sm:text-base">Select a student by academic level to view their exam progress.</p>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="flex flex-col sm:flex-row gap-4 mb-6">
-        <div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+    <div class="flex flex-col sm:flex-row gap-4 mb-6 modern-card p-4 sm:p-5">
+        <div class="flex-1">
             <div class="relative">
                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <i class="fas fa-search text-gray-400"></i>
@@ -55,7 +62,7 @@
                 <input type="text"
                        x-model="searchQuery"
                        placeholder="Search by name, ID, grade, or parent..."
-                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                       class="w-full modern-input pl-12 pr-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             </div>
         </div>
         {% if students_by_level %}
@@ -64,7 +71,7 @@
             <select id="quick-class"
                     x-model="selectedClass"
                     @change="const id = $event.target.value; if (id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
-                    class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">All classes</option>
                 {% for level_group in students_by_level %}
                 <option value="level-{{ loop.index }}">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %} ({{ level_group.students|length }})</option>
@@ -77,8 +84,8 @@
     {% if students_by_level %}
     <div class="space-y-6">
         {% for level_group in students_by_level %}
-        <div id="level-{{ loop.index }}" class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden scroll-mt-4">
-            <div class="px-4 py-3 sm:px-6 bg-gradient-to-r from-brand-primary/90 to-brand-secondary/90">
+        <div id="level-{{ loop.index }}" class="modern-card overflow-hidden scroll-mt-4 rounded-xl">
+            <div class="level-header-card">
                 <h2 class="text-lg font-bold text-white flex items-center justify-between">
                     <span>
                         <i class="fas fa-graduation-cap mr-2"></i>
@@ -87,7 +94,7 @@
                     <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
                 </h2>
             </div>
-            <div class="overflow-x-auto">
+            <div class="table-responsive-wrapper">
                 <table class="w-full">
                     <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                         <tr>
@@ -127,7 +134,7 @@
                             <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 hidden sm:table-cell">{{ student.parent_name or '-' }}</td>
                             <td class="px-4 py-3 text-right">
                                 <a href="{{ url_for('student_progress_detail', student_id=student.student_id) }}"
-                                   class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-all">
+                                   class="touch-btn inline-flex items-center px-4 py-2 bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold rounded-xl hover:opacity-95 transition-all">
                                     <i class="fas fa-chart-line mr-2"></i>View Progress
                                 </a>
                             </td>
@@ -140,8 +147,8 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
-        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="empty-state modern-card">
+        <div class="empty-state-icon">
             <i class="fas fa-user-graduate text-gray-400 text-3xl"></i>
         </div>
         <p class="text-gray-600 dark:text-gray-400">No students found. Add students via admission or student management.</p>

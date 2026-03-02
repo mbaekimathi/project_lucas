@@ -37,30 +37,35 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6">
-    <a href="{{ url_for('students_progress') }}" class="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto">
+    <a href="{{ url_for('students_progress') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Back to Students
     </a>
-    <div class="flex items-center gap-4 mb-6">
-        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg flex-shrink-0">
-            <i class="fas fa-user-graduate text-white text-xl"></i>
-        </div>
-        <div>
-            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">{{ student.full_name }}</h1>
-            <p class="text-gray-600 dark:text-gray-400">
-                <span class="font-mono font-semibold">{{ student.student_id }}</span>
-                {% if student.current_grade %}
-                <span class="mx-2">•</span>
-                <span class="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-sm font-medium">{{ student.current_grade }}</span>
-                {% endif %}
-            </p>
+    <!-- Student Header Card -->
+    <div class="page-hero mb-6 sm:mb-8">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
+            <div class="flex items-center gap-4">
+                <div class="page-hero-icon flex-shrink-0">
+                    <i class="fas fa-user-graduate text-white text-xl sm:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ student.full_name }}</h1>
+                    <p class="text-white/90 text-sm sm:text-base mt-1">
+                        <span class="font-mono font-semibold">{{ student.student_id }}</span>
+                        {% if student.current_grade %}
+                        <span class="mx-2">•</span>
+                        <span class="modern-badge bg-white/20 text-white">{{ student.current_grade }}</span>
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 
     {% if summary and summary.total_entries > 0 %}
     <!-- Summary KPI Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+    <div class="responsive-grid-1 mb-6">
+        <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Overall Mean</p>
@@ -71,7 +76,7 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+        <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pass Rate</p>
@@ -82,7 +87,7 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+        <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Strongest Subject</p>
@@ -94,7 +99,7 @@
                 </div>
             </div>
         </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+        <div class="stat-card modern-card p-4">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs Improvement</p>
@@ -110,7 +115,7 @@
 
     <div class="grid lg:grid-cols-2 gap-6 mb-6">
         <!-- Performance by Subject - Bar Chart -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+        <div class="modern-card p-4 sm:p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                 <i class="fas fa-chart-bar text-brand-primary mr-2"></i>
                 Performance by Subject
@@ -135,7 +140,7 @@
         </div>
 
         <!-- Progress Trend Over Time - Line Chart -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+        <div class="modern-card p-4 sm:p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                 <i class="fas fa-chart-area text-brand-primary mr-2"></i>
                 Performance Trend
@@ -239,8 +244,8 @@
     </script>
     {% else %}
     <!-- No data state -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
-        <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="empty-state modern-card">
+        <div class="empty-state-icon">
             <i class="fas fa-chart-line text-gray-400 text-3xl"></i>
         </div>
         <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Exam Data Yet</h3>

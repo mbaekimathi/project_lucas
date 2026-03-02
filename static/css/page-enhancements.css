@@ -1,0 +1,342 @@
+/* Page Enhancements - Modern UI/UX Design System */
+/* Responsive, accessible, and touch-friendly across mobile, tablet, desktop */
+
+/* ===== Page Hero / Header Cards ===== */
+.page-hero {
+  background: linear-gradient(135deg, var(--role-primary, #800020) 0%, var(--role-secondary, #A00030) 50%, var(--role-accent, #5C0014) 100%);
+  border-radius: 1.25rem;
+  box-shadow: 0 20px 40px -15px rgba(128, 0, 32, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.page-hero-icon {
+  width: 3rem;
+  height: 3rem;
+  background: rgba(255,255,255,0.2);
+  backdrop-filter: blur(12px);
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+@media (min-width: 640px) {
+  .page-hero-icon {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 1.25rem;
+  }
+}
+
+/* ===== Modern Card Styles ===== */
+.modern-card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 1rem;
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark .modern-card {
+  background: rgba(31, 41, 55, 0.95);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.3);
+}
+
+.modern-card:hover {
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+.dark .modern-card:hover {
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.4);
+}
+
+/* ===== Responsive Table Wrapper ===== */
+.table-responsive-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -1rem;
+  padding: 0 1rem;
+}
+
+@media (min-width: 768px) {
+  .table-responsive-wrapper {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+.table-responsive-wrapper table {
+  min-width: 600px;
+}
+
+@media (min-width: 768px) {
+  .table-responsive-wrapper table {
+    min-width: 100%;
+  }
+}
+
+/* ===== Touch-friendly Buttons ===== */
+.touch-btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.75rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ===== Form Input Enhancements ===== */
+.modern-input {
+  border-radius: 0.75rem;
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  padding: 0.75rem 1rem;
+  transition: all 0.2s ease;
+}
+
+.modern-input:focus {
+  border-color: var(--role-primary, #800020);
+  box-shadow: 0 0 0 4px rgba(128, 0, 32, 0.15);
+  outline: none;
+}
+
+@media (max-width: 768px) {
+  .modern-input, .modern-input input, .modern-input select {
+    font-size: 16px !important; /* Prevents iOS zoom */
+  }
+}
+
+/* ===== Stats/KPI Cards ===== */
+.stat-card {
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (min-width: 640px) {
+  .stat-card {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+.stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Section Headers ===== */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+}
+
+.dark .section-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.section-header-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 640px) {
+  .section-header-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+  }
+}
+
+/* ===== Mobile-First Grid ===== */
+.responsive-grid-1 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .responsive-grid-1 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid-1 {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+.responsive-grid-2 {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .responsive-grid-2 {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+  }
+}
+
+/* ===== Empty States ===== */
+.empty-state {
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .empty-state {
+    padding: 4rem 2rem;
+  }
+}
+
+.empty-state-icon {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 1.5rem;
+  background: linear-gradient(135deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 100%);
+}
+
+.dark .empty-state-icon {
+  background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
+}
+
+/* ===== Badge/Pill Styles ===== */
+.modern-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+@media (min-width: 640px) {
+  .modern-badge {
+    font-size: 0.8125rem;
+    padding: 0.375rem 0.875rem;
+  }
+}
+
+/* ===== Smooth Page Transitions ===== */
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-content {
+  animation: pageFadeIn 0.4s ease-out;
+}
+
+/* ===== Mobile Table Card Fallback ===== */
+.mobile-table-card {
+  display: block;
+  border-radius: 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  margin-bottom: 0.75rem;
+}
+
+.dark .mobile-table-card {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+@media (min-width: 768px) {
+  .mobile-table-card {
+    display: none;
+  }
+}
+
+/* ===== Action Button Group ===== */
+.action-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.action-btn-group .touch-btn {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .action-btn-group .touch-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* ===== Level/Class Header Card ===== */
+.level-header-card {
+  background: linear-gradient(135deg, var(--role-primary, #800020) 0%, var(--role-secondary, #A00030) 100%);
+  color: white;
+  padding: 1rem 1.25rem;
+  border-radius: 1rem 1rem 0 0;
+}
+
+@media (min-width: 640px) {
+  .level-header-card {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+/* ===== Filter Bar ===== */
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .filter-bar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+  }
+}

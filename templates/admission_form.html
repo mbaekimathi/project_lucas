@@ -3,20 +3,20 @@
 {% block title %}Admission Form - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<section class="relative bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 text-white py-12 sm:py-16 md:py-20 overflow-hidden">
-    <div class="absolute inset-0 bg-black/20"></div>
-    <div class="absolute inset-0" style="background-image: url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.05"%3E%3Cpath d="M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+<!-- Hero Section - Enhanced -->
+<section class="relative page-hero overflow-hidden rounded-2xl sm:rounded-3xl mx-4 sm:mx-6 lg:mx-8 mt-4 mb-6 sm:mb-8">
+    <div class="absolute inset-0 bg-black/10"></div>
+    <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 32px 32px;"></div>
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-10 sm:py-14 md:py-18">
         <div class="max-w-3xl mx-auto text-center">
-            <div class="inline-block mb-4 px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full border border-white/20">
-                <i class="fas fa-graduation-cap mr-2"></i>
-                <span class="text-sm font-medium">Student Admission</span>
+            <div class="inline-flex items-center gap-2 mb-4 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
+                <i class="fas fa-graduation-cap"></i>
+                <span class="text-sm font-semibold">Student Admission</span>
             </div>
-            <h1 class="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-heading font-bold mb-4 sm:mb-6 leading-tight">
+            <h1 class="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-heading font-bold mb-3 sm:mb-4 leading-tight text-white">
                 Join Our Community
             </h1>
-            <p class="text-base sm:text-lg md:text-xl text-blue-100 max-w-2xl mx-auto leading-relaxed">
+            <p class="text-sm sm:text-base md:text-lg text-white/90 max-w-2xl mx-auto leading-relaxed">
                 Start your educational journey with {{ school_settings.school_name or 'Modern School' }}. Fill out the form below to begin your admission process.
             </p>
         </div>
@@ -24,11 +24,11 @@
 </section>
 
 <!-- Admission Form Section -->
-<section class="py-8 sm:py-12 md:py-16 bg-gradient-to-b from-gray-50 to-white">
+<section class="py-6 sm:py-10 md:py-14 bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 page-content">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="max-w-5xl mx-auto">
             <!-- Info Notice -->
-            <div class="mb-6 sm:mb-8 p-4 sm:p-5 bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 rounded-lg shadow-sm">
+            <div class="mb-6 sm:mb-8 modern-card p-4 sm:p-5 border-l-4 border-blue-500">
                 <div class="flex items-start">
                     <div class="flex-shrink-0">
                         <i class="fas fa-info-circle text-blue-500 text-lg sm:text-xl mt-0.5"></i>
@@ -43,7 +43,7 @@
             </div>
 
             <!-- Form Card -->
-            <div class="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            <div class="modern-card rounded-2xl overflow-hidden">
                 <form method="POST" action="/admission" class="p-6 sm:p-8 md:p-10 lg:p-12 space-y-8 sm:space-y-10">
                     
                     <!-- Student Information Section -->
@@ -65,9 +65,8 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.full_name)</span>
                                 </label>
                                 <input type="text" id="full_name" name="full_name" required
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+                                       class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                                              placeholder:text-gray-400">
                             </div>
                             
                             <div>
@@ -86,8 +85,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.gender)</span>
                                 </label>
                                 <select id="gender" name="gender"
-                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
+                                        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                     <option value="">Select Gender</option>
                                     <option value="Male">Male</option>
                                     <option value="Female">Female</option>
@@ -102,8 +100,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.current_grade)</span>
                                 </label>
                                 <select id="current_grade" name="current_grade"
-                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
+                                        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                     <option value="">Select Academic Level</option>
                                     {% if academic_levels %}
                                         {% for level in academic_levels %}
@@ -119,9 +116,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.previous_school)</span>
                                 </label>
                                 <input type="text" id="previous_school" name="previous_school"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div>
@@ -156,9 +151,7 @@
                                     Parent/Guardian Name <span class="text-red-500">*</span>
                                 </label>
                                 <input type="text" id="parent_name" name="parent_name" required
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div>
@@ -166,8 +159,7 @@
                                     Relationship to Student <span class="text-red-500">*</span>
                                 </label>
                                 <select id="relationship" name="relationship" required
-                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md">
+                                        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                     <option value="">Select Relationship</option>
                                     <option value="Father">Father</option>
                                     <option value="Mother">Mother</option>
@@ -181,9 +173,7 @@
                                     Parent Phone <span class="text-red-500">*</span>
                                 </label>
                                 <input type="tel" id="parent_phone" name="parent_phone" required
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div class="sm:col-span-2">
@@ -191,9 +181,7 @@
                                     Parent Email
                                 </label>
                                 <input type="email" id="parent_email" name="parent_email"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                         </div>
                     </div>
@@ -236,9 +224,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_name)</span>
                                 </label>
                                 <input type="text" id="sponsor_name" name="sponsor_name"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div>
@@ -247,9 +233,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_phone)</span>
                                 </label>
                                 <input type="tel" id="sponsor_phone" name="sponsor_phone"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div class="sm:col-span-2">
@@ -258,9 +242,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_email)</span>
                                 </label>
                                 <input type="email" id="sponsor_email" name="sponsor_email"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                         </div>
                     </div>
@@ -284,9 +266,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.address)</span>
                                 </label>
                                 <textarea id="address" name="address" rows="3"
-                                          class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                                 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                                 placeholder:text-gray-400 shadow-sm hover:shadow-md resize-none"></textarea>
+                                          class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
                             </div>
                             
                             <div>
@@ -295,9 +275,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(parents.emergency_contact)</span>
                                 </label>
                                 <input type="text" id="emergency_contact" name="emergency_contact"
-                                       class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                              focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                              placeholder:text-gray-400 shadow-sm hover:shadow-md">
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div>
@@ -306,9 +284,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.medical_info)</span>
                                 </label>
                                 <textarea id="medical_info" name="medical_info" rows="3"
-                                          class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                                 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                                 placeholder:text-gray-400 shadow-sm hover:shadow-md resize-none"></textarea>
+                                          class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
                             </div>
                             
                             <div class="sm:col-span-2">
@@ -317,9 +293,7 @@
                                     <span class="text-xs font-normal text-gray-400 ml-1">(students.special_needs)</span>
                                 </label>
                                 <textarea id="special_needs" name="special_needs" rows="3"
-                                          class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                                 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
-                                                 placeholder:text-gray-400 shadow-sm hover:shadow-md resize-none"></textarea>
+                                          class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
                             </div>
                         </div>
                     </div>
@@ -338,16 +312,14 @@
                     <!-- Submit Buttons -->
                     <div class="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-200">
                         <button type="submit" 
-                                class="flex-1 group px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg 
-                                       font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all transform hover:scale-[1.02] 
-                                       active:scale-[0.98] shadow-lg hover:shadow-xl flex items-center justify-center space-x-2">
+                                class="flex-1 touch-btn group px-6 sm:px-8 py-3 sm:py-4 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl 
+                                       font-semibold hover:opacity-95 transition-all shadow-lg hover:shadow-xl flex items-center justify-center space-x-2">
                             <i class="fas fa-paper-plane group-hover:translate-x-1 transition-transform"></i>
                             <span>Submit Application</span>
                         </button>
                         <button type="reset" 
-                                class="px-6 sm:px-8 py-3 sm:py-4 bg-white border-2 border-gray-300 text-gray-700 rounded-lg 
-                                       font-semibold hover:bg-gray-50 hover:border-gray-400 transition-all transform hover:scale-[1.02] 
-                                       active:scale-[0.98] shadow-sm hover:shadow-md flex items-center justify-center space-x-2">
+                                class="touch-btn px-6 sm:px-8 py-3 sm:py-4 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl 
+                                       font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-all shadow-sm flex items-center justify-center space-x-2">
                             <i class="fas fa-redo"></i>
                             <span class="hidden sm:inline">Reset Form</span>
                         </button>

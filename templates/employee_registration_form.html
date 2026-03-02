@@ -72,10 +72,14 @@
                                 Employee ID <span class="text-red-500">*</span>
                                 <span class="text-xs text-gray-500 block mt-1">Must be exactly 6 digits</span>
                             </label>
-                            <input type="text" id="employee_id" name="employee_id" required
-                                   pattern="[0-9]{6}" maxlength="6" minlength="6"
-                                   class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                                   placeholder="000000">
+                            <div class="relative">
+                                <input type="text" id="employee_id" name="employee_id" required
+                                       pattern="[0-9]{6}" maxlength="6" minlength="6" inputmode="numeric" autocomplete="off"
+                                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary pr-10"
+                                       placeholder="000000">
+                                <span id="employee_id_status" class="absolute right-3 top-1/2 -translate-y-1/2 text-xl hidden" aria-hidden="true"></span>
+                            </div>
+                            <p id="employee_id_feedback" class="mt-1.5 text-sm hidden"></p>
                         </div>
                     </div>
                 </div>
@@ -150,5 +154,105 @@
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function() {
+    const input = document.getElementById('employee_id');
+    const statusIcon = document.getElementById('employee_id_status');
+    const feedback = document.getElementById('employee_id_feedback');
+    const form = input.closest('form');
+    let checkTimeout = null;
+    let lastCheckedValue = '';
+    let isAvailable = null;
+
+    function showResult(available, message) {
+        isAvailable = available;
+        statusIcon.classList.remove('hidden', 'fa-spinner', 'fa-spin', 'fa-check-circle', 'fa-times-circle', 'text-green-600', 'text-red-600', 'text-gray-400');
+        feedback.classList.remove('hidden', 'text-green-600', 'text-red-600');
+        if (available === null) {
+            statusIcon.classList.add('fa-spinner', 'fa-spin', 'text-gray-400');
+            statusIcon.classList.remove('hidden');
+            feedback.textContent = 'Checking...';
+            feedback.classList.remove('hidden');
+        } else if (available) {
+            statusIcon.classList.add('fa-check-circle', 'text-green-600');
+            statusIcon.classList.remove('hidden');
+            feedback.textContent = message || 'Employee ID is available!';
+            feedback.classList.add('text-green-600');
+            feedback.classList.remove('hidden');
+        } else {
+            statusIcon.classList.add('fa-times-circle', 'text-red-600');
+            statusIcon.classList.remove('hidden');
+            feedback.textContent = message || 'This Employee ID is already registered.';
+            feedback.classList.add('text-red-600');
+            feedback.classList.remove('hidden');
+        }
+    }
+
+    function clearResult() {
+        isAvailable = null;
+        statusIcon.classList.add('hidden');
+        feedback.classList.add('hidden');
+    }
+
+    function checkEmployeeId(value) {
+        if (!value || value.length !== 6 || !/^\d{6}$/.test(value)) {
+            clearResult();
+            return;
+        }
+        if (value === lastCheckedValue) return;
+        lastCheckedValue = value;
+        showResult(null);
+
+        fetch('/check-employee-id', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: value })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (value === input.value) {
+                showResult(data.available, data.message);
+            }
+        })
+        .catch(() => {
+            if (value === input.value) {
+                showResult(false, 'Could not verify. Please try again.');
+            }
+        });
+    }
+
+    input.addEventListener('input', function() {
+        const v = this.value.replace(/\D/g, '').slice(0, 6);
+        if (this.value !== v) this.value = v;
+
+        if (v.length < 6) {
+            clearResult();
+            lastCheckedValue = '';
+        } else if (v.length === 6) {
+            if (checkTimeout) clearTimeout(checkTimeout);
+            checkTimeout = setTimeout(() => checkEmployeeId(v), 300);
+        }
+    });
+
+    input.addEventListener('blur', function() {
+        const v = this.value.trim();
+        if (v.length === 6 && /^\d{6}$/.test(v) && v !== lastCheckedValue) {
+            checkEmployeeId(v);
+        }
+    });
+
+    form.addEventListener('submit', function(e) {
+        if (isAvailable === false) {
+            e.preventDefault();
+            feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            input.focus();
+            return false;
+        }
+    });
+})();
+</script>
 {% endblock %}
 

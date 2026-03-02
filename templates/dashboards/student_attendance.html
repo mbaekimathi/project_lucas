@@ -50,17 +50,24 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6" x-data="{ selectedClass: '' }">
-    <div class="mb-4 sm:mb-6">
-        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-            <i class="fas fa-check-circle text-brand-primary mr-2 sm:mr-3"></i>
-            Student Attendance Register
-        </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">{% if is_teacher_view|default(false) %}Mark attendance for your allocated classes.{% else %}Classes attended by academic term and year.{% endif %}</p>
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto" x-data="{ selectedClass: '' }">
+    <!-- Modern Hero Header -->
+    <div class="page-hero mb-6 sm:mb-8">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div class="flex items-center gap-4">
+                <div class="page-hero-icon flex-shrink-0">
+                    <i class="fas fa-check-circle text-white text-xl sm:text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Student Attendance Register</h1>
+                    <p class="text-white/90 text-sm sm:text-base">{% if is_teacher_view|default(false) %}Mark attendance for your allocated classes.{% else %}Classes attended by academic term and year.{% endif %}</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     {% if selected_term_id and attendance_summary and students_by_level %}
-    <div class="mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+    <div class="mb-6 modern-card p-4 sm:p-6">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
             <i class="fas fa-chart-pie text-brand-primary mr-2"></i>
             Attendance Summary (out of 100)
@@ -97,21 +104,21 @@
     </div>
     {% endif %}
 
-    <form method="GET" action="{{ url_for('student_attendance') }}" class="flex flex-wrap gap-4 mb-6">
-        <div>
-            <label for="academic_year_id" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Academic Year</label>
+    <form method="GET" action="{{ url_for('student_attendance') }}" class="filter-bar mb-6 modern-card p-4 sm:p-5">
+        <div class="flex-1 min-w-[180px]">
+            <label for="academic_year_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Academic Year</label>
             <select name="academic_year_id" id="academic_year_id"
-                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">Select year</option>
                 {% for y in academic_years %}
                 <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} (Current){% endif %}</option>
                 {% endfor %}
             </select>
         </div>
-        <div>
-            <label for="term_id" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Term</label>
+        <div class="flex-1 min-w-[180px]">
+            <label for="term_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Term</label>
             <select name="term_id" id="term_id"
-                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 <option value="">Select term</option>
                 {% for t in terms %}
                 <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.term_name }} {% if t.year_name %}({{ t.year_name }}){% endif %}</option>
@@ -119,10 +126,10 @@
             </select>
         </div>
         {% if weeks_options %}
-        <div>
-            <label for="week" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Week</label>
+        <div class="flex-1 min-w-[200px]">
+            <label for="week" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Week</label>
             <select name="week" id="week" onchange="this.form.submit()"
-                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary min-w-[220px]">
+                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                 {% for w in weeks_options %}
                 <option value="{{ w.week_num }}" {% if selected_week == w.week_num %}selected{% endif %}>{{ w.label }}</option>
                 {% endfor %}
@@ -130,7 +137,7 @@
         </div>
         {% endif %}
         <div class="flex items-end">
-            <button type="submit" class="px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-lg font-semibold hover:opacity-90 transition-all">
+            <button type="submit" class="touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 transition-all shadow-md hover:shadow-lg">
                 <i class="fas fa-sync-alt mr-2"></i>Apply
             </button>
         </div>
@@ -138,12 +145,12 @@
 
     {% if students_by_level %}
     {% if selected_week_days %}
-    <div class="mb-6">
-        <label for="quick-class" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Jump to class</label>
+    <div class="mb-6 modern-card p-4">
+        <label for="quick-class" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Jump to class</label>
         <select id="quick-class"
                 x-model="selectedClass"
                 @change="const id = $event.target.value; if (id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
-                class="w-full sm:w-64 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                class="w-full sm:max-w-xs modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             <option value="">All classes</option>
             {% for level_group in students_by_level %}
             <option value="level-{{ loop.index }}">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %} - {{ level_group.students|length }} students</option>
@@ -160,8 +167,8 @@
         <div id="save-status" class="mb-4 text-sm hidden"></div>
     <div class="space-y-6">
         {% for level_group in students_by_level %}
-        <div id="level-{{ loop.index }}" class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden scroll-mt-4">
-            <div class="px-4 py-3 sm:px-6 bg-gradient-to-r from-brand-primary/90 to-brand-secondary/90">
+        <div id="level-{{ loop.index }}" class="modern-card overflow-hidden scroll-mt-4 rounded-xl">
+            <div class="level-header-card">
                 <h2 class="text-lg font-bold text-white flex items-center justify-between">
                     <span>
                         <i class="fas fa-graduation-cap mr-2"></i>
@@ -170,7 +177,7 @@
                     <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
                 </h2>
             </div>
-            <div class="overflow-x-auto">
+            <div class="table-responsive-wrapper">
                 <table class="w-full min-w-[600px]">
                     <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                         <tr>
@@ -332,16 +339,16 @@
     .attendance-cb { transition: accent-color 0.2s; }
     </style>
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-8 text-center">
-        <div class="w-14 h-14 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="empty-state modern-card">
+        <div class="empty-state-icon">
             <i class="fas fa-calendar-week text-gray-400 text-2xl"></i>
         </div>
         <p class="text-gray-600 dark:text-gray-400">Select an academic year and term, then choose a week to view daily attendance.</p>
     </div>
     {% endif %}
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
-        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div class="empty-state modern-card">
+        <div class="empty-state-icon">
             <i class="fas fa-graduation-cap text-gray-400 text-3xl"></i>
         </div>
         <p class="text-gray-600 dark:text-gray-400">No classes with students found. Add students via admission.</p>

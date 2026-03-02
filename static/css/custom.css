@@ -3,6 +3,16 @@
 /* Import Google Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap');
 
+/* Consistent zoom and scale across all devices (fixes hosted environment zoom issues) */
+html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    width: 100%;
+    overflow-x: hidden;
+}
+
 /* Brand theme colors (--brand-primary, --brand-secondary, --brand-accent) are set in base.html from System Settings */
 :root {
     --brand-warm: #8B1538;          /* Warm maroon */
@@ -37,6 +47,9 @@ body {
     position: relative;
     min-height: 100vh;
     overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    text-size-adjust: 100%;
     /* Modern Creative Professional Background - Mesh Gradient */
     background: 
         radial-gradient(ellipse at 0% 0%, rgba(128, 0, 32, 0.08) 0%, transparent 50%),
