@@ -396,6 +396,7 @@ def init_db():
                     gender VARCHAR(50),
                     current_grade VARCHAR(50),
                     previous_school VARCHAR(255),
+                    assessment_number VARCHAR(100),
                     address TEXT,
                     medical_info TEXT,
                     special_needs TEXT,
@@ -1236,6 +1237,23 @@ def init_db():
                     print("OK: Added sponsor_email column to students table")
             except Exception as e:
                 print(f"Migration note for sponsor_email: {e}")
+                pass
+            
+            # Add assessment_number column to students table if it doesn't exist
+            try:
+                cursor.execute("""
+                    SELECT COUNT(*) as count 
+                    FROM information_schema.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'students' 
+                    AND COLUMN_NAME = 'assessment_number'
+                """)
+                result = cursor.fetchone()
+                if result and result[0] == 0:
+                    cursor.execute("ALTER TABLE students ADD COLUMN assessment_number VARCHAR(100) NULL AFTER previous_school")
+                    print("OK: Added assessment_number column to students table")
+            except Exception as e:
+                print(f"Migration note for assessment_number: {e}")
                 pass
             
             # Update students table status ENUM to include 'transferred'
@@ -2408,6 +2426,7 @@ def admission():
         gender = normalize_text(request.form.get('gender'), allow_empty=True) if request.form.get('gender') else None  # students.gender
         current_grade = normalize_text(request.form.get('current_grade'), allow_empty=True) if request.form.get('current_grade') else None  # students.current_grade
         previous_school = normalize_text(request.form.get('previous_school'), allow_empty=True) if request.form.get('previous_school') else None  # students.previous_school
+        assessment_number = normalize_text(request.form.get('assessment_number'), allow_empty=True) if request.form.get('assessment_number') else None  # students.assessment_number
         address = normalize_text(request.form.get('address'), allow_empty=True) if request.form.get('address') else None  # students.address
         medical_info = normalize_text(request.form.get('medical_info'), allow_empty=True) if request.form.get('medical_info') else None  # students.medical_info
         special_needs = normalize_text(request.form.get('special_needs'), allow_empty=True) if request.form.get('special_needs') else None  # students.special_needs
@@ -2457,12 +2476,12 @@ def admission():
                     student_sql = """
                         INSERT INTO students 
                         (student_id, full_name, date_of_birth, gender, current_grade, previous_school,
-                         address, medical_info, special_needs, student_category, sponsor_name, sponsor_phone, sponsor_email, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
+                         assessment_number, address, medical_info, special_needs, student_category, sponsor_name, sponsor_phone, sponsor_email, status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
                     """
                     cursor.execute(student_sql, (
                         student_id, full_name, date_of_birth, gender, current_grade, 
-                        previous_school, address, medical_info, special_needs, student_category, 
+                        previous_school, assessment_number, address, medical_info, special_needs, student_category, 
                         sponsor_name, sponsor_phone, sponsor_email
                     ))
                     

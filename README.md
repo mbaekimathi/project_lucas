@@ -71,6 +71,17 @@ python app.py
 2. **Access the application**:
    - Open your browser and navigate to `http://localhost:5000`
 
+## cPanel Deployment
+
+For deploying to cPanel after pulling from GitHub:
+
+1. Run `bash setup_cpanel.sh` (or follow steps manually)
+2. Copy `.env.example` to `.env` and fill in your DB credentials
+3. Update `.htaccess` – set `PassengerAppRoot` to your full server path
+4. See **DEPLOYMENT.md** for the complete guide
+
+Required files: `passenger_wsgi.py`, `.htaccess`, `.env`, `requirements.txt`
+
 ## Default Login Credentials
 
 If you created sample users during database initialization:

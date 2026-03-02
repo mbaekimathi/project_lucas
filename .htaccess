@@ -1,4 +1,6 @@
-# Passenger configuration for Flask application
+# Passenger configuration for Flask application (cPanel)
+# IMPORTANT: Update PassengerAppRoot to your actual server path after git pull
+# Example: /home/username/public_html or /home1/account/project_lucas
 PassengerEnabled On
 PassengerAppRoot /home1/projectl/project_lucas
 PassengerBaseURI /

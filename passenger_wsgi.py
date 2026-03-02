@@ -1,13 +1,21 @@
 # Passenger WSGI entry point for cPanel
 # Application startup file: app.py
-# Entry point: app
+# Entry point: application (Passenger looks for this)
 
 import sys
 import os
 
-# Add the project directory to Python path
+# Add the project directory to Python path and set as cwd
 project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
+os.chdir(project_dir)
+
+# Load .env from project directory (important when cPanel cwd differs)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(project_dir, '.env'))
+except ImportError:
+    pass
 
 print("=" * 60)
 print("Passenger WSGI: Starting application load...")

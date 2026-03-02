@@ -1,0 +1,27 @@
+# Passenger configuration for Flask application (cPanel)
+# 
+# SETUP: Copy to .htaccess and UPDATE PassengerAppRoot with your actual path
+# Your path is typically: /home/USERNAME/public_html or /home/USERNAME/domain.com
+# Find it in cPanel -> File Manager -> your app folder -> check the path at top
+
+PassengerEnabled On
+PassengerAppRoot /home/USERNAME/public_html
+PassengerBaseURI /
+PassengerAppType wsgi
+PassengerStartupFile passenger_wsgi.py
+
+# Python path - use system Python or your virtualenv Python
+# Option A: System Python (cPanel default)
+PassengerPython /usr/bin/python3
+
+# Option B: Virtualenv (if using cPanel Setup Python App - use the path from that tool)
+# PassengerPython /home/USERNAME/virtualenv/public_html/3.10/bin/python
+
+PassengerFriendlyErrorPages On
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
