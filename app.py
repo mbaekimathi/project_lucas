@@ -726,6 +726,162 @@ def init_db():
                     VALUES ('Monday,Tuesday,Wednesday,Thursday,Friday', %s, 60, %s)
                 """, (default_class_times, default_activities))
             
+            # Create academic_levels table (must be before timetables, terms, fee_structures)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS academic_levels (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    level_category VARCHAR(255) NOT NULL,
+                    level_name VARCHAR(255) NOT NULL,
+                    level_description TEXT,
+                    level_status ENUM('active', 'inactive') DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_level_status (level_status)
+                )
+            """)
+            
+            # Migrate existing academic_levels: rename status to level_status if it exists
+            try:
+                cursor.execute("SHOW COLUMNS FROM academic_levels LIKE 'status'")
+                if cursor.fetchone():
+                    cursor.execute("SHOW INDEX FROM academic_levels WHERE Key_name = 'idx_status'")
+                    if cursor.fetchone():
+                        cursor.execute("ALTER TABLE academic_levels DROP INDEX idx_status")
+                    cursor.execute("ALTER TABLE academic_levels CHANGE COLUMN status level_status ENUM('active', 'inactive') DEFAULT 'active'")
+                    cursor.execute("SHOW INDEX FROM academic_levels WHERE Key_name = 'idx_level_status'")
+                    if not cursor.fetchone():
+                        cursor.execute("ALTER TABLE academic_levels ADD INDEX idx_level_status (level_status)")
+                    connection.commit()
+                    print("OK: Migrated academic_levels.status to level_status")
+            except Exception as e:
+                print(f"Migration note: {e}")
+                pass
+            
+            # Create subjects table (must be before exams, teacher_subject_assignments)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subjects (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    subject_name VARCHAR(255) NOT NULL,
+                    subject_code VARCHAR(50) UNIQUE,
+                    description TEXT,
+                    status ENUM('active', 'inactive') DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_subject_code (subject_code)
+                )
+            """)
+            
+            # Create academic_years table (must be before terms, timetables, exams)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS academic_years (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    year_name VARCHAR(255) NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft',
+                    is_current BOOLEAN DEFAULT FALSE,
+                    is_locked BOOLEAN DEFAULT FALSE,
+                    locked_at TIMESTAMP NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_status (status),
+                    INDEX idx_is_current (is_current),
+                    INDEX idx_is_locked (is_locked)
+                )
+            """)
+            
+            # Add is_locked and locked_at to academic_years if missing
+            try:
+                cursor.execute("SHOW COLUMNS FROM academic_years LIKE 'is_locked'")
+                if not cursor.fetchone():
+                    cursor.execute("ALTER TABLE academic_years ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER is_current")
+                    cursor.execute("ALTER TABLE academic_years ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
+                    cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
+                    print("OK: Added is_locked and locked_at columns to academic_years table")
+            except Exception as e:
+                print(f"Migration note for academic_years.is_locked: {e}")
+                pass
+            
+            try:
+                cursor.execute("SHOW COLUMNS FROM academic_years WHERE Field = 'status'")
+                status_col = cursor.fetchone()
+                if status_col and 'suspended' not in str(status_col):
+                    cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
+                    print("OK: Updated academic_years.status enum to include 'suspended'")
+            except Exception as e:
+                print(f"Migration note for academic_years.status enum: {e}")
+                pass
+            
+            # Create terms table (must be before timetables, exams, term_academic_levels)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS terms (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    term_name VARCHAR(255) NOT NULL,
+                    academic_year_id INT NOT NULL,
+                    academic_level_id INT,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft',
+                    is_locked BOOLEAN DEFAULT FALSE,
+                    locked_at TIMESTAMP NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE SET NULL,
+                    INDEX idx_academic_year (academic_year_id),
+                    INDEX idx_academic_level (academic_level_id),
+                    INDEX idx_status (status),
+                    INDEX idx_is_locked (is_locked)
+                )
+            """)
+            
+            # Add is_locked, locked_at, is_current to terms if missing
+            try:
+                cursor.execute("SHOW COLUMNS FROM terms LIKE 'is_locked'")
+                if not cursor.fetchone():
+                    cursor.execute("ALTER TABLE terms ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER status")
+                    cursor.execute("ALTER TABLE terms ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
+                    cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
+                    print("OK: Added is_locked and locked_at columns to terms table")
+            except Exception as e:
+                print(f"Migration note for terms.is_locked: {e}")
+                pass
+            
+            try:
+                cursor.execute("SHOW COLUMNS FROM terms WHERE Field = 'status'")
+                status_col = cursor.fetchone()
+                if status_col and 'suspended' not in str(status_col):
+                    cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
+                    print("OK: Updated terms.status enum to include 'suspended'")
+            except Exception as e:
+                print(f"Migration note for terms.status enum: {e}")
+                pass
+            
+            try:
+                cursor.execute("SHOW COLUMNS FROM terms LIKE 'is_current'")
+                if not cursor.fetchone():
+                    cursor.execute("ALTER TABLE terms ADD COLUMN is_current BOOLEAN DEFAULT FALSE AFTER status")
+                    cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
+                    print("OK: Added is_current column to terms")
+            except Exception as e:
+                print(f"Migration note for terms.is_current: {e}")
+                pass
+            
+            # Create term_academic_levels junction table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS term_academic_levels (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    term_id INT NOT NULL,
+                    academic_level_id INT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE CASCADE,
+                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_term_level (term_id, academic_level_id),
+                    INDEX idx_term_id (term_id),
+                    INDEX idx_academic_level_id (academic_level_id)
+                )
+            """)
+            
             # Create timetables table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS timetables (
@@ -829,69 +985,6 @@ def init_db():
                     UNIQUE KEY unique_exam_supervisor_level (exam_id, supervisor_id, academic_level_id),
                     INDEX idx_exam (exam_id),
                     INDEX idx_supervisor (supervisor_id)
-                )
-            """)
-            
-            # Create subjects table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS subjects (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    subject_name VARCHAR(255) NOT NULL,
-                    subject_code VARCHAR(50) UNIQUE,
-                    description TEXT,
-                    status ENUM('active', 'inactive') DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_subject_code (subject_code)
-                )
-            """)
-            
-            # Create teacher_subject_assignments table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS teacher_subject_assignments (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    academic_level_id INT NOT NULL,
-                    subject_id INT NOT NULL,
-                    teacher_id INT NOT NULL,
-                    created_by INT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE,
-                    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
-                    FOREIGN KEY (teacher_id) REFERENCES employees(id) ON DELETE CASCADE,
-                    FOREIGN KEY (created_by) REFERENCES employees(id) ON DELETE SET NULL,
-                    UNIQUE KEY unique_assignment (academic_level_id, subject_id, teacher_id),
-                    INDEX idx_academic_level (academic_level_id),
-                    INDEX idx_subject (subject_id),
-                    INDEX idx_teacher (teacher_id)
-                )
-            """)
-            
-            # Create subjects table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS subjects (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    subject_name VARCHAR(255) NOT NULL,
-                    subject_code VARCHAR(50) UNIQUE,
-                    description TEXT,
-                    status ENUM('active', 'inactive') DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_subject_code (subject_code)
-                )
-            """)
-            
-            # Create academic_levels table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS academic_levels (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    level_category VARCHAR(255) NOT NULL,
-                    level_name VARCHAR(255) NOT NULL,
-                    level_description TEXT,
-                    level_status ENUM('active', 'inactive') DEFAULT 'active',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_level_status (level_status)
                 )
             """)
             
@@ -1052,121 +1145,8 @@ def init_db():
                     item_order INT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (fee_structure_id) REFERENCES fee_structures(id) ON DELETE CASCADE,
                     INDEX idx_fee_structure (fee_structure_id)
-                )
-            """)
-            
-            # Create academic_years table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS academic_years (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    year_name VARCHAR(255) NOT NULL,
-                    start_date DATE NOT NULL,
-                    end_date DATE NOT NULL,
-                    status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft',
-                    is_current BOOLEAN DEFAULT FALSE,
-                    is_locked BOOLEAN DEFAULT FALSE,
-                    locked_at TIMESTAMP NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_status (status),
-                    INDEX idx_is_current (is_current),
-                    INDEX idx_is_locked (is_locked)
-                )
-            """)
-            
-            # Add is_locked and locked_at columns if they don't exist (migration)
-            try:
-                cursor.execute("SHOW COLUMNS FROM academic_years LIKE 'is_locked'")
-                if not cursor.fetchone():
-                    cursor.execute("ALTER TABLE academic_years ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER is_current")
-                    cursor.execute("ALTER TABLE academic_years ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
-                    cursor.execute("ALTER TABLE academic_years ADD INDEX idx_is_locked (is_locked)")
-                    print("OK: Added is_locked and locked_at columns to academic_years table")
-            except Exception as e:
-                print(f"Migration note for academic_years.is_locked: {e}")
-                pass
-            
-            # Update status enum to include 'suspended' if it doesn't exist
-            try:
-                cursor.execute("SHOW COLUMNS FROM academic_years WHERE Field = 'status'")
-                status_col = cursor.fetchone()
-                if status_col and 'suspended' not in str(status_col):
-                    cursor.execute("ALTER TABLE academic_years MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("OK: Updated academic_years.status enum to include 'suspended'")
-            except Exception as e:
-                print(f"Migration note for academic_years.status enum: {e}")
-                pass
-            
-            # Create terms table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS terms (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    term_name VARCHAR(255) NOT NULL,
-                    academic_year_id INT NOT NULL,
-                    academic_level_id INT,
-                    start_date DATE NOT NULL,
-                    end_date DATE NOT NULL,
-                    status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft',
-                    is_locked BOOLEAN DEFAULT FALSE,
-                    locked_at TIMESTAMP NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
-                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE SET NULL,
-                    INDEX idx_academic_year (academic_year_id),
-                    INDEX idx_academic_level (academic_level_id),
-                    INDEX idx_status (status),
-                    INDEX idx_is_locked (is_locked)
-                )
-            """)
-            
-            # Add is_locked and locked_at columns if they don't exist (migration)
-            try:
-                cursor.execute("SHOW COLUMNS FROM terms LIKE 'is_locked'")
-                if not cursor.fetchone():
-                    cursor.execute("ALTER TABLE terms ADD COLUMN is_locked BOOLEAN DEFAULT FALSE AFTER status")
-                    cursor.execute("ALTER TABLE terms ADD COLUMN locked_at TIMESTAMP NULL AFTER is_locked")
-                    cursor.execute("ALTER TABLE terms ADD INDEX idx_is_locked (is_locked)")
-                    print("OK: Added is_locked and locked_at columns to terms table")
-            except Exception as e:
-                print(f"Migration note for terms.is_locked: {e}")
-                pass
-            
-            # Update status enum to include 'suspended' if it doesn't exist
-            try:
-                cursor.execute("SHOW COLUMNS FROM terms WHERE Field = 'status'")
-                status_col = cursor.fetchone()
-                if status_col and 'suspended' not in str(status_col):
-                    cursor.execute("ALTER TABLE terms MODIFY COLUMN status ENUM('draft', 'active', 'closed', 'suspended') DEFAULT 'draft'")
-                    print("OK: Updated terms.status enum to include 'suspended'")
-            except Exception as e:
-                print(f"Migration note for terms.status enum: {e}")
-                pass
-            
-            # Add is_current column to terms if it doesn't exist
-            try:
-                cursor.execute("SHOW COLUMNS FROM terms LIKE 'is_current'")
-                if not cursor.fetchone():
-                    cursor.execute("ALTER TABLE terms ADD COLUMN is_current BOOLEAN DEFAULT FALSE AFTER status")
-                    cursor.execute("ALTER TABLE terms ADD INDEX idx_is_current (is_current)")
-                    print("OK: Added is_current column to terms table")
-            except Exception as e:
-                print(f"Migration note for terms.is_current: {e}")
-                pass
-            
-            # Create term_academic_levels junction table for many-to-many relationship
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS term_academic_levels (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    term_id INT NOT NULL,
-                    academic_level_id INT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (term_id) REFERENCES terms(id) ON DELETE CASCADE,
-                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE,
-                    UNIQUE KEY unique_term_level (term_id, academic_level_id),
-                    INDEX idx_term_id (term_id),
-                    INDEX idx_academic_level_id (academic_level_id)
                 )
             """)
             
