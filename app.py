@@ -9901,7 +9901,15 @@ def student_management():
                     LEFT JOIN parents p ON s.student_id = p.student_id
                     ORDER BY s.created_at DESC
                 """)
-                students = cursor.fetchall()
+                rows = cursor.fetchall()
+                # Deduplicate by student_id (LEFT JOIN parents can return multiple rows per student)
+                seen_ids = set()
+                students = []
+                for row in rows:
+                    sid = row.get('student_id') if isinstance(row, dict) else row[1]
+                    if sid not in seen_ids:
+                        seen_ids.add(sid)
+                        students.append(row)
         except Exception as e:
             print(f"Error fetching students: {e}")
             flash('Error loading students. Please try again.', 'error')

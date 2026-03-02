@@ -264,7 +264,6 @@
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Students List - Simple List Format -->
     <!-- Mobile View (< 768px) -->
@@ -276,7 +275,7 @@
                  data-name="{{ student.full_name|lower }}"
                  data-id="{{ student.student_id|lower }}"
                  data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
-                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                 x-show="(filterStatus === 'all' || filterStatus === {{ student.status|tojson }}) && (!searchQuery || ({{ student.full_name|lower|tojson }} + ' ' + {{ student.student_id|lower|tojson }} + ' ' + {{ (student.parent_name|lower if student.parent_name else '')|tojson }}).includes(searchQuery.toLowerCase()))">
                 <div class="flex items-start gap-2">
                     <!-- Avatar -->
                     <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -399,7 +398,7 @@
                  data-name="{{ student.full_name|lower }}"
                  data-id="{{ student.student_id|lower }}"
                  data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
-                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                 x-show="(filterStatus === 'all' || filterStatus === {{ student.status|tojson }}) && (!searchQuery || ({{ student.full_name|lower|tojson }} + ' ' + {{ student.student_id|lower|tojson }} + ' ' + {{ (student.parent_name|lower if student.parent_name else '')|tojson }}).includes(searchQuery.toLowerCase()))">
                 <div class="grid grid-cols-6 gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 items-center">
                     <!-- Student Name -->
                     <div class="col-span-3 flex items-center space-x-2 min-w-0">
@@ -521,7 +520,7 @@
                  data-name="{{ student.full_name|lower }}"
                  data-id="{{ student.student_id|lower }}"
                  data-parent="{{ (student.parent_name|lower if student.parent_name else '') }}"
-                 x-show="(filterStatus === 'all' || filterStatus === '{{ student.status }}') && (!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.parent_name|lower if student.parent_name else '') }}'.includes(searchQuery.toLowerCase()))">
+                 x-show="(filterStatus === 'all' || filterStatus === {{ student.status|tojson }}) && (!searchQuery || ({{ student.full_name|lower|tojson }} + ' ' + {{ student.student_id|lower|tojson }} + ' ' + {{ (student.parent_name|lower if student.parent_name else '')|tojson }}).includes(searchQuery.toLowerCase()))">
                 <div class="grid lg:grid-cols-10 gap-3 xl:gap-4 px-4 xl:px-6 py-2.5 xl:py-3 items-center">
                     <!-- Student Name -->
                     <div class="col-span-4 flex items-center space-x-2 xl:space-x-3 min-w-0">
