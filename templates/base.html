@@ -592,9 +592,17 @@
                 <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
                     <!-- Dark Mode Toggle -->
                     <button @click="darkMode = !darkMode" 
-                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation">
+                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                            title="Toggle dark mode">
                         <i class="fas fa-moon text-lg" x-show="!darkMode"></i>
                         <i class="fas fa-sun text-lg" x-show="darkMode" x-cloak></i>
+                    </button>
+                    
+                    <!-- Reset Zoom / View -->
+                    <button onclick="document.body.style.zoom=1;document.documentElement.style.zoom=1;window.location.reload();" 
+                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                            title="Reset zoom to 100% (Ctrl+0)">
+                        <i class="fas fa-compress-arrows-alt text-lg"></i>
                     </button>
                     
                     <!-- Employee Selection Dropdown (for technicians viewing as a role) -->
