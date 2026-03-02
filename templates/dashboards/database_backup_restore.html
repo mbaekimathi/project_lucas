@@ -2,12 +2,6 @@
 
 {% block title %}Database Backup & Restore - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch"

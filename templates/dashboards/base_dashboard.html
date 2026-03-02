@@ -87,11 +87,11 @@
     <!-- Role-specific theme colors -->
     <style>
         :root {
-            --role-primary: {% block role_primary %}#2563eb{% endblock %};
-            --role-secondary: {% block role_secondary %}#3b82f6{% endblock %};
-            --role-accent: {% block role_accent %}#1e40af{% endblock %};
-            --role-gradient-start: {% block role_gradient_start %}#2563eb{% endblock %};
-            --role-gradient-end: {% block role_gradient_end %}#1e40af{% endblock %};
+            --role-primary: var(--brand-primary, #800020);
+            --role-secondary: var(--brand-secondary, #A00030);
+            --role-accent: var(--brand-accent, #5C0014);
+            --role-gradient-start: var(--brand-primary, #800020);
+            --role-gradient-end: var(--brand-accent, #5C0014);
         }
         
         .role-theme {

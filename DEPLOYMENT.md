@@ -1,4 +1,4 @@
-# cPanel Deployment Guide - Project Lucas
+# cPanel Deployment Guide - Elimu Centric
 
 This guide covers deploying the Flask app to cPanel with Passenger after pulling from GitHub.
 

@@ -213,13 +213,13 @@ def run_sql_migration(connection, migration_name, sql_statements):
             
             execution_time = int((datetime.now() - start_time).total_seconds() * 1000)
             record_migration(connection, migration_name, 'success', execution_time)
-            print(f"✓ Migration '{migration_name}' applied successfully ({execution_time}ms)")
+            print(f"[OK] Migration '{migration_name}' applied successfully ({execution_time}ms)")
             return True
     except Exception as e:
         execution_time = int((datetime.now() - start_time).total_seconds() * 1000)
         error_msg = str(e)
         record_migration(connection, migration_name, 'failed', execution_time, error_msg)
-        print(f"✗ Migration '{migration_name}' failed: {error_msg}")
+        print(f"[FAIL] Migration '{migration_name}' failed: {error_msg}")
         return False
 
 def run_python_migration(connection, migration_func):
@@ -232,17 +232,17 @@ def run_python_migration(connection, migration_func):
         
         if result:
             record_migration(connection, migration_name, 'success', execution_time)
-            print(f"✓ Migration '{migration_name}' applied successfully ({execution_time}ms)")
+            print(f"[OK] Migration '{migration_name}' applied successfully ({execution_time}ms)")
             return True
         else:
             record_migration(connection, migration_name, 'failed', execution_time, 'Migration function returned False')
-            print(f"✗ Migration '{migration_name}' failed: Migration function returned False")
+            print(f"[FAIL] Migration '{migration_name}' failed: Migration function returned False")
             return False
     except Exception as e:
         execution_time = int((datetime.now() - start_time).total_seconds() * 1000)
         error_msg = str(e)
         record_migration(connection, migration_name, 'failed', execution_time, error_msg)
-        print(f"✗ Migration '{migration_name}' failed: {error_msg}")
+        print(f"[FAIL] Migration '{migration_name}' failed: {error_msg}")
         return False
 
 def load_migration_files():
@@ -255,7 +255,7 @@ def load_migration_files():
     
     # Get all Python files in migrations directory (excluding __init__.py)
     for filename in sorted(os.listdir(migrations_dir)):
-        if filename.endswith('.py') and filename != '__init__.py' and filename != 'migration_manager.py':
+        if filename.endswith('.py') and filename not in ('__init__.py', 'migration_manager.py', 'create_migration.py'):
             migration_name = filename[:-3]  # Remove .py extension
             migrations.append({
                 'name': migration_name,
@@ -273,13 +273,13 @@ def run_all_migrations():
     
     connection = get_db_connection()
     if not connection:
-        print("✗ Failed to connect to database")
+        print("[FAIL] Failed to connect to database")
         return False
     
     try:
         # Create migrations table if it doesn't exist
         if not create_migrations_table(connection):
-            print("✗ Failed to create migrations table")
+            print("[FAIL] Failed to create migrations table")
             return False
         
         # Get already applied migrations
@@ -304,11 +304,11 @@ def run_all_migrations():
             
             # Skip if already applied
             if migration_name in applied_migrations:
-                print(f"⊘ Migration '{migration_name}' already applied, skipping")
+                print(f"[SKIP] Migration '{migration_name}' already applied")
                 continue
             
             pending_count += 1
-            print(f"\n→ Running migration: {migration_name}")
+            print(f"\n>> Running migration: {migration_name}")
             
             # Import and run the migration
             try:
@@ -335,11 +335,11 @@ def run_all_migrations():
                     else:
                         failed_count += 1
                 else:
-                    print(f"✗ Migration '{migration_name}' has no 'up' or 'migrate' function")
+                    print(f"[FAIL] Migration '{migration_name}' has no 'up' or 'migrate' function")
                     failed_count += 1
                     
             except Exception as e:
-                print(f"✗ Error loading migration '{migration_name}': {e}")
+                print(f"[FAIL] Error loading migration '{migration_name}': {e}")
                 failed_count += 1
         
         print("\n" + "=" * 60)
@@ -352,7 +352,7 @@ def run_all_migrations():
         return failed_count == 0
         
     except Exception as e:
-        print(f"✗ Error running migrations: {e}")
+        print(f"[FAIL] Error running migrations: {e}")
         import traceback
         traceback.print_exc()
         return False

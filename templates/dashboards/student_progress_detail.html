@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.full_name }} - Progress Report - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+<a href="/student-management"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student Management</span>
+</a>
+<a href="/student-management/student-attendance"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Student Attendance</span>
+</a>
+<a href="/student-management/students-progress"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students Progress</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a href="/admission"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-plus w-5"></i>
+    <span>Register Student</span>
+</a>
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% if user_role == 'principal' or viewing_as_role == 'principal' %}
+<a href="/dashboard/employee/student-fees"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payments</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6">
+    <a href="{{ url_for('students_progress') }}" class="inline-flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4">
+        <i class="fas fa-arrow-left mr-2"></i>Back to Students
+    </a>
+    <div class="flex items-center gap-4 mb-6">
+        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg flex-shrink-0">
+            <i class="fas fa-user-graduate text-white text-xl"></i>
+        </div>
+        <div>
+            <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">{{ student.full_name }}</h1>
+            <p class="text-gray-600 dark:text-gray-400">
+                <span class="font-mono font-semibold">{{ student.student_id }}</span>
+                {% if student.current_grade %}
+                <span class="mx-2">•</span>
+                <span class="px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-sm font-medium">{{ student.current_grade }}</span>
+                {% endif %}
+            </p>
+        </div>
+    </div>
+
+    {% if summary and summary.total_entries > 0 %}
+    <!-- Summary KPI Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Overall Mean</p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.overall_mean }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <i class="fas fa-chart-line text-blue-600 dark:text-blue-400 text-xl"></i>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pass Rate</p>
+                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.pass_rate }}%</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl {% if summary.pass_rate >= 70 %}bg-green-100 dark:bg-green-900/30{% elif summary.pass_rate >= 50 %}bg-amber-100 dark:bg-amber-900/30{% else %}bg-red-100 dark:bg-red-900/30{% endif %} flex items-center justify-center">
+                    <i class="fas fa-percentage {% if summary.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif summary.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} text-xl"></i>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Strongest Subject</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.best_subject }}">{{ summary.best_subject or '—' }}</p>
+                    <p class="text-xs text-green-600 dark:text-green-400 font-medium">{{ summary.best_mean if summary.best_mean else '' }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-trophy text-green-600 dark:text-green-400 text-xl"></i>
+                </div>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs Improvement</p>
+                    <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.weakest_subject }}">{{ summary.weakest_subject or '—' }}</p>
+                    <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">{{ summary.weakest_mean if summary.weakest_mean else '' }}</p>
+                </div>
+                <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-chart-line text-amber-600 dark:text-amber-400 text-xl"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-6 mb-6">
+        <!-- Performance by Subject - Bar Chart -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                <i class="fas fa-chart-bar text-brand-primary mr-2"></i>
+                Performance by Subject
+            </h3>
+            <div class="h-64 sm:h-80">
+                <canvas id="subjectChart"></canvas>
+            </div>
+            <!-- Subject progress bars as visual supplement -->
+            <div class="mt-4 space-y-3">
+                {% for subj in by_subject %}
+                <div>
+                    <div class="flex justify-between text-sm mb-1">
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{{ subj.subject_name }}</span>
+                        <span class="{% if subj.mean >= 70 %}text-green-600 dark:text-green-400{% elif subj.mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-semibold">{{ subj.mean }}%</span>
+                    </div>
+                    <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div class="h-full rounded-full transition-all {% if subj.mean >= 70 %}bg-green-500{% elif subj.mean >= 50 %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ [subj.mean, 100]|min }}%"></div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Progress Trend Over Time - Line Chart -->
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+                <i class="fas fa-chart-area text-brand-primary mr-2"></i>
+                Performance Trend
+            </h3>
+            <div class="h-64 sm:h-80">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+    (function() {
+        const isDark = document.documentElement.classList.contains('dark');
+        const textColor = isDark ? '#e5e7eb' : '#374151';
+        const gridColor = isDark ? 'rgba(75, 85, 99, 0.3)' : 'rgba(209, 213, 219, 0.5)';
+        const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#800020';
+
+        // Subject bar chart
+        const subjectData = {{ by_subject|tojson }};
+        if (subjectData.length > 0) {
+            new Chart(document.getElementById('subjectChart'), {
+                type: 'bar',
+                data: {
+                    labels: subjectData.map(s => s.subject_name),
+                    datasets: [{
+                        label: 'Mean %',
+                        data: subjectData.map(s => s.mean),
+                        backgroundColor: subjectData.map(s => 
+                            s.mean >= 70 ? 'rgba(34, 197, 94, 0.7)' :
+                            s.mean >= 50 ? 'rgba(245, 158, 11, 0.7)' : 'rgba(239, 68, 68, 0.7)'
+                        ),
+                        borderColor: subjectData.map(s => 
+                            s.mean >= 70 ? 'rgb(34, 197, 94)' :
+                            s.mean >= 50 ? 'rgb(245, 158, 11)' : 'rgb(239, 68, 68)'
+                        ),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: textColor, font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Trend line chart
+        const periodData = {{ by_period|tojson }};
+        if (periodData.length > 0) {
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: periodData.map(p => p.label),
+                    datasets: [{
+                        label: 'Term Mean %',
+                        data: periodData.map(p => p.mean),
+                        fill: true,
+                        borderColor: primaryColor || '#800020',
+                        backgroundColor: 'rgba(128, 0, 32, 0.15)',
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        },
+                        y: {
+                            min: 0,
+                            max: 100,
+                            grid: { color: gridColor },
+                            ticks: { color: textColor }
+                        }
+                    }
+                }
+            });
+        }
+    })();
+    </script>
+    {% else %}
+    <!-- No data state -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
+        <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-chart-line text-gray-400 text-3xl"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Exam Data Yet</h3>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Exam marks will appear here once results are entered. The progress report will show performance trends, subject analysis, and pass rates.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

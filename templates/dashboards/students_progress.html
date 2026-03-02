@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Students Progress - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+<a href="/student-management"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student Management</span>
+</a>
+<a href="/admission"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-plus w-5"></i>
+    <span>Register Student</span>
+</a>
+<a href="/student-management/student-attendance"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Student Attendance</span>
+</a>
+<a href="/student-management/students-progress"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students Progress</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% if user_role == 'principal' or viewing_as_role == 'principal' %}
+<a href="/dashboard/employee/student-fees"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payments</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6" x-data="{ searchQuery: '', selectedClass: '' }">
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-chart-line text-brand-primary mr-2 sm:mr-3"></i>
+            Students Progress
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Select a student by academic level to view their exam progress.</p>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-4 mb-6">
+        <div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4">
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <i class="fas fa-search text-gray-400"></i>
+                </div>
+                <input type="text"
+                       x-model="searchQuery"
+                       placeholder="Search by name, ID, grade, or parent..."
+                       class="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+            </div>
+        </div>
+        {% if students_by_level %}
+        <div class="sm:w-64 flex-shrink-0">
+            <label for="quick-class" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Quick jump to class</label>
+            <select id="quick-class"
+                    x-model="selectedClass"
+                    @change="const id = $event.target.value; if (id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
+                    class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <option value="">All classes</option>
+                {% for level_group in students_by_level %}
+                <option value="level-{{ loop.index }}">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %} ({{ level_group.students|length }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if students_by_level %}
+    <div class="space-y-6">
+        {% for level_group in students_by_level %}
+        <div id="level-{{ loop.index }}" class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden scroll-mt-4">
+            <div class="px-4 py-3 sm:px-6 bg-gradient-to-r from-brand-primary/90 to-brand-secondary/90">
+                <h2 class="text-lg font-bold text-white flex items-center justify-between">
+                    <span>
+                        <i class="fas fa-graduation-cap mr-2"></i>
+                        {{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}
+                    </span>
+                    <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
+                </h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                        <tr>
+                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Student</th>
+                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">ID</th>
+                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 hidden sm:table-cell">Parent</th>
+                            <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for student in level_group.students %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors student-row"
+                            data-name="{{ student.full_name|lower }}"
+                            data-id="{{ student.student_id|lower }}"
+                            data-grade="{{ (student.current_grade or '')|lower }}"
+                            data-parent="{{ (student.parent_name or '')|lower }}"
+                            x-show="!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.current_grade or '')|lower }} {{ (student.parent_name or '')|lower }}'.includes(searchQuery.toLowerCase())">
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-user-graduate text-white"></i>
+                                    </div>
+                                    <span class="font-semibold text-gray-900 dark:text-white">{{ student.full_name }}</span>
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300">{{ student.student_id }}</td>
+                            <td class="px-4 py-3">
+                                {% if student.status == 'in session' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">Active</span>
+                                {% elif student.status == 'pending approval' %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">Pending</span>
+                                {% else %}
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ student.status|default('-')|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 hidden sm:table-cell">{{ student.parent_name or '-' }}</td>
+                            <td class="px-4 py-3 text-right">
+                                <a href="{{ url_for('student_progress_detail', student_id=student.student_id) }}"
+                                   class="inline-flex items-center px-3 py-1.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold rounded-lg hover:opacity-90 transition-all">
+                                    <i class="fas fa-chart-line mr-2"></i>View Progress
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
+        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-user-graduate text-gray-400 text-3xl"></i>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400">No students found. Add students via admission or student management.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

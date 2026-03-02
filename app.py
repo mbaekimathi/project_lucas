@@ -78,7 +78,7 @@ def allowed_payment_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_PAYMENT_EXTENSIONS
 
 def get_school_settings():
-    """Get school settings from database"""
+    """Get school settings from database (includes theme colors)"""
     school_data = {
         'school_name': 'Modern School',
         'school_email': '',
@@ -90,7 +90,11 @@ def get_school_settings():
         'tiktok_url': '',
         'whatsapp_number': '',
         'school_location': '',
-        'project_name': 'PROJECT LUCAS'
+        'project_name': 'Elimu Centric',
+        'primary_color': '#800020',
+        'secondary_color': '#A00030',
+        'accent_color': '#5C0014',
+        'font_family': 'Inter',
     }
     
     connection = None
@@ -124,10 +128,14 @@ def get_school_settings():
                                 'tiktok_url': result.get('tiktok_url') or '',
                                 'whatsapp_number': result.get('whatsapp_number') or '',
                                 'school_location': result.get('school_location') or '',
-                                'project_name': result.get('project_name') or 'PROJECT LUCAS'
+                                'project_name': result.get('project_name') or 'Elimu Centric',
+                                'primary_color': (result.get('primary_color') or '#800020').strip(),
+                                'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
+                                'accent_color': (result.get('accent_color') or '#5C0014').strip(),
+                                'font_family': (result.get('font_family') or 'Inter').strip(),
                             }
                         else:
-                            # Tuple result (fallback)
+                            # Tuple result (fallback) - theme cols may be at different indices
                             school_data = {
                                 'school_name': (result[1] if len(result) > 1 else None) or 'Modern School',
                                 'school_email': (result[2] if len(result) > 2 else None) or '',
@@ -139,7 +147,9 @@ def get_school_settings():
                                 'tiktok_url': (result[8] if len(result) > 8 else None) or '',
                                 'whatsapp_number': (result[9] if len(result) > 9 else None) or '',
                                 'school_location': (result[10] if len(result) > 10 else None) or '',
-                                'project_name': (result[11] if len(result) > 11 else None) or 'PROJECT LUCAS'
+                                'project_name': (result[11] if len(result) > 11 else None) or 'Elimu Centric',
+                                'primary_color': '#800020', 'secondary_color': '#A00030',
+                                'accent_color': '#5C0014', 'font_family': 'Inter',
                             }
     except Exception as e:
         # Silently return default values if there's an error
@@ -252,7 +262,7 @@ def is_hosted():
     """Check if the application is running on the hosted server"""
     # Check if we're in the production path
     current_path = os.path.abspath(os.getcwd())
-    if '/home1/projectl/project_lucas' in current_path or '\\home1\\projectl\\project_lucas' in current_path:
+    if any(p in current_path.replace('\\', '/') for p in ['/home1/projectl/elimu_centric', '/home1/projectl/project_lucas']):
         return True
     
     # Check for environment variable that indicates hosting
@@ -271,9 +281,9 @@ if is_hosted():
     # Hosted server credentials
     DB_CONFIG = {
         'host': os.environ.get('DB_HOST', 'localhost'),
-        'user': os.environ.get('DB_USER', 'projectl_school'),
-        'password': os.environ.get('DB_PASSWORD', 'Itskimathi007'),
-        'database': os.environ.get('DB_NAME', 'projectl_school'),
+        'user': os.environ.get('DB_USER', 'elimucentric_school'),
+        'password': os.environ.get('DB_PASSWORD', ''),
+        'database': os.environ.get('DB_NAME', 'elimucentric_school'),
         'charset': 'utf8mb4',
         'cursorclass': pymysql.cursors.DictCursor
     }
@@ -603,7 +613,7 @@ def init_db():
                     tiktok_url VARCHAR(255),
                     whatsapp_number VARCHAR(50),
                     school_location TEXT,
-                    project_name VARCHAR(255) DEFAULT 'PROJECT LUCAS',
+                    project_name VARCHAR(255) DEFAULT 'Elimu Centric',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 )
@@ -620,11 +630,25 @@ def init_db():
                 """, (DB_CONFIG['database'],))
                 column_exists = cursor.fetchone()
                 if not (column_exists and (column_exists.get('count') if isinstance(column_exists, dict) else column_exists[0]) > 0):
-                    cursor.execute("ALTER TABLE school_settings ADD COLUMN project_name VARCHAR(255) DEFAULT 'PROJECT LUCAS' AFTER school_location")
+                    cursor.execute("ALTER TABLE school_settings ADD COLUMN project_name VARCHAR(255) DEFAULT 'Elimu Centric' AFTER school_location")
             except Exception as e:
-                # Column might already exist, that's okay
                 pass
-            
+            # Add theme columns if they don't exist
+            for col, default in [
+                ('primary_color', '#800020'), ('secondary_color', '#A00030'),
+                ('accent_color', '#5C0014'), ('font_family', 'Inter')
+            ]:
+                try:
+                    cursor.execute("""
+                        SELECT COUNT(*) as c FROM information_schema.COLUMNS
+                        WHERE table_schema = %s AND table_name = 'school_settings' AND column_name = %s
+                    """, (DB_CONFIG['database'], col))
+                    if (cursor.fetchone() or {}).get('c', 0) == 0:
+                        after = 'project_name' if col == 'primary_color' else 'primary_color' if col == 'secondary_color' else 'secondary_color' if col == 'accent_color' else 'accent_color'
+                        cursor.execute(f"ALTER TABLE school_settings ADD COLUMN {col} VARCHAR(50) DEFAULT '{default}' AFTER {after}")
+                except Exception:
+                    pass
+
             # Insert default school settings if not exists
             cursor.execute("SELECT COUNT(*) as count FROM school_settings")
             result = cursor.fetchone()
@@ -632,7 +656,7 @@ def init_db():
             if count == 0:
                 cursor.execute("""
                     INSERT INTO school_settings (school_name, school_email, school_phone, school_location, project_name)
-                    VALUES ('Modern School', '', '', '', 'PROJECT LUCAS')
+                    VALUES ('Modern School', '', '', '', 'Elimu Centric')
                 """)
             
             # Create integration_settings table (WhatsApp, Email, SMS integrations)
@@ -10212,6 +10236,446 @@ def approve_student(student_id):
     
     return redirect(url_for('student_management'))
 
+
+def _get_students_by_level():
+    """Helper: fetch students grouped by academic level. Returns list of {level_name, level_category, students}."""
+    students_by_level = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_name, level_category FROM academic_levels
+                    WHERE level_status = 'active' ORDER BY level_name ASC
+                """)
+                levels = [{'level_name': r.get('level_name') if isinstance(r, dict) else r[1],
+                          'level_category': r.get('level_category') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')}
+                         for r in (cursor.fetchall() or [])]
+                cursor.execute("""
+                    SELECT s.student_id, s.full_name, s.current_grade, s.status, s.gender, p.full_name as parent_name
+                    FROM students s LEFT JOIN parents p ON s.student_id = p.student_id
+                    ORDER BY s.full_name ASC
+                """)
+                level_to_students = {}
+                for row in cursor.fetchall() or []:
+                    st = {'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                          'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                          'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                          'status': row.get('status') if isinstance(row, dict) else row[3],
+                          'gender': row.get('gender') if isinstance(row, dict) else (row[4] if len(row) > 4 else ''),
+                          'parent_name': row.get('parent_name') if isinstance(row, dict) else (row[5] if len(row) > 5 else '')}
+                    grade = st['current_grade'] or 'Ungraded'
+                    level_to_students.setdefault(grade, []).append(st)
+                seen = set()
+                for lv in levels:
+                    ln = lv['level_name']
+                    if ln in level_to_students:
+                        students_by_level.append({'level_name': ln, 'level_category': lv.get('level_category', ''), 'students': level_to_students[ln]})
+                        seen.add(ln)
+                for grade, sts in sorted(level_to_students.items()):
+                    if grade not in seen:
+                        students_by_level.append({'level_name': grade, 'level_category': '', 'students': sts})
+        except Exception as e:
+            print(f"Error in _get_students_by_level: {e}")
+        finally:
+            if connection:
+                try: connection.close()
+                except: pass
+    return students_by_level
+
+
+def _build_weeks_and_days(term_start, term_end, selected_week_index=1):
+    """Build list of weeks, each with its days (based on term dates). Returns (weeks_list, selected_week_days)."""
+    from datetime import timedelta
+    weeks_options = []  # [{week_num, label, start, end, days: [{date, day_name, label}]}]
+    if not term_start or not term_end:
+        return weeks_options, []
+    try:
+        current = term_start
+        week_num = 1
+        selected_week_days = []
+        while current <= term_end:
+            week_start = current
+            week_end = min(current + timedelta(days=6), term_end)
+            days_in_week = []
+            d = week_start
+            while d <= week_end:
+                day_name = d.strftime('%a')  # Mon, Tue, etc.
+                day_label = f"{day_name} {d.day}"
+                days_in_week.append({'date': d, 'day_name': day_name, 'label': day_label, 'date_str': d.strftime('%Y-%m-%d')})
+                d += timedelta(days=1)
+            weeks_options.append({
+                'week_num': week_num,
+                'label': f"Week {week_num} ({week_start.strftime('%d %b')} - {week_end.strftime('%d %b %Y')})",
+                'start': week_start,
+                'end': week_end,
+                'days': days_in_week,
+            })
+            if week_num == selected_week_index:
+                selected_week_days = days_in_week
+            week_num += 1
+            current = week_end + timedelta(days=1)
+        if not selected_week_days and weeks_options:
+            selected_week_days = weeks_options[0]['days']
+        return weeks_options, selected_week_days
+    except (TypeError, AttributeError, ValueError):
+        return [], []
+
+
+def _get_teacher_level_ids(teacher_user_id):
+    """Get academic level IDs (level_name) the teacher is assigned to."""
+    level_names = set()
+    conn = get_db_connection()
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DISTINCT al.level_name FROM teacher_subject_assignments tsa
+                    INNER JOIN academic_levels al ON tsa.academic_level_id = al.id
+                    WHERE tsa.teacher_id = %s
+                """, (teacher_user_id,))
+                for r in cur.fetchall() or []:
+                    ln = r.get('level_name') if isinstance(r, dict) else r[0]
+                    if ln:
+                        level_names.add(ln)
+        finally:
+            try: conn.close()
+            except: pass
+    return level_names
+
+
+@app.route('/student-management/student-attendance', methods=['GET', 'POST'])
+@login_required
+def student_attendance():
+    """Student Attendance - register with checkboxes for days attended, by week (term/year). Teachers see only their classes."""
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
+                      'academic coordinator', 'teachers', 'accountant', 'librarian',
+                      'warden', 'transport manager', 'technician'])
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    user_role = session.get('role', '').lower()
+    viewing_as = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as in ('teachers', 'teacher')
+    teacher_id = session.get('user_id') if is_teacher else None
+
+    if request.method == 'POST':
+        term_id = request.form.get('term_id', type=int)
+        week_dates_str = request.form.get('week_dates', '')
+        student_ids_str = request.form.get('student_ids', '')
+        if term_id and week_dates_str and student_ids_str:
+            conn = get_db_connection()
+            if conn:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT id, level_name FROM academic_levels")
+                        level_id_by_name = {r.get('level_name') if isinstance(r, dict) else r[1]: r.get('id') if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])}
+                        emp_id = session.get('user_id') or session.get('employee_id')
+                        week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
+                        student_ids = [s.strip() for s in student_ids_str.split(',') if s.strip()]
+                        checked = set()
+                        for key in request.form:
+                            if key.startswith('att_') and request.form.get(key) == 'on':
+                                rest = key[4:]
+                                idx = rest.rfind('_')
+                                if idx > 0:
+                                    sid, date_str = rest[:idx], rest[idx+1:]
+                                    if sid in student_ids and date_str in week_dates:
+                                        checked.add((sid, date_str))
+                        for sid in student_ids:
+                            cur.execute("SELECT current_grade FROM students WHERE student_id = %s", (sid,))
+                            row = cur.fetchone()
+                            if not row:
+                                continue
+                            level_name = row.get('current_grade') if isinstance(row, dict) else row[0]
+                            lid = level_id_by_name.get(level_name) if level_name else None
+                            if not lid:
+                                continue
+                            for date_str in week_dates:
+                                is_present = (sid, date_str) in checked
+                                cur.execute("""
+                                    INSERT INTO student_attendance_records
+                                    (student_id, attendance_date, academic_level_id, term_id, present, recorded_by_employee_id)
+                                    VALUES (%s, %s, %s, %s, %s, %s)
+                                    ON DUPLICATE KEY UPDATE present = VALUES(present), recorded_by_employee_id = VALUES(recorded_by_employee_id)
+                                """, (sid, date_str, lid, term_id, 1 if is_present else 0, emp_id))
+                        conn.commit()
+                    flash('Attendance saved successfully.', 'success')
+                except Exception as e:
+                    print(f"Error saving attendance: {e}")
+                    if conn:
+                        conn.rollback()
+                    flash('Error saving attendance.', 'error')
+                finally:
+                    try: conn.close()
+                    except: pass
+        from urllib.parse import urlencode
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'ok': True})
+        params = {}
+        if request.form.get('term_id'):
+            params['term_id'] = request.form.get('term_id')
+        if request.form.get('academic_year_id'):
+            params['academic_year_id'] = request.form.get('academic_year_id')
+        if request.form.get('week'):
+            params['week'] = request.form.get('week')
+        return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
+
+    term_id = request.args.get('term_id', type=int)
+    academic_year_id = request.args.get('academic_year_id', type=int)
+    week_param = request.args.get('week', type=int)
+    academic_years = []
+    terms = []
+    weeks_options = []
+    selected_week_days = []
+    attendance_records = {}  # (student_id, date_str) -> True if present
+    attendance_summary = {}  # student_id -> {present, total, pct, category}
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC")
+                for r in cursor.fetchall() or []:
+                    academic_years.append({'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False)})
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    FROM terms t
+                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                    ORDER BY t.academic_year_id DESC, t.id DESC
+                """)
+                for r in cursor.fetchall() or []:
+                    terms.append({'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')})
+
+                if term_id:
+                    cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s", (term_id,))
+                    tr = cursor.fetchone()
+                    if tr:
+                        start = tr.get('start_date') if isinstance(tr, dict) else tr[0]
+                        end = tr.get('end_date') if isinstance(tr, dict) else tr[1]
+                        if start and end:
+                            week_param = request.args.get('week', type=int) or 1
+                            weeks_options, selected_week_days = _build_weeks_and_days(start, end, week_param)
+
+                    cursor.execute("""
+                        SELECT sar.student_id, sar.attendance_date, sar.present
+                        FROM student_attendance_records sar
+                        WHERE sar.term_id = %s
+                    """, (term_id,))
+                    for r in cursor.fetchall() or []:
+                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
+                        dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
+                        pres = r.get('present') if isinstance(r, dict) else r[2]
+                        date_str = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
+                        attendance_records[(sid, date_str)] = bool(pres)
+
+                    cursor.execute("""
+                        SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                        FROM student_attendance_records
+                        WHERE term_id = %s
+                        GROUP BY student_id
+                    """, (term_id,))
+                    for r in cursor.fetchall() or []:
+                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
+                        pres = int(r.get('present_days') or 0) if isinstance(r, dict) else int(r[1] or 0)
+                        tot = int(r.get('total_days') or 0) if isinstance(r, dict) else int(r[2] or 0)
+                        pct = round(100 * pres / tot, 1) if tot else 0
+                        if pct >= 80:
+                            cat = 'excellent'
+                        elif pct >= 60:
+                            cat = 'good'
+                        elif pct >= 40:
+                            cat = 'fair'
+                        elif tot > 0:
+                            cat = 'poor'
+                        else:
+                            cat = 'none'
+                        attendance_summary[sid] = {'present': pres, 'total': tot, 'pct': pct, 'category': cat}
+        except Exception as e:
+            print(f"Error in student_attendance: {e}")
+        finally:
+            if connection:
+                try: connection.close()
+                except: pass
+
+    students_by_level = _get_students_by_level()
+    if is_teacher and teacher_id:
+        teacher_levels = _get_teacher_level_ids(teacher_id)
+        if teacher_levels:
+            students_by_level = [lg for lg in students_by_level if lg['level_name'] in teacher_levels]
+
+    return render_template('dashboards/student_attendance.html',
+        students_by_level=students_by_level,
+        academic_years=academic_years,
+        terms=terms,
+        weeks_options=weeks_options,
+        selected_week_days=selected_week_days,
+        selected_term_id=term_id,
+        selected_academic_year_id=academic_year_id,
+        selected_week=week_param or 1,
+        attendance_records=attendance_records,
+        attendance_summary=attendance_summary,
+        is_teacher_view=is_teacher,
+    )
+
+
+@app.route('/student-management/students-progress')
+@login_required
+def students_progress():
+    """Students Progress - list all students to select and view progress"""
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
+                      'academic coordinator', 'teachers', 'accountant', 'librarian',
+                      'warden', 'transport manager', 'technician'])
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    students_by_level = _get_students_by_level()
+    return render_template('dashboards/students_progress.html', students_by_level=students_by_level)
+
+
+@app.route('/student-management/students-progress/<student_id>')
+@login_required
+def student_progress_detail(student_id):
+    """View a single student's exam progress"""
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
+                      'academic coordinator', 'teachers', 'accountant', 'librarian',
+                      'warden', 'transport manager', 'technician'])
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    student = None
+    progress_data = []
+    by_subject = []       # [{subject_name, mean, count, min, max}] for bar chart
+    by_period = []        # [{label, mean, count}] for trend line (chronological)
+    summary = None        # {overall_mean, pass_rate, total_entries, best_subject, weakest_subject}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT s.student_id, s.full_name, s.current_grade, s.status
+                    FROM students s WHERE s.student_id = %s
+                """, (student_id,))
+                row = cursor.fetchone()
+                if row:
+                    student = {
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                        'status': row.get('status') if isinstance(row, dict) else row[3],
+                    }
+
+                if student:
+                    cursor.execute("""
+                        SELECT ay.year_name, t.term_name, e.exam_name, sub.subject_name, sub.subject_code, sm.marks
+                        FROM student_marks sm
+                        INNER JOIN exams e ON sm.exam_id = e.id
+                        INNER JOIN subjects sub ON sm.subject_id = sub.id
+                        LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                        LEFT JOIN terms t ON e.term_id = t.id
+                        WHERE sm.student_id = %s
+                        ORDER BY ay.year_name, t.term_name, e.exam_name, sub.subject_name
+                    """, (student_id,))
+                    raw = cursor.fetchall() or []
+                    for r in raw:
+                        year_name = r.get('year_name') if isinstance(r, dict) else r[0]
+                        term_name = r.get('term_name') if isinstance(r, dict) else r[1]
+                        exam_name = r.get('exam_name') if isinstance(r, dict) else r[2]
+                        subject_name = (r.get('subject_name') or r.get('subject_code') or 'N/A') if isinstance(r, dict) else (r[3] or r[4] or 'N/A')
+                        marks_val = r.get('marks') if isinstance(r, dict) else r[5]
+                        try:
+                            m = float(marks_val) if marks_val is not None else None
+                        except (TypeError, ValueError):
+                            m = None
+                        progress_data.append({
+                            'year_name': year_name,
+                            'term_name': term_name,
+                            'exam_name': exam_name,
+                            'subject_name': subject_name,
+                            'marks': m,
+                        })
+
+                    # Build by_subject: mean per subject
+                    subject_marks = {}
+                    for p in progress_data:
+                        if p['marks'] is not None:
+                            sn = p['subject_name']
+                            if sn not in subject_marks:
+                                subject_marks[sn] = []
+                            subject_marks[sn].append(p['marks'])
+                    by_subject = []
+                    for sn, vals in sorted(subject_marks.items()):
+                        by_subject.append({
+                            'subject_name': sn,
+                            'mean': round(sum(vals) / len(vals), 1),
+                            'count': len(vals),
+                            'min': round(min(vals), 1),
+                            'max': round(max(vals), 1),
+                        })
+
+                    # Build by_period: mean per term (year + term as label)
+                    period_marks = {}
+                    for p in progress_data:
+                        if p['marks'] is not None:
+                            label = (p['year_name'] or '') + ' ' + (p['term_name'] or '')
+                            label = label.strip() or 'Unknown'
+                            if label not in period_marks:
+                                period_marks[label] = []
+                            period_marks[label].append(p['marks'])
+                    by_period = []
+                    for label, vals in sorted(period_marks.items(), reverse=True):
+                        by_period.insert(0, {'label': label, 'mean': round(sum(vals) / len(vals), 1), 'count': len(vals)})
+
+                    # Summary stats
+                    all_marks = [p['marks'] for p in progress_data if p['marks'] is not None]
+                    total = len(all_marks)
+                    overall_mean = round(sum(all_marks) / total, 1) if total else 0
+                    pass_count = sum(1 for m in all_marks if m >= 50)
+                    pass_rate = round(100 * pass_count / total, 0) if total else 0
+                    best = max(by_subject, key=lambda x: x['mean']) if by_subject else None
+                    weakest = min(by_subject, key=lambda x: x['mean']) if by_subject else None
+                    summary = {
+                        'overall_mean': overall_mean,
+                        'pass_rate': pass_rate,
+                        'total_entries': total,
+                        'best_subject': best['subject_name'] if best else None,
+                        'best_mean': best['mean'] if best else None,
+                        'weakest_subject': weakest['subject_name'] if weakest else None,
+                        'weakest_mean': weakest['mean'] if weakest else None,
+                    }
+        except Exception as e:
+            print(f"Error fetching student progress: {e}")
+            flash('Error loading student progress.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except:
+                    pass
+
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(url_for('students_progress'))
+
+    return render_template('dashboards/student_progress_detail.html',
+        student=student,
+        progress_data=progress_data,
+        by_subject=by_subject if student else [],
+        by_period=by_period if student else [],
+        summary=summary,
+    )
+
+
 # Profile and Settings Routes
 @app.route('/profile/<role>')
 @login_required
@@ -10908,10 +11372,14 @@ def system_settings():
                             'tiktok_url': result.get('tiktok_url', '') or '',
                             'whatsapp_number': result.get('whatsapp_number', '') or '',
                             'school_location': result.get('school_location', '') or '',
-                            'project_name': result.get('project_name', 'PROJECT LUCAS') or 'PROJECT LUCAS'
+                            'project_name': result.get('project_name', 'Elimu Centric') or 'Elimu Centric',
+                            'primary_color': (result.get('primary_color') or '#800020').strip(),
+                            'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
+                            'accent_color': (result.get('accent_color') or '#5C0014').strip(),
+                            'font_family': (result.get('font_family') or 'Inter').strip(),
                         }
+                        theme_settings = {k: school_data[k] for k in ('primary_color', 'secondary_color', 'accent_color', 'font_family')}
                     else:
-                        # Handle tuple results (fallback)
                         school_data = {
                             'school_name': result[1] if len(result) > 1 else '',
                             'school_email': result[2] if len(result) > 2 else '',
@@ -10923,7 +11391,7 @@ def system_settings():
                             'tiktok_url': result[8] if len(result) > 8 else '',
                             'whatsapp_number': result[9] if len(result) > 9 else '',
                             'school_location': result[10] if len(result) > 10 else '',
-                            'project_name': result[11] if len(result) > 11 else 'PROJECT LUCAS'
+                            'project_name': result[11] if len(result) > 11 else 'Elimu Centric'
                         }
                 
                 # Get academic levels
@@ -13542,23 +14010,21 @@ def timetable_analytics():
     
     return render_template('dashboards/timetable_analytics.html', role=user_role)
 
-# Attendance Route (for academic coordinators)
+# Attendance Route (for teachers and academic coordinators - redirects to student attendance)
 @app.route('/dashboard/employee/attendance')
 @login_required
 def attendance():
-    """Attendance Management page for academic coordinators"""
+    """Attendance - redirects to student attendance register (teachers see their classes, coordinators see all)"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'principal' or viewing_as_role == 'principal'
-    
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
-    
-    return render_template('dashboards/attendance.html', role=user_role)
+    return redirect(url_for('student_attendance'))
 
 # Exams & Assessments Route (for academic coordinators)
 @app.route('/dashboard/employee/exams-assessments')
@@ -14650,7 +15116,7 @@ def get_students_by_academic_level():
 @app.route('/dashboard/employee/reports')
 @login_required
 def reports():
-    """Reports page for academic coordinators"""
+    """Reports page - generate exam reports by class, performance and subjects"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
@@ -14662,7 +15128,178 @@ def reports():
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
-    return render_template('dashboards/reports.html', role=user_role)
+    level_id = request.args.get('level_id', type=int)
+    term_id = request.args.get('term_id', type=int)
+    academic_year_id = request.args.get('academic_year_id', type=int)
+    
+    academic_levels = []
+    terms = []
+    academic_years = []
+    report_data = None  # {level_id: {level_name, subjects: [...], class_mean, student_count}}
+    
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Get academic levels
+                cursor.execute("""
+                    SELECT id, level_name, level_category, level_description
+                    FROM academic_levels WHERE level_status = 'active'
+                    ORDER BY level_name
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_levels.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+                        'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                        'level_description': row.get('level_description') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                    })
+                
+                # Get terms
+                cursor.execute("""
+                    SELECT id, term_name, academic_year_id, status
+                    FROM terms ORDER BY id DESC
+                """)
+                for row in cursor.fetchall() or []:
+                    terms.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'term_name': row.get('term_name') if isinstance(row, dict) else row[1],
+                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else row[2],
+                        'status': row.get('status') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                    })
+                
+                # Get academic years
+                cursor.execute("""
+                    SELECT id, year_name, is_current
+                    FROM academic_years ORDER BY id DESC
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_years.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'year_name': row.get('year_name') if isinstance(row, dict) else row[1],
+                        'is_current': row.get('is_current') if isinstance(row, dict) else (row[2] if len(row) > 2 else False),
+                    })
+                
+                # Build report if filters provided
+                if level_id or term_id or academic_year_id:
+                    levels_to_report = [l for l in academic_levels if not level_id or l['id'] == level_id]
+                    report_data = []
+                    
+                    for lev in levels_to_report:
+                        level_name = lev['level_name']
+                        # Get exams for this level (optionally filtered by term/year)
+                        cursor.execute("""
+                            SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
+                                   s.subject_name, s.subject_code, ay.year_name, t.term_name
+                            FROM exams e
+                            LEFT JOIN subjects s ON e.subject_id = s.id
+                            LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                            LEFT JOIN terms t ON e.term_id = t.id
+                            WHERE e.academic_level_id = %s
+                            AND (%s IS NULL OR e.term_id = %s)
+                            AND (%s IS NULL OR e.academic_year_id = %s)
+                            ORDER BY e.exam_name, s.subject_name
+                        """, (lev['id'], term_id, term_id, academic_year_id, academic_year_id))
+                        exam_rows = cursor.fetchall() or []
+                        
+                        # Group by subject - each exam slot is one subject
+                        subject_stats = {}  # subject_id -> {name, exam_ids, mean, min, max, count, pass_count}
+                        all_marks_for_class = []
+                        students_in_class = set()
+                        
+                        for ex in exam_rows:
+                            exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
+                            subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
+                            subject_name = (ex.get('subject_name') or ex.get('subject_code') or 'N/A') if isinstance(ex, dict) else (ex[4] or ex[5] or 'N/A')
+                            
+                            if not subject_id:
+                                continue
+                            if subject_id not in subject_stats:
+                                subject_stats[subject_id] = {
+                                    'subject_name': subject_name,
+                                    'exam_ids': [],
+                                    'marks': [],
+                                    'mean': 0, 'min': None, 'max': None, 'count': 0,
+                                    'pass_count': 0, 'pass_rate': 0
+                                }
+                            subject_stats[subject_id]['exam_ids'].append(exam_id)
+                            
+                            # Get marks for this exam
+                            cursor.execute("""
+                                SELECT sm.student_id, sm.marks
+                                FROM student_marks sm
+                                INNER JOIN students st ON sm.student_id = st.student_id
+                                WHERE sm.exam_id = %s AND st.current_grade = %s
+                            """, (exam_id, level_name))
+                            mark_rows = cursor.fetchall() or []
+                            for mr in mark_rows:
+                                sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
+                                mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
+                                try:
+                                    mfloat = float(mval) if mval is not None else None
+                                    if mfloat is not None:
+                                        subject_stats[subject_id]['marks'].append(mfloat)
+                                        all_marks_for_class.append(mfloat)
+                                        students_in_class.add(sid)
+                                        if mfloat >= 50:
+                                            subject_stats[subject_id]['pass_count'] += 1
+                                except (TypeError, ValueError):
+                                    pass
+                        
+                        # Compute subject stats
+                        subject_list = []
+                        for sid, sdata in subject_stats.items():
+                            marks = sdata['marks']
+                            if marks:
+                                sdata['mean'] = round(sum(marks) / len(marks), 2)
+                                sdata['min'] = round(min(marks), 2)
+                                sdata['max'] = round(max(marks), 2)
+                                sdata['count'] = len(marks)
+                                sdata['pass_rate'] = round(100 * sdata['pass_count'] / len(marks), 1) if marks else 0
+                            else:
+                                sdata['mean'] = 0
+                                sdata['min'] = None
+                                sdata['max'] = None
+                                sdata['count'] = 0
+                                sdata['pass_rate'] = 0
+                            subject_list.append({
+                                'subject_name': sdata['subject_name'],
+                                'mean': sdata['mean'],
+                                'min': sdata['min'],
+                                'max': sdata['max'],
+                                'count': sdata['count'],
+                                'pass_rate': sdata['pass_rate'],
+                            })
+                        
+                        class_mean = round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
+                        
+                        report_data.append({
+                            'level_id': lev['id'],
+                            'level_name': level_name,
+                            'level_category': lev.get('level_category', ''),
+                            'subjects': subject_list,
+                            'class_mean': class_mean,
+                            'student_count': len(students_in_class),
+                            'total_marks_entries': len(all_marks_for_class),
+                        })
+        except Exception as e:
+            print(f"Error in reports: {e}")
+            import traceback
+            traceback.print_exc()
+            flash(f'Error loading report: {str(e)}', 'error')
+        finally:
+            connection.close()
+    
+    return render_template('dashboards/reports.html',
+        role=user_role,
+        academic_levels=academic_levels,
+        terms=terms,
+        academic_years=academic_years,
+        report_data=report_data,
+        selected_level_id=level_id,
+        selected_term_id=term_id,
+        selected_academic_year_id=academic_year_id,
+    )
 
 # Communication Route (for academic coordinators)
 @app.route('/dashboard/employee/communication')
@@ -15468,6 +16105,8 @@ def database_health_status():
         'total_records': 0,
         'tables': [],
         'largest_tables': [],
+        'missing_tables': [],
+        'required_tables_count': 0,
         'recommendations': []
     }
     
@@ -15533,6 +16172,19 @@ def database_health_status():
                 cursor.execute("SHOW TABLES")
                 table_results = cursor.fetchall()
                 health_status['total_tables'] = len(table_results)
+                existing_tables = set(
+                    list(t.values())[0] if isinstance(t, dict) else t[0]
+                    for t in table_results
+                )
+                # Check for required tables (from db_health)
+                try:
+                    from db_health import REQUIRED_TABLES
+                    health_status['required_tables_count'] = len(REQUIRED_TABLES)
+                    health_status['missing_tables'] = [t for t in REQUIRED_TABLES if t not in existing_tables]
+                    if health_status['missing_tables']:
+                        health_status['recommendations'].insert(0, f"Missing {len(health_status['missing_tables'])} required table(s). Run: python update_db.py or restart the app to auto-create.")
+                except ImportError:
+                    pass
                 
                 table_list = []
                 largest_tables = []
@@ -15611,6 +16263,10 @@ def database_health_status():
                     warnings += 1
                     health_status['recommendations'].append(f"{len(very_large_tables)} table(s) exceed 500 MB. Consider partitioning or archiving.")
                 
+                # Missing tables = critical
+                if health_status.get('missing_tables'):
+                    issues += 1
+
                 # Determine overall status
                 if issues > 0:
                     health_status['overall_status'] = 'critical'
@@ -16030,7 +16686,7 @@ def update_school_profile():
     tiktok_url = request.form.get('tiktok_url', '').strip()  # Keep as is
     whatsapp_number = request.form.get('whatsapp_number', '').strip().upper()
     school_location = request.form.get('school_location', '').strip().upper()
-    project_name = request.form.get('project_name', 'PROJECT LUCAS').strip().upper()
+    project_name = request.form.get('project_name', 'Elimu Centric').strip()
     
     # Handle logo upload
     school_logo = None
@@ -16107,6 +16763,61 @@ def update_school_profile():
         flash('Database connection error. Please try again later.', 'error')
     
     return redirect(url_for('system_settings'))
+
+# Theme / Colors Update Route
+@app.route('/system-settings/theme', methods=['POST'])
+@login_required
+def update_theme():
+    """Update theme colors and font - applies site-wide"""
+    user_role = session.get('role', '').lower()
+    if user_role != 'technician' and not check_permission_or_role('system_settings', allowed_roles=['accountant']):
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('system_settings'))
+
+    primary_color = (request.form.get('primary_color') or '#800020').strip()
+    secondary_color = (request.form.get('secondary_color') or '#A00030').strip()
+    accent_color = (request.form.get('accent_color') or '#5C0014').strip()
+    font_family = (request.form.get('font_family') or 'Inter').strip()
+
+    # Validate hex colors
+    import re
+    hex_pattern = re.compile(r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$')
+    if not hex_pattern.match(primary_color): primary_color = '#800020'
+    if not hex_pattern.match(secondary_color): secondary_color = '#A00030'
+    if not hex_pattern.match(accent_color): accent_color = '#5C0014'
+    if font_family not in ('Inter', 'Poppins', 'Roboto', 'Open Sans'): font_family = 'Inter'
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id FROM school_settings ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                if row:
+                    school_id = row['id'] if isinstance(row, dict) else row[0]
+                    cursor.execute("""
+                        UPDATE school_settings
+                        SET primary_color = %s, secondary_color = %s, accent_color = %s, font_family = %s
+                        WHERE id = %s
+                    """, (primary_color, secondary_color, accent_color, font_family, school_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO school_settings (school_name, primary_color, secondary_color, accent_color, font_family)
+                        VALUES ('Modern School', %s, %s, %s, %s)
+                    """, (primary_color, secondary_color, accent_color, font_family))
+                connection.commit()
+            flash('Theme updated successfully! Changes apply across the entire site.', 'success')
+        except Exception as e:
+            if connection:
+                try: connection.rollback()
+                except: pass
+            flash(f'Error saving theme: {str(e)}', 'error')
+        finally:
+            connection.close()
+    else:
+        flash('Database connection error.', 'error')
+
+    return redirect(url_for('system_settings') + '#theme-colors')
 
 # Academic Level Registration Route
 @app.route('/system-settings/academic-level', methods=['POST'])
@@ -17089,22 +17800,23 @@ def toggle_term_lock(term_id):
 
 
 def _ensure_db_schema():
-    """Run init_db and migrations so tables/columns are applied after git pull. Runs on every app load."""
+    """Check DB health and auto-create missing tables. Runs on every app load (local + hosted)."""
     try:
-        if init_db():
-            print("[DB] Tables created/verified")
+        from db_health import check_and_heal
+        ok, msg = check_and_heal()
+        if ok:
+            print(f"[DB] {msg}")
         else:
-            print("[DB] init_db returned False - check connection")
+            print(f"[DB] Warning: {msg} - run: python update_db.py")
     except Exception as e:
-        print(f"[DB] init_db failed: {e}")
-    try:
-        from migrations.migration_manager import run_all_migrations
-        if run_all_migrations():
-            print("[DB] Migrations applied")
-        else:
-            print("[DB] Some migrations failed - run: python update_db.py")
-    except Exception as e:
-        print(f"[DB] Migrations failed: {e}")
+        print(f"[DB] Check failed: {e}")
+        try:
+            if init_db():
+                print("[DB] Tables created/verified (fallback)")
+            from migrations.migration_manager import run_all_migrations
+            run_all_migrations()
+        except Exception as e2:
+            print(f"[DB] Fallback failed: {e2}")
 
 
 # Apply schema and migrations when app is loaded (so git pull + restart updates DB)

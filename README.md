@@ -1,4 +1,4 @@
-# Modern School - Flask Web Application
+# Elimu Centric - Flask Web Application
 
 A comprehensive Flask-based school management system with role-based dashboards, admission forms, and a modern responsive UI built with Tailwind CSS.
 
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 
 4. **Set up MySQL database**:
    - Create a MySQL database
-   - Update database credentials in `env.example` and rename it to `.env`
+   - Copy `.env.example` to `.env` and fill in your database credentials
    - Or set environment variables:
      ```bash
      export DB_HOST=localhost
@@ -93,13 +93,17 @@ If you created sample users during database initialization:
 ## Project Structure
 
 ```
-project_lucas_school/
+elimu_centric/
 │
 ├── app.py                 # Main Flask application
-├── create_db.py           # Database initialization script
+├── create_db.py           # Database initialization (first-time)
+├── update_db.py           # Run after git pull (tables + migrations)
+├── passenger_wsgi.py      # cPanel/Passenger entry point
 ├── requirements.txt       # Python dependencies
-├── env.example            # Environment variables template
-├── README.md              # This file
+├── .env.example           # Environment template (copy to .env)
+├── migrations/            # Database migrations (auto-run on deploy)
+│   ├── migration_manager.py
+│   └── 00X_*.py           # Migration files
 │
 ├── templates/             # Jinja2 templates
 │   ├── base.html          # Base template with header/sidebar/footer
@@ -213,7 +217,7 @@ Each page includes a "Next" button that navigates to the next page in sequence:
 ### Adding New Features
 
 1. **New Page**: Create a new template in `templates/` and add a route in `app.py`
-2. **New Database Table**: Add table creation SQL in `create_db.py` and `app.py`'s `init_db()` function
+2. **New Database Table**: Add in `create_db.py` and `app.py` init_db; or create migration: `python migrations/create_migration.py 'description'`
 3. **New Dashboard**: Create template in `templates/dashboards/` and add protected route in `app.py`
 
 ### Customization

@@ -2,10 +2,6 @@
 
 {% block title %}Employee Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-
 {% block sidebar_content %}
 {% set current_role = (current_employee_role if is_technician and current_employee_role else role)|lower %}
 
@@ -276,6 +272,12 @@
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
+    <a href="/student-management/student-attendance" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_attendance' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_attendance' %}style="border-color: var(--role-primary);"{% endif %}>
+        <i class="fas fa-check-circle w-5"></i>
+        <span>Attendance</span>
+    </a>
     <a href="/dashboard/employee/communication" 
        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}text-white bg-gray-700/50 border-l-4{% endif %}"
        {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}style="border-color: var(--role-primary);"{% endif %}>
@@ -309,8 +311,9 @@
         <i class="fas fa-calendar-alt w-5"></i>
         <span>My Classes</span>
     </a>
-    <a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
-       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <a href="/student-management/student-attendance" 
+       class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'student_attendance' %}text-white bg-gray-700/50 border-l-4{% endif %}"
+       {% if request.endpoint == 'student_attendance' %}style="border-color: var(--role-primary);"{% endif %}>
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
     </a>

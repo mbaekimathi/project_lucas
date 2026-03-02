@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 echo "=========================================="
-echo "Project Lucas - cPanel Setup"
+echo "Elimu Centric - cPanel Setup"
 echo "=========================================="
 
 # 1. Create venv if missing
@@ -40,7 +40,7 @@ if [ ! -f ".htaccess" ]; then
     echo "WARNING: .htaccess not found!"
     echo "  cp .htaccess.example .htaccess"
     echo "  Then edit .htaccess and set PassengerAppRoot to your full server path"
-    echo "  (e.g. /home/username/public_html or /home1/account/project_lucas)"
+    echo "  (e.g. /home/username/public_html or /home1/account/elimu_centric)"
     echo ""
 else
     echo ".htaccess found. Ensure PassengerAppRoot matches your app directory path."

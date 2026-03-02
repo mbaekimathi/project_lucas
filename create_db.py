@@ -11,7 +11,7 @@ def is_hosted():
     """Check if the application is running on the hosted server"""
     # Check if we're in the production path
     current_path = os.path.abspath(os.getcwd())
-    if '/home1/projectl/project_lucas' in current_path or '\\home1\\projectl\\project_lucas' in current_path:
+    if any(p in current_path.replace('\\', '/') for p in ['/home1/projectl/elimu_centric', '/home1/projectl/project_lucas']):
         return True
     
     # Check for environment variable that indicates hosting
@@ -30,12 +30,12 @@ if is_hosted():
     # Hosted server credentials
     DB_CONFIG = {
         'host': os.environ.get('DB_HOST', 'localhost'),
-        'user': os.environ.get('DB_USER', 'projectl_school'),
-        'password': os.environ.get('DB_PASSWORD', 'Itskimathi007'),
+        'user': os.environ.get('DB_USER', 'elimucentric_school'),
+        'password': os.environ.get('DB_PASSWORD', ''),
         'charset': 'utf8mb4',
         'cursorclass': pymysql.cursors.DictCursor
     }
-    DB_NAME = os.environ.get('DB_NAME', 'projectl_school')
+    DB_NAME = os.environ.get('DB_NAME', 'elimucentric_school')
 else:
     # Local development credentials
     DB_CONFIG = {

@@ -182,15 +182,15 @@
             theme: {
                 extend: {
                     colors: {
-                        'brand-primary': '#800020',
-                        'brand-secondary': '#A00030',
-                        'brand-maroon': '#800020',
-                        'brand-maroon-dark': '#5C0014',
-                        'brand-maroon-light': '#A00030',
+                        'brand-primary': '{{ school_settings.primary_color|default("#800020") }}',
+                        'brand-secondary': '{{ school_settings.secondary_color|default("#A00030") }}',
+                        'brand-maroon': '{{ school_settings.primary_color|default("#800020") }}',
+                        'brand-maroon-dark': '{{ school_settings.accent_color|default("#5C0014") }}',
+                        'brand-maroon-light': '{{ school_settings.secondary_color|default("#A00030") }}',
                     },
                     fontFamily: {
-                        'sans': ['Inter', 'system-ui', 'sans-serif'],
-                        'heading': ['Poppins', 'Inter', 'system-ui', 'sans-serif'],
+                        'sans': ['{{ school_settings.font_family|default("Inter") }}', 'system-ui', 'sans-serif'],
+                        'heading': ['{{ school_settings.font_family|default("Inter") }}', 'Poppins', 'system-ui', 'sans-serif'],
                     }
                 }
             }
@@ -206,7 +206,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;600;700&family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
@@ -215,13 +215,20 @@
     <!-- Modern Scroll Effects CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-scroll-effects.css') }}">
     
-    <!-- Role-specific theme colors (for dashboard pages) -->
+    <!-- Site-wide theme colors (from System Settings) -->
     <style>
         :root {
-            --role-primary: {% block role_primary %}#800020{% endblock %};
-            --role-secondary: {% block role_secondary %}#A00030{% endblock %};
-            --role-accent: {% block role_accent %}#800020{% endblock %};
+            --brand-primary: {{ school_settings.primary_color|default('#800020') }};
+            --brand-secondary: {{ school_settings.secondary_color|default('#A00030') }};
+            --brand-accent: {{ school_settings.accent_color|default('#5C0014') }};
+            --font-sans: '{{ school_settings.font_family|default("Inter") }}', system-ui, sans-serif;
+            --role-primary: {% block role_primary %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
+            --role-secondary: {% block role_secondary %}{{ school_settings.secondary_color|default('#A00030') }}{% endblock %};
+            --role-accent: {% block role_accent %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
+            --role-gradient-start: {% block role_gradient_start %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
+            --role-gradient-end: {% block role_gradient_end %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
         }
+        body { font-family: var(--font-sans); }
         
         [x-cloak] { display: none !important; }
         

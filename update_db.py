@@ -15,33 +15,34 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def main():
     print("=" * 60)
-    print("Updating database (tables + migrations)...")
+    print("Elimu Centric - Database Check & Update")
     print("=" * 60)
-    
-    # 1. Create/update tables via init_db
+
     try:
-        from app import init_db
-        if init_db():
-            print("[OK] init_db completed - tables created/verified")
+        from db_health import check_and_heal, analyze_db, print_analysis, get_db_connection
+        ok, msg = check_and_heal()
+        if ok:
+            print(f"[OK] {msg}")
+            # Show brief analysis
+            conn = get_db_connection()
+            if conn:
+                analysis = analyze_db(conn)
+                print(f"\nTables: {len(analysis.get('tables', []))} | Total rows: {analysis.get('total_rows', 0):,}")
+                if analysis.get('missing_tables'):
+                    print(f"Missing: {', '.join(analysis['missing_tables'])}")
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         else:
-            print("[WARN] init_db returned False (check DB connection)")
+            print(f"[FAIL] {msg}")
+            sys.exit(1)
     except Exception as e:
-        print(f"[ERROR] init_db failed: {e}")
-        sys.exit(1)
-    
-    # 2. Run migration files
-    try:
-        from migrations.migration_manager import run_all_migrations
-        if run_all_migrations():
-            print("[OK] All migrations applied")
-        else:
-            print("[WARN] Some migrations failed - check output above")
-    except Exception as e:
-        print(f"[ERROR] Migrations failed: {e}")
+        print(f"[ERROR] {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
-    
+
     print("=" * 60)
     print("Database update finished. You can start the app.")
     print("=" * 60)

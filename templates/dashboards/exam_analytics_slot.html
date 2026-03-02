@@ -2,10 +2,6 @@
 
 {% block title %}{{ subject_name }} - Class Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-
 {% block sidebar_content %}
 <a href="{{ url_for('exam_analytics_detail', exam_id=exam_id) }}" 
    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"

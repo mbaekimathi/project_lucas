@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block title %}Student Attendance - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% if is_teacher_view|default(false) %}
+<a href="/dashboard/employee"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+<a href="{{ url_for('teacher_my_classes') }}"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>My Classes</span>
+</a>
+{% else %}
+<a href="/student-management"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student Management</span>
+</a>
+{% endif %}
+<a href="/admission"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-user-plus w-5"></i>
+    <span>Register Student</span>
+</a>
+<a href="/student-management/student-attendance"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
+   style="border-color: var(--role-primary);">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Student Attendance</span>
+    <i class="fas fa-check-circle ml-auto text-green-500"></i>
+</a>
+<a href="/student-management/students-progress"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students Progress</span>
+</a>
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% if user_role == 'principal' or viewing_as_role == 'principal' %}
+<a href="/dashboard/employee/student-fees"
+   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payments</span>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6" x-data="{ selectedClass: '' }">
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-check-circle text-brand-primary mr-2 sm:mr-3"></i>
+            Student Attendance Register
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400">{% if is_teacher_view|default(false) %}Mark attendance for your allocated classes.{% else %}Classes attended by academic term and year.{% endif %}</p>
+    </div>
+
+    {% if selected_term_id and attendance_summary and students_by_level %}
+    <div class="mb-6 p-4 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
+            <i class="fas fa-chart-pie text-brand-primary mr-2"></i>
+            Attendance Summary (out of 100)
+        </h2>
+        <div class="flex flex-wrap gap-2 mb-3 text-xs">
+            <span class="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 font-medium">80-100% Excellent</span>
+            <span class="px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-medium">60-79% Good</span>
+            <span class="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-medium">40-59% Fair</span>
+            <span class="px-2 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 font-medium">0-39% Poor</span>
+            <span class="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-medium">No data</span>
+        </div>
+        <div class="space-y-4">
+            {% for level_group in students_by_level %}
+            <div>
+                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}</h3>
+                <div class="flex flex-wrap gap-2">
+                    {% for student in level_group.students %}
+                    {% set summ = attendance_summary.get(student.student_id, {}) %}
+                    {% set cat = summ.get('category', 'none') %}
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                        {% if cat == 'excellent' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
+                        {% elif cat == 'good' %}bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300
+                        {% elif cat == 'fair' %}bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300
+                        {% elif cat == 'poor' %}bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300
+                        {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
+                        {{ student.full_name }} ({{ student.student_id }})
+                        <strong>{% if summ %}{{ summ.present }}/{{ summ.total }} = {{ summ.pct }}%{% else %}-{% endif %}</strong>
+                    </span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="GET" action="{{ url_for('student_attendance') }}" class="flex flex-wrap gap-4 mb-6">
+        <div>
+            <label for="academic_year_id" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Academic Year</label>
+            <select name="academic_year_id" id="academic_year_id"
+                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <option value="">Select year</option>
+                {% for y in academic_years %}
+                <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}{% if y.is_current %} (Current){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="term_id" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Term</label>
+            <select name="term_id" id="term_id"
+                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <option value="">Select term</option>
+                {% for t in terms %}
+                <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.term_name }} {% if t.year_name %}({{ t.year_name }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if weeks_options %}
+        <div>
+            <label for="week" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Week</label>
+            <select name="week" id="week" onchange="this.form.submit()"
+                    class="px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary min-w-[220px]">
+                {% for w in weeks_options %}
+                <option value="{{ w.week_num }}" {% if selected_week == w.week_num %}selected{% endif %}>{{ w.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+        <div class="flex items-end">
+            <button type="submit" class="px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-lg font-semibold hover:opacity-90 transition-all">
+                <i class="fas fa-sync-alt mr-2"></i>Apply
+            </button>
+        </div>
+    </form>
+
+    {% if students_by_level %}
+    {% if selected_week_days %}
+    <div class="mb-6">
+        <label for="quick-class" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Jump to class</label>
+        <select id="quick-class"
+                x-model="selectedClass"
+                @change="const id = $event.target.value; if (id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
+                class="w-full sm:w-64 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+            <option value="">All classes</option>
+            {% for level_group in students_by_level %}
+            <option value="level-{{ loop.index }}">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %} - {{ level_group.students|length }} students</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <form id="attendance-form" method="POST" action="{{ url_for('student_attendance') }}">
+        <input type="hidden" name="term_id" value="{{ selected_term_id }}">
+        <input type="hidden" name="academic_year_id" value="{{ selected_academic_year_id }}">
+        <input type="hidden" name="week" value="{{ selected_week }}">
+        <input type="hidden" name="week_dates" value="{{ selected_week_days|map(attribute='date_str')|join(',') }}">
+        <input type="hidden" name="student_ids" value="{% set ids = [] %}{% for level_group in students_by_level %}{% for student in level_group.students %}{{ ids.append(student.student_id) or '' }}{% endfor %}{% endfor %}{{ ids|join(',') }}">
+        <div id="save-status" class="mb-4 text-sm hidden"></div>
+    <div class="space-y-6">
+        {% for level_group in students_by_level %}
+        <div id="level-{{ loop.index }}" class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden scroll-mt-4">
+            <div class="px-4 py-3 sm:px-6 bg-gradient-to-r from-brand-primary/90 to-brand-secondary/90">
+                <h2 class="text-lg font-bold text-white flex items-center justify-between">
+                    <span>
+                        <i class="fas fa-graduation-cap mr-2"></i>
+                        {{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}
+                    </span>
+                    <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
+                </h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[600px]">
+                    <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                        <tr>
+                            <th class="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 w-10 text-sm">#</th>
+                            <th class="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[200px]">Student</th>
+                            {% for day in selected_week_days %}
+                            <th class="text-center px-2 py-2 font-semibold text-gray-700 dark:text-gray-300 w-16 text-xs" title="{{ day.date_str }}">{{ day.label }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for student in level_group.students %}
+                        <tr class="attendance-row transition-colors duration-300" data-total="{{ selected_week_days|length }}">
+                            <td class="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 font-medium">{{ loop.index }}</td>
+                            <td class="px-3 py-2">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                                        <i class="fas fa-user-graduate text-white text-xs"></i>
+                                    </div>
+                                    <div>
+                                        <span class="font-medium text-gray-900 dark:text-white block">{{ student.full_name }}</span>
+                                        <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</span>
+                                    </div>
+                                    <span class="attendance-pct text-xs font-semibold ml-1"></span>
+                                </div>
+                            </td>
+                            {% for day in selected_week_days %}
+                            <td class="px-2 py-2 text-center">
+                                <input type="checkbox"
+                                       name="att_{{ student.student_id }}_{{ day.date_str }}"
+                                       {% if attendance_records.get((student.student_id, day.date_str)) %}checked{% endif %}
+                                       class="attendance-cb w-5 h-5 rounded border-2 transition-colors duration-200 cursor-pointer"
+                                       title="{{ day.label }} ({{ day.date_str }}) - {{ student.full_name }}">
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+        <div class="mt-6">
+            <button type="submit" id="save-btn" class="px-6 py-2.5 bg-gray-400 dark:bg-gray-600 text-white rounded-lg font-semibold transition-all cursor-not-allowed" disabled title="Auto-saves as you check boxes">
+                <i class="fas fa-check mr-2"></i>Auto-saved
+            </button>
+        </div>
+    </form>
+
+    <script>
+    (function() {
+        function initAttendance() {
+            const form = document.getElementById('attendance-form');
+            const statusEl = document.getElementById('save-status');
+            if (!form) return;
+            const totalDays = {{ selected_week_days|length }};
+            let saveTimeout = null;
+
+            function getRowColorClass(pct) {
+                if (pct >= 80) return 'att-pct-excellent';
+                if (pct >= 60) return 'att-pct-good';
+                if (pct >= 40) return 'att-pct-fair';
+                if (pct > 0) return 'att-pct-poor';
+                return '';
+            }
+
+            function getAccentColor(pct) {
+                if (pct >= 80) return '#22c55e';
+                if (pct >= 60) return '#3b82f6';
+                if (pct >= 40) return '#f59e0b';
+                if (pct > 0) return '#ef4444';
+                return '#9ca3af';
+            }
+
+            function updateRowStyles(row) {
+                const cbs = row.querySelectorAll('.attendance-cb');
+                const total = cbs.length;
+                let checked = 0;
+                cbs.forEach(function(cb) { if (cb.checked) checked++; });
+                const pct = total ? Math.round(100 * checked / total) : 0;
+                row.classList.remove('att-pct-excellent', 'att-pct-good', 'att-pct-fair', 'att-pct-poor');
+                row.classList.add(getRowColorClass(pct));
+                const pctSpan = row.querySelector('.attendance-pct');
+                if (pctSpan) pctSpan.textContent = total ? checked + '/' + total + ' (' + pct + '%)' : '';
+                const color = getAccentColor(pct);
+                cbs.forEach(function(cb) { cb.style.accentColor = color; });
+            }
+
+            function showStatus(msg, isError) {
+                if (!statusEl) return;
+                statusEl.textContent = msg;
+                statusEl.classList.remove('hidden', 'text-green-600', 'text-red-600', 'text-red-400');
+                statusEl.classList.add(isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+            }
+
+            function saveAttendance() {
+                const formData = new FormData(form);
+                showStatus('Saving...', false);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function(r) {
+                    if (r.redirected) {
+                        window.location.href = r.url;
+                        return null;
+                    }
+                    if (!r.ok) return Promise.reject(new Error('Save failed'));
+                    return r.json ? r.json() : r.text();
+                })
+                .then(function() {
+                    if (statusEl && !statusEl.classList.contains('hidden')) {
+                        statusEl.textContent = 'Saved';
+                        setTimeout(function() { statusEl.classList.add('hidden'); }, 1500);
+                    }
+                })
+                .catch(function() { showStatus('Error saving', true); });
+            }
+
+            function scheduleSave() {
+                if (saveTimeout) clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(saveAttendance, 600);
+            }
+
+            form.querySelectorAll('.attendance-row').forEach(function(row) {
+                updateRowStyles(row);
+            });
+
+            form.addEventListener('change', function(e) {
+                if (e.target && e.target.classList.contains('attendance-cb')) {
+                    var row = e.target.closest ? e.target.closest('.attendance-row') : e.target.parentElement;
+                    while (row && !row.classList.contains('attendance-row')) row = row.parentElement;
+                    if (row) {
+                        updateRowStyles(row);
+                        scheduleSave();
+                    }
+                }
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAttendance);
+        } else {
+            initAttendance();
+        }
+    })();
+    </script>
+    <style>
+    .att-pct-excellent { background: rgba(34, 197, 94, 0.08); }
+    .att-pct-excellent:hover { background: rgba(34, 197, 94, 0.12); }
+    .att-pct-good { background: rgba(59, 130, 246, 0.06); }
+    .att-pct-good:hover { background: rgba(59, 130, 246, 0.1); }
+    .att-pct-fair { background: rgba(245, 158, 11, 0.06); }
+    .att-pct-fair:hover { background: rgba(245, 158, 11, 0.1); }
+    .att-pct-poor { background: rgba(239, 68, 68, 0.06); }
+    .att-pct-poor:hover { background: rgba(239, 68, 68, 0.1); }
+    .attendance-cb { transition: accent-color 0.2s; }
+    </style>
+    {% else %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-8 text-center">
+        <div class="w-14 h-14 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-calendar-week text-gray-400 text-2xl"></i>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400">Select an academic year and term, then choose a week to view daily attendance.</p>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-12 text-center">
+        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-graduation-cap text-gray-400 text-3xl"></i>
+        </div>
+        <p class="text-gray-600 dark:text-gray-400">No classes with students found. Add students via admission.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -2,12 +2,6 @@
 
 {% block title %}Database Health & Status - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block role_primary %}#10b981{% endblock %}
-{% block role_secondary %}#059669{% endblock %}
-{% block role_accent %}#047857{% endblock %}
-{% block role_gradient_start %}#10b981{% endblock %}
-{% block role_gradient_end %}#047857{% endblock %}
-
 {% block sidebar_content %}
 {% if session.get('role', '').lower() in ['technician', 'principal'] %}
 <a href="{{ url_for('database_management') }}"
@@ -119,6 +113,24 @@
             </div>
         </div>
     </div>
+
+    <!-- Missing Tables Alert -->
+    {% if health_status.get('missing_tables') %}
+    <div class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-xl p-6 mb-6">
+        <h2 class="text-xl font-semibold text-red-800 dark:text-red-300 mb-2 flex items-center">
+            <i class="fas fa-exclamation-triangle mr-2"></i>Missing Required Tables
+        </h2>
+        <p class="text-sm text-gray-700 dark:text-gray-300 mb-3">
+            {{ health_status.missing_tables|length }} of {{ health_status.required_tables_count }} required tables are missing.
+            The app auto-creates missing tables on startup. Run <code class="bg-gray-200 dark:bg-gray-700 px-1 rounded">python update_db.py</code> or restart the app.
+        </p>
+        <div class="flex flex-wrap gap-2">
+            {% for t in health_status.missing_tables %}
+            <span class="inline-block px-3 py-1 bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200 rounded text-sm font-mono">{{ t }}</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Database Information -->
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-6 border border-gray-200 dark:border-gray-700">

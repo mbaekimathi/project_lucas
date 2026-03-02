@@ -56,4 +56,7 @@ Thumbs.db
 # Cursor
 .cursor/
 
+# Archives / backups
+*.zip
+
 

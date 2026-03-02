@@ -28,14 +28,17 @@ try:
     print("Attempting to import app from app.py...")
     from app import app
     
-    # Run database migrations automatically on startup
+    # Check DB health and auto-create missing tables (local + hosted)
     try:
-        print("Running database migrations...")
-        from migrations.migration_manager import run_all_migrations
-        run_all_migrations()
-        print("Migrations completed.")
+        print("Checking database health...")
+        from db_health import check_and_heal
+        ok, msg = check_and_heal()
+        if ok:
+            print(f"Database ready: {msg}")
+        else:
+            print(f"Warning: {msg}")
     except Exception as e:
-        print(f"Warning: Error running migrations: {e}")
+        print(f"Warning: Database check failed: {e}")
         import traceback
         traceback.print_exc()
     
