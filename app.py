@@ -11174,16 +11174,21 @@ def save_academic_coordinator_settings():
     return redirect(url_for('settings', role='academic coordinator'))
 
 # Role Switching Route (for technicians)
-@app.route('/switch-role/<target_role>')
+@app.route('/switch-role/<path:target_role>')
 @login_required
 def switch_role(target_role):
-    """Allow technicians to switch between different role views"""
+    """Allow technicians to switch between different role views.
+    Uses path converter and normalizes URL slugs (hyphens) to role names (spaces)
+    for compatibility with hosting environments that mishandle %20 in paths."""
     user_role = session.get('role', '').lower()
     
     # Only technicians can switch roles
     if user_role != 'technician':
         flash('You do not have permission to switch roles.', 'error')
         return redirect(url_for('dashboard_employee'))
+    
+    # Normalize: convert URL-safe hyphens to spaces (e.g. deputy-principal -> deputy principal)
+    target_role = target_role.strip().replace('-', ' ').lower()
     
     # Get redirect URL from query parameter
     redirect_url = request.args.get('redirect', None)
