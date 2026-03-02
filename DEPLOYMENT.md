@@ -17,6 +17,22 @@ cd /home/your_username/public_html   # or your app directory
 git pull origin main
 ```
 
+### ⚠️ IMPORTANT: After `git pull`, you MUST do two things:
+
+1. **Run migrations** (updates tables and columns):
+   ```bash
+   python -c "from migrations.migration_manager import run_all_migrations; run_all_migrations()"
+   ```
+   Or with venv: `source venv/bin/activate` first, then run the command.
+
+2. **Restart the app** so Passenger loads the new code:
+   ```bash
+   touch passenger_wsgi.py
+   ```
+   Or use cPanel → Setup Python App → Restart.
+
+Without these steps, new tables and columns will not be created. Git only updates files; the database schema is updated by migrations, and the running app won't reload until you restart it.
+
 ---
 
 ## Step 2: Create Virtual Environment & Install Dependencies
@@ -123,6 +139,19 @@ Ensure these files exist in your app root:
 
 ---
 
+## Quick Deploy (after each `git pull`)
+
+Run these commands in your app directory:
+
+```bash
+git pull origin main
+source venv/bin/activate   # if using venv
+python -c "from migrations.migration_manager import run_all_migrations; run_all_migrations()"
+touch passenger_wsgi.py
+```
+
+---
+
 ## Troubleshooting
 
 ### 500 Internal Server Error
@@ -142,3 +171,10 @@ Ensure these files exist in your app root:
 ### "Application Error" Page
 - View Passenger logs for the full traceback
 - Run locally first: `python app.py` to catch import/syntax errors
+
+### Tables or columns not updating after git pull
+- **Run migrations manually**: `python -c "from migrations.migration_manager import run_all_migrations; run_all_migrations()"`
+- **Restart the app**: `touch passenger_wsgi.py` (or cPanel Restart)
+- **Check Passenger logs** for migration errors (DB permissions, syntax, etc.)
+- **Verify MySQL user** has `ALTER`, `CREATE` permissions
+- **Test locally first**: Run the migration command locally to see any error output

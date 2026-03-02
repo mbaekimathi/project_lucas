@@ -46,6 +46,16 @@ else
     echo ".htaccess found. Ensure PassengerAppRoot matches your app directory path."
 fi
 
+# 5. Run migrations (creates/updates tables and columns)
+echo "Running database migrations..."
+python -c "from migrations.migration_manager import run_all_migrations; run_all_migrations()" || true
+
+# 6. Restart Passenger (so it picks up new code and migrations)
+if [ -f "passenger_wsgi.py" ]; then
+    echo "Touching passenger_wsgi.py to trigger restart..."
+    touch passenger_wsgi.py
+fi
+
 echo ""
 echo "=========================================="
 echo "Setup complete. See DEPLOYMENT.md for full guide."
