@@ -8,33 +8,33 @@
 {% set hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
 
 <!-- Layout: school-site.css (.split-hero) uses CSS Grid — avoid flex utilities on the section -->
-<section class="split-hero split-hero--home relative overflow-hidden" aria-label="Welcome">
+<section class="split-hero split-hero--home split-hero--readable relative overflow-hidden" aria-label="Welcome">
     <div class="split-hero__panel">
         <div class="split-hero__panel-inner">
             {% if school_settings.school_logo %}
             <div class="split-hero__logo mb-8 lg:mb-10">
-                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="max-h-14 sm:max-h-16 w-auto object-contain brightness-0 invert opacity-95">
+                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="split-hero__logo-img max-h-14 sm:max-h-16 w-auto object-contain">
             </div>
             {% endif %}
-            <p class="split-hero__eyebrow text-white/75 mb-6">{{ school_settings.project_name or 'Excellence in education' }}</p>
-            <h1 class="split-hero__headline text-white text-3xl sm:text-4xl lg:text-[2.35rem] xl:text-5xl font-bold leading-[1.08] tracking-tight mb-6">
-                Changing futures — <span class="text-white">one learner at a time.</span>
+            <p class="split-hero__eyebrow split-hero__eyebrow--readable mb-6">{{ school_settings.project_name or 'Excellence in education' }}</p>
+            <h1 class="split-hero__headline split-hero__headline--readable text-3xl sm:text-4xl lg:text-[2.35rem] xl:text-5xl font-bold leading-[1.08] tracking-tight mb-6">
+                Changing futures — <span class="text-brand-primary dark:text-rose-200">one learner at a time.</span>
             </h1>
-            <p class="split-hero__lede text-white/85 text-base sm:text-lg leading-relaxed mb-10">
-                At <strong class="text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — rigorous learning, character, and community so every child can thrive.
+            <p class="split-hero__lede split-hero__lede--readable text-base sm:text-lg leading-relaxed mb-10">
+                At <strong class="text-slate-900 dark:text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — rigorous learning, character, and community so every child can thrive.
             </p>
             <div class="flex flex-col sm:flex-row flex-wrap gap-4">
-                <a href="/admission" class="split-hero__btn split-hero__btn--ghost">
+                <a href="/admission" class="split-hero__btn split-hero__btn--solid">
                     <i class="fas fa-file-signature"></i> Apply for admission
                 </a>
-                <a href="/about" class="split-hero__btn split-hero__btn--ghost">
+                <a href="/about" class="split-hero__btn split-hero__btn--soft">
                     <i class="fas fa-book-open"></i> Our story
                 </a>
             </div>
         </div>
-        <div class="split-hero__meta mt-12 lg:mt-10 flex flex-wrap gap-3 text-xs sm:text-sm text-white/80">
-            <span class="split-hero__chip"><i class="fas fa-graduation-cap text-brand-secondary" aria-hidden="true"></i> Academic excellence</span>
-            <span class="split-hero__chip"><i class="fas fa-users text-brand-secondary" aria-hidden="true"></i> Community</span>
+        <div class="split-hero__meta split-hero__meta--readable mt-12 lg:mt-10 flex flex-wrap gap-3 text-xs sm:text-sm">
+            <span class="split-hero__chip"><i class="fas fa-graduation-cap text-brand-primary" aria-hidden="true"></i> Academic excellence</span>
+            <span class="split-hero__chip"><i class="fas fa-users text-brand-primary" aria-hidden="true"></i> Community</span>
         </div>
     </div>
     <div class="split-hero__visual">

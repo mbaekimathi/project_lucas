@@ -3226,32 +3226,38 @@ def login():
         password = request.form.get('password', '').strip()
         admission_number = request.form.get('admission_number', '').strip()
         employee_id = request.form.get('employee_id', '').strip() or request.form.get('employee_id_fallback', '').strip()
+
+        def redirect_login_error():
+            """Return to login page so flash messages are visible (not lost on home redirect)."""
+            if role in ('employee', 'parent', 'student'):
+                return redirect(url_for('login', role=role))
+            return redirect(url_for('login'))
         
         print(f"DEBUG: Login attempt - Role: {role}, Employee ID: {employee_id}, Has Password: {bool(password)}")  # Debug
         print(f"DEBUG: Form data - {dict(request.form)}")  # Debug
         
         if not role or not password:
             flash('Please fill in all required fields.', 'error')
-            return redirect(url_for('home'))
+            return redirect_login_error()
         
         # Validate role-specific fields
         if role in ['parent', 'student']:
             if not admission_number:
                 flash('Please enter student admission number.', 'error')
-                return redirect(url_for('home'))
+                return redirect_login_error()
             identifier = admission_number
         elif role == 'employee':
             if not employee_id:
                 flash('Please enter employee identification code.', 'error')
-                return redirect(url_for('home'))
+                return redirect_login_error()
             # Validate 6-digit code
             if not employee_id.isdigit() or len(employee_id) != 6:
                 flash('Employee code must be exactly 6 digits.', 'error')
-                return redirect(url_for('home'))
+                return redirect_login_error()
             identifier = employee_id
         else:
             flash('Invalid role selected.', 'error')
-            return redirect(url_for('home'))
+            return redirect_login_error()
         
         connection = get_db_connection()
         if connection:
@@ -3283,10 +3289,10 @@ def login():
                                     return redirect(url_for('terms_and_conditions'))
                                 elif status in ['suspended', 'fired']:
                                     flash('Your account has been suspended. Please contact the relevant authorities for assistance.', 'error')
-                                    return redirect(url_for('home'))
+                                    return redirect_login_error()
                                 elif status == 'retired':
                                     flash('Thank you for your service! Your account has been retired.', 'info')
-                                    return redirect(url_for('home'))
+                                    return redirect_login_error()
                                 elif status == 'active':
                                     # Set session and redirect to role dashboard
                                     session['user_id'] = employee['id']
@@ -3299,13 +3305,19 @@ def login():
                                     return redirect(employee_dashboard_path())
                                 else:
                                     flash('Your account status is invalid. Please contact support.', 'error')
-                                    return redirect(url_for('home'))
+                                    return redirect_login_error()
                             else:
                                 print(f"DEBUG: Password incorrect!")  # Debug
-                                flash('Invalid employee code or password.', 'error')
+                                flash(
+                                    'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
+                                    'error',
+                                )
                         else:
                             print(f"DEBUG: Employee not found!")  # Debug
-                            flash('Invalid employee code or password.', 'error')
+                            flash(
+                                'No employee account matches this ID. Check your six-digit employee code and try again.',
+                                'error',
+                            )
                     else:  # parent or student
                         # Look up by admission number (you may need to add this field to users table)
                         cursor.execute(
@@ -3313,8 +3325,18 @@ def login():
                             (f'%{identifier}%', role)
                         )
                         user = cursor.fetchone()
-                        
-                        if user and check_password_hash(user['password_hash'], password):
+
+                        if not user:
+                            flash(
+                                'No account found with this admission number for the selected role. Check the number and try again.',
+                                'error',
+                            )
+                        elif not check_password_hash(user['password_hash'], password):
+                            flash(
+                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
+                                'error',
+                            )
+                        else:
                             session['user_id'] = user['id']
                             session['email'] = user['email']
                             session['full_name'] = user['full_name']
@@ -3325,8 +3347,6 @@ def login():
                             if role == 'student':
                                 return redirect(student_dashboard_path())
                             return redirect(url_for(f'dashboard_{role}'))
-                        else:
-                            flash('Invalid credentials. Please check your admission number and password.', 'error')
             except Exception as e:
                 print(f"Login error: {e}")
                 flash('An error occurred during login. Please try again.', 'error')
@@ -3338,8 +3358,8 @@ def login():
                         pass  # Connection might already be closed
         else:
             flash('Database connection error. Please try again later.', 'error')
-        
-        return redirect(url_for('home'))
+
+        return redirect_login_error()
     
     # GET request - render login page
     role = request.args.get('role', '')
