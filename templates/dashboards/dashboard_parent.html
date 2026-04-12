@@ -4,7 +4,7 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
@@ -12,27 +12,22 @@
 {% endif %}
 
 <!-- Parent Links -->
-<a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-   class="sidebar-item">
-    <i class="fas fa-chart-pie w-5"></i>
-    <span>Dashboard</span>
-</a>
 <a @click.prevent="comingSoonTitle = 'My Child's Academic Records'; comingSoonModalOpen = true" 
    class="sidebar-item">
     <i class="fas fa-user-graduate w-5"></i>
     <span>Child's Records</span>
 </a>
-<a href="{{ url_for('parent_attendance') }}" 
+<a href="{{ parent_dash_url('attendance') }}" 
    class="sidebar-item">
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
 </a>
-<a href="/dashboard/parent/student-fees" 
+<a href="{{ parent_dash_url('student-fees') }}" 
    class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
-<a href="{{ url_for('parent_exam_progress') }}" 
+<a href="{{ parent_dash_url('exam-progress') }}" 
    class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Results</span>
@@ -62,7 +57,7 @@
                     <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent's perspective</p>
                 </div>
             </div>
-            <form method="GET" action="/dashboard/parent" class="flex items-center gap-3">
+            <form method="GET" action="{{ parent_dash_url() }}" class="flex items-center gap-3">
                 <select name="student_id" 
                         onchange="this.form.submit()"
                         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[250px]">
@@ -82,7 +77,7 @@
                     {% endfor %}
                 </select>
                 {% if selected_student_id %}
-                <a href="/dashboard/parent" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all">
+                <a href="{{ parent_dash_url() }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-all">
                     <i class="fas fa-times mr-2"></i>Clear Selection
                 </a>
                 {% endif %}
@@ -191,15 +186,15 @@
 
                 <!-- Fee & exam actions (always shown for linked children) -->
                 <div class="grid grid-cols-1 gap-2 mt-2">
-                <a href="/dashboard/parent/student-fees/{{ child.student_id }}" 
+                <a href="{{ parent_dash_url('student-fees/' ~ child.student_id) }}" 
                    class="block w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center shadow-md hover:shadow-lg transform hover:scale-[1.02] active:scale-[0.98]">
                     <i class="fas fa-eye mr-2"></i>View Fee Details
                 </a>
-                <a href="{{ url_for('parent_exam_progress_detail', student_id=child.student_id) }}" 
+                <a href="{{ parent_dash_url('exam-progress/' ~ child.student_id) }}" 
                    class="block w-full bg-white dark:bg-gray-700 border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-orange-50 dark:hover:bg-gray-600">
                     <i class="fas fa-chart-line mr-2"></i>Exam Results &amp; Progress
                 </a>
-                <a href="{{ url_for('parent_attendance_detail', student_id=child.student_id) }}" 
+                <a href="{{ parent_dash_url('attendance/' ~ child.student_id) }}" 
                    class="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-gray-50 dark:hover:bg-gray-600">
                     <i class="fas fa-check-circle mr-2"></i>Attendance
                 </a>

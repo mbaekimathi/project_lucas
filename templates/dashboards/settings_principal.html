@@ -5,29 +5,17 @@
 {% block role_display %}{% if role == 'deputy head of institution' %}Deputy Head of Institution{% else %}Head of Institution{% endif %}{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee" class="sidebar-item">
-    <i class="fas fa-home w-5"></i>
-    <span>Dashboard</span>
-</a>
-<a href="/profile/employee" class="sidebar-item">
-    <i class="fas fa-user w-5"></i>
-    <span>Profile</span>
-</a>
-<a href="{{ url_for('settings', role=role) }}" class="sidebar-item sidebar-item-active">
-    <i class="fas fa-cog w-5"></i>
-    <span>Settings</span>
-</a>
-<a href="{{ url_for('database_backup_restore') }}" 
+<a href="{{ employee_dash_url('database/backup-restore') }}" 
    class="sidebar-item {% if request.endpoint == 'database_backup_restore' %}sidebar-item-active{% endif %}">
     <i class="fas fa-download w-5"></i>
     <span>Backup & Restore</span>
 </a>
-<a href="{{ url_for('database_health_status') }}" 
+<a href="{{ employee_dash_url('database/health-status') }}" 
    class="sidebar-item {% if request.endpoint == 'database_health_status' %}sidebar-item-active{% endif %}">
     <i class="fas fa-heartbeat w-5"></i>
     <span>Health & Status</span>
 </a>
-<a href="{{ url_for('logs_audit_trails') }}" 
+<a href="{{ employee_dash_url('database/logs-audit-trails') }}" 
    class="sidebar-item {% if request.endpoint == 'logs_audit_trails' %}sidebar-item-active{% endif %}">
     <i class="fas fa-history w-5"></i>
     <span>Logs & Audit Trails</span>
@@ -46,7 +34,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Notification Preferences</h3>
         
-        <form method="POST" action="{{ url_for('update_notifications', role=role) }}" class="space-y-4">
+        <form method="POST" action="{{ employee_dash_url('settings/' ~ role ~ '/notifications') }}" class="space-y-4">
             <div class="flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700">
                 <div>
                     <p class="font-semibold text-gray-900 dark:text-white">Email Notifications</p>
@@ -114,7 +102,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Account Preferences</h3>
         
-        <form method="POST" action="{{ url_for('update_preferences', role=role) }}" class="space-y-4">
+        <form method="POST" action="{{ employee_dash_url('settings/' ~ role ~ '/preferences') }}" class="space-y-4">
             <div>
                 <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                     Language Preference

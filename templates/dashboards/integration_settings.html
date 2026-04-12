@@ -5,13 +5,13 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
-<a href="/dashboard/employee/integration-settings" 
+<a href="{{ employee_dash_url('integration-settings') }}" 
    class="sidebar-item sidebar-item-active mb-4">
     <i class="fas fa-plug w-5"></i>
     <span>Integration Settings</span>
@@ -285,6 +285,7 @@
                     <option value="twilio" {% if integration_data.sms.provider == 'twilio' %}selected{% endif %}>Twilio</option>
                     <option value="nexmo" {% if integration_data.sms.provider == 'nexmo' %}selected{% endif %}>Vonage (Nexmo)</option>
                     <option value="aws-sns" {% if integration_data.sms.provider == 'aws-sns' %}selected{% endif %}>AWS SNS</option>
+                    <option value="africastalking" {% if integration_data.sms.provider == 'africastalking' %}selected{% endif %}>Africa's Talking</option>
                     <option value="custom" {% if integration_data.sms.provider == 'custom' %}selected{% endif %}>Custom API</option>
                 </select>
             </div>
@@ -305,6 +306,15 @@
                            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                            placeholder="Enter SMS API Secret">
                 </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Africa's Talking username</label>
+                <input type="text"
+                       name="username"
+                       value="{{ integration_data.sms.username }}"
+                       class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                       placeholder="App username (e.g. sandbox)">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Required when SMS Provider is Africa's Talking (dashboard username, not the phone).</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sender ID</label>
@@ -380,13 +390,13 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
-<a href="/dashboard/employee/integration-settings" 
+<a href="{{ employee_dash_url('integration-settings') }}" 
    class="sidebar-item sidebar-item-active mb-4">
     <i class="fas fa-plug w-5"></i>
     <span>Integration Settings</span>
@@ -660,6 +670,7 @@
                     <option value="twilio" {% if integration_data.sms.provider == 'twilio' %}selected{% endif %}>Twilio</option>
                     <option value="nexmo" {% if integration_data.sms.provider == 'nexmo' %}selected{% endif %}>Vonage (Nexmo)</option>
                     <option value="aws-sns" {% if integration_data.sms.provider == 'aws-sns' %}selected{% endif %}>AWS SNS</option>
+                    <option value="africastalking" {% if integration_data.sms.provider == 'africastalking' %}selected{% endif %}>Africa's Talking</option>
                     <option value="custom" {% if integration_data.sms.provider == 'custom' %}selected{% endif %}>Custom API</option>
                 </select>
             </div>
@@ -680,6 +691,15 @@
                            class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                            placeholder="Enter SMS API Secret">
                 </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Africa's Talking username</label>
+                <input type="text"
+                       name="username"
+                       value="{{ integration_data.sms.username }}"
+                       class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
+                       placeholder="App username (e.g. sandbox)">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Required when SMS Provider is Africa's Talking (dashboard username, not the phone).</p>
             </div>
             <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Sender ID</label>

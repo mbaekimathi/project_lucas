@@ -2,117 +2,142 @@
 
 {% block title %}Login - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block body_class %}public-site school-public login-route{% endblock %}
+
+{% block header_subtitle %}{% endblock %}
+
 {% block content %}
-<!-- Login Section -->
-<section class="py-20 bg-gray-50 min-h-screen flex items-center">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="max-w-md mx-auto">
-            <!-- Login Card -->
-            <div class="bg-white rounded-2xl shadow-lg p-10 border border-gray-100">
-                <!-- Header -->
-                <div class="text-center mb-8">
-                    <div class="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-sign-in-alt text-white text-2xl"></i>
-                    </div>
-                    <h1 class="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-                    <p class="text-gray-600">Sign in to your account</p>
-                </div>
+<section class="login-page relative -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden">
+    <div class="login-page__ambient" aria-hidden="true"></div>
 
-                <!-- Flash Messages -->
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="mb-6 p-4 rounded-lg {% if category == 'error' %}bg-red-50 border border-red-200 text-red-700{% elif category == 'success' %}bg-green-50 border border-green-200 text-green-700{% else %}bg-gray-50 border border-gray-200 text-gray-700{% endif %}">
-                                <div class="flex items-center">
-                                    <i class="fas {% if category == 'error' %}fa-exclamation-circle{% elif category == 'success' %}fa-check-circle{% else %}fa-info-circle{% endif %} mr-2"></i>
-                                    <span>{{ message }}</span>
-                                </div>
-                            </div>
-                        {% endfor %}
+    <div class="login-page__shell relative z-10 max-w-6xl xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14 lg:py-16 lg:min-h-[min(100vh,52rem)] lg:flex lg:items-stretch">
+        <!-- Brand column -->
+        <div class="login-page__showcase mb-10 lg:mb-0 lg:w-[46%] xl:w-[42%] lg:min-h-[28rem] flex flex-col justify-between rounded-3xl p-8 sm:p-10 lg:p-12 text-white shadow-2xl shadow-black/20 border border-white/10">
+            <div class="login-page__showcase-mesh" aria-hidden="true"></div>
+            <div class="relative z-10 flex flex-col items-center lg:items-start text-center lg:text-left">
+                <div class="login-page__logo-ring mb-8">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                         alt=""
+                         class="login-page__logo-img"
+                         width="200"
+                         height="80"
+                         loading="eager"
+                         decoding="async">
+                    {% else %}
+                    <div class="login-page__logo-fallback">
+                        <i class="fas fa-graduation-cap text-4xl sm:text-5xl text-white/95" aria-hidden="true"></i>
+                    </div>
                     {% endif %}
-                {% endwith %}
+                </div>
+                <p class="login-page__eyebrow text-[0.65rem] sm:text-xs font-semibold uppercase tracking-[0.2em] text-white/70 mb-3">Secure portal</p>
+                <h1 class="text-2xl sm:text-3xl lg:text-[1.75rem] xl:text-4xl font-bold tracking-tight leading-tight mb-3">
+                    {{ school_settings.school_name or 'Welcome' }}
+                </h1>
+                {% if school_settings.project_name %}
+                <p class="text-white/80 text-sm sm:text-base max-w-sm lg:max-w-none leading-relaxed font-medium">
+                    {{ school_settings.project_name }}
+                </p>
+                {% endif %}
+                <p class="mt-6 text-sm text-white/55 max-w-md hidden sm:block leading-relaxed">
+                    Sign in with your role and credentials. Your connection is protected for a safe, private session.
+                </p>
+            </div>
+            <div class="relative z-10 mt-10 lg:mt-8 flex flex-wrap gap-3 justify-center lg:justify-start">
+                <span class="login-page__pill"><i class="fas fa-shield-alt mr-2 opacity-80" aria-hidden="true"></i> Encrypted</span>
+                <span class="login-page__pill"><i class="fas fa-user-lock mr-2 opacity-80" aria-hidden="true"></i> Role-based</span>
+            </div>
+        </div>
 
-                <!-- Login Form -->
-                <form method="POST" action="/login" class="space-y-6">
-                    <!-- Role Selection -->
-                    <div>
-                        <label for="role" class="block text-sm font-semibold mb-2 text-gray-700">
-                            Login As <span class="text-red-500">*</span>
-                        </label>
-                        <select id="role" name="role" required
-                                class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"
-                                onchange="toggleLoginFields()">
-                            <option value="">Select your role</option>
-                            <option value="employee" {% if default_role == 'employee' %}selected{% endif %}>Employee</option>
-                            <option value="parent" {% if default_role == 'parent' %}selected{% endif %}>Parent</option>
-                            <option value="student" {% if default_role == 'student' %}selected{% endif %}>Student</option>
-                        </select>
+        <!-- Form column -->
+        <div class="login-page__form-col lg:flex-1 lg:pl-8 xl:pl-12 lg:flex lg:items-center">
+            <div class="login-page__card w-full max-w-md mx-auto lg:mx-0 lg:max-w-none">
+                <div class="rounded-2xl border border-gray-200/90 dark:border-slate-600/80 bg-white/98 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl shadow-gray-900/5 dark:shadow-black/30 px-7 py-9 sm:px-9 sm:py-10">
+                    <div class="mb-7">
+                        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Sign in</h2>
+                        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1.5">Use your school account details below.</p>
                     </div>
 
-                    <!-- Employee ID Field (for employees) -->
-                    <div id="employee_id_field" style="display: none;">
-                        <label for="employee_id" class="block text-sm font-semibold mb-2 text-gray-700">
-                            Employee ID <span class="text-red-500">*</span>
-                            <span class="text-xs text-gray-500 block mt-1">Enter your 6-digit employee ID</span>
-                        </label>
-                        <input type="text" id="employee_id" name="employee_id" 
-                               pattern="[0-9]{6}" maxlength="6" minlength="6"
-                               class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                               placeholder="000000">
-                    </div>
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="mb-6 p-4 rounded-xl text-sm {% if category == 'error' %}bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200{% elif category == 'success' %}bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200{% else %}bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-200{% endif %}">
+                                    <div class="flex items-start gap-2">
+                                        <i class="fas {% if category == 'error' %}fa-exclamation-circle{% elif category == 'success' %}fa-check-circle{% else %}fa-info-circle{% endif %} mt-0.5 shrink-0" aria-hidden="true"></i>
+                                        <span>{{ message }}</span>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
 
-                    <!-- Admission Number Field (for parents/students) -->
-                    <div id="admission_number_field" style="display: none;">
-                        <label for="admission_number" class="block text-sm font-semibold mb-2 text-gray-700">
-                            Admission Number <span class="text-red-500">*</span>
-                        </label>
-                        <input type="text" id="admission_number" name="admission_number"
-                               class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
-                               placeholder="Enter admission number">
-                    </div>
-
-                    <!-- Password Field -->
-                    <div>
-                        <label for="password" class="block text-sm font-semibold mb-2 text-gray-700">
-                            Password <span class="text-red-500">*</span>
-                        </label>
-                        <div class="relative">
-                            <input type="password" id="password" name="password" required
-                                   class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary pr-12"
-                                   placeholder="Enter your password">
-                            <button type="button" onclick="togglePassword()" 
-                                    class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700">
-                                <i class="fas fa-eye" id="password_toggle_icon"></i>
-                            </button>
+                    <form method="POST" action="/login" class="space-y-5">
+                        <div>
+                            <label for="role" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Login as <span class="text-red-500">*</span></label>
+                            <select id="role" name="role" required
+                                    class="auth-input login-page__select w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50/80 dark:bg-slate-800/80 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-shadow"
+                                    onchange="toggleLoginFields()">
+                                <option value="">Select your role</option>
+                                <option value="employee" {% if default_role == 'employee' %}selected{% endif %}>Employee</option>
+                                <option value="parent" {% if default_role == 'parent' %}selected{% endif %}>Parent</option>
+                                <option value="student" {% if default_role == 'student' %}selected{% endif %}>Student</option>
+                            </select>
                         </div>
-                    </div>
 
-                    <!-- Remember Me & Forgot Password -->
-                    <div class="flex items-center justify-between">
-                        <label class="flex items-center">
-                            <input type="checkbox" name="remember_me" class="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary">
-                            <span class="ml-2 text-sm text-gray-600">Remember me</span>
-                        </label>
-                        <a href="#" class="text-sm text-brand-primary hover:text-brand-maroon-dark">Forgot password?</a>
-                    </div>
+                        <div id="employee_id_field" class="hidden">
+                            <label for="employee_id" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Employee ID <span class="text-red-500">*</span></label>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Six-digit employee ID</p>
+                            <input type="text" id="employee_id" name="employee_id"
+                                   pattern="[0-9]{6}" maxlength="6" minlength="6"
+                                   class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
+                                   placeholder="000000" inputmode="numeric" autocomplete="username">
+                        </div>
 
-                    <!-- Submit Button -->
-                    <button type="submit" 
-                            class="w-full px-6 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl">
-                        <i class="fas fa-sign-in-alt mr-2"></i>Sign In
-                    </button>
-                </form>
+                        <div id="admission_number_field" class="hidden">
+                            <label for="admission_number" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Admission number <span class="text-red-500">*</span></label>
+                            <input type="text" id="admission_number" name="admission_number"
+                                   class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
+                                   placeholder="Your admission number" autocomplete="username">
+                        </div>
 
-                <!-- Register Links -->
-                <div class="mt-8 pt-6 border-t border-gray-200">
-                    <p class="text-center text-sm text-gray-600 mb-4">Don't have an account?</p>
-                    <div class="space-y-3">
-                        <a href="/register-employee" class="block w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium text-center transition-colors">
-                            <i class="fas fa-user-plus mr-2"></i>Register as Employee
-                        </a>
-                        <a href="/admission" class="block w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg font-medium text-center transition-colors">
-                            <i class="fas fa-user-graduate mr-2"></i>Register as Student
-                        </a>
+                        <div>
+                            <label for="password" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Password <span class="text-red-500">*</span></label>
+                            <div class="relative">
+                                <input type="password" id="password" name="password" required
+                                       class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white pr-12 focus:ring-2 focus:ring-brand-primary"
+                                       placeholder="••••••••" autocomplete="current-password">
+                                <button type="button" onclick="togglePassword()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700" aria-label="Show password">
+                                    <i class="fas fa-eye" id="password_toggle_icon"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="login_remember_forgot_row" class="hidden" aria-hidden="true">
+                            <div class="flex items-center justify-between gap-3 flex-wrap pt-1">
+                                <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
+                                    <input type="checkbox" name="remember_me" class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary">
+                                    Remember me
+                                </label>
+                                <a href="{{ url_for('retrieve_password') }}" class="text-sm font-semibold text-brand-primary hover:text-brand-secondary">Forgot password?</a>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="login-page__submit w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white transition-all hover:-translate-y-0.5">
+                            <i class="fas fa-sign-in-alt" aria-hidden="true"></i>
+                            Sign in
+                        </button>
+                    </form>
+
+                    <div class="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
+                        <p class="text-center text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4">New to the portal?</p>
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <a href="{{ url_for('register_employee') }}" class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-secondary transition-colors">
+                                <i class="fas fa-user-plus" aria-hidden="true"></i> Staff signup
+                            </a>
+                            <a href="{{ url_for('admission') }}" class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-secondary transition-colors">
+                                <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -121,36 +146,40 @@
 </section>
 
 <script>
-// Initialize fields based on selected role on page load
 document.addEventListener('DOMContentLoaded', function() {
     const role = document.getElementById('role').value;
-    if (role) {
-        toggleLoginFields();
-    }
+    if (role) toggleLoginFields();
 });
 
 function toggleLoginFields() {
     const role = document.getElementById('role').value;
     const employeeField = document.getElementById('employee_id_field');
     const admissionField = document.getElementById('admission_number_field');
+    const rememberForgotRow = document.getElementById('login_remember_forgot_row');
     const employeeInput = document.getElementById('employee_id');
     const admissionInput = document.getElementById('admission_number');
-    
+
+    const hasRole = role === 'employee' || role === 'parent' || role === 'student';
+    if (rememberForgotRow) {
+        rememberForgotRow.classList.toggle('hidden', !hasRole);
+        rememberForgotRow.setAttribute('aria-hidden', hasRole ? 'false' : 'true');
+    }
+
     if (role === 'employee') {
-        employeeField.style.display = 'block';
-        admissionField.style.display = 'none';
+        employeeField.classList.remove('hidden');
+        admissionField.classList.add('hidden');
         employeeInput.required = true;
         admissionInput.required = false;
         admissionInput.value = '';
     } else if (role === 'parent' || role === 'student') {
-        employeeField.style.display = 'none';
-        admissionField.style.display = 'block';
+        employeeField.classList.add('hidden');
+        admissionField.classList.remove('hidden');
         employeeInput.required = false;
         admissionInput.required = true;
         employeeInput.value = '';
     } else {
-        employeeField.style.display = 'none';
-        admissionField.style.display = 'none';
+        employeeField.classList.add('hidden');
+        admissionField.classList.add('hidden');
         employeeInput.required = false;
         admissionInput.required = false;
         employeeInput.value = '';
@@ -161,7 +190,6 @@ function toggleLoginFields() {
 function togglePassword() {
     const passwordInput = document.getElementById('password');
     const toggleIcon = document.getElementById('password_toggle_icon');
-    
     if (passwordInput.type === 'password') {
         passwordInput.type = 'text';
         toggleIcon.classList.remove('fa-eye');

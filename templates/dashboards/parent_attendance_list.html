@@ -4,28 +4,28 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 {% endif %}
-<a href="/dashboard/parent" 
+<a href="{{ parent_dash_url() }}" 
    class="sidebar-item">
     <i class="fas fa-home w-5"></i>
     <span>Dashboard</span>
 </a>
-<a href="/dashboard/parent/student-fees" 
+<a href="{{ parent_dash_url('student-fees') }}" 
    class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
-<a href="{{ url_for('parent_exam_progress') }}" 
+<a href="{{ parent_dash_url('exam-progress') }}" 
    class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Results</span>
 </a>
-<a href="{{ url_for('parent_attendance') }}" 
+<a href="{{ parent_dash_url('attendance') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
@@ -44,7 +44,7 @@
                     <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent's perspective</p>
                 </div>
             </div>
-            <form method="GET" action="{{ url_for('parent_attendance') }}" class="flex items-center gap-3">
+            <form method="GET" action="{{ parent_dash_url('attendance') }}" class="flex items-center gap-3">
                 <select name="student_id" onchange="this.form.submit()"
                         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]">
                     <option value="">-- Select a Student --</option>
@@ -56,7 +56,7 @@
                     {% endfor %}
                 </select>
                 {% if selected_student_id %}
-                <a href="{{ url_for('parent_attendance') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
+                <a href="{{ parent_dash_url('attendance') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
                 {% endif %}
             </form>
         </div>
@@ -71,7 +71,7 @@
     {% if children %}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {% for child in children %}
-        <a href="{{ url_for('parent_attendance_detail', student_id=child.student_id) }}" 
+        <a href="{{ parent_dash_url('attendance/' ~ child.student_id) }}" 
            class="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow hover:shadow-lg transition-all hover:border-orange-400">
             <div class="flex items-start justify-between gap-3">
                 <div>
@@ -88,7 +88,7 @@
     <div class="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
         <i class="fas fa-user-friends text-gray-400 text-4xl mb-3"></i>
         <p class="text-gray-600 dark:text-gray-400">No children linked to this account, or your session could not be resolved.</p>
-        <a href="{{ url_for('dashboard_parent') }}" class="inline-block mt-4 text-orange-600 dark:text-orange-400 font-medium hover:underline">Back to dashboard</a>
+        <a href="{{ parent_dash_url() }}" class="inline-block mt-4 text-orange-600 dark:text-orange-400 font-medium hover:underline">Back to dashboard</a>
     </div>
     {% endif %}
 </div>

@@ -4,86 +4,85 @@
 
 {% block body_class %}public-site school-public{% endblock %}
 
-{% block content %}
-{# Hero imagery — learning institution (customizable via future setting; strong default) #}
+{% block content_full_bleed %}
 {% set hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
 
-<section class="edu-hero">
-    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Campus and learning environment"></div>
-    <div class="edu-hero__mesh" aria-hidden="true"></div>
-    <div class="edu-hero__pattern" aria-hidden="true"></div>
-    <div class="edu-hero__content">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
-            <div class="max-w-3xl">
-                <p class="edu-eyebrow text-white/90 mb-4">{{ school_settings.project_name or 'Excellence in education' }}</p>
-                <div class="flex flex-col sm:flex-row sm:items-center gap-6 mb-8">
-                    {% if school_settings.school_logo %}
-                    <div class="edu-logo-ring shrink-0">
-                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}">
-                    </div>
-                    {% endif %}
-                    <div>
-                        <h1 class="edu-display text-4xl sm:text-5xl md:text-6xl text-white drop-shadow-sm">
-                            {{ school_settings.school_name or 'Modern School' }}
-                        </h1>
-                        <p class="mt-3 text-lg md:text-xl text-white/90 max-w-xl leading-relaxed">
-                            Where curiosity meets rigor — preparing learners for a changing world.</p>
-                    </div>
-                </div>
-                <div class="flex flex-wrap gap-3 mb-10">
-                    <span class="edu-stat-pill"><i class="fas fa-graduation-cap opacity-90"></i> Academic excellence</span>
-                    <span class="edu-stat-pill"><i class="fas fa-users opacity-90"></i> Community & care</span>
-                    <span class="edu-stat-pill"><i class="fas fa-lightbulb opacity-90"></i> Innovation</span>
-                </div>
-                <div class="flex flex-col sm:flex-row gap-4">
-                    <a href="/admission" class="edu-btn-primary">
-                        <i class="fas fa-file-signature"></i> Apply for admission
-                    </a>
-                    <a href="/about" class="edu-btn-ghost">
-                        <i class="fas fa-book-open"></i> Discover our story
-                    </a>
-                </div>
+<!-- Layout: school-site.css (.split-hero) uses CSS Grid — avoid flex utilities on the section -->
+<section class="split-hero split-hero--home relative overflow-hidden" aria-label="Welcome">
+    <div class="split-hero__panel">
+        <div class="split-hero__panel-inner">
+            {% if school_settings.school_logo %}
+            <div class="split-hero__logo mb-8 lg:mb-10">
+                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="max-h-14 sm:max-h-16 w-auto object-contain brightness-0 invert opacity-95">
+            </div>
+            {% endif %}
+            <p class="split-hero__eyebrow text-white/75 mb-6">{{ school_settings.project_name or 'Excellence in education' }}</p>
+            <h1 class="split-hero__headline text-white text-3xl sm:text-4xl lg:text-[2.35rem] xl:text-5xl font-bold leading-[1.08] tracking-tight mb-6">
+                Changing futures — <span class="text-white">one learner at a time.</span>
+            </h1>
+            <p class="split-hero__lede text-white/85 text-base sm:text-lg leading-relaxed mb-10">
+                At <strong class="text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — rigorous learning, character, and community so every child can thrive.
+            </p>
+            <div class="flex flex-col sm:flex-row flex-wrap gap-4">
+                <a href="/admission" class="split-hero__btn split-hero__btn--ghost">
+                    <i class="fas fa-file-signature"></i> Apply for admission
+                </a>
+                <a href="/about" class="split-hero__btn split-hero__btn--ghost">
+                    <i class="fas fa-book-open"></i> Our story
+                </a>
             </div>
         </div>
+        <div class="split-hero__meta mt-12 lg:mt-10 flex flex-wrap gap-3 text-xs sm:text-sm text-white/80">
+            <span class="split-hero__chip"><i class="fas fa-graduation-cap text-brand-secondary" aria-hidden="true"></i> Academic excellence</span>
+            <span class="split-hero__chip"><i class="fas fa-users text-brand-secondary" aria-hidden="true"></i> Community</span>
+        </div>
+    </div>
+    <div class="split-hero__visual">
+        <img src="{{ hero_img }}" alt="" class="split-hero__img absolute inset-0 h-full w-full object-cover object-center transition-transform duration-[2.2s] ease-out motion-safe:scale-105 hover:motion-safe:scale-100" width="1920" height="1080" loading="eager" decoding="async" fetchpriority="high">
+        <div class="split-hero__visual-scrim absolute inset-0 pointer-events-none md:hidden" aria-hidden="true"></div>
     </div>
 </section>
+{% endblock %}
 
-<div class="edu-strip border-y border-gray-200/80 dark:border-slate-700/80 py-4">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-center gap-6 md:gap-12 text-sm text-gray-700 dark:text-gray-300">
-        <span class="inline-flex items-center gap-2 font-medium"><i class="fas fa-map-marker-alt text-brand-primary"></i></span>
-        {% if school_settings.school_location %}
-        <span class="max-w-md text-center">{{ school_settings.school_location|replace('\n', ' · ')|e }}</span>
-        {% else %}
-        <span>Visit us — we’d love to show you around</span>
-        {% endif %}
+{% block content %}
+<div class="edu-strip edu-strip--modern border-y border-gray-200/60 dark:border-slate-700/60 py-4 md:py-5 reveal-item">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 edu-strip__inner text-sm text-gray-700 dark:text-gray-300">
+        <div class="edu-strip__item">
+            <i class="fas fa-map-marker-alt text-brand-primary" aria-hidden="true"></i>
+            {% if school_settings.school_location %}
+            <span class="max-w-md">{{ school_settings.school_location|replace('\n', ' · ')|e }}</span>
+            {% else %}
+            <span class="font-medium">Visit us — we’d love to show you around</span>
+            {% endif %}
+        </div>
         {% if school_settings.school_phone %}
-        <a href="tel:{{ school_settings.school_phone|replace(' ', '') }}" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline">
-            <i class="fas fa-phone"></i> {{ school_settings.school_phone }}
+        <a href="tel:{{ school_settings.school_phone|replace(' ', '') }}" class="edu-strip__item edu-strip__link font-semibold text-brand-primary hover:text-brand-secondary transition-colors">
+            <i class="fas fa-phone" aria-hidden="true"></i> {{ school_settings.school_phone }}
         </a>
         {% endif %}
     </div>
 </div>
 
-<section class="edu-section edu-section--tint py-16 md:py-24">
+<section class="edu-section edu-section--tint edu-section--mesh py-16 md:py-24">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-2xl mx-auto text-center mb-12 md:mb-16">
+        <div class="max-w-2xl mx-auto text-center mb-12 md:mb-16 reveal-item">
             <p class="edu-eyebrow mb-2">What we stand for</p>
             <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Built for learners who lead</h2>
             <p class="edu-divider max-w-xs mx-auto my-6"></p>
             <p class="text-gray-600 dark:text-gray-400 text-lg">Transparent, trusted, and focused on every student — aligned with <strong class="text-brand-primary">{{ school_settings.school_name or 'our school' }}</strong> mission.</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
-            <article class="edu-card p-8 md:p-10 text-center">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto edu-pillars">
+            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
                 <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-book-reader"></i></div>
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Rigorous academics</h3>
                 <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Curriculum that challenges and supports — literacy, numeracy, and critical thinking at the core.</p>
             </article>
-            <article class="edu-card p-8 md:p-10 text-center">
+            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
                 <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-hands-helping"></i></div>
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Whole-child support</h3>
                 <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Pastoral care, clubs, and leadership opportunities that build character and confidence.</p>
             </article>
-            <article class="edu-card p-8 md:p-10 text-center">
+            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
                 <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-globe-americas"></i></div>
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Future-ready</h3>
                 <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Digital fluency, creativity, and collaboration — skills for university and beyond.</p>
@@ -93,7 +92,7 @@
 </section>
 
 {% if academic_levels and academic_levels|length > 0 %}
-<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 reveal-item">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10 max-w-6xl mx-auto">
             <div>
@@ -101,36 +100,36 @@
                 <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Academic levels we offer</h2>
                 <p class="text-gray-600 dark:text-gray-400 mt-2 max-w-xl">Programs configured in your school settings — shown here automatically.</p>
             </div>
-            <a href="/programs" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline shrink-0">
-                View all programs <i class="fas fa-arrow-right text-sm"></i>
+            <a href="/programs" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline shrink-0 group">
+                View all programs <i class="fas fa-arrow-right text-sm transition-transform group-hover:translate-x-1"></i>
             </a>
         </div>
         <div class="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
             {% for level in academic_levels %}
-            <span class="edu-level-chip" title="{{ level.level_description or '' }}">{{ level.level_name }}</span>
+            <span class="edu-level-chip transition-transform hover:-translate-y-0.5" title="{{ level.level_description or '' }}">{{ level.level_name }}</span>
             {% endfor %}
         </div>
     </div>
 </section>
 {% endif %}
 
-<section class="section-bg-maroon py-16 md:py-20 relative">
+<section class="section-bg-maroon edu-stats-section py-16 md:py-20 relative reveal-item overflow-hidden">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div class="max-w-5xl mx-auto">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center">
-                <div class="edu-card edu-card--glass p-6 md:p-8">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5 text-center edu-stats-grid">
+                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
                     <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="500">500+</div>
                     <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Learners</div>
                 </div>
-                <div class="edu-card edu-card--glass p-6 md:p-8">
+                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
                     <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="50">50+</div>
                     <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Educators</div>
                 </div>
-                <div class="edu-card edu-card--glass p-6 md:p-8">
+                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
                     <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="20">20+</div>
                     <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Programs</div>
                 </div>
-                <div class="edu-card edu-card--glass p-6 md:p-8">
+                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
                     <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="95">95%</div>
                     <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Success focus</div>
                 </div>
@@ -139,11 +138,11 @@
     </div>
 </section>
 
-<section class="py-16 md:py-20 bg-white dark:bg-slate-900">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl">
-        <div class="edu-frame shadow-xl">
+<section class="py-16 md:py-24 bg-white dark:bg-slate-900 reveal-item">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
+        <div class="edu-frame edu-frame--modern shadow-xl edu-frame--tilt">
             <div class="grid md:grid-cols-2 gap-0">
-                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&q=80&auto=format&fit=crop');" role="img" aria-label="Library and reading"></div>
+                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center transition-transform duration-500 motion-safe:hover:scale-[1.02]" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&q=80&auto=format&fit=crop');" role="img" aria-label="Library and reading"></div>
                 <div class="p-8 md:p-12 flex flex-col justify-center">
                     <p class="edu-eyebrow mb-2">Our promise</p>
                     <blockquote class="edu-quote text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
@@ -156,27 +155,53 @@
     </div>
 </section>
 
-<section class="edu-section edu-section--dark py-16 md:py-20 text-center">
+{% set cta_education_img = 'https://images.unsplash.com/photo-1580582932707-520aed937d7a?w=1920&q=80&auto=format&fit=crop' %}
+<section class="edu-section edu-section--dark edu-cta-band py-16 md:py-24 text-center reveal-item relative overflow-hidden">
+    <div class="edu-cta-band__media" aria-hidden="true">
+        <img src="{{ cta_education_img }}" alt="" class="edu-cta-band__img" width="1920" height="800" loading="lazy" decoding="async">
+    </div>
+    <div class="edu-cta-band__media-scrim" aria-hidden="true"></div>
+    <div class="edu-cta-band__glow" aria-hidden="true"></div>
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl relative z-10">
-        <h2 class="edu-display text-3xl md:text-4xl text-white mb-4">Take the next step</h2>
-        <p class="text-white/85 text-lg mb-8">Admissions, tours, and questions — we’re here to help.</p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="/admission" class="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-semibold bg-white text-brand-primary shadow-lg hover:bg-gray-100 transition-colors">
+        <h2 class="edu-display text-3xl md:text-4xl text-white mb-4 tracking-tight">Take the next step</h2>
+        <p class="text-white/85 text-lg mb-10 max-w-xl mx-auto leading-relaxed">Admissions, tours, and questions — we’re here to help.</p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
+            <a href="/admission" class="edu-cta-btn edu-cta-btn--solid inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-semibold">
                 <i class="fas fa-pen-nib"></i> Start application
             </a>
-            <a href="/contact" class="edu-btn-ghost border-white/50">
+            <a href="/contact" class="edu-cta-btn edu-cta-btn--outline inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-semibold">
                 <i class="fas fa-envelope"></i> Contact the office
             </a>
         </div>
     </div>
 </section>
 
-<div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-end">
-        <a href="/about" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
-            <span>Next</span>
+<div class="edu-next-bar bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border-t border-gray-200/80 dark:border-slate-800">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-5 md:py-6 flex flex-wrap items-center justify-between gap-4">
+        <p class="text-sm text-gray-500 dark:text-gray-400">Explore our story and community.</p>
+        <a href="/about" class="edu-next-bar__btn inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white shadow-lg transition-all">
+            <span>Continue to About</span>
             <i class="fas fa-arrow-right text-sm"></i>
         </a>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var items = document.querySelectorAll('.reveal-item');
+  if (!items.length || !('IntersectionObserver' in window)) return;
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) {
+        e.target.classList.add('reveal-item--visible');
+        io.unobserve(e.target);
+      }
+    });
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
+  items.forEach(function (el) { io.observe(el); });
+})();
+</script>
 {% endblock %}

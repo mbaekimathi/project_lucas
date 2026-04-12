@@ -4,22 +4,22 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() in ['technician', 'head of institution'] %}
-<a href="{{ url_for('database_management') }}"
+<a href="{{ employee_dash_url('database') }}"
     class="sidebar-item mb-2">
     <i class="fas fa-database w-5"></i>
     <span>Database Management</span>
 </a>
-<a href="{{ url_for('database_backup_restore') }}"
+<a href="{{ employee_dash_url('database/backup-restore') }}"
     class="sidebar-item mb-2">
     <i class="fas fa-download w-5"></i>
     <span>Backup & Restore</span>
 </a>
-<a href="{{ url_for('database_health_status') }}"
+<a href="{{ employee_dash_url('database/health-status') }}"
     class="sidebar-item mb-2">
     <i class="fas fa-heartbeat w-5"></i>
     <span>Health & Status</span>
 </a>
-<a href="{{ url_for('logs_audit_trails') }}"
+<a href="{{ employee_dash_url('database/logs-audit-trails') }}"
     class="sidebar-item sidebar-item-active">
     <i class="fas fa-history w-5"></i>
     <span>Logs & Audit Trails</span>

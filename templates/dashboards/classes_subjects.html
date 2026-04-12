@@ -4,32 +4,32 @@
 
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
-<a href="/dashboard/employee/classes-subjects" 
+<a href="{{ employee_dash_url('classes-subjects') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-book w-5"></i>
     <span>Classes & Subjects</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
-<a href="/dashboard/employee/subject-class-allocation" 
-   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('subject-class-allocation') }}" 
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
     <i class="fas fa-tasks w-5"></i>
     <span>Subject & Class Allocation Panel</span>
 </a>
 
-<a href="/dashboard/employee/academic-subject-registration" 
-   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('academic-subject-registration') }}" 
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
     <i class="fas fa-book-open w-5"></i>
     <span>Academic Subject Registration</span>
 </a>
 
-<a href="/dashboard/employee/exam-evaluation" 
-   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('exam-evaluation') }}" 
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam & Evaluation</span>
 </a>
 
-<a href="/dashboard/employee" 
+<a href="{{ employee_dash_url() }}" 
    class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
@@ -120,7 +120,7 @@
                 {% else %}
                 <div class="pl-6 sm:pl-7 text-sm text-gray-500 dark:text-gray-400">
                     <p>No subjects allocated for this level yet.</p>
-                    <a href="/dashboard/employee/subject-class-allocation" class="inline-flex items-center mt-2 text-brand-primary hover:underline dark:text-brand-secondary">
+                    <a href="{{ employee_dash_url('subject-class-allocation') }}" class="inline-flex items-center mt-2 text-brand-primary hover:underline dark:text-brand-secondary">
                         <i class="fas fa-tasks mr-1.5 text-xs"></i> Subject &amp; class allocation
                     </a>
                 </div>

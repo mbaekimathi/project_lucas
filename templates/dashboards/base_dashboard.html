@@ -79,6 +79,9 @@
                     colors: {
                         'brand-primary': '{{ school_settings.primary_color|default("#800020") }}',
                         'brand-secondary': '{{ school_settings.secondary_color|default("#A00030") }}',
+                        'brand-maroon': '{{ school_settings.primary_color|default("#800020") }}',
+                        'brand-maroon-dark': '{{ school_settings.accent_color|default("#5C0014") }}',
+                        'brand-maroon-light': '{{ school_settings.secondary_color|default("#A00030") }}',
                     },
                     fontFamily: {
                         sans: ['{{ school_settings.font_family|default("Inter") }}', 'system-ui', 'sans-serif'],
@@ -97,6 +100,7 @@
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app-simple-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-brand-consistency.css') }}">
     
     <!-- Role-specific theme colors -->
     <style>

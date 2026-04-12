@@ -7,7 +7,7 @@
 {% block content %}
 {% set hero_img = 'https://images.unsplash.com/photo-1529390079861-591de354faf5?w=1920&q=80&auto=format&fit=crop' %}
 
-<section class="edu-hero edu-hero--page">
+<section class="edu-hero edu-hero--page edu-hero--cinematic">
     <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="School community"></div>
     <div class="edu-hero__mesh" aria-hidden="true"></div>
     <div class="edu-hero__pattern" aria-hidden="true"></div>
@@ -22,7 +22,7 @@
     </div>
 </section>
 
-<section class="py-14 md:py-20 edu-section--tint">
+<section class="py-14 md:py-20 edu-section--tint edu-section--mesh">
     <div class="container mx-auto px-4 lg:px-8">
         {% if gallery_items %}
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">

@@ -8,7 +8,7 @@
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System Configuration</h3>
     </div>
 
-    <a href="{{ url_for('system_settings') }}#school-profile"
+    <a href="{{ employee_dash_url('system-settings') }}#school-profile"
         @click.prevent="currentHash = '#school-profile'; window.location.hash = 'school-profile'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#school-profile' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
@@ -16,7 +16,7 @@
         <span>School Profile</span>
     </a>
 
-    <a href="{{ url_for('system_settings') }}#general-settings"
+    <a href="{{ employee_dash_url('system-settings') }}#general-settings"
         @click.prevent="currentHash = '#general-settings'; window.location.hash = 'general-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#general-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
@@ -24,7 +24,7 @@
         <span>General Settings</span>
     </a>
 
-    <a href="{{ url_for('system_settings') }}#academic-year"
+    <a href="{{ employee_dash_url('system-settings') }}#academic-year"
         @click.prevent="currentHash = '#academic-year'; window.location.hash = 'academic-year'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#academic-year' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
@@ -32,7 +32,7 @@
         <span>Academic Year</span>
     </a>
 
-    <a href="{{ url_for('system_settings') }}#theme-colors"
+    <a href="{{ employee_dash_url('system-settings') }}#theme-colors"
         @click.prevent="currentHash = '#theme-colors'; window.location.hash = 'theme-colors'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#theme-colors' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
@@ -40,7 +40,7 @@
         <span>Theme & Colors</span>
     </a>
 
-    <a href="{{ url_for('system_settings') }}#login-settings"
+    <a href="{{ employee_dash_url('system-settings') }}#login-settings"
         @click.prevent="currentHash = '#login-settings'; window.location.hash = 'login-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
         :class="currentHash === '#login-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
@@ -53,13 +53,13 @@
         <p class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Advanced</p>
     </div>
 
-    <a href="{{ url_for('integration_settings') }}"
+    <a href="{{ employee_dash_url('integration-settings') }}"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800">
         <i class="fas fa-plug w-5 text-center"></i>
         <span>Integrations</span>
     </a>
 
-    <a href="{{ url_for('database_management') }}"
+    <a href="{{ employee_dash_url('database') }}"
         class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800">
         <i class="fas fa-database w-5 text-center"></i>
         <span>Database</span>
@@ -213,7 +213,7 @@
                     <div>
                         <label for="whatsapp_number"
                             class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            <i class="fab fa-whatsapp text-green-500 mr-2"></i>
+                            <i class="fab fa-whatsapp text-green-500 keep-green mr-2"></i>
                             WhatsApp Number
                         </label>
                         <input type="tel" id="whatsapp_number" name="whatsapp_number"
@@ -2474,6 +2474,7 @@ Best regards,
 {% endif %}
 
 <script>
+    const _sysEmpPrefix = {{ employee_dash_url()|tojson }};
     // School Profile Form - Logo Preview and Case Conversion
     document.addEventListener('DOMContentLoaded', function () {
         // Logo preview on file selection
@@ -2660,7 +2661,7 @@ Best regards,
                 }
 
                 // Make AJAX request
-                fetch(`/system-settings/academic-level/${levelId}/toggle-status`, {
+                fetch(`${_sysEmpPrefix}/system-settings/academic-level/${levelId}/toggle-status`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2783,7 +2784,7 @@ Best regards,
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
 
-                fetch(`/system-settings/academic-level/${levelId}/update`, {
+                fetch(`${_sysEmpPrefix}/system-settings/academic-level/${levelId}/update`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -2830,7 +2831,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/academic-level/${levelId}/delete`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/academic-level/${levelId}/delete`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -2897,7 +2898,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/academic-year/${yearId}/delete`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/academic-year/${yearId}/delete`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -2934,7 +2935,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/term/${termId}/delete`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/term/${termId}/delete`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -3046,7 +3047,7 @@ Best regards,
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 loading-spinner"></i>Updating...';
 
-                fetch(`/system-settings/academic-year/${yearId}/update`, {
+                fetch(`${_sysEmpPrefix}/system-settings/academic-year/${yearId}/update`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3317,7 +3318,7 @@ Best regards,
                 submitBtn.disabled = true;
                 submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2 loading-spinner"></i>Updating...';
 
-                fetch(`/system-settings/term/${termId}/update`, {
+                fetch(`${_sysEmpPrefix}/system-settings/term/${termId}/update`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -3484,7 +3485,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/academic-year/${yearId}/toggle-suspend`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/academic-year/${yearId}/toggle-suspend`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -3522,7 +3523,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/academic-year/${yearId}/toggle-lock`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/academic-year/${yearId}/toggle-lock`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -3560,7 +3561,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/term/${termId}/toggle-current`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/term/${termId}/toggle-current`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -3598,7 +3599,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/term/${termId}/toggle-suspend`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/term/${termId}/toggle-suspend`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'
@@ -3636,7 +3637,7 @@ Best regards,
                     const originalHTML = this.innerHTML;
                     this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
-                    fetch(`/system-settings/term/${termId}/toggle-lock`, {
+                    fetch(`${_sysEmpPrefix}/system-settings/term/${termId}/toggle-lock`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         credentials: 'same-origin'

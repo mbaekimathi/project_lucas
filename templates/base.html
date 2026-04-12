@@ -1,3 +1,13 @@
+{% set public_site_topnav = request.endpoint in ['home', 'about', 'programs', 'gallery', 'news', 'team', 'contact', 'login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
+{% set pub_nav = [
+    ('/', 'home', 'Home', 'fa-home'),
+    ('/about', 'about', 'About', 'fa-info-circle'),
+    ('/programs', 'programs', 'Programs', 'fa-book'),
+    ('/gallery', 'gallery', 'Gallery', 'fa-images'),
+    ('/news', 'news', 'News', 'fa-newspaper'),
+    ('/team', 'team', 'Team', 'fa-users'),
+    ('/contact', 'contact', 'Contact', 'fa-envelope'),
+] %}
 <!DOCTYPE html>
 <html lang="en" x-data="{ 
     darkMode: localStorage.getItem('darkMode') === 'true',
@@ -11,10 +21,15 @@
     comingSoonModalOpen: false,
     comingSoonTitle: '',
     teamMemberModalOpen: false,
-    selectedMember: null
+    selectedMember: null,
+    publicTopNav: {{ public_site_topnav|tojson }},
+    publicHeaderGlass: {{ (request.endpoint == 'home')|tojson }},
+    publicHeaderScrolled: false,
+    mobilePublicNavOpen: false
 }" 
       :class="{ 'dark': darkMode }"
       x-init="
+        if (publicTopNav) { sidebarOpen = false; }
         // Initialize dark mode
         if (darkMode) {
             document.documentElement.classList.add('dark');
@@ -28,7 +43,7 @@
                 const wasDesktop = isDesktop;
                 isDesktop = window.innerWidth >= 1024;
                 
-                if (isDesktop && !wasDesktop && !userClosedSidebar) {
+                if (isDesktop && !wasDesktop && !userClosedSidebar && !publicTopNav) {
                     sidebarOpen = true;
                 } else if (!isDesktop && wasDesktop) {
                     sidebarOpen = false;
@@ -172,6 +187,8 @@
         });
       ">
 <head>
+    {# Root-relative resolution for /<role>/… URLs (path-relative links resolve from site root, not from /role/segment) #}
+    <base href="{{ request.url_root }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
     <meta name="HandheldFriendly" content="true">
@@ -231,6 +248,8 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/public-pages.css') }}">
     <!-- School marketing theme (heroes, cards, institution visuals) -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/school-site.css') }}">
+    <!-- Map decorative greens to System Settings brand colors (loads after marketing CSS) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-brand-consistency.css') }}">
     
     <!-- Site-wide theme colors (from System Settings) -->
     <style>
@@ -274,18 +293,19 @@
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        /* Mobile sidebar improvements */
+        /* App sidebar: drawer starts below fixed header on all breakpoints */
         @media (max-width: 1023px) {
-            aside {
-                height: 100vh;
-                top: 0;
+            aside.app-sidebar {
+                height: calc(100vh - 4rem);
+                max-height: calc(100dvh - 4rem);
+                top: 4rem;
             }
         }
         
-        /* Desktop sidebar */
         @media (min-width: 1024px) {
-            aside {
+            aside.app-sidebar {
                 height: calc(100vh - 4rem);
+                max-height: calc(100dvh - 4rem);
                 top: 4rem;
             }
         }
@@ -531,69 +551,90 @@
     
     {% block extra_head %}{% endblock %}
 </head>
-<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% block body_class %}{% endblock %}">
+<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav{% else %}app-shell{% endif %} {% block body_class %}{% endblock %}"
+      @scroll.window="publicHeaderScrolled = (window.pageYOffset || document.documentElement.scrollTop) > 56">
     
-    <!-- Header -->
-    <header class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <!-- Left: Back Button, Logo and Sidebar Toggle -->
-                <div class="flex items-center space-x-3 flex-1 min-w-0">
+    <!-- Header: app shell (portal) vs marketing site glass/solid -->
+    <header id="site-header"
+            class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b overflow-hidden{% if public_site_topnav %} site-header--marketing{% else %} app-chrome-header{% endif %}"
+            :class="!publicTopNav ? '' : (publicHeaderGlass && !publicHeaderScrolled ? 'site-header--glass bg-transparent border-transparent shadow-none' : 'site-header--solid bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-gray-200 dark:border-gray-700 shadow-sm')">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8{% if public_site_topnav %} max-w-7xl{% endif %}">
+            <div class="flex items-center gap-2 sm:gap-4 h-16 md:h-[4.25rem] site-header__row">
+                <!-- Left: Back + sidebar (not on public marketing pages with top nav) -->
+                <div class="flex items-center gap-2 shrink-0 min-w-0">
+                    {% if not public_site_topnav %}
                     <button onclick="window.history.back(); return false;" 
-                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                            class="app-chrome-btn p-2 text-slate-600 dark:text-slate-200 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 rounded-xl transition-all touch-manipulation border border-transparent hover:border-slate-200/80 dark:hover:border-slate-600/60 shadow-sm"
                             title="Go back">
-                        <i class="fas fa-arrow-left text-xl"></i>
+                        <i class="fas fa-arrow-left text-lg"></i>
                     </button>
-                    <button @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen" 
-                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation">
-                        <i class="fas fa-bars text-xl" x-show="!sidebarOpen"></i>
-                        <i class="fas fa-times text-xl" x-show="sidebarOpen" x-cloak></i>
+                    <button type="button"
+                            @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen" 
+                            class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-700 dark:text-slate-100 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 rounded-xl transition-all touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center border border-slate-200/90 dark:border-slate-600/70 shadow-sm hover:shadow-md hover:border-brand-primary/25 dark:hover:border-brand-secondary/30"
+                            aria-controls="app-sidebar-nav"
+                            :aria-expanded="sidebarOpen">
+                        <i class="fas fa-bars text-lg" x-show="!sidebarOpen"></i>
+                        <i class="fas fa-times text-lg" x-show="sidebarOpen" x-cloak></i>
                     </button>
+                    {% endif %}
                     
-                    <a href="/" class="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1 sm:flex-none group">
-                        <div class="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md overflow-hidden flex-shrink-0">
-                                {% if school_settings.school_logo %}
-                                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" 
-                                     alt="{{ school_settings.school_name or 'School Logo' }}" 
-                                     class="w-full h-full object-cover">
-                                {% else %}
+                    <a href="/" class="site-header__brand flex items-center space-x-2.5 sm:space-x-3 min-w-0 max-w-[min(100%,15rem)] sm:max-w-none group">
+                        <div class="site-header__brand-mark w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg overflow-hidden flex-shrink-0 ring-2 ring-black/5 dark:ring-white/10">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                                 alt="{{ school_settings.school_name or 'School Logo' }}"
+                                 class="site-header__logo-img w-full h-full object-cover">
+                            {% else %}
                             <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
-                                {% endif %}
-                            </div>
-                        <div class="hidden sm:block min-w-0">
-                            <div class="font-heading font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate">
+                            {% endif %}
+                        </div>
+                        {# When logo is a full wordmark, do not repeat the school name beside it (avoids double “PROJECT LUCAS”). #}
+                        <div class="{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %} flex-col min-w-0 justify-center site-header__titles{% if school_settings.school_logo %} site-header__titles--logo-only{% endif %}">
+                            {% if not school_settings.school_logo %}
+                            <div class="font-heading font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate site-header__title leading-tight">
                                 {{ school_settings.school_name or 'Modern School' }}
                             </div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400 hidden md:block">
+                            {% else %}
+                            <span class="sr-only">{{ school_settings.school_name or 'Home' }}</span>
+                            {% endif %}
+                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if school_settings.school_logo %} mt-0.5{% else %} hidden md:block{% endif %}">
                                 {% block header_subtitle %}education management made easy{% endblock %}
+                            </div>
                         </div>
-                    </div>
                     </a>
                 </div>
 
+                {% if public_site_topnav %}
+                <nav class="hidden md:flex flex-1 justify-center items-center gap-1 min-w-0 px-2 overflow-x-auto site-header__nav site-header__nav--marketing" aria-label="Primary">
+                    {% for href, ep, label, icon in pub_nav %}
+                    <a href="{{ href }}" class="public-nav-link inline-flex items-center gap-2 px-3 lg:px-3.5 py-2.5 rounded-full text-sm whitespace-nowrap transition-all duration-200 {% if request.endpoint == ep %}is-active font-semibold{% else %}font-medium{% endif %}">
+                        <i class="fas {{ icon }} text-[0.7rem] lg:text-xs opacity-90"></i><span class="tracking-tight">{{ label }}</span></a>
+                    {% endfor %}
+                </nav>
+                {% endif %}
+
                 <!-- Right: User Menu / Login -->
-                <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0">
+                <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0 ml-auto">
+                    {% if public_site_topnav %}
+                    <button type="button" @click="mobilePublicNavOpen = !mobilePublicNavOpen" class="site-header__icon-btn site-header__menu-btn md:hidden p-2.5 rounded-xl touch-manipulation text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent hover:border-gray-200 dark:hover:border-gray-600" :aria-expanded="mobilePublicNavOpen" aria-controls="public-site-nav-panel" aria-label="Toggle menu">
+                        <i class="fas fa-bars text-xl" x-show="!mobilePublicNavOpen"></i>
+                        <i class="fas fa-times text-xl" x-show="mobilePublicNavOpen" x-cloak></i>
+                    </button>
+                    {% endif %}
                     <!-- Dark Mode Toggle -->
                     <button @click="darkMode = !darkMode" 
-                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
+                            class="site-header__icon-btn app-chrome-btn p-2.5 text-slate-600 dark:text-slate-200 hover:bg-slate-100/90 dark:hover:bg-slate-800/90 rounded-xl transition-all touch-manipulation border border-transparent hover:border-slate-200/80 dark:hover:border-slate-600/60"
                             title="Toggle dark mode">
                         <i class="fas fa-moon text-lg" x-show="!darkMode"></i>
                         <i class="fas fa-sun text-lg" x-show="darkMode" x-cloak></i>
-                    </button>
-                    
-                    <!-- Reset Zoom / View -->
-                    <button onclick="document.body.style.zoom=1;document.documentElement.style.zoom=1;window.location.reload();" 
-                            class="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-manipulation"
-                            title="Reset zoom to 100% (Ctrl+0)">
-                        <i class="fas fa-compress-arrows-alt text-lg"></i>
                     </button>
                     
                     <!-- Employee Selection Dropdown (for technicians viewing as a role) -->
                     {% if session.get('role', '').lower() == 'technician' and session.get('viewing_as_employee_role') and employees_list %}
                     <div class="relative" x-data="{ open: false }">
                         <button @click.stop="open = !open" 
-                                class="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors touch-manipulation">
-                            <i class="fas fa-chalkboard-teacher text-gray-600 dark:text-gray-300"></i>
+                                class="app-chrome-btn flex items-center gap-2 px-3 py-2 bg-slate-100/95 dark:bg-slate-800/90 hover:bg-slate-200/95 dark:hover:bg-slate-700/95 rounded-xl transition-all touch-manipulation border border-slate-200/80 dark:border-slate-600/70 shadow-sm">
+                            <i class="fas fa-chalkboard-teacher text-slate-600 dark:text-slate-300"></i>
                             <span class="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
                                 {% if viewing_as_employee_info %}
                                     {{ viewing_as_employee_info.full_name }}
@@ -613,21 +654,21 @@
                              x-transition:leave-start="opacity-100 scale-100"
                              x-transition:leave-end="opacity-0 scale-95"
                              x-cloak
-                             class="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50 max-h-96 overflow-y-auto">
+                             class="absolute right-0 mt-2 w-64 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-xl border border-slate-200/90 dark:border-slate-600/80 py-2 z-50 max-h-96 overflow-y-auto">
                             {% if viewing_as_employee_info %}
                             <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700 mb-2">
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Currently viewing as:</p>
                                 <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ viewing_as_employee_info.full_name }}</p>
                                 <p class="text-xs text-gray-600 dark:text-gray-400">{{ viewing_as_employee_info.employee_id }}</p>
                             </div>
-                            <a href="/switch-employee/0?redirect={{ request.path }}" 
+                            <a href="{{ employee_dash_url('switch-employee/0') }}?redirect={{ request.path }}" 
                                class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-times mr-2"></i>Clear Selection
                             </a>
                             <hr class="my-1 border-gray-200 dark:border-gray-700">
                             {% endif %}
                             {% for employee in employees_list %}
-                            <a href="/switch-employee/{{ employee.id }}?redirect={{ request.path }}" 
+                            <a href="{{ employee_dash_url('switch-employee/' ~ employee.id) }}?redirect={{ request.path }}" 
                                class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 {% if viewing_as_employee_info and viewing_as_employee_info.id == employee.id %}bg-green-50 dark:bg-green-900/20{% endif %}">
                                 <div class="font-medium">{{ employee.full_name }}</div>
                                 <div class="text-xs text-gray-500 dark:text-gray-400">{{ employee.employee_id }}</div>
@@ -641,20 +682,20 @@
                         {% if session.get('user_id') %}
                     <div class="relative" x-data="{ open: false }">
                         <button @click.stop="open = !open" 
-                                class="flex items-center space-x-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors touch-manipulation">
+                                class="app-chrome-btn app-chrome-btn--user flex items-center gap-2 pl-1.5 pr-3 py-1.5 bg-slate-100/95 dark:bg-slate-800/90 hover:bg-slate-200/95 dark:hover:bg-slate-700/95 rounded-full transition-all touch-manipulation border border-slate-200/80 dark:border-slate-600/70 shadow-sm">
                             {% if session.get('profile_picture') %}
                             <img src="{{ url_for('static', filename=session.profile_picture) }}" 
                                  alt="Profile" 
-                                 class="w-8 h-8 rounded-full object-cover border-2 border-gray-300 dark:border-gray-600">
+                                 class="w-8 h-8 rounded-full object-cover ring-2 ring-white/80 dark:ring-slate-900/80 shadow-sm">
                             {% else %}
-                            <div class="w-8 h-8 bg-brand-primary rounded-full flex items-center justify-center border-2 border-gray-300 dark:border-gray-600">
+                            <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-full flex items-center justify-center shadow-sm ring-2 ring-white/50 dark:ring-slate-900/50">
                                 <i class="fas fa-user text-white text-sm"></i>
                                     </div>
                             {% endif %}
-                            <span class="hidden sm:inline text-sm font-medium text-gray-700 dark:text-gray-200">
+                            <span class="hidden sm:inline text-sm font-semibold text-slate-800 dark:text-slate-100 max-w-[10rem] truncate">
                                 {{ session.get('full_name', 'User') }}
                                 </span>
-                            <i class="fas fa-chevron-down text-xs text-gray-500"></i>
+                            <i class="fas fa-chevron-down text-[10px] text-slate-400 dark:text-slate-500"></i>
                             </button>
                         
                             <div x-show="open" 
@@ -666,18 +707,12 @@
                                  x-transition:leave-start="opacity-100 scale-100"
                                  x-transition:leave-end="opacity-0 scale-95"
                              x-cloak
-                             class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
+                             class="absolute right-0 mt-2 w-52 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl shadow-xl border border-slate-200/90 dark:border-slate-600/80 py-2 z-50">
                             {% set user_role = session.get('role', 'employee')|lower %}
                             {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
-                            {% if user_role in ['employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'] %}
-                            <a href="/dashboard/employee" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <a href="{{ dashboard_home_url() }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
                             </a>
-                            {% else %}
-                            <a href="/dashboard/{{ user_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
-                                <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
-                            </a>
-                            {% endif %}
                             <a href="/profile/{{ profile_role }}" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-user mr-2"></i>Profile
                             </a>
@@ -691,16 +726,46 @@
                             </div>
                         </div>
                         {% else %}
-                    <a href="/login" class="px-4 py-2 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-lg transition-all text-sm font-medium touch-manipulation shadow-sm hover:shadow-md">
+                    {% if request.endpoint in ['login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
+                    <a href="{{ url_for('home') }}" class="site-header__login site-header__login--ghost px-4 py-2.5 rounded-xl transition-all text-sm font-semibold touch-manipulation border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white dark:border-brand-secondary dark:text-brand-secondary dark:hover:bg-brand-secondary dark:hover:text-white">
+                        <i class="fas fa-home mr-2"></i><span class="hidden sm:inline">Back to site</span>
+                    </a>
+                    {% else %}
+                    <a href="/login" class="site-header__login px-4 py-2.5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl transition-all text-sm font-semibold touch-manipulation shadow-md hover:shadow-lg hover:-translate-y-px border border-transparent hover:border-white/10">
                         <i class="fas fa-sign-in-alt mr-2"></i><span class="hidden sm:inline">Login</span>
                     </a>
+                    {% endif %}
                         {% endif %}
                 </div>
             </div>
         </div>
     </header>
 
-    <!-- Sidebar Overlay (Mobile) -->
+    {% if public_site_topnav %}
+    <div id="public-site-nav-panel"
+         x-show="mobilePublicNavOpen"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 -translate-y-1"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-1"
+         @click.away="mobilePublicNavOpen = false"
+         class="public-site-nav-panel md:hidden fixed top-16 left-0 right-0 z-40 border-b shadow-2xl"
+         x-cloak>
+        <nav class="public-site-nav-panel__nav flex flex-col gap-2 py-3 px-4 sm:px-6 max-h-[min(70vh,calc(100vh-5rem))] overflow-y-auto" aria-label="Primary mobile">
+            {% for href, ep, label, icon in pub_nav %}
+            <a href="{{ href }}" @click="mobilePublicNavOpen = false" class="public-site-nav-panel__link flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-colors {% if request.endpoint == ep %}border-brand-primary/50 text-brand-primary font-semibold bg-brand-primary/[0.08] dark:bg-brand-primary/15 shadow-sm{% else %}border-gray-200/80 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/80{% endif %}">
+                <span class="public-site-nav-panel__icon-wrap flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700/80 text-brand-primary"><i class="fas {{ icon }}"></i></span>
+                <span class="text-base font-medium">{{ label }}</span>
+            </a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% endif %}
+
+    {% if not public_site_topnav %}
+    <!-- Sidebar Overlay (Mobile / tablet drawer) -->
     <div x-show="sidebarOpen && !isDesktop"
          @click="sidebarOpen = false"
          @touchmove.prevent
@@ -711,104 +776,214 @@
          x-transition:leave="transition-opacity ease-linear duration-300"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden backdrop-blur-sm"
+         class="app-sidebar-overlay fixed inset-0 bg-slate-900/45 z-40 lg:hidden backdrop-blur-sm"
          x-cloak
-         style="display: none;"></div>
+         style="display: none;"
+         aria-hidden="true"></div>
     
-        <!-- Sidebar -->
-    <aside class="fixed top-16 left-0 bottom-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 shadow-xl sidebar-transition sidebar-container"
-               :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
-               x-transition:enter="transition-transform duration-300 ease-out"
-               x-transition:enter-start="-translate-x-full"
-               x-transition:enter-end="translate-x-0"
-               x-transition:leave="transition-transform duration-300 ease-in"
-               x-transition:leave-start="translate-x-0"
+    <aside id="app-sidebar"
+           class="app-sidebar app-sidebar--brand fixed left-0 z-50 w-[min(20rem,calc(100vw-0.5rem))] sm:w-72 max-w-[100vw] bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 dark:from-white dark:via-slate-50 dark:to-slate-100 border-r border-slate-700/90 dark:border-slate-200/90 shadow-[6px_0_32px_-8px_rgba(0,0,0,0.4)] dark:shadow-[6px_0_32px_-8px_rgba(15,23,42,0.14)] sidebar-transition sidebar-container flex flex-col pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]"
+           :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+           x-transition:enter="transition-transform duration-300 ease-out"
+           x-transition:enter-start="-translate-x-full"
+           x-transition:enter-end="translate-x-0"
+           x-transition:leave="transition-transform duration-300 ease-in"
+           x-transition:leave-start="translate-x-0"
            x-transition:leave-end="-translate-x-full"
            @touchmove.stop.prevent
            @wheel.stop.prevent>
         
-        <!-- Sidebar Header (Mobile only) -->
-        <div class="sidebar-header lg:hidden flex items-center justify-between">
-            <span class="font-heading font-bold text-gray-900 dark:text-white text-lg">Menu</span>
-            <button @click="sidebarOpen = false" 
-                    class="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                        <i class="fas fa-times text-xl"></i>
-                    </button>
+        <!-- Mobile drawer header -->
+        <div class="app-sidebar__mobile-head lg:hidden flex items-center justify-between gap-3 px-4 py-4 border-b border-slate-700/70 dark:border-slate-200/80 shrink-0 bg-slate-900/90 dark:bg-white/90 backdrop-blur-sm">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-1 ring-white/15 dark:ring-slate-900/10">
+                    <i class="fas fa-compass text-lg" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0">
+                    <p class="font-heading font-bold text-white dark:text-slate-900 text-base truncate">Menu</p>
+                    <p class="text-xs text-slate-400 dark:text-slate-500 truncate">{{ school_settings.school_name or 'Navigation' }}</p>
                 </div>
+            </div>
+            <button type="button"
+                    @click="sidebarOpen = false"
+                    class="shrink-0 p-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10 dark:text-slate-600 dark:hover:text-slate-900 dark:hover:bg-slate-100 border border-transparent hover:border-white/15 dark:hover:border-slate-200 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-label="Close menu">
+                <i class="fas fa-times text-lg" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <!-- Desktop: compact section label -->
+        <div class="hidden lg:block px-5 pt-5 pb-2 shrink-0">
+            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Navigate</p>
+        </div>
+
+        {% if session.get('user_id') %}
+        <div class="app-sidebar__dashboard px-3 sm:px-4 pt-2 pb-3 lg:pt-1 shrink-0 border-b border-slate-700/50 dark:border-slate-200/60">
+            <a href="{{ dashboard_home_url() }}"
+               class="sidebar-item {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
+                <i class="fas fa-th-large" aria-hidden="true"></i>
+                <span>Dashboard</span>
+            </a>
+        </div>
+        {% endif %}
                 
-        <!-- Scrollable Navigation -->
-        <nav class="sidebar-nav custom-scrollbar px-4 py-4 space-y-1"
+        <nav id="app-sidebar-nav"
+             class="sidebar-nav app-sidebar-nav custom-scrollbar flex-1 min-h-0 px-3 sm:px-4 py-3 lg:py-2 space-y-1 overflow-y-auto overflow-x-hidden"
              @touchmove.stop
              @wheel.stop
-             style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
+             style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;"
+             aria-label="Main navigation">
             {% block sidebar_content %}
-            <!-- Default sidebar links for public pages -->
+            <!-- Default sidebar links for in-app pages without a custom sidebar -->
             <a href="/" class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}">
-                <i class="fas fa-home"></i>
+                <i class="fas fa-home" aria-hidden="true"></i>
                 <span>Home</span>
             </a>
             <a href="/about" class="sidebar-item {% if request.endpoint == 'about' %}active{% endif %}">
-                <i class="fas fa-info-circle"></i>
+                <i class="fas fa-info-circle" aria-hidden="true"></i>
                 <span>About</span>
             </a>
             <a href="/programs" class="sidebar-item {% if request.endpoint == 'programs' %}active{% endif %}">
-                <i class="fas fa-book"></i>
+                <i class="fas fa-book" aria-hidden="true"></i>
                 <span>Programs</span>
             </a>
             <a href="/gallery" class="sidebar-item {% if request.endpoint == 'gallery' %}active{% endif %}">
-                <i class="fas fa-images"></i>
+                <i class="fas fa-images" aria-hidden="true"></i>
                 <span>Gallery</span>
             </a>
             <a href="/news" class="sidebar-item {% if request.endpoint == 'news' %}active{% endif %}">
-                <i class="fas fa-newspaper"></i>
+                <i class="fas fa-newspaper" aria-hidden="true"></i>
                 <span>News</span>
             </a>
             <a href="/team" class="sidebar-item {% if request.endpoint == 'team' %}active{% endif %}">
-                <i class="fas fa-users"></i>
+                <i class="fas fa-users" aria-hidden="true"></i>
                 <span>Team</span>
             </a>
             <a href="/contact" class="sidebar-item {% if request.endpoint == 'contact' %}active{% endif %}">
-                <i class="fas fa-envelope"></i>
+                <i class="fas fa-envelope" aria-hidden="true"></i>
                 <span>Contact</span>
             </a>
             {% endblock %}
-                </nav>
+        </nav>
+
+        {% if session.get('user_id') %}
+        {% set _settings_active = request.endpoint in ('settings', 'system_settings') %}
+        <nav class="app-sidebar__account sidebar-nav app-sidebar-nav shrink-0 border-t border-slate-700/70 dark:border-slate-200/80 bg-slate-950/40 dark:bg-white/80 px-3 sm:px-4 py-3 space-y-1"
+             aria-label="Account">
+            <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400 px-1 mb-1">Account</p>
+            <a href="{{ sidebar_settings_url() }}"
+               class="sidebar-item {% if _settings_active %}sidebar-item-active{% endif %}">
+                <i class="fas fa-cog" aria-hidden="true"></i>
+                <span>Settings</span>
+            </a>
+            <a href="{{ sidebar_profile_url() }}"
+               class="sidebar-item {% if request.endpoint == 'profile' %}sidebar-item-active{% endif %}">
+                <i class="fas fa-user-circle" aria-hidden="true"></i>
+                <span>My profile</span>
+            </a>
+            <a href="{{ url_for('logout') }}"
+               class="sidebar-item app-sidebar__logout !text-rose-300 hover:!text-rose-200 dark:!text-rose-700 dark:hover:!text-rose-800">
+                <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+                <span>Log out</span>
+            </a>
+        </nav>
+        {% endif %}
                 
-                <!-- Sidebar Footer -->
-        <div class="sidebar-footer">
-            <div class="text-center">
-                <div class="flex items-center justify-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
-                    <i class="fas fa-heart text-brand-secondary"></i>
-                    <span class="font-medium">education management made easy</span>
-                    </div>
+        <div class="sidebar-footer app-sidebar__footer shrink-0 border-t border-slate-700/70 dark:border-slate-200/80 bg-slate-950/50 dark:bg-slate-100/90">
+            <div class="px-4 py-3 text-center">
+                <div class="inline-flex items-center justify-center gap-2 text-xs text-slate-400 dark:text-slate-600">
+                    <i class="fas fa-heart text-brand-secondary/90 dark:text-brand-primary text-[0.65rem]" aria-hidden="true"></i>
+                    <span class="font-medium leading-snug">education management made easy</span>
                 </div>
             </div>
-        </aside>
+        </div>
+    </aside>
+    {% endif %}
 
         <!-- Main Content -->
-    <main class="pt-16 pb-20 transition-all duration-300 flex flex-col overflow-hidden relative z-10"
-          :style="isDesktop && sidebarOpen ? 'margin-left: 16rem;' : 'margin-left: 0;'"
+    <main class="pt-16 pb-20 transition-all duration-300 flex flex-col overflow-hidden relative z-10{% if public_site_topnav %} public-site-main{% endif %}"
+          :style="isDesktop && sidebarOpen && !publicTopNav ? 'margin-left: 18rem;' : 'margin-left: 0;'"
           style="height: calc(100vh - 4rem);">
-        <div class="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 relative z-10">
+        <div class="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full min-w-0{% if public_site_topnav %} public-site-scroll{% endif %}">
+            {% block content_full_bleed %}{% endblock %}
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-full{% if public_site_topnav %} public-site-page py-8 sm:py-10 lg:py-12{% else %} py-6 sm:py-8{% endif %}">
                 {% block content %}{% endblock %}
                                     </div>
                                 </div>
         </main>
 
     <!-- Footer -->
-    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
-            <div class="flex flex-col items-center justify-center space-y-2">
-                <div class="flex items-center space-x-2 text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center">
-                    <i class="fas fa-heart text-brand-secondary text-xs sm:text-sm"></i>
-                    <span class="font-medium">education management made easy</span>
-                </div>
-                <div class="text-xs text-gray-500 dark:text-gray-500 text-center">
-                    powered by educentric
+    <footer class="mt-auto{% if public_site_topnav %} public-site-footer public-site-footer--marketing{% else %} app-chrome-footer{% endif %}">
+        {% if public_site_topnav %}
+        {% set brand_title = (school_settings.project_name or school_settings.school_name or 'School')|trim %}
+        {% set brand_words = brand_title.split() %}
+        <div class="public-site-footer__bar">
+            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+                <div class="public-site-footer__row">
+                    <a href="{{ url_for('home') }}" class="public-site-footer__brand shrink-0">
+                        {% if school_settings.school_logo %}
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="public-site-footer__logo-img" width="160" height="48" loading="lazy" decoding="async">
+                        {% else %}
+                        <div class="public-site-footer__wordmark" aria-hidden="true">
+                            {% if brand_words|length > 1 %}
+                            <span class="public-site-footer__wordmark-line">{{ brand_words[0]|upper }}</span>
+                            <span class="public-site-footer__wordmark-rule"></span>
+                            <span class="public-site-footer__wordmark-line">{{ brand_words[1:]|join(' ')|upper }}</span>
+                            {% else %}
+                            <span class="public-site-footer__wordmark-line public-site-footer__wordmark-line--single">{{ brand_title|upper }}</span>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </a>
+                    <form class="public-site-footer__search" action="{{ url_for('public_site_search') }}" method="get" role="search" aria-label="Search this site">
+                        <label class="sr-only" for="site-footer-search-q">Search our site</label>
+                        <input type="search" id="site-footer-search-q" name="q" class="public-site-footer__search-input" placeholder="search our site" autocomplete="off" minlength="1">
+                        <button type="submit" class="public-site-footer__search-btn">Go</button>
+                    </form>
+                    <div class="public-site-footer__social" aria-label="Social links">
+                        <a href="{{ school_settings.facebook_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.facebook_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.facebook_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Facebook"><i class="fab fa-facebook-f" aria-hidden="true"></i></a>
+                        <a href="{{ school_settings.instagram_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.instagram_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.instagram_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Instagram"><i class="fab fa-instagram" aria-hidden="true"></i></a>
+                        {% if school_settings.school_email %}
+                        <a href="mailto:{{ school_settings.school_email }}" class="public-site-footer__social-link" aria-label="Email"><i class="fas fa-envelope" aria-hidden="true"></i></a>
+                        {% else %}
+                        <a href="{{ url_for('contact') }}" class="public-site-footer__social-link" aria-label="Contact"><i class="fas fa-envelope" aria-hidden="true"></i></a>
+                        {% endif %}
+                        <a href="{{ school_settings.twitter_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.twitter_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.twitter_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="X"><i class="fab fa-x-twitter" aria-hidden="true"></i></a>
+                        <a href="{{ school_settings.vimeo_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.vimeo_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.vimeo_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="Vimeo"><i class="fab fa-vimeo-v" aria-hidden="true"></i></a>
+                    </div>
                 </div>
             </div>
         </div>
+        <div class="public-site-footer__sub">
+            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] sm:text-xs text-white/45">
+                <span class="inline-flex items-center gap-1.5"><i class="fas fa-heart text-white/35 text-[10px]" aria-hidden="true"></i> education management made easy</span>
+                <span class="text-white/25 hidden sm:inline" aria-hidden="true">·</span>
+                <span>powered by educentric</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="app-chrome-footer__bar border-t border-slate-200/90 dark:border-slate-700/80 bg-gradient-to-b from-white to-slate-50/95 dark:from-slate-900 dark:to-slate-950 shadow-[0_-8px_32px_-12px_rgba(15,23,42,0.08)] dark:shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.35)]">
+            <div class="app-chrome-footer__accent h-1 w-full bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-maroon-dark opacity-90" aria-hidden="true"></div>
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                    <div class="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+                        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-2 ring-black/5 dark:ring-white/10">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="h-8 w-8 object-contain rounded-md" width="32" height="32" loading="lazy">
+                            {% else %}
+                            <i class="fas fa-graduation-cap text-lg" aria-hidden="true"></i>
+                            {% endif %}
+                        </span>
+                        <div>
+                            <p class="font-heading font-semibold text-slate-800 dark:text-slate-100 text-sm sm:text-base">{{ school_settings.school_name or 'School' }}</p>
+                            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">education management made easy</p>
+                        </div>
+                    </div>
+                    <p class="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wider">powered by educentric</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </footer>
 
     <!-- Coming Soon Modal -->

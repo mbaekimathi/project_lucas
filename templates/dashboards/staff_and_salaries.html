@@ -4,7 +4,7 @@
 
 {% block sidebar_content %}
 <!-- Staff and Salaries Links -->
-<a href="/dashboard/employee/staff-and-salaries" 
+<a href="{{ employee_dash_url('staff-and-salaries') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-users-cog w-5"></i>
     <span>Staff and Salaries</span>
@@ -25,13 +25,13 @@
     <span>Pay Salary</span>
 </button>
 
-<a href="/dashboard/employee/staff-and-salaries/salary-records" 
+<a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}" 
    class="sidebar-item">
     <i class="fas fa-file-invoice-dollar w-5"></i>
     <span>Salary Records</span>
 </a>
 
-<a href="/dashboard/employee/staff-and-salaries/salary-audits" 
+<a href="{{ employee_dash_url('staff-and-salaries/salary-audits') }}" 
    class="sidebar-item">
     <i class="fas fa-history w-5"></i>
     <span>Salary Audits</span>
@@ -1001,7 +1001,7 @@ function salaryModalData() {
             };
             
             // Submit to backend
-            fetch('/dashboard/employee/staff-and-salaries/register-salary', {
+            fetch('{{ employee_dash_url('staff-and-salaries/register-salary') }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1021,7 +1021,7 @@ function salaryModalData() {
                         if (data.redirect_url) {
                             window.location.href = data.redirect_url;
                         } else {
-                            window.location.href = '/dashboard/employee/staff-and-salaries/salary-records';
+                            window.location.href = '{{ employee_dash_url('staff-and-salaries/salary-records') }}';
                         }
                     }, 1000);
                 } else {
@@ -1121,7 +1121,7 @@ function viewSalaryModalData() {
             this.viewModalOpen = true;
             
             try {
-                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-salary/${salId}`);
+                const response = await fetch({{ employee_dash_url('staff-and-salaries/get-salary')|tojson }} + `/${salId}`);
                 const data = await response.json();
                 
                 if (data.success && data.salary) {
@@ -1260,7 +1260,7 @@ function editSalaryModalData() {
             this.success = '';
             
             try {
-                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-salary/${salId}`);
+                const response = await fetch({{ employee_dash_url('staff-and-salaries/get-salary')|tojson }} + `/${salId}`);
                 const data = await response.json();
                 
                 if (data.success && data.salary) {
@@ -1334,7 +1334,7 @@ function editSalaryModalData() {
             };
             
             // Submit to backend
-            fetch('/dashboard/employee/staff-and-salaries/update-salary', {
+            fetch('{{ employee_dash_url('staff-and-salaries/update-salary') }}', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1500,7 +1500,7 @@ function paySalaryModalData() {
         
         async loadEmployees() {
             try {
-                const response = await fetch('/dashboard/employee/staff-and-salaries/get-employees-with-salaries');
+                const response = await fetch('{{ employee_dash_url('staff-and-salaries/get-employees-with-salaries') }}');
                 const data = await response.json();
                 
                 if (data.success && data.employees) {
@@ -1525,7 +1525,7 @@ function paySalaryModalData() {
             this.error = '';
             
             try {
-                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-employee-salary/${this.employeeId}`);
+                const response = await fetch({{ employee_dash_url('staff-and-salaries/get-employee-salary')|tojson }} + `/${this.employeeId}`);
                 const data = await response.json();
                 
                 if (data.success && data.salary) {
@@ -1571,7 +1571,7 @@ function paySalaryModalData() {
             this.success = '';
             
             try {
-                const response = await fetch('/dashboard/employee/staff-and-salaries/record-salary-payment', {
+                const response = await fetch('{{ employee_dash_url('staff-and-salaries/record-salary-payment') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1654,7 +1654,7 @@ function filterData() {
         },
         
         applyFilter() {
-            let url = '/dashboard/employee/staff-and-salaries';
+            let url = '{{ employee_dash_url('staff-and-salaries') }}';
             const params = new URLSearchParams();
             
             if (this.filterType === 'month' && this.selectedMonth) {
@@ -1676,7 +1676,7 @@ function filterData() {
             this.filterType = 'all';
             this.selectedMonth = '';
             this.selectedYear = new Date().getFullYear();
-            window.location.href = '/dashboard/employee/staff-and-salaries';
+            window.location.href = '{{ employee_dash_url('staff-and-salaries') }}';
         }
     }
 }

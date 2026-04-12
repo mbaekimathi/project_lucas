@@ -4,7 +4,7 @@
 
 {% block sidebar_content %}
 <!-- Staff and Salaries Links -->
-<a href="/dashboard/employee/staff-and-salaries" 
+<a href="{{ employee_dash_url('staff-and-salaries') }}" 
    class="sidebar-item">
     <i class="fas fa-users-cog w-5"></i>
     <span>Staff and Salaries</span>
@@ -17,13 +17,13 @@
     <span>Register Salary</span>
 </button>
 
-<a href="/dashboard/employee/staff-and-salaries/salary-records" 
+<a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}" 
    class="sidebar-item">
     <i class="fas fa-file-invoice-dollar w-5"></i>
     <span>Salary Records</span>
 </a>
 
-<a href="/dashboard/employee/staff-and-salaries/salary-audits" 
+<a href="{{ employee_dash_url('staff-and-salaries/salary-audits') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-history w-5"></i>
     <span>Salary Audits</span>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, has_request_context
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import os
 import re
 import json
+import secrets
 import copy
 import time
 from functools import wraps
@@ -43,11 +44,203 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 
+
+@app.template_global()
+def employee_dash_url(subpath=''):
+    """Template helper: /<session-role-slug>/… — same as employee_dashboard_path."""
+    return employee_dashboard_path(subpath)
+
+
+@app.template_global()
+def parent_dash_url(subpath=''):
+    """Parent dashboard: /parent/…"""
+    return parent_dashboard_path(subpath)
+
+
+@app.template_global()
+def student_dash_url(subpath=''):
+    """Student dashboard: /student/…"""
+    return student_dashboard_path(subpath)
+
+
 # Employee sub-roles stored in employees.role — must match MySQL ENUM, role switch, and UI
 EMPLOYEE_SUB_ROLES = (
     'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
     'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician',
 )
+
+
+def role_to_slug(role: str) -> str:
+    """Stable URL segment for a role (spaces → hyphens, lowercased)."""
+    if not role:
+        return 'employee'
+    return role.strip().lower().replace(' ', '-')
+
+
+# Slugs allowed in /dashboard/<slug>/... before /dashboard/employee/... rewrite
+EMPLOYEE_ROLE_SLUGS = frozenset(role_to_slug(r) for r in EMPLOYEE_SUB_ROLES)
+
+
+def session_employee_role_slug() -> str:
+    """Role slug for staff dashboard URLs: session role, or technician view-as role."""
+    if not has_request_context():
+        return 'employee'
+    ur = (session.get('role') or '').lower().strip()
+    ve = (session.get('viewing_as_employee_role') or '').lower().strip()
+    if ur == 'technician' and ve:
+        raw = ve
+    elif ur in EMPLOYEE_SUB_ROLES:
+        raw = ur
+    else:
+        raw = 'employee'
+    return role_to_slug(raw)
+
+
+def employee_dashboard_path(subpath: str = '') -> str:
+    """Build /<role-slug>/[subpath] (public URLs; middleware maps to /dashboard/employee/...)."""
+    subpath = (subpath or '').strip('/')
+    slug = session_employee_role_slug()
+    base = f'/{slug}'
+    return base + ('/' + subpath if subpath else '')
+
+
+def parent_dashboard_path(subpath: str = '') -> str:
+    """Parent user dashboard URLs: /parent/..."""
+    subpath = (subpath or '').strip('/')
+    base = '/parent'
+    return base + ('/' + subpath if subpath else '')
+
+
+def student_dashboard_path(subpath: str = '') -> str:
+    """Student user dashboard URLs: /student/..."""
+    subpath = (subpath or '').strip('/')
+    base = '/student'
+    return base + ('/' + subpath if subpath else '')
+
+
+@app.template_global()
+def dashboard_home_url():
+    """Single “Dashboard” home link for header/menu from session role (incl. technician view-as)."""
+    if not has_request_context():
+        return '/'
+    r = (session.get('role') or '').lower().strip()
+    viewing = (session.get('viewing_as_role') or '').lower().strip()
+    if viewing == 'parent' or r == 'parent':
+        return parent_dashboard_path()
+    if viewing == 'student' or r == 'student':
+        return student_dashboard_path()
+    if r in EMPLOYEE_SUB_ROLES:
+        return employee_dashboard_path()
+    return '/'
+
+
+@app.template_global()
+def sidebar_profile_url():
+    """Profile page URL for the signed-in user (employee / parent / student; incl. technician view-as)."""
+    if not has_request_context():
+        return '/'
+    r = (session.get('role') or '').lower().strip()
+    viewing = (session.get('viewing_as_role') or '').lower().strip()
+    if viewing == 'parent' or r == 'parent':
+        return url_for('profile', role='parent')
+    if viewing == 'student' or r == 'student':
+        return url_for('profile', role='student')
+    return url_for('profile', role='employee')
+
+
+@app.template_global()
+def sidebar_settings_url():
+    """Account / role settings URL for sidebar (school system settings for super admin & bare technician)."""
+    if not has_request_context():
+        return '/'
+    r = (session.get('role') or '').lower().strip()
+    ve = (session.get('viewing_as_employee_role') or '').lower().strip()
+    viewing = (session.get('viewing_as_role') or '').lower().strip()
+    if viewing == 'parent' or r == 'parent':
+        return url_for('settings', role='parent')
+    if viewing == 'student' or r == 'student':
+        return url_for('settings', role='student')
+    if r == 'technician' and not ve:
+        return employee_dashboard_path('system-settings')
+    eff = ve if r == 'technician' and ve else r
+    if eff == 'super admin':
+        return employee_dashboard_path('system-settings')
+    if eff == 'head of institution':
+        return url_for('settings', role='head of institution')
+    if eff == 'deputy head of institution':
+        return url_for('settings', role='deputy head of institution')
+    if eff == 'curriculum coordinator':
+        return url_for('settings', role='curriculum coordinator')
+    return url_for('settings', role='employee')
+
+
+# First path segment → internal dashboard (must not collide with other top-level routes)
+ROOT_DASHBOARD_PREFIXES = frozenset(EMPLOYEE_ROLE_SLUGS) | frozenset({'parent', 'student'})
+
+# After /<employee-role-slug>/, first segment of the remainder: routes that live at site root (not /dashboard/employee/…)
+EMPLOYEE_SCOPED_ROOT_SEGMENTS = frozenset({
+    'staff-management', 'student-management', 'users-roles', 'system-settings', 'database',
+    'assign-roles-approve', 'approve-employee', 'update-employee', 'delete-employee',
+    'toggle-suspend-employee', 'get-employee', 'get-student', 'check-student-id',
+    'update-student', 'delete-student', 'approve-student', 'profile', 'settings',
+    'switch-role', 'role-switch', 'switch-employee', 'admission', 'register-employee',
+    'check-employee-id', 'login', 'logout', 'terms-and-conditions', 'api',
+})
+
+
+class RootRolePathRewriteMiddleware:
+    """Rewrite /<role-slug>/... → real Flask paths (dashboard, parent/student, or root-level app URLs)."""
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '') or ''
+        if not path or path == '/':
+            return self.app(environ, start_response)
+        if path.startswith('/dashboard/'):
+            return self.app(environ, start_response)
+        parts = [p for p in path.split('/') if p]
+        if not parts:
+            return self.app(environ, start_response)
+        seg = parts[0].lower()
+        if seg not in ROOT_DASHBOARD_PREFIXES:
+            return self.app(environ, start_response)
+        rest = '/'.join(parts[1:]) if len(parts) > 1 else ''
+        if seg == 'parent':
+            new_path = '/dashboard/parent' + ('/' + rest if rest else '')
+        elif seg == 'student':
+            new_path = '/dashboard/student' + ('/' + rest if rest else '')
+        elif not rest:
+            new_path = '/dashboard/employee'
+        else:
+            rest_first = rest.split('/')[0].lower()
+            if rest_first in EMPLOYEE_SCOPED_ROOT_SEGMENTS:
+                new_path = '/' + rest
+            else:
+                new_path = '/dashboard/employee/' + rest
+        environ = dict(environ)
+        environ['PATH_INFO'] = new_path
+        return self.app(environ, start_response)
+
+
+class DashboardRolePathRewriteMiddleware:
+    """Rewrite /dashboard/<role-slug>/... → /dashboard/employee/... so existing routes match."""
+    def __init__(self, app):
+        self.app = app
+
+    def __call__(self, environ, start_response):
+        path = environ.get('PATH_INFO', '') or ''
+        if path.startswith('/dashboard/'):
+            parts = [p for p in path.split('/') if p]
+            if len(parts) >= 2 and parts[0] == 'dashboard':
+                seg = parts[1].lower()
+                if seg in EMPLOYEE_ROLE_SLUGS and seg != 'employee':
+                    rest = '/'.join(parts[2:]) if len(parts) > 2 else ''
+                    new_path = '/dashboard/employee' + ('/' + rest if rest else '')
+                    environ = dict(environ)
+                    environ['PATH_INFO'] = new_path
+        return self.app(environ, start_response)
+
 
 # Email configuration
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
@@ -114,6 +307,7 @@ def _default_school_data():
         'facebook_url': '',
         'instagram_url': '',
         'tiktok_url': '',
+        'vimeo_url': '',
         'whatsapp_number': '',
         'school_location': '',
         'project_name': 'Elimu Centric',
@@ -153,6 +347,7 @@ def get_school_settings():
                             'facebook_url': result.get('facebook_url') or '',
                             'instagram_url': result.get('instagram_url') or '',
                             'tiktok_url': result.get('tiktok_url') or '',
+                            'vimeo_url': result.get('vimeo_url') or '',
                             'whatsapp_number': result.get('whatsapp_number') or '',
                             'school_location': result.get('school_location') or '',
                             'project_name': result.get('project_name') or 'Elimu Centric',
@@ -789,6 +984,22 @@ def init_db():
                     )
                 except Exception:
                     pass
+
+            # Email verification codes for password reset (retrieve password flow)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    email VARCHAR(255) NOT NULL,
+                    account_type ENUM('employee', 'parent', 'student') NOT NULL,
+                    account_id INT NOT NULL,
+                    code_hash VARCHAR(255) NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    consumed_at DATETIME NULL,
+                    INDEX idx_lookup (email(191), account_type, consumed_at),
+                    INDEX idx_expires (expires_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
             
             # Create academic_coordinator_settings table
             cursor.execute("""
@@ -1710,7 +1921,7 @@ def permission_required(permission_key):
             # Fallback to role-based check for backward compatibility
             # This allows existing role-based access to still work
             flash('You do not have permission to access this page.', 'error')
-            return redirect(url_for('dashboard_employee'))
+            return redirect(employee_dashboard_path())
         return decorated_function
     return decorator
 
@@ -1868,6 +2079,163 @@ This is an automated message. Please do not reply to this email.
     except Exception as e:
         print(f"Error sending admission confirmation email: {e}")
         return False
+
+
+def normalize_login_email(email):
+    return (email or '').strip().lower()
+
+
+def lookup_account_for_password_reset(email):
+    """Find account by email: employees first, then users (parent/student). Returns id, email, full_name, account_type."""
+    email_norm = normalize_login_email(email)
+    if not email_norm:
+        return None
+    connection = get_db_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, full_name, email FROM employees
+                WHERE LOWER(TRIM(email)) = %s AND status IN ('pending approval', 'active')
+            """, (email_norm,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'account_type': 'employee',
+                    'id': row['id'],
+                    'full_name': (row.get('full_name') or '').strip(),
+                    'email': (row.get('email') or email_norm).strip(),
+                }
+            cursor.execute("""
+                SELECT id, full_name, email, role FROM users
+                WHERE LOWER(TRIM(email)) = %s AND role IN ('parent', 'student')
+            """, (email_norm,))
+            row = cursor.fetchone()
+            if row:
+                role = (row.get('role') or '').strip()
+                if role not in ('parent', 'student'):
+                    return None
+                return {
+                    'account_type': role,
+                    'id': row['id'],
+                    'full_name': (row.get('full_name') or '').strip(),
+                    'email': (row.get('email') or email_norm).strip(),
+                }
+            return None
+    except Exception as e:
+        print(f"lookup_account_for_password_reset: {e}")
+        return None
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def _fetch_integration_email_dict():
+    """SMTP settings saved under Integration Settings → Email."""
+    connection = get_db_connection()
+    if not connection:
+        return {}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT settings_json FROM integration_settings WHERE integration_type = %s LIMIT 1",
+                ('email',),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {}
+            js = row.get('settings_json') if isinstance(row, dict) else row[0]
+            data = json.loads(js or '{}')
+            return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"_fetch_integration_email_dict: {e}")
+        return {}
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+def apply_mail_config_from_env_and_integration():
+    """
+    Flask-Mail reads app.config. Merge .env with integration_settings email (SMTP),
+    so password reset works when credentials are only in the dashboard.
+    """
+    app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', app.config.get('MAIL_SERVER', 'smtp.gmail.com'))
+    try:
+        app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', app.config.get('MAIL_PORT', 587)))
+    except (TypeError, ValueError):
+        app.config['MAIL_PORT'] = 587
+    app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1', 'yes']
+    app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ['true', '1', 'yes']
+    app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+    app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+    app.config['MAIL_DEFAULT_SENDER'] = os.environ.get(
+        'MAIL_DEFAULT_SENDER', app.config.get('MAIL_DEFAULT_SENDER', 'noreply@modernschool.com')
+    )
+
+    integ = _fetch_integration_email_dict()
+    smtp_user = (integ.get('smtp_username') or '').strip()
+    smtp_pass = (integ.get('smtp_password') or '').strip()
+    if smtp_user and smtp_pass:
+        app.config['MAIL_SERVER'] = (integ.get('smtp_server') or 'smtp.gmail.com').strip() or 'smtp.gmail.com'
+        try:
+            app.config['MAIL_PORT'] = int(integ.get('smtp_port') or 587)
+        except (TypeError, ValueError):
+            app.config['MAIL_PORT'] = 587
+        port = int(app.config['MAIL_PORT'])
+        utls = integ.get('use_tls')
+        if utls is None:
+            utls = port != 465
+        if isinstance(utls, bool):
+            app.config['MAIL_USE_TLS'] = utls
+        else:
+            app.config['MAIL_USE_TLS'] = str(utls).lower() in ('true', '1', 'yes')
+        app.config['MAIL_USE_SSL'] = port == 465 and not app.config['MAIL_USE_TLS']
+        app.config['MAIL_USERNAME'] = smtp_user
+        app.config['MAIL_PASSWORD'] = smtp_pass
+        app.config['MAIL_DEFAULT_SENDER'] = (integ.get('from_email') or smtp_user).strip()
+        return True
+    return bool((app.config.get('MAIL_USERNAME') or '').strip())
+
+
+def send_password_reset_email(to_email, recipient_name, verification_code):
+    """Send verification code for password reset."""
+    try:
+        if not apply_mail_config_from_env_and_integration():
+            print("Password reset: no SMTP credentials in .env or Integration Settings → Email.")
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip() or 'School'
+        subject = f"{school_name} — Password reset code"
+        safe_name = (recipient_name or 'there').strip() or 'there'
+        html_body = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8"></head>
+        <body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;max-width:560px;margin:0 auto;padding:24px;">
+            <p>Hello {safe_name},</p>
+            <p>Use this code to finish resetting your password:</p>
+            <p style="font-size:28px;font-weight:700;letter-spacing:0.2em;color:#1e293b;">{verification_code}</p>
+            <p style="color:#64748b;font-size:14px;">This code expires in 30 minutes. If you did not request a reset, you can ignore this email.</p>
+            <p style="margin-top:24px;font-size:13px;color:#94a3b8;">{school_name}</p>
+        </body></html>
+        """
+        text_body = (
+            f"Hello {safe_name},\n\nYour password reset code is: {verification_code}\n\n"
+            f"This code expires in 30 minutes. If you did not request this, ignore this email.\n\n{school_name}\n"
+        )
+        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
+        mail.send(msg)
+        print(f"Password reset email sent to {to_email}")
+        return True
+    except Exception as e:
+        print(f"Error sending password reset email: {e}")
+        return False
+
 
 def send_student_approval_email(parent_email, parent_name, student_name, student_id):
     """Send approval congratulations email to parent/guardian after student admission is approved"""
@@ -2420,6 +2788,21 @@ def home():
     
     return render_template('home.html', academic_levels=academic_levels)
 
+
+@app.route('/search')
+def public_site_search():
+    """Public marketing site search: redirects to Google (with site: filter when not on localhost)."""
+    from urllib.parse import quote_plus
+
+    q = request.args.get('q', '').strip()
+    if not q:
+        return redirect(url_for('home'))
+    host = request.host.split(':')[0]
+    if host in ('127.0.0.1', 'localhost'):
+        return redirect(f'https://www.google.com/search?q={quote_plus(q)}')
+    return redirect('https://www.google.com/search?q=' + quote_plus(f'site:{host} {q}'))
+
+
 @app.route('/about')
 def about():
     return render_template('about.html')
@@ -2913,7 +3296,7 @@ def login():
                                     session['employee_id'] = employee['employee_id']
                                     session['profile_picture'] = employee.get('profile_picture')
                                     flash(f'Welcome back, {employee["full_name"]}!', 'success')
-                                    return redirect(url_for('dashboard_employee'))
+                                    return redirect(employee_dashboard_path())
                                 else:
                                     flash('Your account status is invalid. Please contact support.', 'error')
                                     return redirect(url_for('home'))
@@ -2931,14 +3314,16 @@ def login():
                         )
                         user = cursor.fetchone()
                         
-                        # For demo purposes, accept any password if user exists
-                        # In production, use: check_password_hash(user['password_hash'], password)
-                        if user:
+                        if user and check_password_hash(user['password_hash'], password):
                             session['user_id'] = user['id']
                             session['email'] = user['email']
                             session['full_name'] = user['full_name']
                             session['role'] = user['role']
                             flash(f'Welcome back, {user["full_name"]}!', 'success')
+                            if role == 'parent':
+                                return redirect(parent_dashboard_path())
+                            if role == 'student':
+                                return redirect(student_dashboard_path())
                             return redirect(url_for(f'dashboard_{role}'))
                         else:
                             flash('Invalid credentials. Please check your admission number and password.', 'error')
@@ -2959,6 +3344,158 @@ def login():
     # GET request - render login page
     role = request.args.get('role', '')
     return render_template('login.html', default_role=role)
+
+
+@app.route('/retrieve-password', methods=['GET', 'POST'])
+def retrieve_password():
+    """Request a verification code by email (matches employee or parent/student account automatically)."""
+    generic_notice = (
+        'If an account matches this email, we sent a verification code. Check your inbox (and spam).'
+    )
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        if not email:
+            flash('Please enter your email.', 'error')
+            return redirect(url_for('retrieve_password'))
+
+        account = lookup_account_for_password_reset(email)
+        if not account:
+            flash(generic_notice, 'info')
+            return redirect(url_for('retrieve_password'))
+
+        account_type = account['account_type']
+        code = ''.join(secrets.choice('0123456789') for _ in range(6))
+        code_hash = generate_password_hash(code)
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+        to_addr = account['email']
+
+        if not send_password_reset_email(to_addr, account['full_name'], code):
+            flash(
+                'Could not send the verification email. Your school can set SMTP under Integration Settings, '
+                'or the server administrator can set MAIL_* environment variables.',
+                'error',
+            )
+            return redirect(url_for('retrieve_password'))
+
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return redirect(url_for('retrieve_password'))
+        try:
+            with connection.cursor() as cursor:
+                email_norm = normalize_login_email(email)
+                cursor.execute("""
+                    DELETE FROM password_reset_tokens
+                    WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL
+                """, (email_norm,))
+                cursor.execute("""
+                    INSERT INTO password_reset_tokens (email, account_type, account_id, code_hash, expires_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (email_norm, account_type, account['id'], code_hash, expires_at))
+                connection.commit()
+        except Exception as e:
+            print(f"retrieve_password token insert: {e}")
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            flash('We could not save your reset request. Please try again.', 'error')
+            return redirect(url_for('retrieve_password'))
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        session['pwd_reset_email'] = normalize_login_email(email)
+        flash('We sent a code to your email. Enter it on the next page with your new password.', 'success')
+        return redirect(url_for('reset_password'))
+
+    return render_template('retrieve_password.html')
+
+
+@app.route('/reset-password', methods=['GET', 'POST'])
+def reset_password():
+    """Enter verification code and set a new password."""
+    if request.method == 'POST':
+        email = normalize_login_email(request.form.get('email', ''))
+        reset_code = (request.form.get('reset_code') or '').strip().replace(' ', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        def _render_form():
+            return render_template('reset_password.html', preset_email=email)
+
+        if not email:
+            flash('Please enter the email you used when requesting the code.', 'error')
+            return redirect(url_for('reset_password'))
+
+        if not reset_code:
+            flash('Please enter the verification code from your email.', 'error')
+            return _render_form()
+
+        if len(new_password) < 6:
+            flash('Your new password must be at least 6 characters.', 'error')
+            return _render_form()
+
+        if new_password != confirm_password:
+            flash('New password and confirmation do not match.', 'error')
+            return _render_form()
+
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return _render_form()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT * FROM password_reset_tokens
+                    WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL AND expires_at > %s
+                    ORDER BY id DESC LIMIT 1
+                """, (email, datetime.utcnow()))
+                token_row = cursor.fetchone()
+                if not token_row or not check_password_hash(token_row['code_hash'], reset_code):
+                    flash('Invalid or expired verification code. Request a new code from Retrieve password.', 'error')
+                    return _render_form()
+
+                account_type = token_row['account_type']
+                new_hash = generate_password_hash(new_password)
+                if account_type == 'employee':
+                    cursor.execute(
+                        "UPDATE employees SET password_hash = %s WHERE id = %s",
+                        (new_hash, token_row['account_id']),
+                    )
+                else:
+                    cursor.execute(
+                        "UPDATE users SET password_hash = %s WHERE id = %s",
+                        (new_hash, token_row['account_id']),
+                    )
+                cursor.execute(
+                    "UPDATE password_reset_tokens SET consumed_at = %s WHERE id = %s",
+                    (datetime.utcnow(), token_row['id']),
+                )
+                connection.commit()
+        except Exception as e:
+            print(f"reset_password error: {e}")
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            flash('Could not update your password. Please try again.', 'error')
+            return _render_form()
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        session.pop('pwd_reset_email', None)
+        flash('Your password has been updated. You can sign in now.', 'success')
+        return redirect(url_for('login'))
+
+    preset_email = session.get('pwd_reset_email') or request.args.get('email', '').strip()
+    return render_template('reset_password.html', preset_email=preset_email)
+
 
 @app.route('/logout')
 def logout():
@@ -3802,7 +4339,7 @@ def dashboard_student():
 @login_required
 def student_fees_view():
     """Student fees view page - redirects to dashboard with fees"""
-    return redirect(url_for('dashboard_student'))
+    return redirect(student_dashboard_path())
 
 @app.route('/dashboard/employee')
 @login_required
@@ -3864,7 +4401,7 @@ def exams_and_grades():
     
     if not (is_teacher or is_technician):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get teacher's assigned subjects and academic levels
     connection = get_db_connection()
@@ -3996,7 +4533,7 @@ def teacher_my_classes():
     
     if not (is_teacher or is_technician):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get teacher's ID
     if is_technician:
@@ -4187,7 +4724,7 @@ def teacher_my_classes():
 @app.route('/dashboard/employee/finance-overview')
 @login_required
 def finance_overview():
-    """Finance Overview page for principals and accountants"""
+    """School-wide student fee analytics (totals per student; same rules as Student fees)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     employee_id = session.get('employee_id') or session.get('user_id')
@@ -4205,172 +4742,53 @@ def finance_overview():
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission or is_secretary):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
-    # Get finance summary + detail lists (fees, student payments, salary/expense outflows)
+    # School-wide student fee analytics (same rules as Student fees / class report)
     connection = get_db_connection()
-    finance_summary = {
-        'total_students': 0,
-        'total_fee_structures': 0,
-        'total_revenue': 0.0,
-        'payment_transaction_count': 0,
-        'total_expenses': 0.0,
-        'expense_transaction_count': 0,
+    student_fee_analytics = {
+        'student_rows': [],
+        'total_outstanding': 0.0,
+        'sum_total_amount': 0.0,
+        'sum_paid_amount': 0.0,
     }
-    fee_details = []
-    payment_details = []
-    expense_details = []
-
-    def _fmt_date(val):
-        if val is None:
-            return ''
-        if hasattr(val, 'strftime'):
-            return val.strftime('%Y-%m-%d')
-        return str(val)[:10]
-
+    class_filter_options = []
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'active'")
-                result = cursor.fetchone()
-                finance_summary['total_students'] = result.get('count', 0) if result else 0
-
-                cursor.execute("SELECT COUNT(*) as count FROM fee_structures WHERE status = 'active'")
-                result = cursor.fetchone()
-                finance_summary['total_fee_structures'] = result.get('count', 0) if result else 0
-
-                cursor.execute("SELECT COALESCE(SUM(amount_paid), 0) as total, COUNT(*) as cnt FROM student_payments")
-                result = cursor.fetchone()
-                if result:
-                    finance_summary['total_revenue'] = float(result.get('total', 0) or 0)
-                    finance_summary['payment_transaction_count'] = int(result.get('cnt', 0) or 0)
-
-                try:
-                    cursor.execute(
-                        "SELECT COALESCE(SUM(amount_paid), 0) as total, COUNT(*) as cnt FROM employee_salary_payments"
-                    )
-                    er = cursor.fetchone()
-                    if er:
-                        finance_summary['total_expenses'] = float(er.get('total', 0) or 0)
-                        finance_summary['expense_transaction_count'] = int(er.get('cnt', 0) or 0)
-                except Exception:
-                    pass
-
-                # Fee structures (active) with level / term / year
+                student_fee_analytics = _finance_overview_student_fee_bundle(cursor)
                 try:
                     cursor.execute(
                         """
-                        SELECT fs.id, fs.fee_name, al.level_name, fs.total_amount,
-                               fs.start_date, fs.end_date, fs.payment_deadline, fs.status,
-                               t.term_name, ay.year_name
-                        FROM fee_structures fs
-                        INNER JOIN academic_levels al ON fs.academic_level_id = al.id
-                        LEFT JOIN terms t ON fs.term_id = t.id
-                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
-                        WHERE fs.status = 'active'
-                        ORDER BY fs.start_date DESC, al.level_name, fs.fee_name
-                        LIMIT 150
-                        """
-                    )
-                    fee_rows = cursor.fetchall() or []
-                except Exception:
-                    fee_rows = []
-                    try:
-                        cursor.execute(
-                            """
-                            SELECT fs.id, fs.fee_name, al.level_name, fs.total_amount,
-                                   fs.start_date, fs.end_date, fs.payment_deadline, fs.status
-                            FROM fee_structures fs
-                            INNER JOIN academic_levels al ON fs.academic_level_id = al.id
-                            WHERE fs.status = 'active'
-                            ORDER BY fs.start_date DESC, al.level_name, fs.fee_name
-                            LIMIT 150
-                            """
-                        )
-                        fee_rows = cursor.fetchall() or []
-                    except Exception as ex:
-                        print(f"Error loading fee_details (fallback) for finance overview: {ex}")
-                try:
-                    for r in fee_rows:
-                        fee_details.append({
-                            'id': r.get('id'),
-                            'fee_name': r.get('fee_name') or '—',
-                            'level_name': r.get('level_name') or '—',
-                            'total_amount': float(r.get('total_amount') or 0),
-                            'start_date': _fmt_date(r.get('start_date')),
-                            'end_date': _fmt_date(r.get('end_date')),
-                            'payment_deadline': _fmt_date(r.get('payment_deadline')),
-                            'status': r.get('status') or '—',
-                            'term_name': r.get('term_name') or '',
-                            'year_name': r.get('year_name') or '',
-                        })
-                except Exception as ex:
-                    print(f"Error loading fee_details for finance overview: {ex}")
-
-                # Recent student fee payments
-                try:
-                    cursor.execute(
-                        """
-                        SELECT sp.id, sp.student_id, COALESCE(s.full_name, sp.student_id) AS student_name,
-                               sp.amount_paid, sp.payment_date, sp.payment_method,
-                               sp.reference_number, fs.fee_name
-                        FROM student_payments sp
-                        LEFT JOIN students s ON sp.student_id = s.student_id
-                        LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
-                        ORDER BY sp.payment_date DESC, sp.id DESC
-                        LIMIT 100
+                        SELECT level_name FROM academic_levels
+                        WHERE level_status = 'active'
+                        ORDER BY level_name ASC
                         """
                     )
                     for r in cursor.fetchall() or []:
-                        payment_details.append({
-                            'id': r.get('id'),
-                            'student_id': r.get('student_id'),
-                            'student_name': r.get('student_name') or '—',
-                            'amount_paid': float(r.get('amount_paid') or 0),
-                            'payment_date': _fmt_date(r.get('payment_date')),
-                            'payment_method': r.get('payment_method') or '—',
-                            'reference_number': r.get('reference_number') or '',
-                            'fee_name': r.get('fee_name') or '—',
-                        })
+                        ln = r.get('level_name') if isinstance(r, dict) else r[0]
+                        if ln:
+                            class_filter_options.append(ln)
                 except Exception as ex:
-                    print(f"Error loading payment_details for finance overview: {ex}")
-
-                # Salary disbursements (recorded operational expenses)
-                try:
-                    cursor.execute(
-                        """
-                        SELECT esp.id, esp.amount_paid, esp.payment_date, esp.payment_method,
-                               esp.reference_number, esp.notes,
-                               e.full_name AS employee_name
-                        FROM employee_salary_payments esp
-                        INNER JOIN employees e ON esp.employee_id = e.id
-                        ORDER BY esp.payment_date DESC, esp.id DESC
-                        LIMIT 100
-                        """
-                    )
-                    for r in cursor.fetchall() or []:
-                        expense_details.append({
-                            'id': r.get('id'),
-                            'amount_paid': float(r.get('amount_paid') or 0),
-                            'payment_date': _fmt_date(r.get('payment_date')),
-                            'payment_method': r.get('payment_method') or '—',
-                            'reference_number': r.get('reference_number') or '',
-                            'notes': (r.get('notes') or '')[:200],
-                            'employee_name': r.get('employee_name') or '—',
-                        })
-                except Exception as ex:
-                    print(f"Error loading expense_details for finance overview: {ex}")
+                    print(f"finance_overview academic levels: {ex}")
         except Exception as e:
             print(f"Error fetching finance overview: {e}")
         finally:
             connection.close()
 
+    if not class_filter_options:
+        class_filter_options = sorted(
+            {
+                r.get('class_name')
+                for r in (student_fee_analytics.get('student_rows') or [])
+                if r.get('class_name') and r.get('class_name') != '—'
+            }
+        )
+
     return render_template(
         'dashboards/finance_overview.html',
-        finance_summary=finance_summary,
-        fee_details=fee_details,
-        payment_details=payment_details,
-        expense_details=expense_details,
+        student_fee_analytics=student_fee_analytics,
+        class_filter_options=class_filter_options,
         role=user_role,
         is_secretary_finance=is_secretary,
     )
@@ -4440,7 +4858,7 @@ def student_fees():
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         print(f"  - Access DENIED: user_role={user_role}, viewing_as_role={viewing_as_role}, is_accountant={is_accountant}, is_technician={is_technician}")
         flash('You do not have permission to access this page. Only accountants, principals, or users with fee viewing permissions can access Student Fees.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     print(f"  - Access GRANTED: Rendering student fees page")
     
@@ -7342,7 +7760,7 @@ def fee_structures():
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     fee_structures_list = []
@@ -7486,7 +7904,7 @@ def payments_audit():
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     audit_logs = []
@@ -8303,7 +8721,7 @@ def staff_and_salaries():
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_salary_permission):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get filter parameters for salary records
     filter_type = request.args.get('filter', 'all')
@@ -8621,7 +9039,7 @@ def salary_records():
     
     if not (is_accountant or is_principal or is_super_admin or is_technician):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get filter parameters
     filter_type = request.args.get('filter', 'all')
@@ -8926,7 +9344,7 @@ def register_salary():
                 return jsonify({
                     'success': True,
                     'message': f'Salary registered successfully for {employee.get("full_name", "employee")}.',
-                    'redirect_url': '/dashboard/employee/staff-and-salaries/salary-records'
+                    'redirect_url': employee_dashboard_path('staff-and-salaries/salary-records')
                 })
         
         except Exception as e:
@@ -9627,7 +10045,7 @@ def salary_audits():
     
     if not (is_accountant or is_principal or is_super_admin or is_technician):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     audits = []
@@ -9682,7 +10100,7 @@ def staff_management():
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution'])
@@ -9732,7 +10150,7 @@ def teacher_management():
     
     if not (is_academic_coordinator or is_technician or is_principal or is_super_admin):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
@@ -10071,7 +10489,7 @@ def student_management():
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
@@ -11065,7 +11483,7 @@ def student_attendance():
                       'warden', 'transport manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     user_role = session.get('role', '').lower()
     viewing_as = session.get('viewing_as_employee_role', '').lower()
@@ -11431,7 +11849,7 @@ def parent_exam_progress():
                     pass
 
     if len(children) == 1:
-        return redirect(url_for('parent_exam_progress_detail', student_id=children[0]['student_id']))
+        return redirect(parent_dashboard_path(f"exam-progress/{children[0]['student_id']}"))
 
     return render_template(
         'dashboards/parent_exam_progress_list.html',
@@ -11455,7 +11873,7 @@ def parent_exam_progress_detail(student_id):
     parent_email = ctx['parent_email']
     if not parent_email:
         flash('No linked parent account.', 'error')
-        return redirect(url_for('dashboard_parent'))
+        return redirect(parent_dashboard_path())
 
     allowed = False
     sibling_count = 0
@@ -11490,17 +11908,17 @@ def parent_exam_progress_detail(student_id):
 
     if not allowed:
         flash('You cannot view exam progress for this student.', 'error')
-        return redirect(url_for('parent_exam_progress'))
+        return redirect(parent_dashboard_path('exam-progress'))
 
     try:
         payload = _fetch_student_progress_payload(student_id)
     except Exception:
         flash('Error loading student progress.', 'error')
-        return redirect(url_for('parent_exam_progress'))
+        return redirect(parent_dashboard_path('exam-progress'))
 
     if not payload['student']:
         flash('Student not found.', 'error')
-        return redirect(url_for('parent_exam_progress'))
+        return redirect(parent_dashboard_path('exam-progress'))
 
     return render_template(
         'dashboards/parent_student_exam_progress.html',
@@ -11557,7 +11975,7 @@ def parent_attendance():
                     pass
 
     if len(children) == 1:
-        return redirect(url_for('parent_attendance_detail', student_id=children[0]['student_id']))
+        return redirect(parent_dashboard_path(f"attendance/{children[0]['student_id']}"))
 
     return render_template(
         'dashboards/parent_attendance_list.html',
@@ -11581,7 +11999,7 @@ def parent_attendance_detail(student_id):
     parent_email = ctx['parent_email']
     if not parent_email:
         flash('No linked parent account.', 'error')
-        return redirect(url_for('dashboard_parent'))
+        return redirect(parent_dashboard_path())
 
     allowed = False
     sibling_count = 0
@@ -11616,12 +12034,12 @@ def parent_attendance_detail(student_id):
 
     if not allowed:
         flash('You cannot view attendance for this student.', 'error')
-        return redirect(url_for('parent_attendance'))
+        return redirect(parent_dashboard_path('attendance'))
 
     analytics = _fetch_parent_attendance_analytics(student_id, request.args)
     if not analytics.get('student'):
         flash('Student not found.', 'error')
-        return redirect(url_for('parent_attendance'))
+        return redirect(parent_dashboard_path('attendance'))
 
     return render_template(
         'dashboards/parent_student_attendance_analytics.html',
@@ -11654,7 +12072,7 @@ def students_progress():
                       'warden', 'transport manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     students_by_level = _get_students_by_level()
     return render_template('dashboards/students_progress.html', students_by_level=students_by_level)
 
@@ -11669,7 +12087,7 @@ def student_progress_detail(student_id):
                       'warden', 'transport manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     try:
         payload = _fetch_student_progress_payload(student_id)
@@ -12175,7 +12593,7 @@ def save_academic_coordinator_settings():
 
     if user_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     study_days = request.form.get('study_days', '')
     class_duration = request.form.get('class_duration', '60')
@@ -12253,7 +12671,7 @@ def delete_academic_coordinator_settings(profile_id):
 
     if user_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     connection = get_db_connection()
     if not connection:
@@ -12321,7 +12739,7 @@ def switch_role(target_role):
     # Only technicians can switch roles
     if user_role != 'technician':
         flash('You do not have permission to switch roles.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Normalize: convert URL-safe hyphens to spaces (e.g. deputy-principal -> deputy principal)
     target_role = target_role.strip().replace('-', ' ').lower()
@@ -12348,11 +12766,11 @@ def switch_role(target_role):
         if redirect_url:
             return redirect(redirect_url)
         elif target_role == 'employee':
-            return redirect(url_for('dashboard_employee'))
+            return redirect(employee_dashboard_path())
         elif target_role == 'student':
-            return redirect(url_for('dashboard_student'))
+            return redirect(student_dashboard_path())
         elif target_role == 'parent':
-            return redirect(url_for('dashboard_parent'))
+            return redirect(parent_dashboard_path())
     
     # Check if it's an employee sub-role
     elif target_role in valid_employee_roles:
@@ -12365,7 +12783,7 @@ def switch_role(target_role):
         # Redirect to custom URL if provided, otherwise to employee dashboard
         if redirect_url:
             return redirect(redirect_url)
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     else:
         flash('Invalid role selected.', 'error')
@@ -12382,7 +12800,7 @@ def role_switch_page():
     # Only technicians can access this page
     if user_role != 'technician':
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     return render_template('dashboards/role_switch.html', 
                          employee_roles_list=list(EMPLOYEE_SUB_ROLES))
@@ -12397,7 +12815,7 @@ def reset_role():
     
     if user_role != 'technician':
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Remove viewing roles and employee from session
     session.pop('viewing_as_role', None)
@@ -12409,7 +12827,7 @@ def reset_role():
     # Redirect to custom URL if provided, otherwise to employee dashboard
     if redirect_url:
         return redirect(redirect_url)
-    return redirect(url_for('dashboard_employee'))
+    return redirect(employee_dashboard_path())
 
 @app.route('/switch-employee/<int:employee_id>')
 @login_required
@@ -12420,7 +12838,7 @@ def switch_employee(employee_id):
     # Only technicians can switch employees
     if user_role != 'technician':
         flash('You do not have permission to switch employees.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get redirect URL from query parameter
     redirect_url = request.args.get('redirect', None)
@@ -12431,7 +12849,7 @@ def switch_employee(employee_id):
         flash('Employee selection cleared.', 'success')
         if redirect_url:
             return redirect(redirect_url)
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Verify the employee exists and matches the viewing role
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
@@ -12473,7 +12891,7 @@ def switch_employee(employee_id):
     # Redirect to custom URL if provided, otherwise to employee dashboard
     if redirect_url:
         return redirect(redirect_url)
-    return redirect(url_for('dashboard_employee'))
+    return redirect(employee_dashboard_path())
 
 # System Settings Route (for technicians)
 @app.route('/system-settings')
@@ -12494,7 +12912,7 @@ def system_settings():
     
     if not (has_access or is_accountant or is_technician):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get school settings, academic levels, academic years, and terms
     connection = get_db_connection()
@@ -12838,7 +13256,7 @@ def academic_settings():
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get academic levels, academic years, and terms
     connection = get_db_connection()
@@ -13030,7 +13448,7 @@ def subject_class_allocation():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch academic levels, subjects, and teachers
     connection = get_db_connection()
@@ -13347,7 +13765,7 @@ def academic_subject_registration():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch all subjects
     connection = get_db_connection()
@@ -13515,7 +13933,7 @@ def exam_evaluation():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch data for exam registration
     connection = get_db_connection()
@@ -13761,7 +14179,7 @@ def exam_evaluation_registered_detail():
 
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     exam_name_raw = (request.args.get('exam_name') or '').strip()
     try:
@@ -14738,7 +15156,7 @@ def classes_subjects():
     # Allow academic coordinators, principals, and technicians
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get academic levels for classes
     connection = get_db_connection()
@@ -14828,7 +15246,7 @@ def timetable_management():
     
     if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch academic levels and settings
     connection = get_db_connection()
@@ -15012,7 +15430,7 @@ def register_timetable():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch academic years, terms, and academic levels
     connection = get_db_connection()
@@ -15770,7 +16188,7 @@ def manage_timetable():
     
     if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch academic levels, teachers, settings, and year/term data
     connection = get_db_connection()
@@ -16098,7 +16516,7 @@ def timetable_analytics():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     return render_template('dashboards/timetable_analytics.html', role=user_role)
 
@@ -16115,7 +16533,7 @@ def attendance():
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     return redirect(url_for('student_attendance'))
 
 # Exams & Assessments Route (for academic coordinators)
@@ -16132,7 +16550,7 @@ def exams_assessments():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Fetch all registered academic levels
     academic_levels = []
@@ -16175,7 +16593,7 @@ def exam_analytics():
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     exams = []
     connection = get_db_connection()
     if connection:
@@ -16230,7 +16648,7 @@ def exam_analytics_detail(exam_id):
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     connection = get_db_connection()
     if not connection:
         flash('Database error.', 'error')
@@ -16524,7 +16942,7 @@ def exam_analytics_slot(exam_id, slot_id):
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     connection = get_db_connection()
     if not connection:
         flash('Database error.', 'error')
@@ -16607,7 +17025,7 @@ def students_by_academic_level(level_id):
     
     if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get teacher ID for filtering subjects (for teachers)
     teacher_id = None
@@ -17282,7 +17700,7 @@ def get_students_by_academic_level():
 @app.route('/dashboard/employee/reports')
 @login_required
 def reports():
-    """Exam reports for staff; secretary sees class analytics overview only (see academic_reports)."""
+    """Exam reports for staff; secretary sees class overview + school snapshot on this route."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
@@ -17293,19 +17711,21 @@ def reports():
     
     if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
-    # Secretary: lightweight class analytics only (no heavy exam aggregates on load)
+    # Secretary: class overview cards + school snapshot
     if is_secretary:
         class_analytics = []
+        stats_snapshot = {'active_students': 0, 'teachers': 0, 'subjects': 0}
         connection = get_db_connection()
         if connection:
             try:
                 with connection.cursor() as cursor:
+                    stats_snapshot = _fetch_reports_snapshot_counts(cursor)
                     cursor.execute("""
                         SELECT al.id, al.level_name, al.level_category,
                             (SELECT COUNT(*) FROM students s
-                             WHERE s.status = 'active' AND s.current_grade = al.level_name) AS student_count,
+                             WHERE s.status = 'in session' AND s.current_grade = al.level_name) AS student_count,
                             (SELECT COUNT(DISTINCT tsa.teacher_id) FROM teacher_subject_assignments tsa
                              WHERE tsa.academic_level_id = al.id) AS teacher_count,
                             (SELECT COUNT(DISTINCT tsa.subject_id) FROM teacher_subject_assignments tsa
@@ -17334,6 +17754,7 @@ def reports():
             'dashboards/reports_class_analytics.html',
             role=user_role,
             class_analytics=class_analytics,
+            stats_snapshot=stats_snapshot,
         )
     
     level_id = request.args.get('level_id', type=int)
@@ -17344,11 +17765,13 @@ def reports():
     terms = []
     academic_years = []
     report_data = None  # {level_id: {level_name, subjects: [...], class_mean, student_count}}
+    stats_snapshot = {'active_students': 0, 'teachers': 0, 'subjects': 0}
     
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
+                stats_snapshot = _fetch_reports_snapshot_counts(cursor)
                 # Get academic levels
                 cursor.execute("""
                     SELECT id, level_name, level_category, level_description
@@ -17507,6 +17930,7 @@ def reports():
         selected_level_id=level_id,
         selected_term_id=term_id,
         selected_academic_year_id=academic_year_id,
+        stats_snapshot=stats_snapshot,
     )
 
 
@@ -17519,6 +17943,927 @@ def _reports_access_roles_ok():
         or user_role == 'head of institution' or viewing_as_role == 'head of institution'
         or user_role == 'secretary' or viewing_as_role == 'secretary'
     )
+
+
+@app.route('/dashboard/employee/reports/class/<int:level_id>')
+@login_required
+def reports_class_detail(level_id):
+    """Per-class hub: register (attendance) analytics, exam performance, and fee accounts."""
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('reports'))
+
+    level = None
+    attendance_summary = {}
+    exam_bundle = {}
+    fees_bundle = {'student_rows': [], 'total_outstanding': 0.0}
+    enrolled_count = 0
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, level_name, level_category, level_description
+                FROM academic_levels
+                WHERE id = %s AND level_status = 'active'
+                """,
+                (level_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                flash('That class was not found or is inactive.', 'error')
+                return redirect(url_for('reports'))
+            level = {
+                'id': row.get('id') if isinstance(row, dict) else row[0],
+                'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+                'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                'level_description': (row.get('level_description') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')) or '',
+            }
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c FROM students
+                WHERE current_grade = %s AND status = 'in session'
+                """,
+                (level['level_name'],),
+            )
+            er = cursor.fetchone()
+            enrolled_count = int((er.get('c') if isinstance(er, dict) else er[0]) or 0)
+
+            attendance_summary = _class_attendance_register_summary(cursor, level['level_name'])
+            exam_bundle = _build_class_exam_performance_bundle(cursor, level, None, None)
+            fees_bundle = _class_fees_accounts_bundle(cursor, level_id, level['level_name'])
+    except Exception as e:
+        print(f"reports_class_detail: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Could not load class analytics.', 'error')
+        return redirect(url_for('reports'))
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/reports_class_detail.html',
+        role=user_role,
+        is_secretary_finance=is_secretary,
+        level=level,
+        enrolled_count=enrolled_count,
+        attendance_summary=attendance_summary,
+        exam_bundle=exam_bundle,
+        fees_bundle=fees_bundle,
+    )
+
+
+def _fetch_reports_snapshot_counts(cursor):
+    """School-wide figures for the reports hub: enrolled students, teaching staff, active subjects."""
+    out = {'active_students': 0, 'teachers': 0, 'subjects': 0}
+    try:
+        cursor.execute("SELECT COUNT(*) as c FROM students WHERE status = 'in session'")
+        r = cursor.fetchone()
+        out['active_students'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+    except Exception:
+        pass
+    try:
+        cursor.execute("""
+            SELECT COUNT(*) as c FROM employees
+            WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+        """)
+        r = cursor.fetchone()
+        out['teachers'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+    except Exception:
+        pass
+    try:
+        cursor.execute("SELECT COUNT(*) as c FROM subjects WHERE status = 'active'")
+        r = cursor.fetchone()
+        out['subjects'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+    except Exception:
+        pass
+    return out
+
+
+def _class_attendance_register_summary(cursor, level_name):
+    """Attendance register analytics for students in this class (current_grade match, in session)."""
+    out = {
+        'total_records': 0,
+        'present_count': 0,
+        'absent_count': 0,
+        'students_with_records': 0,
+        'rate_pct': None,
+    }
+    if not level_name:
+        return out
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS n,
+                   COALESCE(SUM(CASE WHEN sar.present THEN 1 ELSE 0 END), 0) AS pn
+            FROM student_attendance_records sar
+            INNER JOIN students s ON s.student_id = sar.student_id
+            WHERE s.current_grade = %s AND s.status = 'in session'
+            """,
+            (level_name,),
+        )
+        r = cursor.fetchone()
+        if r:
+            n = int((r.get('n') if isinstance(r, dict) else r[0]) or 0)
+            pn = int((r.get('pn') if isinstance(r, dict) else r[1]) or 0)
+            out['total_records'] = n
+            out['present_count'] = pn
+            out['absent_count'] = max(0, n - pn)
+            if n:
+                out['rate_pct'] = round(100.0 * pn / n, 1)
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT sar.student_id) AS c
+            FROM student_attendance_records sar
+            INNER JOIN students s ON s.student_id = sar.student_id
+            WHERE s.current_grade = %s AND s.status = 'in session'
+            """,
+            (level_name,),
+        )
+        r2 = cursor.fetchone()
+        if r2:
+            out['students_with_records'] = int((r2.get('c') if isinstance(r2, dict) else r2[0]) or 0)
+    except Exception as e:
+        print(f"_class_attendance_register_summary: {e}")
+    return out
+
+
+def _reports_current_year_term_ids(cursor):
+    """Same current year/term resolution as student_fees."""
+    current_academic_year_id = None
+    current_term_id = None
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM academic_years
+            WHERE is_current = TRUE AND status = 'active'
+            LIMIT 1
+            """
+        )
+        r = cursor.fetchone()
+        if r:
+            current_academic_year_id = r.get('id') if isinstance(r, dict) else r[0]
+        if current_academic_year_id:
+            cursor.execute(
+                """
+                SELECT id FROM terms
+                WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                LIMIT 1
+                """,
+                (current_academic_year_id,),
+            )
+            r2 = cursor.fetchone()
+            if r2:
+                current_term_id = r2.get('id') if isinstance(r2, dict) else r2[0]
+    except Exception as e:
+        print(f"_reports_current_year_term_ids: {e}")
+    return current_academic_year_id, current_term_id
+
+
+def _reports_fee_structure_dict_from_row(fee_structure_result):
+    """Normalize fee_structure row to dict with string dates (matches student_fees)."""
+    if not fee_structure_result:
+        return None
+    start_date = fee_structure_result.get('start_date')
+    end_date = fee_structure_result.get('end_date')
+    payment_deadline = fee_structure_result.get('payment_deadline')
+    if start_date and hasattr(start_date, 'strftime'):
+        start_date = start_date.strftime('%Y-%m-%d')
+    elif start_date:
+        start_date = str(start_date).split(' ')[0]
+    if end_date and hasattr(end_date, 'strftime'):
+        end_date = end_date.strftime('%Y-%m-%d')
+    elif end_date:
+        end_date = str(end_date).split(' ')[0]
+    if payment_deadline and hasattr(payment_deadline, 'strftime'):
+        payment_deadline = payment_deadline.strftime('%Y-%m-%d')
+    elif payment_deadline:
+        payment_deadline = str(payment_deadline).split(' ')[0]
+    return {
+        'id': fee_structure_result.get('id'),
+        'fee_name': fee_structure_result.get('fee_name', ''),
+        'category': fee_structure_result.get('category', 'both'),
+        'start_date': start_date,
+        'end_date': end_date,
+        'payment_deadline': payment_deadline,
+        'total_amount': float(fee_structure_result.get('total_amount', 0)),
+        'status': fee_structure_result.get('status', 'active'),
+    }
+
+
+def _reports_select_fee_structure_for_student(cursor, academic_level_id, student_category, current_academic_year_id, current_term_id):
+    """Pick the same active fee structure as student_fees for this level + category."""
+    student_category = (student_category or '').lower().strip()
+    fee_structure_result = None
+    try:
+        if student_category == 'self sponsored':
+            if current_academic_year_id and current_term_id:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND fs.academic_year_id = %s
+                      AND fs.term_id = %s
+                      AND (
+                          fs.category = 'self sponsored'
+                          OR fs.category = 'both'
+                      )
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'self sponsored' THEN 1
+                        WHEN fs.category = 'both' THEN 2
+                        ELSE 3
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id, current_academic_year_id, current_term_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND (
+                          fs.category = 'self sponsored'
+                          OR fs.category = 'both'
+                      )
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'self sponsored' THEN 1
+                        WHEN fs.category = 'both' THEN 2
+                        ELSE 3
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id,),
+                )
+        elif student_category == 'sponsored':
+            if current_academic_year_id and current_term_id:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND fs.academic_year_id = %s
+                      AND fs.term_id = %s
+                      AND (
+                          fs.category = 'sponsored'
+                          OR fs.category = 'both'
+                      )
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'sponsored' THEN 1
+                        WHEN fs.category = 'both' THEN 2
+                        ELSE 3
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id, current_academic_year_id, current_term_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND (
+                          fs.category = 'sponsored'
+                          OR fs.category = 'both'
+                      )
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'sponsored' THEN 1
+                        WHEN fs.category = 'both' THEN 2
+                        ELSE 3
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id,),
+                )
+        elif student_category == 'both':
+            if current_academic_year_id and current_term_id:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND fs.academic_year_id = %s
+                      AND fs.term_id = %s
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'both' THEN 1
+                        WHEN fs.category = 'self sponsored' THEN 2
+                        WHEN fs.category = 'sponsored' THEN 3
+                        WHEN fs.category IS NULL THEN 4
+                        ELSE 5
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id, current_academic_year_id, current_term_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                    ORDER BY
+                      CASE
+                        WHEN fs.category = 'both' THEN 1
+                        WHEN fs.category = 'self sponsored' THEN 2
+                        WHEN fs.category = 'sponsored' THEN 3
+                        WHEN fs.category IS NULL THEN 4
+                        ELSE 5
+                      END,
+                      fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id,),
+                )
+        else:
+            if current_academic_year_id and current_term_id:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND fs.academic_year_id = %s
+                      AND fs.term_id = %s
+                      AND fs.category = 'both'
+                    ORDER BY fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id, current_academic_year_id, current_term_id),
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date,
+                           fs.payment_deadline, fs.total_amount, fs.status, fs.category
+                    FROM fee_structures fs
+                    WHERE fs.academic_level_id = %s
+                      AND fs.status = 'active'
+                      AND fs.category = 'both'
+                    ORDER BY fs.created_at DESC
+                    LIMIT 1
+                    """,
+                    (academic_level_id,),
+                )
+        fee_structure_result = cursor.fetchone()
+    except Exception as e:
+        print(f"_reports_select_fee_structure_for_student: {e}")
+        return None
+    return _reports_fee_structure_dict_from_row(fee_structure_result)
+
+
+def _reports_compute_student_fee_balance(cursor, student_id, student_category, academic_level_id, fee_structure):
+    """Amounts for current structure + carry/previous terms — mirrors student_fees.
+
+    Returns dict: total_amount (due), paid_amount (payments on current structure + carry-forward credits), balance.
+    """
+    if not fee_structure:
+        return None
+    total_paid = 0.0
+    carry_forward = 0.0
+    previous_term_balance = 0.0
+    student_category = (student_category or '').lower().strip() if student_category else ''
+    try:
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount_paid), 0) as total_paid
+            FROM student_payments
+            WHERE student_id = %s AND fee_structure_id = %s
+            """,
+            (student_id, fee_structure.get('id')),
+        )
+        payment_result = cursor.fetchone()
+        if payment_result:
+            total_paid = float(payment_result.get('total_paid', 0) if isinstance(payment_result, dict) else payment_result[0] or 0)
+
+        if academic_level_id:
+            current_start_date = fee_structure.get('start_date')
+            if student_category == 'self sponsored':
+                if current_start_date:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                        AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id'), current_start_date),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND fs.end_date < CURDATE()
+                        AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id')),
+                    )
+            elif student_category == 'sponsored':
+                if current_start_date:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                        AND (fs.category = 'sponsored' OR fs.category = 'both')
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id'), current_start_date),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND fs.end_date < CURDATE()
+                        AND (fs.category = 'sponsored' OR fs.category = 'both')
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id')),
+                    )
+            elif student_category == 'both':
+                if current_start_date:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id'), current_start_date),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND fs.end_date < CURDATE()
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id')),
+                    )
+            else:
+                if current_start_date:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
+                        AND fs.category = 'both'
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id'), current_start_date),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.total_amount,
+                               COALESCE(SUM(sp.amount_paid), 0) as total_paid
+                        FROM fee_structures fs
+                        LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
+                        WHERE fs.academic_level_id = %s
+                        AND fs.id != %s
+                        AND fs.status = 'active'
+                        AND fs.end_date < CURDATE()
+                        AND fs.category = 'both'
+                        GROUP BY fs.id, fs.total_amount
+                        """,
+                        (student_id, academic_level_id, fee_structure.get('id')),
+                    )
+
+            previous_structures = cursor.fetchall()
+            for prev_struct in previous_structures:
+                if isinstance(prev_struct, dict):
+                    prev_total = float(prev_struct.get('total_amount', 0) or 0)
+                    prev_paid = float(prev_struct.get('total_paid', 0) or 0)
+                else:
+                    prev_total = float(prev_struct[1] or 0) if len(prev_struct) > 1 else 0
+                    prev_paid = float(prev_struct[2] or 0) if len(prev_struct) > 2 else 0
+                prev_balance = prev_total - prev_paid
+                if prev_balance < 0:
+                    carry_forward += abs(prev_balance)
+                elif prev_balance > 0:
+                    previous_term_balance += prev_balance
+
+        total_amount_due = float(fee_structure.get('total_amount', 0)) + previous_term_balance
+        paid_applied = total_paid + carry_forward
+        balance = total_amount_due - paid_applied
+        return {
+            'total_amount': total_amount_due,
+            'paid_amount': paid_applied,
+            'balance': balance,
+        }
+    except Exception as e:
+        print(f"_reports_compute_student_fee_balance: {e}")
+        ta = float(fee_structure.get('total_amount', 0))
+        return {'total_amount': ta, 'paid_amount': 0.0, 'balance': ta}
+
+
+def _class_fees_accounts_bundle(cursor, level_id, level_name):
+    """Per-student fee balances for this class + payment ids for receipt links (same logic as student_fees)."""
+    student_rows = []
+    total_outstanding = 0.0
+    if not level_name:
+        return {'student_rows': [], 'total_outstanding': 0.0}
+
+    try:
+        cy, ct = _reports_current_year_term_ids(cursor)
+        cursor.execute(
+            """
+            SELECT student_id, full_name, student_category
+            FROM students
+            WHERE current_grade = %s AND status = 'in session'
+            ORDER BY full_name ASC
+            """,
+            (level_name,),
+        )
+        students = cursor.fetchall() or []
+        sids = []
+        for r in students:
+            sid = r.get('student_id') if isinstance(r, dict) else r[0]
+            if sid:
+                sids.append(sid)
+
+        payment_counts = {}
+        latest_payment = {}
+        if sids:
+            ph = ','.join(['%s'] * len(sids))
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT student_id, COUNT(*) AS c
+                    FROM student_payments
+                    WHERE student_id IN ({ph})
+                    GROUP BY student_id
+                    """,
+                    sids,
+                )
+                for row in cursor.fetchall() or []:
+                    payment_counts[row.get('student_id') if isinstance(row, dict) else row[0]] = int(
+                        (row.get('c') if isinstance(row, dict) else row[1]) or 0
+                    )
+            except Exception as e:
+                print(f"_class_fees_accounts_bundle counts: {e}")
+
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT id, student_id, payment_date
+                    FROM student_payments
+                    WHERE student_id IN ({ph})
+                    ORDER BY payment_date DESC, id DESC
+                    """,
+                    sids,
+                )
+                for row in cursor.fetchall() or []:
+                    sid = row.get('student_id') if isinstance(row, dict) else row[1]
+                    pid = row.get('id') if isinstance(row, dict) else row[0]
+                    if sid not in latest_payment:
+                        latest_payment[sid] = pid
+            except Exception as e:
+                print(f"_class_fees_accounts_bundle latest payment: {e}")
+
+        for row in students:
+            student_id = row.get('student_id') if isinstance(row, dict) else row[0]
+            full_name = row.get('full_name') if isinstance(row, dict) else row[1]
+            student_category = row.get('student_category') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')
+            fs = _reports_select_fee_structure_for_student(cursor, level_id, student_category, cy, ct)
+            amounts = _reports_compute_student_fee_balance(cursor, student_id, student_category, level_id, fs)
+            if amounts:
+                bal = amounts['balance']
+                total_amt = amounts['total_amount']
+                paid_amt = amounts['paid_amount']
+            else:
+                bal = None
+                total_amt = None
+                paid_amt = None
+            if bal is not None and bal > 0:
+                total_outstanding += bal
+            pc = payment_counts.get(student_id, 0)
+            lp = latest_payment.get(student_id)
+            student_rows.append(
+                {
+                    'student_id': student_id,
+                    'full_name': full_name or '—',
+                    'total_amount': total_amt,
+                    'paid_amount': paid_amt,
+                    'balance': bal,
+                    'payment_count': pc,
+                    'latest_payment_id': lp,
+                }
+            )
+    except Exception as e:
+        print(f"_class_fees_accounts_bundle: {e}")
+        import traceback
+
+        traceback.print_exc()
+
+    return {'student_rows': student_rows, 'total_outstanding': total_outstanding}
+
+
+def _finance_overview_student_fee_bundle(cursor):
+    """All in-session students with fee totals (same rules as Student fees / class report)."""
+    out = {
+        'student_rows': [],
+        'total_outstanding': 0.0,
+        'sum_total_amount': 0.0,
+        'sum_paid_amount': 0.0,
+    }
+    try:
+        cy, ct = _reports_current_year_term_ids(cursor)
+        level_by_name = {}
+        cursor.execute(
+            "SELECT id, level_name FROM academic_levels WHERE level_status = 'active'"
+        )
+        for r in cursor.fetchall() or []:
+            lid = r.get('id') if isinstance(r, dict) else r[0]
+            ln = r.get('level_name') if isinstance(r, dict) else r[1]
+            if ln:
+                level_by_name[ln] = lid
+
+        cursor.execute(
+            """
+            SELECT student_id, full_name, student_category, current_grade
+            FROM students
+            WHERE status = 'in session'
+            ORDER BY current_grade ASC, full_name ASC
+            """
+        )
+        students = cursor.fetchall() or []
+        sids = []
+        for r in students:
+            sid = r.get('student_id') if isinstance(r, dict) else r[0]
+            if sid:
+                sids.append(sid)
+
+        payment_counts = {}
+        latest_payment = {}
+        if sids:
+            ph = ','.join(['%s'] * len(sids))
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT student_id, COUNT(*) AS c
+                    FROM student_payments
+                    WHERE student_id IN ({ph})
+                    GROUP BY student_id
+                    """,
+                    sids,
+                )
+                for row in cursor.fetchall() or []:
+                    payment_counts[row.get('student_id') if isinstance(row, dict) else row[0]] = int(
+                        (row.get('c') if isinstance(row, dict) else row[1]) or 0
+                    )
+            except Exception as e:
+                print(f"_finance_overview_student_fee_bundle counts: {e}")
+
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT id, student_id, payment_date
+                    FROM student_payments
+                    WHERE student_id IN ({ph})
+                    ORDER BY payment_date DESC, id DESC
+                    """,
+                    sids,
+                )
+                for row in cursor.fetchall() or []:
+                    sid = row.get('student_id') if isinstance(row, dict) else row[1]
+                    pid = row.get('id') if isinstance(row, dict) else row[0]
+                    if sid not in latest_payment:
+                        latest_payment[sid] = pid
+            except Exception as e:
+                print(f"_finance_overview_student_fee_bundle latest payment: {e}")
+
+        for row in students:
+            student_id = row.get('student_id') if isinstance(row, dict) else row[0]
+            full_name = row.get('full_name') if isinstance(row, dict) else row[1]
+            student_category = row.get('student_category') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')
+            current_grade = row.get('current_grade') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+            current_grade = (current_grade or '') or ''
+            level_id = level_by_name.get(current_grade) if current_grade else None
+            fs = None
+            amounts = None
+            if level_id:
+                fs = _reports_select_fee_structure_for_student(cursor, level_id, student_category, cy, ct)
+                if fs:
+                    amounts = _reports_compute_student_fee_balance(cursor, student_id, student_category, level_id, fs)
+            if amounts:
+                bal = amounts['balance']
+                total_amt = amounts['total_amount']
+                paid_amt = amounts['paid_amount']
+            else:
+                bal = None
+                total_amt = None
+                paid_amt = None
+            if bal is not None and bal > 0:
+                out['total_outstanding'] += bal
+            if total_amt is not None:
+                out['sum_total_amount'] += total_amt
+            if paid_amt is not None:
+                out['sum_paid_amount'] += paid_amt
+            out['student_rows'].append(
+                {
+                    'student_id': student_id,
+                    'full_name': full_name or '—',
+                    'class_name': current_grade or '—',
+                    'total_amount': total_amt,
+                    'paid_amount': paid_amt,
+                    'balance': bal,
+                    'payment_count': payment_counts.get(student_id, 0),
+                    'latest_payment_id': latest_payment.get(student_id),
+                }
+            )
+    except Exception as e:
+        print(f"_finance_overview_student_fee_bundle: {e}")
+        import traceback
+
+        traceback.print_exc()
+    return out
+
+
+def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None):
+    """Exam aggregates for one class (same logic as exam reports)."""
+    level_name = lev['level_name']
+    subject_stats = {}
+    all_marks_for_class = []
+    students_in_class = set()
+    try:
+        cursor.execute(
+            """
+            SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
+                   s.subject_name, s.subject_code, ay.year_name, t.term_name
+            FROM exams e
+            LEFT JOIN subjects s ON e.subject_id = s.id
+            LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+            LEFT JOIN terms t ON e.term_id = t.id
+            WHERE e.academic_level_id = %s
+            AND (%s IS NULL OR e.term_id = %s)
+            AND (%s IS NULL OR e.academic_year_id = %s)
+            ORDER BY e.exam_name, s.subject_name
+            """,
+            (lev['id'], term_id, term_id, academic_year_id, academic_year_id),
+        )
+        exam_rows = cursor.fetchall() or []
+        for ex in exam_rows:
+            exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
+            subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
+            subject_name = (
+                (ex.get('subject_name') or ex.get('subject_code') or 'N/A')
+                if isinstance(ex, dict)
+                else (ex[4] or ex[5] or 'N/A')
+            )
+            if not subject_id:
+                continue
+            if subject_id not in subject_stats:
+                subject_stats[subject_id] = {
+                    'subject_name': subject_name,
+                    'exam_ids': [],
+                    'marks': [],
+                    'mean': 0,
+                    'min': None,
+                    'max': None,
+                    'count': 0,
+                    'pass_count': 0,
+                    'pass_rate': 0,
+                }
+            subject_stats[subject_id]['exam_ids'].append(exam_id)
+            cursor.execute(
+                """
+                SELECT sm.student_id, sm.marks
+                FROM student_marks sm
+                INNER JOIN students st ON sm.student_id = st.student_id
+                WHERE sm.exam_id = %s AND st.current_grade = %s
+                """,
+                (exam_id, level_name),
+            )
+            for mr in cursor.fetchall() or []:
+                sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
+                mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
+                try:
+                    mfloat = float(mval) if mval is not None else None
+                    if mfloat is not None:
+                        subject_stats[subject_id]['marks'].append(mfloat)
+                        all_marks_for_class.append(mfloat)
+                        students_in_class.add(sid)
+                        if mfloat >= 50:
+                            subject_stats[subject_id]['pass_count'] += 1
+                except (TypeError, ValueError):
+                    pass
+        subject_list = []
+        for _sid, sdata in subject_stats.items():
+            marks = sdata['marks']
+            if marks:
+                sdata['mean'] = round(sum(marks) / len(marks), 2)
+                sdata['min'] = round(min(marks), 2)
+                sdata['max'] = round(max(marks), 2)
+                sdata['count'] = len(marks)
+                sdata['pass_rate'] = round(100 * sdata['pass_count'] / len(marks), 1) if marks else 0
+            else:
+                sdata['mean'] = 0
+                sdata['min'] = None
+                sdata['max'] = None
+                sdata['count'] = 0
+                sdata['pass_rate'] = 0
+            subject_list.append(
+                {
+                    'subject_name': sdata['subject_name'],
+                    'mean': sdata['mean'],
+                    'min': sdata['min'],
+                    'max': sdata['max'],
+                    'count': sdata['count'],
+                    'pass_rate': sdata['pass_rate'],
+                }
+            )
+        class_mean = (
+            round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
+        )
+        return {
+            'subjects': subject_list,
+            'class_mean': class_mean,
+            'student_count': len(students_in_class),
+            'total_marks_entries': len(all_marks_for_class),
+        }
+    except Exception as e:
+        print(f"_build_class_exam_performance_bundle: {e}")
+        return {
+            'subjects': [],
+            'class_mean': 0,
+            'student_count': 0,
+            'total_marks_entries': 0,
+        }
 
 
 def _term_date_bounds(cursor, term_id):
@@ -18167,7 +19512,7 @@ def academic_reports():
     """Academic report hub — filter shell only; data loads on demand via API."""
     if not _reports_access_roles_ok():
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     academic_levels = []
     terms = []
@@ -18189,7 +19534,7 @@ def academic_reports():
                         'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
                     })
                 cursor.execute("""
-                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name, t.is_current
                     FROM terms t
                     LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
                     ORDER BY t.academic_year_id DESC, t.id DESC
@@ -18200,6 +19545,7 @@ def academic_reports():
                         'term_name': row.get('term_name') if isinstance(row, dict) else row[1],
                         'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else row[2],
                         'year_name': row.get('year_name') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                        'is_current': bool(row.get('is_current')) if isinstance(row, dict) else (bool(row[4]) if len(row) > 4 else False),
                     })
                 cursor.execute("""
                     SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC
@@ -18244,12 +19590,12 @@ def academic_report_preview():
 
     if not _reports_access_roles_ok():
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
 
     report_type = (request.args.get('report_type') or '').strip()
     if not report_type:
         flash('Missing report type.', 'error')
-        return redirect(url_for('academic_reports'))
+        return redirect(employee_dashboard_path('academic-reports'))
 
     fmt = (request.args.get('format') or '').strip().lower()
     arg_dict = {k: v for k, v in request.args.items() if k not in ('format', 'report_type')}
@@ -18258,7 +19604,7 @@ def academic_report_preview():
     connection = get_db_connection()
     if not connection:
         flash('Database unavailable.', 'error')
-        return redirect(url_for('academic_reports'))
+        return redirect(employee_dashboard_path('academic-reports'))
 
     bundle = None
     try:
@@ -18269,20 +19615,20 @@ def academic_report_preview():
         import traceback
         traceback.print_exc()
         flash('Could not load this report.', 'error')
-        return redirect(url_for('academic_reports'))
+        return redirect(employee_dashboard_path('academic-reports'))
     finally:
         connection.close()
 
     if not bundle or bundle.get('error'):
         flash((bundle or {}).get('error') or 'Could not build this report.', 'error')
-        return redirect(url_for('academic_reports'))
+        return redirect(employee_dashboard_path('academic-reports'))
 
     if fmt == 'csv':
         return _make_academic_report_csv_response(bundle, report_type)
 
     args_flat = request.args.to_dict(flat=True)
     args_flat['format'] = 'csv'
-    download_url = url_for('academic_report_preview') + '?' + urlencode(args_flat)
+    download_url = employee_dashboard_path('academic-reports/preview') + '?' + urlencode(args_flat)
 
     display = _preview_display_context(report_type, bundle)
     return render_template(
@@ -18354,24 +19700,441 @@ def api_academic_reports_generate():
         connection.close()
 
 
+def _user_can_access_communication():
+    ur = session.get('role', '').lower()
+    vr = session.get('viewing_as_employee_role', '').lower()
+    allowed = (
+        'curriculum coordinator',
+        'technician',
+        'head of institution',
+        'deputy head of institution',
+        'secretary',
+        'super admin',
+    )
+    return ur in allowed or vr in allowed
+
+
+def _load_integration_data_communication():
+    """Same shape as integration_settings page — for channel availability hints."""
+    data = {
+        'whatsapp': {'enabled': False, 'api_key': '', 'phone_number': ''},
+        'email': {'enabled': False, 'smtp_username': '', 'smtp_password': '', 'from_email': ''},
+        'sms': {'enabled': False, 'provider': '', 'api_key': '', 'username': '', 'sender_id': ''},
+    }
+    connection = get_db_connection()
+    if not connection:
+        return data
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT integration_type, settings_json FROM integration_settings"
+            )
+            for row in cursor.fetchall() or []:
+                it = row.get('integration_type') if isinstance(row, dict) else row[0]
+                js = row.get('settings_json') if isinstance(row, dict) else row[1]
+                try:
+                    parsed = json.loads(js or '{}')
+                except Exception:
+                    parsed = {}
+                if it in data and isinstance(parsed, dict):
+                    data[it].update(parsed)
+    except Exception as e:
+        print(f"_load_integration_data_communication: {e}")
+    finally:
+        connection.close()
+    return data
+
+
+def _communication_channel_flags(integ):
+    """Which channels appear configured (for UI + send)."""
+    em = integ.get('email') or {}
+    sm = integ.get('sms') or {}
+    wa = integ.get('whatsapp') or {}
+    email_ok = bool((em.get('smtp_username') or '').strip() and (em.get('smtp_password') or '').strip()) or bool(
+        (os.environ.get('MAIL_USERNAME') or '').strip()
+    )
+    prov = (sm.get('provider') or '').lower()
+    api_key = (sm.get('api_key') or '').strip()
+    sms_ok = bool(sm.get('enabled')) and bool(api_key)
+    if sms_ok and ('africa' in prov or prov == 'africastalking'):
+        sms_ok = bool((sm.get('username') or sm.get('account_username') or '').strip())
+    wa_ok = bool(wa.get('enabled')) and bool(
+        (wa.get('api_key') or wa.get('access_token') or '').strip()
+    ) and bool((wa.get('phone_number_id') or wa.get('phone_number') or '').strip())
+    return {'email': email_ok, 'sms': sms_ok, 'whatsapp': wa_ok}
+
+
 # Communication Route (for academic coordinators)
 @app.route('/dashboard/employee/communication')
 @login_required
 def communication():
-    """Communication page for academic coordinators"""
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
-    is_technician = user_role == 'technician'
-    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
-    
-    if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
+    """Communication centre — broadcast to staff or parents."""
+    if not _user_can_access_communication():
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-    
-    return render_template('dashboards/communication.html', role=user_role)
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    integ = _load_integration_data_communication()
+    channels = _communication_channel_flags(integ)
+
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, level_name, level_category
+                    FROM academic_levels
+                    WHERE level_status = 'active'
+                    ORDER BY level_name
+                    """
+                )
+                for row in cursor.fetchall() or []:
+                    academic_levels.append(
+                        {
+                            'id': row.get('id') if isinstance(row, dict) else row[0],
+                            'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+                            'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                        }
+                    )
+        except Exception as e:
+            print(f"communication academic_levels: {e}")
+        finally:
+            connection.close()
+
+    departments = [
+        'Front office',
+        'Administration',
+        'Academics',
+        'Finance',
+        'ICT',
+        'Sports & co-curricular',
+        'Other',
+    ]
+
+    return render_template(
+        'dashboards/communication.html',
+        role=user_role,
+        integration_data=integ,
+        channel_flags=channels,
+        academic_levels=academic_levels,
+        departments=departments,
+    )
+
+
+@app.route('/api/employee/communication/recipients', methods=['GET'])
+@login_required
+def api_communication_recipients():
+    if not _user_can_access_communication():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    audience = (request.args.get('audience') or 'employees').lower().strip()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error'}), 500
+
+    out = []
+    try:
+        with connection.cursor() as cursor:
+            if audience == 'employees':
+                cursor.execute(
+                    """
+                    SELECT id, employee_id, full_name, phone, email, role
+                    FROM employees
+                    WHERE status = 'active'
+                    ORDER BY full_name ASC
+                    """
+                )
+                for row in cursor.fetchall() or []:
+                    rid = row.get('id') if isinstance(row, dict) else row[0]
+                    eid = row.get('employee_id') if isinstance(row, dict) else row[1]
+                    fn = row.get('full_name') if isinstance(row, dict) else row[2]
+                    ph = row.get('phone') if isinstance(row, dict) else row[3]
+                    em = row.get('email') if isinstance(row, dict) else row[4]
+                    rl = row.get('role') if isinstance(row, dict) else row[5]
+                    out.append(
+                        {
+                            'id': rid,
+                            'kind': 'employee',
+                            'employee_id': eid,
+                            'name': fn or '',
+                            'phone': ph or '',
+                            'email': em or '',
+                            'role': (rl or '').lower(),
+                            'search': f"{fn} {ph} {em} {eid} {rl}".lower(),
+                        }
+                    )
+            else:
+                cursor.execute(
+                    """
+                    SELECT p.id, p.full_name, p.phone, p.email,
+                           GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
+                           GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
+                    FROM parents p
+                    INNER JOIN students s ON s.student_id = p.student_id AND s.status = 'in session'
+                    GROUP BY p.id, p.full_name, p.phone, p.email
+                    ORDER BY p.full_name ASC
+                    """
+                )
+                for row in cursor.fetchall() or []:
+                    rid = row.get('id') if isinstance(row, dict) else row[0]
+                    fn = row.get('full_name') if isinstance(row, dict) else row[1]
+                    ph = row.get('phone') if isinstance(row, dict) else row[2]
+                    em = row.get('email') if isinstance(row, dict) else row[3]
+                    grades = row.get('grades') if isinstance(row, dict) else row[4]
+                    children = row.get('children') if isinstance(row, dict) else row[5]
+                    out.append(
+                        {
+                            'id': rid,
+                            'kind': 'parent',
+                            'name': fn or '',
+                            'phone': ph or '',
+                            'email': em or '',
+                            'grades': grades or '',
+                            'children': children or '',
+                            'search': f"{fn} {ph} {em} {grades} {children}".lower(),
+                        }
+                    )
+    except Exception as e:
+        print(f"api_communication_recipients: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+    return jsonify({'success': True, 'recipients': out})
+
+
+@app.route('/api/employee/communication/send', methods=['POST'])
+@login_required
+def api_communication_send():
+    if not _user_can_access_communication():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        payload = {}
+
+    subject = (payload.get('subject') or '').strip()
+    body = (payload.get('message') or '').strip()
+    dept = (payload.get('department') or '').strip()
+    audience = (payload.get('audience') or 'employees').lower().strip()
+    recipient_ids = payload.get('recipient_ids') or []
+    channels = payload.get('channels') or {}
+
+    if not subject or not body:
+        return jsonify({'success': False, 'message': 'Subject and message are required.'}), 400
+    if not isinstance(recipient_ids, list) or len(recipient_ids) == 0:
+        return jsonify({'success': False, 'message': 'Select at least one recipient.'}), 400
+    if not any(channels.get(k) for k in ('email', 'sms', 'whatsapp')):
+        return jsonify({'success': False, 'message': 'Select at least one channel (email, SMS, or WhatsApp).'}), 400
+
+    integ = _load_integration_data_communication()
+    flags = _communication_channel_flags(integ)
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database error'}), 500
+
+    targets = []
+    try:
+        with connection.cursor() as cursor:
+            ids = []
+            for x in recipient_ids:
+                try:
+                    ids.append(int(x))
+                except (TypeError, ValueError):
+                    pass
+            if audience == 'employees':
+                if not ids:
+                    return jsonify({'success': False, 'message': 'Invalid recipient ids.'}), 400
+                ph = ','.join(['%s'] * len(ids))
+                cursor.execute(
+                    f"SELECT id, full_name, phone, email FROM employees WHERE id IN ({ph}) AND status = 'active'",
+                    ids,
+                )
+                for row in cursor.fetchall() or []:
+                    targets.append(
+                        {
+                            'name': row.get('full_name') if isinstance(row, dict) else row[1],
+                            'phone': row.get('phone') if isinstance(row, dict) else row[2],
+                            'email': row.get('email') if isinstance(row, dict) else row[3],
+                        }
+                    )
+            else:
+                if not ids:
+                    return jsonify({'success': False, 'message': 'Invalid recipient ids.'}), 400
+                ph = ','.join(['%s'] * len(ids))
+                cursor.execute(
+                    f"SELECT id, full_name, phone, email FROM parents WHERE id IN ({ph})",
+                    ids,
+                )
+                for row in cursor.fetchall() or []:
+                    targets.append(
+                        {
+                            'name': row.get('full_name') if isinstance(row, dict) else row[1],
+                            'phone': row.get('phone') if isinstance(row, dict) else row[2],
+                            'email': row.get('email') if isinstance(row, dict) else row[3],
+                        }
+                    )
+    except Exception as e:
+        print(f"api_communication_send load targets: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+    if not targets:
+        return jsonify({'success': False, 'message': 'No matching recipients found.'}), 400
+
+    results = {'email': {'sent': 0, 'failed': []}, 'sms': {'sent': 0, 'skipped': 0, 'notes': []}, 'whatsapp': {'sent': 0, 'skipped': 0, 'notes': []}}
+
+    full_text = f"Department: {dept}\n\n{body}" if dept else body
+    html_body = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;">
+<p><strong>{subject}</strong></p>
+<p style="white-space:pre-wrap">{body}</p>
+{f'<p style="color:#64748b;font-size:13px;">From: {dept}</p>' if dept else ''}
+</body></html>"""
+
+    if channels.get('email'):
+        if not flags.get('email'):
+            results['email']['failed'].append('Email not configured (Integration Settings or .env SMTP).')
+        else:
+            if not apply_mail_config_from_env_and_integration():
+                results['email']['failed'].append('SMTP credentials missing.')
+            else:
+                school = get_school_settings()
+                from_name = (school.get('school_name') or 'School').strip()
+                sender_email = (app.config.get('MAIL_DEFAULT_SENDER') or '').strip() or 'noreply@localhost'
+                for t in targets:
+                    em = (t.get('email') or '').strip()
+                    if not em:
+                        results['email']['failed'].append(f"{t.get('name')}: no email")
+                        continue
+                    try:
+                        msg = Message(
+                            subject=subject,
+                            recipients=[em],
+                            body=full_text,
+                            html=html_body,
+                        )
+                        msg.sender = f"{from_name} <{sender_email}>"
+                        mail.send(msg)
+                        results['email']['sent'] += 1
+                    except Exception as ex:
+                        results['email']['failed'].append(f"{em}: {ex}")
+
+    if channels.get('sms'):
+        sm = integ.get('sms') or {}
+        if not flags.get('sms'):
+            results['sms']['notes'].append(
+                'SMS not configured: enable and add API key in Integration Settings → SMS.'
+            )
+            results['sms']['skipped'] = len(targets)
+        else:
+            prov = (sm.get('provider') or '').lower()
+            api_key = (sm.get('api_key') or '').strip()
+            sender_id = (sm.get('sender_id') or '').strip() or 'INFO'
+            for t in targets:
+                phone = (t.get('phone') or '').strip()
+                if not phone:
+                    results['sms']['skipped'] += 1
+                    continue
+                txt = f"{subject}\n{full_text}"[:480]
+                try:
+                    if 'africa' in prov or prov == 'africastalking':
+                        username = (sm.get('username') or sm.get('account_username') or '').strip()
+                        if username and api_key:
+                            import urllib.parse
+                            import urllib.request
+
+                            data = urllib.parse.urlencode(
+                                {
+                                    'username': username,
+                                    'to': phone,
+                                    'message': txt,
+                                    'from': sender_id,
+                                }
+                            ).encode()
+                            req = urllib.request.Request(
+                                'https://api.africastalking.com/version1/messaging',
+                                data=data,
+                                headers={
+                                    'apiKey': api_key,
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'Accept': 'application/json',
+                                },
+                                method='POST',
+                            )
+                            with urllib.request.urlopen(req, timeout=25) as resp:
+                                _ = resp.read()
+                            results['sms']['sent'] += 1
+                        else:
+                            results['sms']['skipped'] += 1
+                            results['sms']['notes'].append('Africa\'s Talking: set username + API key in SMS settings.')
+                    else:
+                        results['sms']['skipped'] += 1
+                        if not results['sms']['notes']:
+                            results['sms']['notes'].append(
+                                'SMS provider not supported in app yet; use Africa\'s Talking or extend integration.'
+                            )
+                except Exception as ex:
+                    results['sms']['notes'].append(str(ex))
+                    results['sms']['skipped'] += 1
+
+    if channels.get('whatsapp'):
+        wa = integ.get('whatsapp') or {}
+        if not flags.get('whatsapp'):
+            results['whatsapp']['notes'].append(
+                'WhatsApp not configured: enable in Integration Settings → WhatsApp.'
+            )
+            results['whatsapp']['skipped'] = len(targets)
+        else:
+            token = (wa.get('api_key') or wa.get('access_token') or '').strip()
+            phone_id = (wa.get('phone_number_id') or wa.get('phone_number') or '').strip()
+            for t in targets:
+                phone = (t.get('phone') or '').strip().replace('+', '').replace(' ', '')
+                if not phone:
+                    results['whatsapp']['skipped'] += 1
+                    continue
+                if token and phone_id and len(phone) > 6:
+                    try:
+                        import urllib.parse
+                        import urllib.request
+
+                        wtxt = f"*{subject}*\n{full_text}"[:1000]
+                        graph_url = f"https://graph.facebook.com/v18.0/{phone_id}/messages"
+                        j = json.dumps(
+                            {
+                                'messaging_product': 'whatsapp',
+                                'to': phone,
+                                'type': 'text',
+                                'text': {'body': wtxt},
+                            }
+                        ).encode('utf-8')
+                        req = urllib.request.Request(
+                            graph_url,
+                            data=j,
+                            headers={
+                                'Authorization': f'Bearer {token}',
+                                'Content-Type': 'application/json',
+                            },
+                            method='POST',
+                        )
+                        with urllib.request.urlopen(req, timeout=25) as resp:
+                            _ = resp.read()
+                        results['whatsapp']['sent'] += 1
+                    except Exception as ex:
+                        results['whatsapp']['notes'].append(str(ex))
+                        results['whatsapp']['skipped'] += 1
+                else:
+                    results['whatsapp']['skipped'] += 1
+                    if not results['whatsapp']['notes']:
+                        results['whatsapp']['notes'].append(
+                            'WhatsApp Cloud API: set access token and phone_number_id in Integration Settings.'
+                        )
+
+    return jsonify({'success': True, 'results': results})
 
 # Notifications Route (for academic coordinators)
 @app.route('/dashboard/employee/notifications')
@@ -18387,7 +20150,7 @@ def notifications():
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     return render_template('dashboards/notifications.html', role=user_role)
 
@@ -18405,7 +20168,7 @@ def integration_settings():
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get integration settings from database if they exist
     connection = get_db_connection()
@@ -18431,6 +20194,7 @@ def integration_settings():
             'provider': '',
             'api_key': '',
             'api_secret': '',
+            'username': '',
             'sender_id': ''
         }
     }
@@ -18483,7 +20247,7 @@ def database_management():
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get database information and data analysis
     connection = get_db_connection()
@@ -18772,7 +20536,7 @@ def database_backup_restore():
     # Only technicians and principals can access this page
     if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     # Get backup settings and history
     connection = get_db_connection()
@@ -18886,7 +20650,7 @@ def database_backup_export():
     
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     if not connection:
@@ -19059,7 +20823,7 @@ def database_backup_settings():
     
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     auto_backup = request.form.get('auto_backup') == 'on'
     frequency = request.form.get('frequency', 'daily')
@@ -19140,7 +20904,7 @@ def database_health_status():
     # Only technicians and principals can access this page
     if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     health_status = {
@@ -19363,7 +21127,7 @@ def logs_audit_trails():
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     salary_audits = []
@@ -19477,7 +21241,7 @@ def users_roles():
     # Only technicians can access this page
     if user_role != 'technician':
         flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
+        return redirect(employee_dashboard_path())
     
     connection = get_db_connection()
     employees_by_role = {}
@@ -20924,6 +22688,9 @@ def _ensure_db_schema():
         except Exception as e2:
             print(f"[DB] Fallback failed: {e2}")
 
+
+# /<role>/… → /dashboard/… ; /dashboard/<role-slug>/… → /dashboard/employee/…
+app.wsgi_app = RootRolePathRewriteMiddleware(DashboardRolePathRewriteMiddleware(app.wsgi_app))
 
 # Apply schema and migrations when app is loaded (so git pull + restart updates DB)
 _ensure_db_schema()

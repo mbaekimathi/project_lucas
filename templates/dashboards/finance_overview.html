@@ -7,21 +7,21 @@
 {% include "dashboards/_secretary_academic_nav_sidebar.html" %}
 {% else %}
 <div class="space-y-2">
-    <a href="/dashboard/employee/finance-overview" 
+    <a href="{{ employee_dash_url('finance-overview') }}" 
        class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-money-bill-wave w-5"></i>
         <span class="font-semibold">Finance Overview</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
     
-    <a href="/dashboard/employee/student-fees" 
+    <a href="{{ employee_dash_url('student-fees') }}" 
        class="w-full sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span class="font-medium">Student Fees</span>
         <i class="fas fa-chevron-right ml-auto"></i>
     </a>
     
-    <a href="/dashboard/employee/staff-and-salaries" 
+    <a href="{{ employee_dash_url('staff-and-salaries') }}" 
        class="w-full sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}">
         <i class="fas fa-wallet w-5"></i>
         <span class="font-medium">Staff and Salaries</span>
@@ -38,191 +38,253 @@
             <i class="fas fa-money-bill-wave text-green-600 mr-3"></i>
             Finance Overview
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Fees, student payments, and payroll expense outflows</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+            All in-session students with fee totals aligned to the <strong>current academic year and term</strong> (same logic as Student fees): total due, paid/credited, and balance. Payroll and other ledgers are available under <a href="{{ employee_dash_url('staff-and-salaries') }}" class="text-brand-primary font-medium hover:underline">Staff and Salaries</a>.
+        </p>
     </div>
+
+    {% set fa = student_fee_analytics|default({}) %}
+    {% set rows = fa.student_rows|default([]) %}
 
     <!-- Summary -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Active students</span>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Students (in session)</span>
                 <i class="fas fa-user-graduate text-blue-500"></i>
             </div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ finance_summary.total_students }}</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ rows|length }}</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Fee structures</span>
-                <i class="fas fa-list-alt text-purple-500"></i>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total billed (sum)</span>
+                <i class="fas fa-file-invoice-dollar text-purple-500"></i>
             </div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ finance_summary.total_fee_structures }}</p>
+            <p class="text-xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(fa.sum_total_amount|default(0)|float) }}</p>
+            <p class="text-xs text-gray-500 mt-1">Where a fee structure applies</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Fee income</span>
-                <i class="fas fa-arrow-down text-green-500"></i>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total paid / credited</span>
+                <i class="fas fa-check-circle text-green-500"></i>
             </div>
-            <p class="text-xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(finance_summary.total_revenue) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ finance_summary.payment_transaction_count }} payment(s)</p>
+            <p class="text-xl font-bold text-green-700 dark:text-green-400">KES {{ "{:,.2f}".format(fa.sum_paid_amount|default(0)|float) }}</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Payroll out</span>
-                <i class="fas fa-arrow-up text-amber-500"></i>
+                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total outstanding</span>
+                <i class="fas fa-exclamation-circle text-amber-500"></i>
             </div>
-            <p class="text-xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(finance_summary.total_expenses) }}</p>
-            <p class="text-xs text-gray-500 mt-1">{{ finance_summary.expense_transaction_count }} disbursement(s)</p>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Net (in − payroll)</span>
-                <i class="fas fa-balance-scale text-indigo-500"></i>
-            </div>
-            {% set net = finance_summary.total_revenue - finance_summary.total_expenses %}
-            <p class="text-xl font-bold {% if net >= 0 %}text-green-700 dark:text-green-400{% else %}text-red-700 dark:text-red-400{% endif %}">KES {{ "{:,.2f}".format(net) }}</p>
+            <p class="text-xl font-bold text-amber-700 dark:text-amber-400">KES {{ "{:,.2f}".format(fa.total_outstanding|default(0)|float) }}</p>
+            <p class="text-xs text-gray-500 mt-1">Sum of positive balances</p>
         </div>
     </div>
 
-    <!-- 1. Fees details -->
-    <section class="mb-10">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-            <i class="fas fa-file-invoice-dollar text-brand-primary"></i>
-            <span>Fee details</span>
-            <span class="text-sm font-normal text-gray-500">(active fee structures)</span>
-        </h2>
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm text-left">
-                    <thead class="bg-gray-50 dark:bg-gray-900/80 text-gray-600 dark:text-gray-300 uppercase text-xs font-semibold">
-                        <tr>
-                            <th class="px-4 py-3 whitespace-nowrap">Fee name</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Class / level</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Total</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Period</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Deadline</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Term / year</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {% if not fee_details %}
-                        <tr>
-                            <td colspan="7" class="px-4 py-10 text-center text-gray-500">No active fee structures.</td>
-                        </tr>
-                        {% else %}
-                        {% for f in fee_details %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ f.fee_name }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ f.level_name }}</td>
-                            <td class="px-4 py-3 text-gray-900 dark:text-white whitespace-nowrap">KES {{ "{:,.2f}".format(f.total_amount) }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ f.start_date }} → {{ f.end_date }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ f.payment_deadline }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">
-                                {% if f.term_name or f.year_name %}
-                                    {{ f.term_name or '—' }}{% if f.term_name and f.year_name %} · {% endif %}{{ f.year_name or '' }}
-                                {% else %}
-                                    —
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-3">
-                                <span class="inline-flex px-2 py-0.5 rounded text-xs font-medium {% if f.status == 'active' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300{% else %}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200{% endif %}">{{ f.status }}</span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- 2. Payment details -->
-    <section class="mb-10">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-            <i class="fas fa-money-check-alt text-green-600"></i>
-            <span>Payment details</span>
-            <span class="text-sm font-normal text-gray-500">(latest student fee payments)</span>
-        </h2>
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
-            <div class="overflow-x-auto">
-                <table class="min-w-full text-sm text-left">
-                    <thead class="bg-gray-50 dark:bg-gray-900/80 text-gray-600 dark:text-gray-300 uppercase text-xs font-semibold">
-                        <tr>
-                            <th class="px-4 py-3 whitespace-nowrap">Date</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Student</th>
-                            <th class="px-4 py-3 whitespace-nowrap">ID</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Amount</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Method</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Reference</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Fee</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {% if not payment_details %}
-                        <tr>
-                            <td colspan="7" class="px-4 py-10 text-center text-gray-500">No payments recorded.</td>
-                        </tr>
-                        {% else %}
-                        {% for p in payment_details %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ p.payment_date }}</td>
-                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ p.student_name }}</td>
-                            <td class="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-400">{{ p.student_id }}</td>
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">KES {{ "{:,.2f}".format(p.amount_paid) }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ p.payment_method }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[220px] truncate" title="{{ p.reference_number }}">{{ p.reference_number or '—' }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ p.fee_name }}</td>
-                        </tr>
-                        {% endfor %}
-                        {% endif %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </section>
-
-    <!-- 3. Expenses (payroll disbursements) -->
+    <!-- Student fee analytics -->
     <section class="mb-6">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
-            <i class="fas fa-receipt text-amber-600"></i>
-            <span>Expense details</span>
-            <span class="text-sm font-normal text-gray-500">(salary & payroll disbursements)</span>
+            <i class="fas fa-chart-pie text-brand-primary"></i>
+            Student fee analytics
         </h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Other school costs can be tracked separately; this list shows recorded staff salary payments.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            <strong>Class</strong> is the student’s current grade. <strong>Total amount</strong> includes prior-term arrears rolled in; <strong>Paid amount</strong> includes payments on the current structure plus carry-forward credits from overpayments.
+        </p>
+
+        {% if rows %}
+        <div class="no-print mb-4 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col xl:flex-row xl:items-end gap-4 flex-wrap">
+                <div class="flex-1 min-w-[200px]">
+                    <label for="fo-search" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Search</label>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="search" id="fo-search" autocomplete="off" placeholder="Name or admission number…"
+                               class="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary" />
+                    </div>
+                </div>
+                <div class="w-full sm:w-[14rem]">
+                    <label for="fo-level" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Academic level</label>
+                    <select id="fo-level" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                        <option value="">All levels</option>
+                        {% for lv in class_filter_options|default([]) %}
+                        <option value="{{ lv|e }}">{{ lv }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="w-full sm:w-[16rem]">
+                    <label for="fo-balance" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Balance</label>
+                    <select id="fo-balance" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                        <option value="all">All students</option>
+                        <option value="outstanding">Outstanding only (owe)</option>
+                        <option value="clear">Paid up / credit / no fee row</option>
+                    </select>
+                </div>
+                <div class="w-full sm:w-[15rem]">
+                    <label for="fo-sort" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Sort by balance</label>
+                    <select id="fo-sort" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                        <option value="original">Default (class, name)</option>
+                        <option value="balance-asc">Balance: low → high</option>
+                        <option value="balance-desc">Balance: high → low</option>
+                    </select>
+                </div>
+            </div>
+            <p id="fo-filter-hint" class="mt-3 text-sm text-gray-600 dark:text-gray-400" aria-live="polite"></p>
+        </div>
+        {% endif %}
+
         <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
             <div class="overflow-x-auto">
-                <table class="min-w-full text-sm text-left">
+                <table class="w-full min-w-[960px] text-sm">
                     <thead class="bg-gray-50 dark:bg-gray-900/80 text-gray-600 dark:text-gray-300 uppercase text-xs font-semibold">
                         <tr>
-                            <th class="px-4 py-3 whitespace-nowrap">Date</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Staff</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Amount</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Method</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Reference</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Notes</th>
+                            <th class="text-left py-3 px-3 whitespace-nowrap">Class</th>
+                            <th class="text-left py-3 px-3">Student</th>
+                            <th class="text-right py-3 px-3">Total amount</th>
+                            <th class="text-right py-3 px-3">Paid amount</th>
+                            <th class="text-right py-3 px-3">Balance</th>
+                            <th class="text-center py-3 px-3 w-32">Invoice</th>
+                            <th class="text-center py-3 px-3 w-36">Receipt</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {% if not expense_details %}
-                        <tr>
-                            <td colspan="6" class="px-4 py-10 text-center text-gray-500">No salary disbursements recorded.</td>
+                    <tbody id="fo-student-tbody" class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for s in rows %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 fo-student-row" data-fo-row
+                            data-idx="{{ loop.index0 }}"
+                            data-class="{{ s.class_name|e }}"
+                            data-search="{{ ((s.full_name ~ ' ' ~ s.student_id)|lower)|e }}"
+                            data-balance="{% if s.balance is none %}{% else %}{{ s.balance }}{% endif %}">
+                            <td class="py-3 px-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ s.class_name }}</td>
+                            <td class="py-3 px-3">
+                                <div class="font-medium text-gray-900 dark:text-white">{{ s.full_name }}</div>
+                                <div class="text-gray-500 dark:text-gray-400 font-mono text-xs mt-0.5">{{ s.student_id }}</div>
+                            </td>
+                            <td class="text-right py-3 px-3 whitespace-nowrap tabular-nums text-gray-800 dark:text-gray-200">
+                                {% if s.total_amount is none %}—{% else %}KES {{ "{:,.2f}".format(s.total_amount|float) }}{% endif %}
+                            </td>
+                            <td class="text-right py-3 px-3 whitespace-nowrap tabular-nums text-green-700 dark:text-green-400">
+                                {% if s.paid_amount is none %}—{% else %}KES {{ "{:,.2f}".format(s.paid_amount|float) }}{% endif %}
+                            </td>
+                            <td class="text-right py-3 px-3 whitespace-nowrap font-semibold tabular-nums {% if s.balance is not none and s.balance > 0 %}text-amber-700 dark:text-amber-400{% elif s.balance is not none and s.balance <= 0 %}text-green-700 dark:text-green-400{% endif %}">
+                                {% if s.balance is none %}—{% else %}KES {{ "{:,.2f}".format(s.balance|float) }}{% endif %}
+                            </td>
+                            <td class="text-center py-3 px-3">
+                                <a href="{{ url_for('generate_invoice', student_id=s.student_id) }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-brand-primary hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Open invoice">
+                                    <i class="fas fa-file-invoice"></i>
+                                    <span class="sr-only">Invoice</span>
+                                </a>
+                            </td>
+                            <td class="text-center py-3 px-3">
+                                {% if s.latest_payment_id %}
+                                <a href="{{ url_for('download_payment_receipt', student_id=s.student_id, payment_id=s.latest_payment_id) }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-600 text-green-700 dark:text-green-400 hover:bg-gray-50 dark:hover:bg-gray-700/50" title="Latest receipt{% if s.payment_count > 1 %} ({{ s.payment_count }} payments total){% endif %}">
+                                    <i class="fas fa-receipt"></i>
+                                    <span class="sr-only">Receipt</span>
+                                </a>
+                                {% else %}
+                                <span class="inline-flex items-center justify-center w-10 h-10 rounded-lg border border-dashed border-gray-200 dark:border-gray-600 text-gray-300 dark:text-gray-600 cursor-not-allowed" title="No payments yet">
+                                    <i class="fas fa-receipt"></i>
+                                </span>
+                                {% endif %}
+                            </td>
                         </tr>
                         {% else %}
-                        {% for e in expense_details %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                            <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ e.payment_date }}</td>
-                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ e.employee_name }}</td>
-                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">KES {{ "{:,.2f}".format(e.amount_paid) }}</td>
-                            <td class="px-4 py-3 text-gray-700 dark:text-gray-300">{{ e.payment_method }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ e.reference_number or '—' }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-xs truncate" title="{{ e.notes }}">{{ e.notes or '—' }}</td>
+                        <tr>
+                            <td colspan="7" class="py-10 px-4 text-center text-gray-500 dark:text-gray-400">No in-session students found.</td>
                         </tr>
                         {% endfor %}
-                        {% endif %}
                     </tbody>
                 </table>
             </div>
         </div>
+        <p class="text-xs text-gray-500 dark:text-gray-500 mt-3">
+            Record payments and manage structures in <a href="{{ employee_dash_url('student-fees') }}" class="text-brand-primary font-medium hover:underline">Student fees</a>.
+        </p>
     </section>
 </div>
+{% if rows %}
+<script>
+(function () {
+  var tbody = document.getElementById('fo-student-tbody');
+  var searchEl = document.getElementById('fo-search');
+  var levelEl = document.getElementById('fo-level');
+  var balanceEl = document.getElementById('fo-balance');
+  var sortEl = document.getElementById('fo-sort');
+  var hintEl = document.getElementById('fo-filter-hint');
+  if (!tbody || !searchEl || !levelEl || !balanceEl || !sortEl) return;
+
+  function allRows() {
+    return Array.prototype.slice.call(tbody.querySelectorAll('tr[data-fo-row]'));
+  }
+
+  function parseBalance(tr) {
+    var raw = tr.getAttribute('data-balance');
+    if (raw === null || raw === '') return null;
+    var n = parseFloat(raw, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  function matchesFilters(tr) {
+    var q = (searchEl.value || '').trim().toLowerCase();
+    if (q) {
+      var hay = (tr.getAttribute('data-search') || '').toLowerCase();
+      if (hay.indexOf(q) === -1) return false;
+    }
+    var level = levelEl.value || '';
+    if (level && (tr.getAttribute('data-class') || '') !== level) return false;
+    var mode = balanceEl.value || 'all';
+    var b = parseBalance(tr);
+    if (mode === 'outstanding') {
+      if (b === null || b <= 0) return false;
+    } else if (mode === 'clear') {
+      if (b !== null && b > 0) return false;
+    }
+    return true;
+  }
+
+  function compareBalanceAsc(a, b) {
+    var av = parseBalance(a);
+    var bv = parseBalance(b);
+    if (av === null && bv === null) return 0;
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    return av - bv;
+  }
+
+  function refresh() {
+    var rows = allRows();
+    var total = rows.length;
+    var matched = rows.filter(matchesFilters);
+    var sortMode = sortEl.value || 'original';
+    if (sortMode === 'balance-asc') {
+      matched.sort(compareBalanceAsc);
+    } else if (sortMode === 'balance-desc') {
+      matched.sort(function (a, b) { return -compareBalanceAsc(a, b); });
+    } else {
+      matched.sort(function (a, b) {
+        return parseInt(a.getAttribute('data-idx') || '0', 10) - parseInt(b.getAttribute('data-idx') || '0', 10);
+      });
+    }
+    var unmatched = rows.filter(function (tr) { return matched.indexOf(tr) === -1; });
+    matched.concat(unmatched).forEach(function (tr) { tbody.appendChild(tr); });
+    matched.forEach(function (tr) { tr.classList.remove('hidden'); });
+    unmatched.forEach(function (tr) { tr.classList.add('hidden'); });
+    if (hintEl) {
+      hintEl.textContent = matched.length === total
+        ? 'Showing all ' + total + ' student(s).'
+        : 'Showing ' + matched.length + ' of ' + total + ' student(s).';
+    }
+  }
+
+  var t;
+  function debouncedRefresh() {
+    clearTimeout(t);
+    t = setTimeout(refresh, 120);
+  }
+
+  searchEl.addEventListener('input', debouncedRefresh);
+  levelEl.addEventListener('change', refresh);
+  balanceEl.addEventListener('change', refresh);
+  sortEl.addEventListener('change', refresh);
+  refresh();
+})();
+</script>
+{% endif %}
 {% endblock %}

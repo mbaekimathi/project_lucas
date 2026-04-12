@@ -5,14 +5,14 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <!-- Add Fee Structure Link -->
-    <a href="/dashboard/employee/student-fees" 
+    <a href="{{ employee_dash_url('student-fees') }}" 
        class="w-full sidebar-item">
         <i class="fas fa-arrow-left w-5"></i>
         <span class="font-medium">Back to Fees</span>
     </a>
     
     <!-- View Fee Structures Link -->
-    <a href="/dashboard/employee/student-fees/fee-structures" 
+    <a href="{{ employee_dash_url('student-fees/fee-structures') }}" 
        class="w-full sidebar-item active">
         <i class="fas fa-list-alt w-5"></i>
         <span class="font-semibold">Fee Structures</span>
@@ -706,7 +706,7 @@ function editModalData() {
             this.loading = true;
             this.error = '';
             this.success = '';
-            fetch('/dashboard/employee/student-fees/fee-structure/' + this.structureId + '/update', {
+            fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1013,7 +1013,7 @@ function editModalData() {
     deleteStructure() {
         this.loading = true;
         this.error = '';
-        fetch('/dashboard/employee/student-fees/fee-structure/' + this.structureId + '/delete', {
+        fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         })
@@ -1115,7 +1115,7 @@ function editModalData() {
     deleteStructure() {
         this.loading = true;
         this.error = '';
-        fetch('/dashboard/employee/student-fees/fee-structure/' + this.structureId + '/delete', {
+        fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         })

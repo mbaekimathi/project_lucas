@@ -4,7 +4,7 @@
 
 {% block sidebar_content %}
 <!-- Staff and Salaries Links -->
-<a href="/dashboard/employee/staff-and-salaries" 
+<a href="{{ employee_dash_url('staff-and-salaries') }}" 
    class="sidebar-item">
     <i class="fas fa-users-cog w-5"></i>
     <span>Staff and Salaries</span>
@@ -17,7 +17,7 @@
     <span>Register Salary</span>
 </button>
 
-<a href="/dashboard/employee/staff-and-salaries/salary-records" 
+<a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-file-invoice-dollar w-5"></i>
     <span>Salary Records</span>
@@ -288,7 +288,7 @@ document.addEventListener('alpine:init', () => {
         },
         
         applyFilter() {
-            let url = '/dashboard/employee/staff-and-salaries/salary-records';
+            let url = '{{ employee_dash_url('staff-and-salaries/salary-records') }}';
             const params = new URLSearchParams();
             
             if (this.filterType === 'month' && this.selectedMonth) {
@@ -310,7 +310,7 @@ document.addEventListener('alpine:init', () => {
             this.filterType = 'all';
             this.selectedMonth = '';
             this.selectedYear = new Date().getFullYear();
-            window.location.href = '/dashboard/employee/staff-and-salaries/salary-records';
+            window.location.href = '{{ employee_dash_url('staff-and-salaries/salary-records') }}';
         }
     }));
 });
@@ -549,7 +549,7 @@ function paymentHistoryModalData() {
             this.modalOpen = true;
             
             try {
-                const response = await fetch(`/dashboard/employee/staff-and-salaries/get-payment-history/${empId}/${salId}`);
+                const response = await fetch({{ employee_dash_url('staff-and-salaries/get-payment-history')|tojson }} + `/${empId}/${salId}`);
                 const data = await response.json();
                 
                 if (data.success) {

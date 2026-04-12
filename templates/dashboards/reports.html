@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Exam Reports - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}Reports - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee/reports" 
-   class="sidebar-item sidebar-item-active">
+<a href="{{ employee_dash_url('reports') }}" 
+   class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
     <i class="fas fa-file-alt w-5"></i>
     <span>Reports</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="/dashboard/employee" 
+<a href="{{ employee_dash_url() }}" 
    class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
@@ -21,9 +21,58 @@
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
             <i class="fas fa-chart-bar text-brand-primary mr-2 sm:mr-3"></i>
-            Exam Reports
+            Reports
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Generate exam performance reports by class and subject.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Class overview and exam performance by class and subject.</p>
+    </div>
+
+    {% if academic_levels %}
+    <div class="mb-6 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700">
+        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+            <i class="fas fa-layer-group text-brand-primary"></i>
+            Class overview
+        </p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Open register (attendance), exam performance, and fee totals for a class.</p>
+        <div class="flex flex-wrap gap-2">
+            {% for level in academic_levels %}
+            <a href="{{ url_for('reports_class_detail', level_id=level.id) }}" class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary transition-colors">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-400 font-normal">({{ level.level_category }})</span>{% endif %}</a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% set snap = stats_snapshot|default({'active_students': 0, 'teachers': 0, 'subjects': 0}) %}
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-user-graduate text-blue-600 dark:text-blue-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Active students</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.active_students|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Enrolled (in session)</p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-chalkboard-teacher text-amber-600 dark:text-amber-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Teachers</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.teachers|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Active teaching staff</p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-book text-emerald-600 dark:text-emerald-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subjects</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.subjects|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Registered (active)</p>
+            </div>
+        </div>
     </div>
 
     <!-- Filters -->

@@ -3,7 +3,7 @@
 {% block title %}{{ academic_level.level_name }} - Marks{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee/exams-assessments" class="sidebar-item">
+<a href="{{ employee_dash_url('exams-assessments') }}" class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Exams</span>
 </a>
@@ -91,7 +91,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     <option value="{{ exam.id }}">{{ exam.exam_name }}</option>
                     {% endfor %}
                 </select>
-                <a href="/dashboard/employee/exams-assessments" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+                <a href="{{ employee_dash_url('exams-assessments') }}" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                     ← Back
                 </a>
             </div>
@@ -309,7 +309,7 @@ function marksSheet() {
             this.marks[studentId][subjectId][this.selectedExam] = intValue;
 
             try {
-                const response = await fetch('/dashboard/employee/exams-assessments/save-marks', {
+                const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -339,7 +339,7 @@ function marksSheet() {
             this.loading = true;
             
             try {
-                const response = await fetch('/dashboard/employee/exams-assessments/get-marks', {
+                const response = await fetch('{{ employee_dash_url('exams-assessments/get-marks') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

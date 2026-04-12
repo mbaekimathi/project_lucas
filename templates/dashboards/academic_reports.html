@@ -7,45 +7,62 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6 print:p-2">
+<div class="p-4 lg:p-6 print:p-2 max-w-5xl mx-auto">
     <div class="mb-6 no-print">
-        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
             <i class="fas fa-file-export text-brand-primary"></i>
             Academic reports
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-            Set global filters, then <strong>Generate</strong> or <strong>Preview</strong> to open the report on a <strong>full page</strong> (new view).
-            Use <strong>Download</strong> for CSV here, or open a preview and use <strong>Download CSV</strong> / <strong>Print</strong> there.
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+            Pick what you need below, set <strong>year</strong>, <strong>term</strong>, and <strong>class</strong> where it applies, then <strong>Open report</strong> (full page), <strong>Download CSV</strong>, or <strong>Print</strong>.
         </p>
     </div>
 
-    <!-- Global filters -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-6 no-print">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <i class="fas fa-sliders-h text-brand-primary"></i>
-            Global filters
-        </h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- 1) What to view -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">What do you want to view?</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Academic year</label>
+                <label for="ar-section" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Section</label>
+                <select id="ar-section" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
+                    <option value="class_list">Class lists</option>
+                    <option value="timetable">Timetables</option>
+                    <option value="exams">Exams</option>
+                    <option value="attendance">Attendance</option>
+                </select>
+            </div>
+            <div>
+                <label for="ar-report" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Report</label>
+                <select id="ar-report" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base"></select>
+            </div>
+        </div>
+        <p id="ar-report-desc" class="mt-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-l-4 border-brand-primary/40 pl-3"></p>
+    </div>
+
+    <!-- 2) Filters (simplified) -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Filters</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+                <label for="gf-year" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Academic year</label>
                 <select id="gf-year" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     <option value="">All years</option>
                     {% for y in academic_years %}
-                    <option value="{{ y.id }}" {% if y.is_current %}data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
+                    <option value="{{ y.id }}" {% if y.is_current %}selected data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term <span class="text-gray-400 font-normal">(optional)</span></label>
+                <label for="gf-term" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Term</label>
                 <select id="gf-term" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">—</option>
+                    <option value="">Any / not set</option>
                     {% for t in terms %}
-                    <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}">{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}</option>
+                    <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}" {% if t.is_current %}selected data-current="1"{% endif %}>{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}{% if t.is_current %} (current){% endif %}</option>
                     {% endfor %}
                 </select>
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Class / level</label>
+                <label for="gf-level" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Class / level</label>
                 <select id="gf-level" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                     <option value="">All classes</option>
                     {% for lv in academic_levels %}
@@ -53,36 +70,39 @@
                     {% endfor %}
                 </select>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teacher <span class="text-gray-400 font-normal">(optional — teacher timetable only)</span></label>
+        </div>
+
+        <div id="ar-extra-filters" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden">
+            <div id="ar-wrap-teacher" class="hidden">
+                <label for="gf-teacher" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Teacher</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Needed for teacher timetable only</p>
                 <select id="gf-teacher" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">—</option>
+                    <option value="">Select teacher</option>
                     {% for te in teachers %}
                     <option value="{{ te.id }}">{{ te.full_name }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Student ID <span class="text-gray-400 font-normal">(optional — individual reports)</span></label>
+            <div id="ar-wrap-student" class="hidden">
+                <label for="gf-student" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Student ID</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For individual reports only</p>
                 <input type="text" id="gf-student" placeholder="e.g. STU001" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date from <span class="text-gray-400 font-normal">(optional)</span></label>
-                <input type="date" id="gf-dfrom" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date to <span class="text-gray-400 font-normal">(optional)</span></label>
-                <input type="date" id="gf-dto" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            <div id="ar-wrap-dates" class="hidden sm:col-span-2 lg:col-span-1">
+                <label class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Date range</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For attendance summaries</p>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <input type="date" id="gf-dfrom" class="flex-1 min-w-[10rem] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <span class="text-gray-400 text-sm">to</span>
+                    <input type="date" id="gf-dto" class="flex-1 min-w-[10rem] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </div>
             </div>
         </div>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
-            Only the filters that apply to the report you run are sent. Class lists and most exam reports ignore teacher, student, and dates.
-            For <strong>attendance</strong>, pick a term (dates default to that term) or set dates manually. Subject timetable needs a <strong>term</strong>; teacher timetable needs <strong>term + teacher</strong>.
-        </p>
+        <p id="ar-filter-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-3"></p>
     </div>
 
-    <!-- Generation status (below filters — always easy to see) -->
-    <div id="ar-status-banner" class="hidden no-print mb-6 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm" role="status" aria-live="polite">
+    <!-- Status -->
+    <div id="ar-status-banner" class="hidden no-print mb-5 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm" role="status" aria-live="polite">
         <span id="ar-status-icon" class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm" aria-hidden="true"></span>
         <div class="min-w-0 flex-1">
             <p id="ar-status-title" class="font-semibold text-gray-900 dark:text-white"></p>
@@ -90,58 +110,121 @@
         </div>
     </div>
 
-    <!-- Report catalogue -->
-    <div class="space-y-8 no-print">
-        {% set sections = [
-            ['Class lists', 'fas fa-list', [
-                ['class_list_attendance', 'Class list — attendance', 'Student roster for registers and attendance taking.'],
-                ['class_list_exam', 'Class list — exam entry', 'Same roster; label indicates use for exam capture.'],
-            ]],
-            ['Timetables', 'fas fa-table', [
-                ['timetable_subject', 'Subject / class timetable', 'Periods by day with level, teacher, and subject. Requires term.'],
-                ['timetable_exam', 'Exam timetable', 'Scheduled exams by date and level.'],
-                ['timetable_teacher', 'Teacher timetable', 'One teacher’s periods. Requires term and teacher.'],
-            ]],
-            ['Exams', 'fas fa-chart-line', [
-                ['exam_class_performance', 'Class & subject performance', 'Means and pass rates by class and subject.'],
-                ['exam_subject_performance', 'Subject performance (aggregated)', 'Overall subject stats for filtered exams.'],
-                ['exam_individual', 'Individual performance', 'Marks per student and exam (may be large).'],
-            ]],
-            ['Attendance', 'fas fa-user-check', [
-                ['attendance_class', 'Class attendance summary', 'Present/absent totals by class for the date range.'],
-                ['attendance_individual', 'Individual attendance', 'Daily attendance rows; optional student filter.'],
-            ]],
-        ] %}
-        {% for title, icon, items in sections %}
-        <div>
-            <h3 class="text-md font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2">
-                <i class="{{ icon }} text-brand-primary"></i> {{ title }}
-            </h3>
-            <div class="space-y-3">
-                {% for rid, rlabel, rdesc in items %}
-                <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                    <div>
-                        <p class="font-semibold text-gray-900 dark:text-white">{{ rlabel }}</p>
-                        <p class="text-sm text-gray-600 dark:text-gray-400">{{ rdesc }}</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 shrink-0">
-                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg bg-brand-primary text-white hover:opacity-90" data-action="generate" data-report="{{ rid }}">Generate</button>
-                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-500" data-action="preview" data-report="{{ rid }}">Preview</button>
-                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" data-action="download" data-report="{{ rid }}">Download</button>
-                        <button type="button" class="ar-btn-print px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" data-report="{{ rid }}" title="Opens the same full-page preview where you can print">Print</button>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
+    <!-- 3) Actions -->
+    <div class="no-print flex flex-wrap gap-2 items-center">
+        <button type="button" id="ar-open" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-primary text-white text-sm font-semibold hover:opacity-90 shadow-sm">
+            <i class="fas fa-external-link-alt"></i> Open report
+        </button>
+        <button type="button" id="ar-download" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-500">
+            <i class="fas fa-download"></i> Download CSV
+        </button>
+        <button type="button" id="ar-print" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-200 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-700">
+            <i class="fas fa-print"></i> Print
+        </button>
     </div>
 </div>
 
 <script>
 (function() {
-  const API = {{ url_for('api_academic_reports_generate')|tojson }};
-  const PREVIEW = {{ url_for('academic_report_preview')|tojson }};
+  const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
+  const PREVIEW = {{ employee_dash_url('academic-reports/preview')|tojson }};
+
+  const CATALOG = {
+    class_list: {
+      label: 'Class lists',
+      hint: 'Uses academic year and class. Term is optional.',
+      reports: [
+        { id: 'class_list_attendance', label: 'Attendance register', desc: 'Class roster for taking attendance.' },
+        { id: 'class_list_exam', label: 'Exam entry list', desc: 'Same style list, labelled for exam use.' },
+      ],
+    },
+    timetable: {
+      label: 'Timetables',
+      hint: 'Subject timetable needs a term. Teacher timetable needs term + teacher.',
+      reports: [
+        { id: 'timetable_subject', label: 'Subject / class timetable', desc: 'Periods by day with level, teacher, and subject.' },
+        { id: 'timetable_exam', label: 'Exam timetable', desc: 'Scheduled exams by date and level.' },
+        { id: 'timetable_teacher', label: 'Teacher timetable', desc: 'One teacher’s periods across the week.' },
+      ],
+    },
+    exams: {
+      label: 'Exams',
+      hint: 'Uses year and class filters. Individual report can filter by student ID.',
+      reports: [
+        { id: 'exam_class_performance', label: 'Class & subject performance', desc: 'Means and pass rates by class and subject.' },
+        { id: 'exam_subject_performance', label: 'Subject performance (summary)', desc: 'Overall subject statistics for filtered exams.' },
+        { id: 'exam_individual', label: 'Individual performance', desc: 'Marks per student (can be large).' },
+      ],
+    },
+    attendance: {
+      label: 'Attendance',
+      hint: 'Pick a term (dates often follow the term) or set a date range. Class summary uses dates; individual can use student ID.',
+      reports: [
+        { id: 'attendance_class', label: 'Class attendance summary', desc: 'Present / absent totals by class for the period.' },
+        { id: 'attendance_individual', label: 'Individual attendance', desc: 'Daily rows; optional student filter.' },
+      ],
+    },
+  };
+
+  const sectionEl = document.getElementById('ar-section');
+  const reportEl = document.getElementById('ar-report');
+  const descEl = document.getElementById('ar-report-desc');
+  const hintEl = document.getElementById('ar-filter-hint');
+  const extraWrap = document.getElementById('ar-extra-filters');
+  const wrapTeacher = document.getElementById('ar-wrap-teacher');
+  const wrapStudent = document.getElementById('ar-wrap-student');
+  const wrapDates = document.getElementById('ar-wrap-dates');
+
+  function currentReportId() {
+    return (reportEl.value || '').trim();
+  }
+
+  function fillReportOptions(sectionKey) {
+    const cat = CATALOG[sectionKey];
+    reportEl.innerHTML = '';
+    cat.reports.forEach(function(r, i) {
+      const opt = document.createElement('option');
+      opt.value = r.id;
+      opt.textContent = r.label;
+      reportEl.appendChild(opt);
+    });
+    reportEl.selectedIndex = 0;
+    updateReportDescription();
+    updateExtraFilters();
+  }
+
+  function updateReportDescription() {
+    const sk = sectionEl.value;
+    const rid = currentReportId();
+    const cat = CATALOG[sk];
+    const rep = (cat.reports || []).find(function(x) { return x.id === rid; });
+    descEl.textContent = rep ? rep.desc : '';
+    hintEl.textContent = cat ? cat.hint : '';
+  }
+
+  function updateExtraFilters() {
+    const rid = currentReportId();
+    const needTeacher = rid === 'timetable_teacher';
+    const needStudent = rid === 'exam_individual' || rid === 'attendance_individual';
+    const needDates = rid === 'attendance_class' || rid === 'attendance_individual';
+
+    const anyExtra = needTeacher || needStudent || needDates;
+    extraWrap.classList.toggle('hidden', !anyExtra);
+    wrapTeacher.classList.toggle('hidden', !needTeacher);
+    wrapStudent.classList.toggle('hidden', !needStudent);
+    wrapDates.classList.toggle('hidden', !needDates);
+  }
+
+  sectionEl.addEventListener('change', function() {
+    fillReportOptions(sectionEl.value);
+  });
+
+  reportEl.addEventListener('change', function() {
+    updateReportDescription();
+    updateExtraFilters();
+  });
+
+  fillReportOptions(sectionEl.value);
 
   function val(id) {
     const el = document.getElementById(id);
@@ -150,7 +233,6 @@
     return v === '' ? null : v;
   }
 
-  /** Send only filters relevant to this report so optional fields never block class lists / exams. */
   function getFiltersForReport(reportType) {
     const yi = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const ti = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
@@ -201,7 +283,7 @@
     var dEl = document.getElementById('ar-status-detail');
     if (!bar || !icon || !tEl || !dEl) return;
     bar.classList.remove('hidden');
-    bar.className = 'no-print mb-6 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm';
+    bar.className = 'no-print mb-5 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm';
     icon.className = 'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm';
     if (kind === 'loading') {
       bar.classList.add('border-blue-200', 'bg-blue-50', 'dark:border-blue-800', 'dark:bg-blue-900/30');
@@ -253,32 +335,19 @@
     a.download = reportType + '.csv';
     a.click();
     URL.revokeObjectURL(url);
-    setBanner('success', 'Download successful', 'Your CSV file should start downloading.');
+    setBanner('success', 'Download started', 'Your CSV file should download shortly.');
   }
 
-  document.querySelectorAll('.ar-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const report = btn.getAttribute('data-report');
-      const action = btn.getAttribute('data-action');
-      if (action === 'download') {
-        runCsvDownload(report);
-        return;
-      }
-      if (action === 'generate' || action === 'preview') {
-        window.location.href = buildPreviewUrl(report);
-        return;
-      }
-    });
+  document.getElementById('ar-open').addEventListener('click', function() {
+    window.location.href = buildPreviewUrl(currentReportId());
+  });
+  document.getElementById('ar-download').addEventListener('click', function() {
+    runCsvDownload(currentReportId());
+  });
+  document.getElementById('ar-print').addEventListener('click', function() {
+    window.location.href = buildPreviewUrl(currentReportId());
   });
 
-  document.querySelectorAll('.ar-btn-print').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const report = btn.getAttribute('data-report');
-      window.location.href = buildPreviewUrl(report);
-    });
-  });
-
-  // Sync term → academic year when possible
   const termEl = document.getElementById('gf-term');
   const yearEl = document.getElementById('gf-year');
   termEl.addEventListener('change', function() {

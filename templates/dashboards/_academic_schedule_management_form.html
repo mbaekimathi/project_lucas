@@ -129,7 +129,7 @@
                             </p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <a :href="'/dashboard/employee/academic-settings?tab=academic-schedule-management&profile_id=' + encodeURIComponent(profile.id)"
+                            <a :href="'{{ employee_dash_url('academic-settings?tab=academic-schedule-management&profile_id=') }}' + encodeURIComponent(profile.id)"
                                class="px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
                                 <i class="fas fa-pen mr-1"></i>Edit
                             </a>
@@ -173,7 +173,7 @@ function academicCoordinatorSettings() {
                 .map(level => level.level_name);
             return selected.length ? selected.join(', ') : 'No levels selected';
         },
-        loadProfile(){ if(!this.selectedProfileSelector){ this.createNewProfile(); return; } window.location.href = `/dashboard/employee/academic-settings?tab=academic-schedule-management&profile_id=${encodeURIComponent(this.selectedProfileSelector)}`; },
+        loadProfile(){ if(!this.selectedProfileSelector){ this.createNewProfile(); return; } window.location.href = {{ employee_dash_url('academic-settings')|tojson }} + '?tab=academic-schedule-management&profile_id=' + encodeURIComponent(this.selectedProfileSelector); },
         createNewProfile(){
             this.profileId = '';
             this.selectedProfileSelector = '';

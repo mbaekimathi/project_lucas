@@ -3,13 +3,13 @@
 {% block title %}Exams and Grades - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee/exams-and-grades" 
+<a href="{{ employee_dash_url('exams-and-grades') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exams and Grades</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="/dashboard/employee" 
+<a href="{{ employee_dash_url() }}" 
    class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
@@ -114,7 +114,7 @@
                         {% endfor %}
                     </div>
                 </div>
-                <a href="/dashboard/employee/exams-assessments/level/{{ level.id }}/students" 
+                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="w-full touch-btn mt-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg">
                     <i class="fas fa-users mr-2"></i>
                     View Students & Grades
@@ -148,7 +148,7 @@
                         </div>
                     </div>
                 </div>
-                <a href="/dashboard/employee/exams-assessments/level/{{ level.id }}/students" 
+                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="w-full touch-btn mt-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-sm font-semibold transition-all">
                     <i class="fas fa-users mr-2"></i>
                     View Students & Grades
@@ -232,7 +232,7 @@
                                 Locked
                             </button>
                             {% else %}
-                            <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
+                            <a href="{{ employee_dash_url('exams-assessments/level/' ~ exam.academic_level_id ~ '/students') }}" 
                                class="touch-btn inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all">
                                 <i class="fas fa-users mr-1"></i>
                                 View Students
@@ -273,7 +273,7 @@
                     Exam locked
                 </button>
                 {% else %}
-                <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
+                <a href="{{ employee_dash_url('exams-assessments/level/' ~ exam.academic_level_id ~ '/students') }}" 
                    class="w-full touch-btn mt-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all">
                     <i class="fas fa-users mr-2"></i>
                     View Students

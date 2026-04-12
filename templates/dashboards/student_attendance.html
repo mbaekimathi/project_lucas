@@ -5,34 +5,34 @@
 {% block sidebar_content %}
 {% if is_parent_view|default(false) %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 {% endif %}
-<a href="/dashboard/parent" 
+<a href="{{ parent_dash_url() }}" 
    class="sidebar-item">
     <i class="fas fa-home w-5"></i>
     <span>Dashboard</span>
 </a>
-<a href="/dashboard/parent/student-fees" 
+<a href="{{ parent_dash_url('student-fees') }}" 
    class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
-<a href="{{ url_for('parent_exam_progress') }}" 
+<a href="{{ parent_dash_url('exam-progress') }}" 
    class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Results</span>
 </a>
-<a href="{{ url_for('parent_attendance') }}" 
+<a href="{{ parent_dash_url('attendance') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
 </a>
 {% elif is_teacher_view|default(false) %}
-<a href="/dashboard/employee"
+<a href="{{ employee_dash_url() }}"
    class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
@@ -43,25 +43,25 @@
     <span>My Classes</span>
 </a>
 {% else %}
-<a href="/student-management"
+<a href="{{ employee_dash_url('student-management') }}"
    class="sidebar-item">
     <i class="fas fa-user-graduate w-5"></i>
     <span>Student Management</span>
 </a>
 {% endif %}
 {% if not is_parent_view|default(false) %}
-<a href="/admission"
+<a href="{{ employee_dash_url('admission') }}"
    class="sidebar-item">
     <i class="fas fa-user-plus w-5"></i>
     <span>Register Student</span>
 </a>
-<a href="/student-management/student-attendance"
+<a href="{{ employee_dash_url('student-management/student-attendance') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-check-circle w-5"></i>
     <span>Student Attendance</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="/student-management/students-progress"
+<a href="{{ employee_dash_url('student-management/students-progress') }}"
    class="sidebar-item">
     <i class="fas fa-chart-line w-5"></i>
     <span>Students Progress</span>
@@ -69,7 +69,7 @@
 {% set user_role = session.get('role', '')|lower %}
 {% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
 {% if user_role == 'head of institution' or viewing_as_role == 'head of institution' %}
-<a href="/dashboard/employee/student-fees"
+<a href="{{ employee_dash_url('student-fees') }}"
    class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
@@ -93,7 +93,7 @@
             <div class="flex items-center gap-3 flex-wrap">
                 <select
                     class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]"
-                    onchange="var b={{ url_for('parent_attendance')|tojson }};var v=this.value;if(v){window.location.href=b+'/'+encodeURIComponent(v)+'?student_id='+encodeURIComponent(v);}">
+                    onchange="var b={{ parent_dash_url('attendance')|tojson }};var v=this.value;if(v){window.location.href=b+'/'+encodeURIComponent(v)+'?student_id='+encodeURIComponent(v);}">
                     <option value="">-- Jump to another student --</option>
                     {% for st in all_students|default([]) %}
                     {% set sid = st.get('student_id', '') or st[1] if st else '' %}
@@ -109,11 +109,11 @@
 
     {% if is_parent_view|default(false) %}
         {% if show_sibling_nav|default(false) %}
-        <a href="{{ url_for('parent_attendance') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <a href="{{ parent_dash_url('attendance') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
             <i class="fas fa-arrow-left mr-2"></i>Choose another child
         </a>
         {% else %}
-        <a href="{{ url_for('dashboard_parent') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
+        <a href="{{ parent_dash_url() }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
             <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
         </a>
         {% endif %}
@@ -173,7 +173,7 @@
     </div>
     {% endif %}
 
-    <form method="GET" action="{% if is_parent_view|default(false) %}{{ url_for('parent_attendance_detail', student_id=parent_student_id) }}{% else %}{{ url_for('student_attendance') }}{% endif %}" class="filter-bar mb-6 modern-card p-4 sm:p-5">
+    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ url_for('student_attendance') }}{% endif %}" class="filter-bar mb-6 modern-card p-4 sm:p-5">
         <div class="flex-1 min-w-[180px]">
             <label for="academic_year_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Academic Year</label>
             <select name="academic_year_id" id="academic_year_id"

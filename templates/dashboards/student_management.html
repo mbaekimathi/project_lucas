@@ -4,26 +4,26 @@
 
 {% block sidebar_content %}
 <!-- Student Management Links -->
-<a href="/student-management" 
+<a href="{{ employee_dash_url('student-management') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-graduate w-5"></i>
     <span>Student Management</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
-<a href="/admission" 
+<a href="{{ employee_dash_url('admission') }}" 
    class="sidebar-item">
     <i class="fas fa-user-plus w-5"></i>
     <span>Register Student</span>
 </a>
 
-<a href="/student-management/student-attendance" 
+<a href="{{ employee_dash_url('student-management/student-attendance') }}" 
    class="sidebar-item">
     <i class="fas fa-check-circle w-5"></i>
     <span>Student Attendance</span>
 </a>
 
-<a href="/student-management/students-progress" 
+<a href="{{ employee_dash_url('student-management/students-progress') }}" 
    class="sidebar-item">
     <i class="fas fa-chart-line w-5"></i>
     <span>Students Progress</span>
@@ -32,7 +32,7 @@
 {% set user_role = session.get('role', '')|lower %}
 {% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
 {% if user_role == 'head of institution' or viewing_as_role == 'head of institution' %}
-<a href="/dashboard/employee/student-fees" 
+<a href="{{ employee_dash_url('student-fees') }}" 
    class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
@@ -41,6 +41,7 @@
 {% endblock %}
 
 {% block content %}
+<script>const _studentEmpPrefix = {{ employee_dash_url()|tojson }};</script>
 <div class="p-4 sm:p-5 md:p-6 lg:p-8 w-full max-w-full overflow-x-hidden page-content max-w-7xl mx-auto" 
      x-data="{ 
          searchQuery: '', 
@@ -53,7 +54,7 @@
          async loadStudent(studentId) {
              this.loading = true;
              try {
-                 const response = await fetch(`/get-student/${studentId}`);
+                 const response = await fetch(`${_studentEmpPrefix}/get-student/${studentId}`);
                  const data = await response.json();
                  if (data.success) {
                      this.selectedStudent = data.student;
@@ -88,7 +89,7 @@
              }
              this.loading = true;
              try {
-                 const response = await fetch(`/check-student-id/${studentId}`);
+                 const response = await fetch(`${_studentEmpPrefix}/check-student-id/${studentId}`);
                  const data = await response.json();
                  if (data.exists) {
                      this.studentIdError = 'This Student ID is already registered to another student';
@@ -117,7 +118,7 @@
              
              this.loading = true;
              try {
-                 const response = await fetch(`/update-student/${this.originalStudentId}`, {
+                 const response = await fetch(`${_studentEmpPrefix}/update-student/${this.originalStudentId}`, {
                      method: 'POST',
                      headers: {
                          'Content-Type': 'application/json',
@@ -146,7 +147,7 @@
              }
              this.loading = true;
              try {
-                 const response = await fetch(`/delete-student/${this.selectedStudent.student_id}`, {
+                 const response = await fetch(`${_studentEmpPrefix}/delete-student/${this.selectedStudent.student_id}`, {
                      method: 'POST',
                      headers: {
                          'Content-Type': 'application/json',

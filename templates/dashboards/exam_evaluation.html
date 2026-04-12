@@ -950,7 +950,8 @@ function examEvaluation() {
             params.set('academic_year_id', exam.academic_year_id ?? '');
             params.set('term_id', exam.term_id ?? '');
             params.set('exam_name', exam.exam_name ?? '');
-            return `/dashboard/employee/exam-evaluation/registered?${params.toString()}`;
+            const base = {{ employee_dash_url('exam-evaluation/registered')|tojson }};
+            return base + (params.toString() ? ('?' + params.toString()) : '');
         },
 
         onRegistrationModeChange() {
@@ -1214,7 +1215,7 @@ function examEvaluation() {
                 return;
             }
             try {
-                const response = await fetch('/dashboard/employee/exam-evaluation/get-terms', {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/get-terms') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ academic_year_id: parseInt(this.examForm.academic_year_id) })
@@ -1276,7 +1277,7 @@ function examEvaluation() {
 
             this.savingExam = true;
             try {
-                const response = await fetch('/dashboard/employee/exam-evaluation/save', {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/save') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1329,7 +1330,7 @@ function examEvaluation() {
             this.errorMessage = '';
             this.successMessage = '';
             try {
-                const response = await fetch('/dashboard/employee/exam-evaluation/set-lock', {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/set-lock') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1468,7 +1469,7 @@ function examEvaluation() {
                     duration_minutes: this.editingExam.session_type === 'CUSTOM' ? parseInt(this.editingExam.duration_minutes || 0) : null,
                 };
                 
-                const response = await fetch('/dashboard/employee/exam-evaluation/update', {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/update') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
@@ -1503,7 +1504,7 @@ function examEvaluation() {
             this.successMessage = '';
             
             try {
-                const response = await fetch('/dashboard/employee/exam-evaluation/delete', {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/delete') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ exam_id: examId })

@@ -5,14 +5,14 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <!-- Back to Fees Link -->
-    <a href="/dashboard/employee/student-fees" 
+    <a href="{{ employee_dash_url('student-fees') }}" 
        class="w-full sidebar-item">
         <i class="fas fa-arrow-left w-5"></i>
         <span class="font-medium">Back to Fees</span>
     </a>
     
     <!-- Payments Audits Link -->
-    <a href="/dashboard/employee/student-fees/payments-audit" 
+    <a href="{{ employee_dash_url('student-fees/payments-audit') }}" 
        class="w-full sidebar-item active">
         <i class="fas fa-history w-5"></i>
         <span class="font-semibold">Payments Audits</span>

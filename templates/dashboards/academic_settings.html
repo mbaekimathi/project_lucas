@@ -5,14 +5,14 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <!-- Back to Fees Link -->
-    <a href="/dashboard/employee/student-fees" 
+    <a href="{{ employee_dash_url('student-fees') }}" 
        class="w-full sidebar-item">
         <i class="fas fa-arrow-left w-5"></i>
         <span class="font-medium">Back to Fees</span>
     </a>
     
     <!-- Academic Settings Link -->
-    <a href="/dashboard/employee/academic-settings" 
+    <a href="{{ employee_dash_url('academic-settings') }}" 
        class="w-full sidebar-item active">
         <i class="fas fa-calendar-alt w-5"></i>
         <span class="font-semibold">Academic Settings</span>
@@ -1049,6 +1049,7 @@
 </div>
 
 <script>
+const _academicSysEmpPrefix = {{ employee_dash_url()|tojson }};
 // Close Edit Level Modal Function
 function closeEditLevelModal() {
     const editLevelModal = document.getElementById('editLevelModal');
@@ -1154,7 +1155,7 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
             
-            fetch(`/system-settings/academic-level/${levelId}/update`, {
+            fetch(`${_academicSysEmpPrefix}/system-settings/academic-level/${levelId}/update`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(updateData),
@@ -1192,7 +1193,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const originalHTML = this.innerHTML;
                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 
-                fetch(`/system-settings/academic-level/${levelId}/delete`, {
+                fetch(`${_academicSysEmpPrefix}/system-settings/academic-level/${levelId}/delete`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     credentials: 'same-origin'
@@ -1274,7 +1275,7 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
             
-            fetch(`/system-settings/academic-year/${yearId}/update`, {
+            fetch(`${_academicSysEmpPrefix}/system-settings/academic-year/${yearId}/update`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(updateData),
@@ -1312,7 +1313,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const originalHTML = this.innerHTML;
                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 
-                fetch(`/system-settings/academic-year/${yearId}/delete`, {
+                fetch(`${_academicSysEmpPrefix}/system-settings/academic-year/${yearId}/delete`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     credentials: 'same-origin'
@@ -1389,7 +1390,7 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
             
-            fetch(`/system-settings/term/${termId}/update`, {
+            fetch(`${_academicSysEmpPrefix}/system-settings/term/${termId}/update`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(updateData),
@@ -1427,7 +1428,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const originalHTML = this.innerHTML;
                 this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
                 
-                fetch(`/system-settings/term/${termId}/delete`, {
+                fetch(`${_academicSysEmpPrefix}/system-settings/term/${termId}/delete`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     credentials: 'same-origin'

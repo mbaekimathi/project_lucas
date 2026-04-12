@@ -6,7 +6,7 @@
 {% set current_role = (current_employee_role if is_technician and current_employee_role else role)|lower %}
 
 {% if is_technician %}
-<a href="/role-switch" 
+<a href="{{ employee_dash_url('role-switch') }}" 
    class="sidebar-item {% if request.endpoint == 'role_switch' %}active{% endif %} mb-2 border-b border-gray-200 dark:border-gray-700 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
@@ -15,32 +15,32 @@
 
 {% if current_role == 'super admin' %}
     <!-- Super Admin Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-line w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/users-roles" 
+    <a href="{{ employee_dash_url('users-roles') }}" 
        class="sidebar-item {% if request.endpoint == 'users_roles' %}sidebar-item-active{% endif %}">
         <i class="fas fa-users-cog w-5"></i>
         <span>Users Management</span>
     </a>
-    <a href="/system-settings" 
+    <a href="{{ employee_dash_url('system-settings') }}" 
        class="sidebar-item {% if request.endpoint == 'system_settings' %}sidebar-item-active{% endif %}">
         <i class="fas fa-cog w-5"></i>
         <span>School Settings</span>
     </a>
-    <a href="/dashboard/employee/academic-settings" 
+    <a href="{{ employee_dash_url('academic-settings') }}" 
        class="sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
         <i class="fas fa-book-reader w-5"></i>
         <span>Academic Module</span>
     </a>
-    <a href="/dashboard/employee/finance-overview" 
+    <a href="{{ employee_dash_url('finance-overview') }}" 
        class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
         <i class="fas fa-dollar-sign w-5"></i>
         <span>Finance Module</span>
     </a>
-    <a href="/dashboard/employee/staff-and-salaries" 
+    <a href="{{ employee_dash_url('communication') }}"
+       class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-broadcast-tower w-5"></i>
+        <span>Communication</span>
+    </a>
+    <a href="{{ employee_dash_url('staff-and-salaries') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}active{% endif %}">
         <i class="fas fa-wallet w-5"></i>
         <span>Staff and Salaries</span>
@@ -70,7 +70,7 @@
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
-    <a href="/database/logs-audit-trails" 
+    <a href="{{ employee_dash_url('database/logs-audit-trails') }}" 
        class="sidebar-item {% if request.endpoint == 'logs_audit_trails' %}sidebar-item-active{% endif %}">
         <i class="fas fa-history w-5"></i>
         <span>Logs / Audit Trail</span>
@@ -78,23 +78,18 @@
 
 {% elif current_role == 'head of institution' %}
     <!-- Head of Institution Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/staff-management" 
+    <a href="{{ employee_dash_url('staff-management') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-tie w-5"></i>
         <span>Staff Management</span>
     </a>
-    <a href="/student-management" 
+    <a href="{{ employee_dash_url('student-management') }}" 
        class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a href="/dashboard/employee/classes-subjects"
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('classes-subjects') }}"
+       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
         <i class="fas fa-chalkboard-teacher w-5"></i>
         <span>Classes & Subjects</span>
     </a>
@@ -103,20 +98,25 @@
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Academic Calendar</span>
     </a>
-    <a href="/dashboard/employee/timetable-management" 
+    <a href="{{ employee_dash_url('timetable-management') }}" 
        class="sidebar-item {% if 'timetable' in request.path %}sidebar-item-active{% endif %}">
         <i class="fas fa-table w-5"></i>
         <span>Timetable Management</span>
     </a>
-    <a href="/dashboard/employee/exams-assessments"
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('exams-assessments') }}"
+       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Results</span>
     </a>
-    <a href="/dashboard/employee/finance-overview" 
+    <a href="{{ employee_dash_url('finance-overview') }}" 
        class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Finance Overview</span>
+    </a>
+    <a href="{{ employee_dash_url('communication') }}"
+       class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-broadcast-tower w-5"></i>
+        <span>Communication</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
        class="sidebar-item">
@@ -137,32 +137,20 @@
        class="sidebar-item">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
-    </a>
-    <a href="/settings/head of institution" 
-       class="sidebar-item {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'head of institution' or request.path == '/settings/head of institution') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-cog w-5"></i>
-        <span>Settings</span>
-    </a>
-
-{% elif current_role == 'deputy head of institution' %}
+    </a>{% elif current_role == 'deputy head of institution' %}
     <!-- Deputy Head of Institution Links (same as Head of Institution) -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/staff-management" 
+    <a href="{{ employee_dash_url('staff-management') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-tie w-5"></i>
         <span>Staff Management</span>
     </a>
-    <a href="/student-management" 
+    <a href="{{ employee_dash_url('student-management') }}" 
        class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a href="/dashboard/employee/classes-subjects"
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('classes-subjects') }}"
+       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
         <i class="fas fa-chalkboard-teacher w-5"></i>
         <span>Classes & Subjects</span>
     </a>
@@ -171,20 +159,25 @@
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Academic Calendar</span>
     </a>
-    <a href="/dashboard/employee/timetable-management" 
+    <a href="{{ employee_dash_url('timetable-management') }}" 
        class="sidebar-item {% if 'timetable' in request.path %}sidebar-item-active{% endif %}">
         <i class="fas fa-table w-5"></i>
         <span>Timetable Management</span>
     </a>
-    <a href="/dashboard/employee/exams-assessments"
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('exams-assessments') }}"
+       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Results</span>
     </a>
-    <a href="/dashboard/employee/finance-overview" 
+    <a href="{{ employee_dash_url('finance-overview') }}" 
        class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Finance Overview</span>
+    </a>
+    <a href="{{ employee_dash_url('communication') }}"
+       class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-broadcast-tower w-5"></i>
+        <span>Communication</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
        class="sidebar-item">
@@ -205,79 +198,55 @@
        class="sidebar-item">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
-    </a>
-    <a href="/settings/deputy head of institution" 
-       class="sidebar-item {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'deputy head of institution' or request.path == '/settings/deputy head of institution') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-cog w-5"></i>
-        <span>Settings</span>
-    </a>
-
-{% elif current_role == 'curriculum coordinator' %}
+    </a>{% elif current_role == 'curriculum coordinator' %}
     <!-- Curriculum Coordinator Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-bar w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/dashboard/employee/classes-subjects" 
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('classes-subjects') }}" 
+       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
         <i class="fas fa-book w-5"></i>
         <span>Classes & Subjects</span>
     </a>
-    <a href="/student-management" 
+    <a href="{{ employee_dash_url('student-management') }}" 
        class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Academic</span>
     </a>
-    <a href="/dashboard/employee/timetable-management" 
-       class="sidebar-item {% if request.endpoint == 'timetable_management' or request.path == '/dashboard/employee/timetable-management' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('timetable-management') }}" 
+       class="sidebar-item {% if request.endpoint == 'timetable_management' or request.path.endswith('/timetable-management') %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Timetable Management</span>
     </a>
-    <a href="/dashboard/employee/exams-assessments" 
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path == '/dashboard/employee/exams-assessments' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('exams-assessments') }}" 
+       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
         <i class="fas fa-clipboard-list w-5"></i>
         <span>Exams & Assessments</span>
     </a>
-    <a href="/dashboard/employee/reports" 
-       class="sidebar-item {% if request.endpoint == 'reports' or request.path == '/dashboard/employee/reports' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('reports') }}"
+       class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') or request.path.endswith('/reports') %}sidebar-item-active{% endif %}">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
-    <a href="/student-management/student-attendance" 
+    <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
        class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
     </a>
-    <a href="/dashboard/employee/communication" 
-       class="sidebar-item {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('communication') }}" 
+       class="sidebar-item {% if request.endpoint == 'communication' or request.path.endswith('/communication') %}sidebar-item-active{% endif %}">
         <i class="fas fa-comments w-5"></i>
         <span>Communication</span>
     </a>
-    <a href="/dashboard/employee/notifications" 
-       class="sidebar-item {% if request.endpoint == 'notifications' or request.path == '/dashboard/employee/notifications' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('notifications') }}" 
+       class="sidebar-item {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}sidebar-item-active{% endif %}">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
-    </a>
-    <a href="/settings/curriculum coordinator" 
-       class="sidebar-item {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'curriculum coordinator' or request.path == '/settings/curriculum coordinator') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-cog w-5"></i>
-        <span>Settings</span>
-    </a>
-
-{% elif current_role == 'teachers' %}
+    </a>{% elif current_role == 'teachers' %}
     <!-- Teacher Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="{{ url_for('teacher_my_classes') }}" 
+    <a href="{{ employee_dash_url('my-classes') }}" 
        class="sidebar-item {% if request.endpoint == 'teacher_my_classes' %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>My Classes</span>
     </a>
-    <a href="/student-management/student-attendance" 
+    <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
        class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
@@ -287,7 +256,7 @@
         <i class="fas fa-tasks w-5"></i>
         <span>Assignments</span>
     </a>
-    <a href="{{ url_for('exams_and_grades') }}" 
+    <a href="{{ employee_dash_url('exams-and-grades') }}" 
        class="sidebar-item {% if request.endpoint == 'exams_and_grades' %}sidebar-item-active{% endif %}">
         <i class="fas fa-clipboard-check w-5"></i>
         <span>Exams & Grades</span>
@@ -305,17 +274,12 @@
 
 {% elif current_role == 'accountant' %}
     <!-- Accountant Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-line w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/dashboard/employee/student-fees" 
+    <a href="{{ employee_dash_url('student-fees') }}" 
        class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Student Fees</span>
     </a>
-    <a href="/admission" 
+    <a href="{{ employee_dash_url('admission') }}" 
        class="sidebar-item {% if request.endpoint == 'admission' or request.path == '/admission' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-plus w-5"></i>
         <span>Register Student</span>
@@ -325,7 +289,7 @@
         <i class="fas fa-file-invoice-dollar w-5"></i>
         <span>Payments / Invoices</span>
     </a>
-    <a href="/dashboard/employee/staff-and-salaries" 
+    <a href="{{ employee_dash_url('staff-and-salaries') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}"
        {% if request.endpoint == 'staff_and_salaries' %}active{% endif %}">
         <i class="fas fa-wallet w-5"></i>
@@ -349,49 +313,37 @@
 
 {% elif current_role == 'secretary' %}
     <!-- Secretary — front office & records (no finance module by default) -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
-    <a href="/staff-management" 
+    <a href="{{ employee_dash_url('staff-management') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-tie w-5"></i>
         <span>Staff Management</span>
     </a>
-    <a href="/student-management" 
+    <a href="{{ employee_dash_url('student-management') }}" 
        class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a href="/dashboard/employee/communication" 
-       class="sidebar-item {% if request.endpoint == 'communication' or request.path == '/dashboard/employee/communication' %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_dash_url('communication') }}" 
+       class="sidebar-item {% if request.endpoint == 'communication' or request.path.endswith('/communication') %}sidebar-item-active{% endif %}">
         <i class="fas fa-comments w-5"></i>
         <span>Communication</span>
     </a>
-    <a href="/dashboard/employee/reports" 
-       class="sidebar-item {% if request.endpoint == 'reports' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Class overview</span>
+    <a href="{{ employee_dash_url('reports') }}"
+       class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-file-alt w-5"></i>
+        <span>Reports</span>
     </a>
-    <a href="/dashboard/employee/academic-reports" 
+    <a href="{{ employee_dash_url('academic-reports') }}"
        class="sidebar-item {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}sidebar-item-active{% endif %}">
         <i class="fas fa-file-export w-5"></i>
         <span>Academic reports</span>
     </a>
-    <a href="/settings/employee" 
-       class="sidebar-item {% if request.endpoint == 'settings' and (request.view_args.get('role') == 'employee' or request.path == '/settings/employee') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-cog w-5"></i>
-        <span>Settings</span>
-    </a>
-
-{% elif current_role == 'librarian' %}
+    <a href="{{ url_for('finance_overview') }}"
+       class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-coins w-5"></i>
+        <span>Accounts reports</span>
+    </a>{% elif current_role == 'librarian' %}
     <!-- Librarian Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
     <a @click.prevent="comingSoonTitle = 'Books Inventory'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-book w-5"></i>
@@ -420,11 +372,6 @@
 
 {% elif current_role == 'warden' %}
     <!-- Warden Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Rooms & Students'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bed w-5"></i>
@@ -453,11 +400,6 @@
 
 {% elif current_role == 'transport manager' %}
     <!-- Transport Manager Links -->
-    <a href="/dashboard/employee" 
-       class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-pie w-5"></i>
-        <span>Dashboard</span>
-    </a>
     <a @click.prevent="comingSoonTitle = 'Vehicles & Routes'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bus w-5"></i>
@@ -486,12 +428,7 @@
 
 {% elif current_role == 'technician' %}
     <!-- Technician Links -->
-    <a href="/system-settings" 
-       class="sidebar-item">
-        <i class="fas fa-cog w-5"></i>
-        <span>System Settings</span>
-    </a>
-    <a href="{{ url_for('users_roles') }}" 
+    <a href="{{ employee_dash_url('users-roles') }}" 
        class="sidebar-item {% if request.endpoint == 'users_roles' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-users-cog w-5"></i>
         <span>Users & Roles</span>
@@ -501,12 +438,12 @@
         <i class="fas fa-shield-alt w-5"></i>
         <span>Security</span>
     </a>
-    <a href="/dashboard/employee/integration-settings" 
+    <a href="{{ employee_dash_url('integration-settings') }}" 
        class="sidebar-item {% if request.endpoint == 'integration_settings' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-plug w-5"></i>
         <span>Integration Settings</span>
     </a>
-    <a href="{{ url_for('database_management') }}" 
+    <a href="{{ employee_dash_url('database') }}" 
        class="sidebar-item {% if request.endpoint == 'database_management' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
         <i class="fas fa-database w-5"></i>
         <span>Database</span>

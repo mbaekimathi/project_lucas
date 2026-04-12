@@ -1,0 +1,191 @@
+/**
+ * School theme from System Settings (--brand-primary, --brand-secondary, --brand-accent).
+ * Maps decorative Tailwind greens to the configured palette.
+ * Active status badges keep semantic green (bg-green-100 + text-green-800, etc.).
+ * Optional: add .keep-green on any element to skip overrides.
+ */
+
+/* ---------- Font Awesome icons → brand (not status badges) ---------- */
+i[class*="fa-"].text-green-50,
+i[class*="fa-"].text-green-100,
+i[class*="fa-"].text-green-200,
+i[class*="fa-"].text-green-300,
+i[class*="fa-"].text-green-400,
+i[class*="fa-"].text-green-500,
+i[class*="fa-"].text-green-600,
+i[class*="fa-"].text-green-700,
+i[class*="fa-"].text-green-800,
+i[class*="fa-"].text-green-900 {
+  color: var(--brand-primary) !important;
+}
+
+.dark i[class*="fa-"].text-green-50,
+.dark i[class*="fa-"].text-green-100,
+.dark i[class*="fa-"].text-green-200,
+.dark i[class*="fa-"].text-green-300,
+.dark i[class*="fa-"].text-green-400,
+.dark i[class*="fa-"].text-green-500,
+.dark i[class*="fa-"].text-green-600,
+.dark i[class*="fa-"].text-green-700,
+.dark i[class*="fa-"].text-green-800,
+.dark i[class*="fa-"].text-green-900 {
+  color: var(--brand-secondary) !important;
+}
+
+/* Rare: icon must stay green (e.g. WhatsApp) */
+i[class*="fa-"].keep-green.text-green-500,
+i[class*="fa-"].keep-green.text-green-600 {
+  color: #22c55e !important;
+}
+
+.dark i[class*="fa-"].keep-green.text-green-500,
+.dark i[class*="fa-"].keep-green.text-green-600 {
+  color: #4ade80 !important;
+}
+
+/* ---------- Gradients: green / emerald → brand ---------- */
+.bg-gradient-to-r.from-green-500.to-green-600 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-secondary)) !important;
+}
+
+.bg-gradient-to-br.from-green-500.to-green-600 {
+  background-image: linear-gradient(to bottom right, var(--brand-primary), var(--brand-secondary)) !important;
+}
+
+.bg-gradient-to-r.from-green-600.to-green-700,
+.bg-gradient-to-br.from-green-600.to-green-700 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-br.from-green-600.to-green-700 {
+  background-image: linear-gradient(to bottom right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-r.from-green-600.to-green-800,
+.bg-gradient-to-r.from-green-700.to-green-800 {
+  background-image: linear-gradient(to right, var(--brand-accent), var(--brand-primary)) !important;
+}
+
+.bg-gradient-to-br.from-green-500.to-emerald-600,
+.bg-gradient-to-br.from-green-500.to-emerald-700 {
+  background-image: linear-gradient(to bottom right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-r.from-green-600.to-emerald-700 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-br.from-green-500.to-emerald-700 {
+  background-image: linear-gradient(to bottom right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+thead.bg-gradient-to-r.from-green-600.to-emerald-700 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-br.from-green-500.via-green-600.to-emerald-600 {
+  background-image: linear-gradient(to bottom right, var(--brand-primary), var(--brand-secondary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-r.from-green-500.via-green-600.to-emerald-600 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-secondary), var(--brand-accent)) !important;
+}
+
+/* Backup / update DB button style */
+.bg-gradient-to-r.from-green-600.to-green-700 {
+  background-image: linear-gradient(to right, var(--brand-primary), var(--brand-accent)) !important;
+}
+
+.bg-gradient-to-r.from-green-600.to-green-700:hover,
+.bg-gradient-to-r.from-green-500.to-green-600:hover {
+  filter: brightness(0.94);
+}
+
+/* ---------- Toggle switches: checked “on” color → brand ---------- */
+.peer:checked ~ .peer-checked\:bg-green-600 {
+  background-color: var(--brand-primary) !important;
+}
+
+/* Focus ring on toggles that used green */
+[class*="peer-focus:ring-green"] {
+  --tw-ring-color: color-mix(in srgb, var(--brand-primary) 45%, #d1fae5) !important;
+}
+
+.dark [class*="peer-focus:ring-green"] {
+  --tw-ring-color: color-mix(in srgb, var(--brand-secondary) 50%, #14532d) !important;
+}
+
+/* ---------- Decorative borders ---------- */
+.border-green-500:not(.keep-green) {
+  border-color: color-mix(in srgb, var(--brand-primary) 65%, #94a3b8) !important;
+}
+
+.border-green-600:not(.keep-green) {
+  border-color: var(--brand-primary) !important;
+}
+
+.border-green-200:not(.keep-green) {
+  border-color: color-mix(in srgb, var(--brand-primary) 28%, #e2e8f0) !important;
+}
+
+/* Integration settings section strip */
+.bg-gradient-to-r.from-green-600\/20.to-green-500\/10 {
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--brand-primary) 22%, transparent),
+    color-mix(in srgb, var(--brand-secondary) 12%, transparent)
+  ) !important;
+}
+
+/* Light tinted panels */
+.bg-gradient-to-r.from-green-50.to-green-100\/50 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--brand-primary) 11%, white),
+    color-mix(in srgb, var(--brand-secondary) 9%, white)
+  ) !important;
+}
+
+.bg-gradient-to-r.from-green-50.to-emerald-50 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--brand-primary) 10%, white),
+    color-mix(in srgb, var(--brand-secondary) 8%, #ecfdf5)
+  ) !important;
+}
+
+.bg-gradient-to-r.from-green-50.to-blue-50 {
+  background-image: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--brand-primary) 10%, white),
+    #eff6ff
+  ) !important;
+}
+
+.dark .from-green-900\/20 {
+  background-color: color-mix(in srgb, var(--brand-primary) 18%, transparent) !important;
+}
+
+.dark .to-emerald-900\/20 {
+  background-color: color-mix(in srgb, var(--brand-secondary) 14%, transparent) !important;
+}
+
+/* ---------- Solid primary actions: green + white text → brand ---------- */
+.bg-green-500.text-white:not(.keep-green),
+.bg-green-600.text-white:not(.keep-green),
+button.bg-green-600:not(.keep-green),
+a.bg-green-600:not(.keep-green) {
+  background-color: var(--brand-primary) !important;
+}
+
+.bg-green-500.text-white:not(.keep-green):hover,
+.bg-green-600.text-white:not(.keep-green):hover,
+button.bg-green-600:not(.keep-green):hover,
+a.bg-green-600:not(.keep-green):hover {
+  background-color: color-mix(in srgb, var(--brand-primary) 82%, black) !important;
+}
+
+.hover\:bg-green-700:hover.bg-green-600:not(.keep-green),
+.bg-green-600.hover\:bg-green-700:hover:not(.keep-green) {
+  background-color: color-mix(in srgb, var(--brand-primary) 78%, black) !important;
+}

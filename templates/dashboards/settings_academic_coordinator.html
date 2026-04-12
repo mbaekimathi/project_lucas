@@ -5,19 +5,7 @@
 {% block role_display %}Academic Schedule Management{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee" class="sidebar-item">
-    <i class="fas fa-home w-5"></i>
-    <span>Dashboard</span>
-</a>
-<a href="/profile/employee" class="sidebar-item">
-    <i class="fas fa-user w-5"></i>
-    <span>Profile</span>
-</a>
-<a href="/settings/curriculum coordinator" class="sidebar-item sidebar-item-active">
-    <i class="fas fa-cog w-5"></i>
-    <span>Settings</span>
-</a>
-<a href="/dashboard/employee/academic-schedule-management" class="sidebar-item">
+<a href="{{ employee_dash_url('academic-schedule-management') }}" class="sidebar-item">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Academic Schedule Management</span>
 </a>

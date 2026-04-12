@@ -4,13 +4,13 @@
 
 {% block sidebar_content %}
 <!-- Staff Management Links -->
-<a href="/staff-management" 
+<a href="{{ employee_dash_url('staff-management') }}" 
    class="sidebar-item">
     <i class="fas fa-user-tie w-5"></i>
     <span>Staff Management</span>
 </a>
 
-<a href="/assign-roles-approve" 
+<a href="{{ employee_dash_url('assign-roles-approve') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-check w-5"></i>
     <span>Assign Roles & Approve</span>
@@ -23,7 +23,7 @@
     <span>Leave Management</span>
 </a>
 
-<a href="/dashboard/employee/staff-and-salaries" 
+<a href="{{ employee_dash_url('staff-and-salaries') }}" 
    class="sidebar-item">
     <i class="fas fa-money-check-alt w-5"></i>
     <span>Payroll Management</span>
@@ -398,6 +398,7 @@
 </div>
 
 <script>
+const _approveEmpPrefix = {{ employee_dash_url()|tojson }};
 function assignRolesApprove() {
     return {
         message: {
@@ -527,7 +528,7 @@ function assignRolesApprove() {
                     net_salary: this.netSalary
                 };
                 
-                const response = await fetch('/dashboard/employee/staff-and-salaries/register-salary', {
+                const response = await fetch('{{ employee_dash_url('staff-and-salaries/register-salary') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -570,7 +571,7 @@ function assignRolesApprove() {
             }
             
             try {
-                const response = await fetch(`/approve-employee/${employeeId}`, {
+                const response = await fetch(`${_approveEmpPrefix}/approve-employee/${employeeId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

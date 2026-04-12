@@ -4,23 +4,23 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="/role-switch"
+<a href="{{ employee_dash_url('role-switch') }}"
     class="sidebar-item mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
-<a href="/system-settings"
+<a href="{{ employee_dash_url('system-settings') }}"
     class="sidebar-item">
     <i class="fas fa-cog w-5"></i>
     <span>System Settings</span>
 </a>
-<a href="{{ url_for('database_management') }}"
+<a href="{{ employee_dash_url('database') }}"
     class="sidebar-item">
     <i class="fas fa-database w-5"></i>
     <span>Database</span>
 </a>
-<a href="{{ url_for('database_backup_restore') }}"
+<a href="{{ employee_dash_url('database/backup-restore') }}"
     class="sidebar-item sidebar-item-active">
     <i class="fas fa-download w-5"></i>
     <span>Database Backup & Restore</span>
@@ -75,7 +75,7 @@
         </p>
 
         <!-- Update Backup Button -->
-        <form action="{{ url_for('database_backup_export') }}" method="POST" class="mb-4">
+        <form action="{{ employee_dash_url('database/backup-export') }}" method="POST" class="mb-4">
             <button type="submit"
                 class="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl flex items-center space-x-2">
                 <i class="fas fa-sync-alt"></i>
@@ -170,7 +170,7 @@
             Configure automatic database backups that will be generated at specified intervals.
         </p>
 
-        <form action="{{ url_for('database_backup_settings') }}" method="POST" class="space-y-4">
+        <form action="{{ employee_dash_url('database/backup-settings') }}" method="POST" class="space-y-4">
             <!-- Enable Auto Backup -->
             <div class="flex items-center space-x-3">
                 <input type="checkbox" id="auto_backup" name="auto_backup" {% if backup_settings.auto_backup_enabled

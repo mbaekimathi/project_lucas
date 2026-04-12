@@ -2,18 +2,23 @@
 
 {% block title %}News & Events - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block body_class %}public-site school-public{% endblock %}
+
 {% block content %}
-<!-- Hero Section -->
-<section class="relative bg-white py-24 md:py-32 overflow-hidden">
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-gray-900">
-                News & <span class="text-brand-primary">Events</span>
-            </h1>
-            <p class="text-xl md:text-2xl text-gray-600">Stay updated with the latest happenings at {{ school_settings.school_name or 'Modern School' }}</p>
+{% set hero_img = 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1920&q=80&auto=format&fit=crop' %}
+<section class="edu-hero edu-hero--page edu-hero--cinematic">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="News and events"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+            <div class="max-w-4xl mx-auto text-center">
+                <p class="edu-eyebrow text-white/90 mb-3">Stay informed</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">
+                    News &amp; <span class="text-white/95">Events</span>
+                </h1>
+                <p class="text-lg md:text-xl text-white/90">The latest from {{ school_settings.school_name or 'our school' }}</p>
+            </div>
         </div>
     </div>
 </section>

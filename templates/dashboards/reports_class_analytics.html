@@ -14,23 +14,24 @@
             Class overview
         </h1>
         <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-            Quick analytics per class: enrolled students, teachers assigned to subjects, and subject slots.
-            For detailed exam, timetable, and attendance exports, use
-            <a href="{{ url_for('academic_reports') }}" class="text-brand-primary font-medium hover:underline">Academic reports</a>.
+            Quick analytics per class below. Use the sidebar for <strong>Academic reports</strong> (lists, attendance, exam exports) and <strong>Accounts reports</strong> (fees).
         </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {% for c in class_analytics %}
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5">
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-8">
+        {% for c in class_analytics|default([]) %}
+        <a href="{{ url_for('reports_class_detail', level_id=c.id) }}"
+           class="group block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 text-left transition-all hover:shadow-lg hover:border-brand-primary/50 hover:ring-2 hover:ring-brand-primary/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2 group-hover:text-brand-primary transition-colors">
                 <i class="fas fa-school text-brand-primary"></i>
                 {{ c.level_name }}
                 {% if c.level_category %}<span class="text-sm font-normal text-gray-500 dark:text-gray-400">({{ c.level_category }})</span>{% endif %}
+                <i class="fas fa-chevron-right ml-auto text-gray-300 dark:text-gray-600 group-hover:text-brand-primary text-sm" aria-hidden="true"></i>
             </h2>
+            <p class="text-xs text-brand-primary/90 dark:text-brand-secondary font-medium mb-3">Open analytics — register, exams &amp; fees</p>
             <dl class="mt-4 space-y-3 text-sm">
                 <div class="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-2">
-                    <dt class="text-gray-600 dark:text-gray-400"><i class="fas fa-user-graduate mr-2 text-blue-500"></i>Students (active)</dt>
+                    <dt class="text-gray-600 dark:text-gray-400"><i class="fas fa-user-graduate mr-2 text-blue-500"></i>Students (in session)</dt>
                     <dd class="font-semibold text-gray-900 dark:text-white tabular-nums">{{ c.student_count }}</dd>
                 </div>
                 <div class="flex justify-between items-center border-b border-gray-100 dark:border-gray-700 pb-2">
@@ -42,13 +43,48 @@
                     <dd class="font-semibold text-gray-900 dark:text-white tabular-nums">{{ c.subject_count }}</dd>
                 </div>
             </dl>
-        </div>
+        </a>
         {% else %}
         <div class="md:col-span-2 xl:col-span-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center text-gray-600 dark:text-gray-400">
             <i class="fas fa-inbox text-4xl mb-3 text-gray-300 dark:text-gray-600"></i>
             <p>No active classes found. Add classes under Academic settings.</p>
         </div>
         {% endfor %}
+    </div>
+
+    {% set snap = stats_snapshot|default({'active_students': 0, 'teachers': 0, 'subjects': 0}) %}
+    <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">School-wide snapshot</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-user-graduate text-blue-600 dark:text-blue-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">School — active students</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.active_students|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Status: in session</p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-chalkboard-teacher text-amber-600 dark:text-amber-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">School — teachers</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.teachers|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Active teaching role</p>
+            </div>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
+                <i class="fas fa-book text-emerald-600 dark:text-emerald-400 text-xl"></i>
+            </div>
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">School — subjects</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.subjects|int) }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Catalog (active)</p>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

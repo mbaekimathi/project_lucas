@@ -4,19 +4,19 @@
 
 {% block sidebar_content %}
 <!-- Dashboard Navigation -->
-<a href="/dashboard/employee/my-classes" 
+<a href="{{ employee_dash_url('my-classes') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-chalkboard-teacher w-5"></i>
     <span>My Classes</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="/dashboard/employee/exams-and-grades" 
+<a href="{{ employee_dash_url('exams-and-grades') }}" 
    class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exams & Grades</span>
 </a>
 <div class="my-3 border-t border-gray-200 dark:border-gray-700"></div>
-<a href="/dashboard/employee" 
+<a href="{{ employee_dash_url() }}" 
    class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span class="font-medium">Back to Dashboard</span>

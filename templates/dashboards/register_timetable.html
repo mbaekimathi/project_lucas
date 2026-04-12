@@ -3,19 +3,19 @@
 {% block title %}Register Timetable{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee/timetable-management" class="sidebar-item">
+<a href="{{ employee_dash_url('timetable-management') }}" class="sidebar-item">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Timetable Home</span>
 </a>
-<a href="/dashboard/employee/timetable-management/register-timetable" class="sidebar-item sidebar-item-active">
+<a href="{{ employee_dash_url('timetable-management/register-timetable') }}" class="sidebar-item sidebar-item-active">
     <i class="fas fa-plus-circle w-5"></i>
     <span>Register Timetable</span>
 </a>
-<a href="/dashboard/employee/timetable-management/manage-timetable" class="sidebar-item">
+<a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" class="sidebar-item">
     <i class="fas fa-edit w-5"></i>
     <span>Manage Timetable</span>
 </a>
-<a href="/dashboard/employee" class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+<a href="{{ employee_dash_url() }}" class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
@@ -103,7 +103,7 @@
                 </h1>
                 <p class="text-sm text-gray-500">Create and assign teachers to class periods</p>
             </div>
-            <a href="/dashboard/employee/timetable-management" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900">
+            <a href="{{ employee_dash_url('timetable-management') }}" class="text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900">
                 ← Back to Timetable
             </a>
         </div>
@@ -151,7 +151,7 @@
             <p class="text-sm text-amber-700 dark:text-amber-300">
                 <i class="fas fa-exclamation-triangle mr-2"></i>
                 No class times configured. Please set up class times in
-                <a href="/dashboard/employee/academic-settings?tab=academic-schedule-management" class="underline font-semibold">Academic Schedule Management</a> first.
+                <a href="{{ employee_dash_url('academic-settings?tab=academic-schedule-management') }}" class="underline font-semibold">Academic Schedule Management</a> first.
             </p>
         </div>
 
@@ -321,7 +321,7 @@ function timetableApp() {
             this.slots = [];
             
             try {
-                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/load', {
+                const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/load') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ term_id: parseInt(this.termId), academic_level_id: parseInt(this.levelId) })
@@ -348,7 +348,7 @@ function timetableApp() {
 
         async loadLevelSettings() {
             try {
-                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/level-settings', {
+                const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/level-settings') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ academic_level_id: parseInt(this.levelId) })
@@ -419,7 +419,7 @@ function timetableApp() {
             }
             
             try {
-                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/save', {
+                const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/save') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -448,7 +448,7 @@ function timetableApp() {
             }
 
             try {
-                const res = await fetch('/dashboard/employee/timetable-management/register-timetable/auto-generate', {
+                const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/auto-generate') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
