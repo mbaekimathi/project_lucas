@@ -5,33 +5,32 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <a href="/dashboard/employee/timetable-management" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="w-full sidebar-item">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Timetable Management</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/register-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="w-full sidebar-item">
         <i class="fas fa-plus-circle w-5"></i>
         <span>Register Timetable</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/manage-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
-       style="border-color: var(--role-primary);">
+       class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-edit w-5"></i>
         <span>Manage Timetable</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
     
     <a href="/dashboard/employee/timetable-management/timetable-analytics" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="w-full sidebar-item">
         <i class="fas fa-chart-bar w-5"></i>
         <span>Timetable Analytics</span>
     </a>
     
     <a href="/dashboard/employee" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+       class="w-full sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
         <i class="fas fa-arrow-left w-5"></i>
         <span>Back to Dashboard</span>
     </a>
@@ -264,7 +263,10 @@
                     </div>
                     <div>
                         <h2 class="font-bold text-white text-lg" x-text="selectedClassName"></h2>
-                        <p class="text-blue-100 text-xs">Click on any cell to assign or change teacher</p>
+                        <p class="text-blue-100 text-xs">
+                            Click on any cell to assign or change teacher
+                            <span x-show="settingsProfileName">· Schedule: <span class="font-semibold" x-text="settingsProfileName"></span></span>
+                        </p>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -288,7 +290,7 @@
                             <tbody>
                         <template x-for="time in displayTimeSlots" :key="time">
                             <tr>
-                                <td x-text="time"></td>
+                                <td x-text="getTimeLabel(time)"></td>
                                 <template x-for="day in days" :key="day">
                                     <td class="editable-cell p-0"
                                         :class="{ 'has-teacher': getSlot(day, time) }"
@@ -468,6 +470,7 @@ function manageApp() {
         teacherSearch: '',
         saveStatus: '',
         loadingConflicts: false,
+        settingsProfileName: '',
         conflicts: {},  // { teacher_id: class_name }
         
         toast: {
@@ -495,18 +498,15 @@ function manageApp() {
         get displayTimeSlots() {
             // Use class times from settings
             if (this.classTimes && this.classTimes.length > 0) {
-                return this.classTimes.map(t => t.display || `${t.start_time} - ${t.end_time}` || t);
+                return this.classTimes
+                    .map(t => (t && t.start_time ? String(t.start_time) : ''))
+                    .filter(Boolean)
+                    .sort((a, b) => a.localeCompare(b));
             }
             // Fallback: extract unique times from existing timetable data
             if (this.originalData && this.originalData.length > 0) {
                 const times = [...new Set(this.originalData.map(e => e.time).filter(t => t))];
-                return times.sort((a, b) => {
-                    const getHour = (t) => {
-                        const match = t.match(/(\d+)/);
-                        return match ? parseInt(match[1]) : 0;
-                    };
-                    return getHour(a) - getHour(b);
-                });
+                return times.sort((a, b) => String(a).localeCompare(String(b)));
             }
             // Default time slots if nothing configured
             return [
@@ -514,6 +514,18 @@ function manageApp() {
                 '11:00 AM - 12:00 PM', '12:00 PM - 1:00 PM', '1:00 PM - 2:00 PM',
                 '2:00 PM - 3:00 PM', '3:00 PM - 4:00 PM'
             ];
+        },
+
+        getTimeLabel(time) {
+            const start = String(time || '');
+            if (!start) return '';
+            if (this.classTimes && this.classTimes.length > 0) {
+                const match = this.classTimes.find(t => String((t || {}).start_time || '') === start);
+                if (match && match.end_time) {
+                    return `${start} - ${match.end_time}`;
+                }
+            }
+            return start;
         },
         
         get filteredTeachers() {
@@ -574,6 +586,13 @@ function manageApp() {
                 const result = await res.json();
                 if (result.success && result.entries) {
                     this.originalData = result.entries;
+                    if (result.settings) {
+                        const s = result.settings;
+                        this.settingsProfileName = s.profile_name || '';
+                        this.days = (s.study_days || '').split(',').map(d => d.trim()).filter(Boolean);
+                        this.classTimes = Array.isArray(s.class_times) ? s.class_times : [];
+                        this.activities = Array.isArray(s.activities) ? s.activities : [];
+                    }
                     result.entries.forEach(entry => {
                         const key = `${entry.day}|${entry.time}`;
                         this.slots[key] = entry.teacher_id;

@@ -52,8 +52,7 @@
 <div class="space-y-2">
     <!-- Student Management Link -->
     <a href="/student-management" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary border-l-4"
-       style="border-color: var(--role-primary);">
+       class="w-full sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span class="font-medium">Student Management</span>
         <i class="fas fa-chevron-right ml-auto"></i>
@@ -62,7 +61,7 @@
     <!-- Add Fee Structure Link -->
     {% if can_add_fee_structure %}
     <button @click="$store.feeStructure.open()" 
-            class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]">
+            class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-sm">
         <i class="fas fa-plus-circle w-5 text-lg"></i>
         <span class="font-semibold">Add Fee Structure</span>
         <i class="fas fa-arrow-right ml-auto"></i>
@@ -71,8 +70,7 @@
     
     <!-- View Fee Structures Link -->
     <a href="/dashboard/employee/student-fees/fee-structures" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary border-l-4"
-       style="border-color: var(--role-primary);">
+       class="w-full sidebar-item {% if request.endpoint == 'fee_structures' %}sidebar-item-active{% endif %}">
         <i class="fas fa-list-alt w-5"></i>
         <span class="font-medium">Fee Structures</span>
         <i class="fas fa-chevron-right ml-auto"></i>
@@ -80,8 +78,7 @@
     
     <!-- Payments Audits Link -->
     <a href="/dashboard/employee/student-fees/payments-audit" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'payments_audit' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'payments_audit' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.endpoint == 'payments_audit' %}sidebar-item-active{% endif %}">
         <i class="fas fa-history w-5"></i>
         <span class="font-medium">Payments Audits</span>
         <i class="fas fa-chevron-right ml-auto"></i>
@@ -89,8 +86,7 @@
     
     <!-- Academic Settings Link -->
     <a href="/dashboard/employee/academic-settings" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_settings' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.endpoint == 'academic_settings' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5"></i>
         <span class="font-medium">Academic Settings</span>
         <i class="fas fa-chevron-right ml-auto"></i>

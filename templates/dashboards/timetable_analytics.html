@@ -5,35 +5,32 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <a href="/dashboard/employee/timetable-management" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+       class="w-full sidebar-item">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Timetable Management</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/register-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}sidebar-item-active{% endif %}">
         <i class="fas fa-plus-circle w-5"></i>
         <span>Register Timetable</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/manage-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}sidebar-item-active{% endif %}">
         <i class="fas fa-edit w-5"></i>
         <span>Manage Timetable</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/timetable-analytics" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
-       style="border-color: var(--role-primary);">
+       class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-chart-bar w-5"></i>
         <span>Timetable Analytics</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
     
     <a href="/dashboard/employee" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+       class="w-full sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
         <i class="fas fa-arrow-left w-5"></i>
         <span>Back to Dashboard</span>
     </a>

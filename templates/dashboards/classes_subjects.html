@@ -5,36 +5,32 @@
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
 <a href="/dashboard/employee/classes-subjects" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-book w-5"></i>
     <span>Classes & Subjects</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
 <a href="/dashboard/employee/subject-class-allocation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-tasks w-5"></i>
     <span>Subject & Class Allocation Panel</span>
 </a>
 
 <a href="/dashboard/employee/academic-subject-registration" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}sidebar-item-active{% endif %}">
     <i class="fas fa-book-open w-5"></i>
     <span>Academic Subject Registration</span>
 </a>
 
 <a href="/dashboard/employee/exam-evaluation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam & Evaluation</span>
 </a>
 
 <a href="/dashboard/employee" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
@@ -42,109 +38,103 @@
 
 {% block extra_head %}
 <style>
-    .dashboard-card {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
-        border: 1px solid rgba(128, 0, 32, 0.1);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    details.allocate-details > summary {
+        list-style: none;
     }
-    
-    .dashboard-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 24px rgba(128, 0, 32, 0.15);
-        border-color: rgba(128, 0, 32, 0.3);
+    details.allocate-details > summary::-webkit-details-marker {
+        display: none;
     }
-    
-    .dark .dashboard-card {
-        background: rgba(17, 24, 39, 0.95);
-        border-color: rgba(255, 255, 255, 0.1);
+    details.allocate-details .alloc-chevron {
+        transition: transform 0.2s ease;
     }
-    
-    .level-card {
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .level-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(128, 0, 32, 0.1), transparent);
-        transition: left 0.5s ease;
-    }
-    
-    .level-card:hover::before {
-        left: 100%;
-    }
-    
-    .level-card:hover {
-        transform: translateY(-2px) scale(1.02);
-        box-shadow: 0 8px 16px rgba(128, 0, 32, 0.2);
+    details.allocate-details[open] .alloc-chevron {
+        transform: rotate(180deg);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-    <!-- Header with Modern Styling -->
-    <div class="mb-6 sm:mb-8 scroll-reveal">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
-                        <i class="fas fa-book text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    Classes & Subjects Management
-                </h1>
-                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Manage classes and subjects for each academic level.</p>
-            </div>
-        </div>
-    </div>
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        <header class="mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                Classes &amp; subjects
+            </h1>
+            <p class="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400">
+                Classes are listed in order. Expand a row to see the dropdown and scrollable list of subject–teacher allocations for that level.
+            </p>
+        </header>
 
-    <!-- Content Area with Modern Card -->
-    <div class="dashboard-card rounded-2xl shadow-xl p-6 sm:p-8 md:p-10">
-        <div class="text-center py-8 sm:py-12">
-            <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-primary rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl transform hover:scale-110 transition-transform">
-                <i class="fas fa-book text-white text-3xl sm:text-4xl"></i>
-            </div>
-            <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">Classes & Subjects</h2>
-            <p class="text-base sm:text-lg text-gray-600 dark:text-gray-400 mb-8 max-w-2xl mx-auto">This page will allow you to manage classes and subjects for each academic level.</p>
-            
-            {% if academic_levels %}
-            <div class="max-w-4xl mx-auto">
-                <h3 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-6">Available Academic Levels:</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                    {% for level in academic_levels %}
-                    <div class="level-card bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-5 sm:p-6 border-2 border-gray-200 dark:border-gray-600">
-                        <div class="flex items-center mb-3">
-                            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
-                                <i class="fas fa-graduation-cap text-white"></i>
-                            </div>
-                            <h4 class="font-bold text-lg text-gray-900 dark:text-white">{{ level.level_name }}</h4>
-                        </div>
-                        <p class="text-sm text-gray-600 dark:text-gray-400 pl-13">{{ level.level_category }}</p>
-                        {% if level.level_description %}
-                        <p class="text-xs text-gray-500 dark:text-gray-500 mt-2 pl-13">{{ level.level_description }}</p>
-                        {% endif %}
+        {% if academic_levels %}
+        <ol class="list-none m-0 p-0">
+            {% for level in academic_levels %}
+            <li class="border-t border-gray-200 dark:border-gray-700 first:border-t-0 py-6 first:pt-0">
+                <div class="mb-3">
+                    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                        <span class="text-xs font-medium text-gray-400 dark:text-gray-500 tabular-nums">{{ loop.index }}.</span>
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ level.level_name }}</h2>
+                        <span class="text-sm text-gray-500 dark:text-gray-400">{{ level.level_category }}</span>
                     </div>
-                    {% endfor %}
+                    {% if level.level_description %}
+                    <p class="mt-1.5 text-xs sm:text-sm text-gray-500 dark:text-gray-500 pl-6 sm:pl-7">{{ level.level_description }}</p>
+                    {% endif %}
                 </div>
-            </div>
-            {% else %}
-            <div class="py-8">
-                <i class="fas fa-inbox text-gray-400 dark:text-gray-500 text-5xl mb-4"></i>
-                <p class="text-gray-500 dark:text-gray-400 text-lg">No academic levels found. Please configure academic levels first.</p>
-            </div>
-            {% endif %}
+
+                {% set subs = level.subject_allocations|default([]) %}
+                {% if subs and subs|length > 0 %}
+                <div class="pl-6 sm:pl-7">
+                    <details class="allocate-details rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden">
+                        <summary class="flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer select-none text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/80">
+                            <span class="font-medium text-gray-900 dark:text-white">{{ subs|length }} subject{% if subs|length != 1 %}s{% endif %} allocated</span>
+                            <span class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                                <span>Show list</span>
+                                <i class="fas fa-chevron-down alloc-chevron text-[10px] opacity-80"></i>
+                            </span>
+                        </summary>
+                        <div class="px-3 pb-3 pt-0 border-t border-gray-100 dark:border-gray-700">
+                            <label class="sr-only" for="alloc-select-{{ level.id }}">Browse allocations for {{ level.level_name }}</label>
+                            <select id="alloc-select-{{ level.id }}" class="w-full mt-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm px-3 py-2 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
+                                <option value="">— Dropdown: subject &amp; teacher —</option>
+                                {% for a in subs %}
+                                <option value="{{ a.assignment_id }}">
+                                    {{ a.subject_name }}{% if a.subject_code %} ({{ a.subject_code }}){% endif %} — {{ a.teacher_name }}{% if a.teacher_employee_id %} · {{ a.teacher_employee_id }}{% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mt-3 mb-2 uppercase tracking-wide">Full list</p>
+                            <ul class="max-h-36 overflow-y-auto space-y-1 text-sm text-gray-800 dark:text-gray-200 list-none m-0 p-0 pr-1">
+                                {% for a in subs %}
+                                <li class="flex flex-col sm:flex-row sm:items-baseline sm:gap-2 py-1.5 border-b border-gray-100 dark:border-gray-700/80 last:border-b-0">
+                                    <span class="font-medium text-gray-900 dark:text-white">
+                                        {{ a.subject_name }}{% if a.subject_code %} <span class="text-gray-500 dark:text-gray-400 font-normal text-xs">({{ a.subject_code }})</span>{% endif %}
+                                    </span>
+                                    <span class="text-gray-600 dark:text-gray-400 sm:ml-auto">
+                                        {{ a.teacher_name }}{% if a.teacher_employee_id %} <span class="text-xs text-gray-500">· {{ a.teacher_employee_id }}</span>{% endif %}
+                                    </span>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </details>
+                </div>
+                {% else %}
+                <div class="pl-6 sm:pl-7 text-sm text-gray-500 dark:text-gray-400">
+                    <p>No subjects allocated for this level yet.</p>
+                    <a href="/dashboard/employee/subject-class-allocation" class="inline-flex items-center mt-2 text-brand-primary hover:underline dark:text-brand-secondary">
+                        <i class="fas fa-tasks mr-1.5 text-xs"></i> Subject &amp; class allocation
+                    </a>
+                </div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ol>
+        {% else %}
+        <div class="py-12 text-center text-gray-500 dark:text-gray-400">
+            <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
+            <p>No academic levels found. Configure academic levels first.</p>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
-
-
 

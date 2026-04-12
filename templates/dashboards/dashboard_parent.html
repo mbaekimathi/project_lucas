@@ -5,7 +5,7 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 border-b border-gray-700/50 pb-4">
+   class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
@@ -13,37 +13,37 @@
 
 <!-- Parent Links -->
 <a @click.prevent="comingSoonTitle = 'Dashboard'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-chart-pie w-5"></i>
     <span>Dashboard</span>
 </a>
 <a @click.prevent="comingSoonTitle = 'My Child's Academic Records'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-user-graduate w-5"></i>
     <span>Child's Records</span>
 </a>
-<a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+<a href="{{ url_for('parent_attendance') }}" 
+   class="sidebar-item">
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
 </a>
 <a href="/dashboard/parent/student-fees" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
-<a @click.prevent="comingSoonTitle = 'Exam Results'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+<a href="{{ url_for('parent_exam_progress') }}" 
+   class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Results</span>
 </a>
 <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
 </a>
 <a @click.prevent="comingSoonTitle = 'Library'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-book w-5"></i>
     <span>Library</span>
 </a>
@@ -181,11 +181,6 @@
                     {% endif %}
                 </div>
                 
-                <!-- View Details Button -->
-                <a href="/dashboard/parent/student-fees/{{ child.student_id }}" 
-                   class="block w-full mt-4 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center shadow-md hover:shadow-lg transform hover:scale-[1.02] active:scale-[0.98]">
-                    <i class="fas fa-eye mr-2"></i>View Details
-                </a>
                 {% else %}
                 <!-- No Fee Structure -->
                 <div class="text-center py-4">
@@ -193,6 +188,22 @@
                     <p class="text-sm text-gray-500 dark:text-gray-400">No fee structure assigned</p>
                 </div>
                 {% endif %}
+
+                <!-- Fee & exam actions (always shown for linked children) -->
+                <div class="grid grid-cols-1 gap-2 mt-2">
+                <a href="/dashboard/parent/student-fees/{{ child.student_id }}" 
+                   class="block w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center shadow-md hover:shadow-lg transform hover:scale-[1.02] active:scale-[0.98]">
+                    <i class="fas fa-eye mr-2"></i>View Fee Details
+                </a>
+                <a href="{{ url_for('parent_exam_progress_detail', student_id=child.student_id) }}" 
+                   class="block w-full bg-white dark:bg-gray-700 border-2 border-orange-500 text-orange-600 dark:text-orange-400 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-orange-50 dark:hover:bg-gray-600">
+                    <i class="fas fa-chart-line mr-2"></i>Exam Results &amp; Progress
+                </a>
+                <a href="{{ url_for('parent_attendance_detail', student_id=child.student_id) }}" 
+                   class="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-gray-50 dark:hover:bg-gray-600">
+                    <i class="fas fa-check-circle mr-2"></i>Attendance
+                </a>
+                </div>
             </div>
         </div>
         {% endfor %}

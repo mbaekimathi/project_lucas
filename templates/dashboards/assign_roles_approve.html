@@ -5,33 +5,32 @@
 {% block sidebar_content %}
 <!-- Staff Management Links -->
 <a href="/staff-management" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-user-tie w-5"></i>
     <span>Staff Management</span>
 </a>
 
 <a href="/assign-roles-approve" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-check w-5"></i>
     <span>Assign Roles & Approve</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-calendar-times w-5"></i>
     <span>Leave Management</span>
 </a>
 
 <a href="/dashboard/employee/staff-and-salaries" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-money-check-alt w-5"></i>
     <span>Payroll Management</span>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Job Attendance'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-clock w-5"></i>
     <span>Job Attendance</span>
 </a>
@@ -115,11 +114,12 @@
                                 <option value="">Select a role...</option>
                                 <option value="employee">Employee</option>
                                 <option value="super admin">Super Admin</option>
-                                <option value="principal">Principal</option>
-                                <option value="deputy principal">Deputy Principal</option>
-                                <option value="academic coordinator">Academic Coordinator</option>
+                                <option value="head of institution">Head of Institution</option>
+                                <option value="deputy head of institution">Deputy Head of Institution</option>
+                                <option value="curriculum coordinator">Curriculum Coordinator</option>
                                 <option value="teachers">Teachers</option>
                                 <option value="accountant">Accountant</option>
+                                <option value="secretary">Secretary</option>
                                 <option value="librarian">Librarian</option>
                                 <option value="warden">Warden</option>
                                 <option value="transport manager">Transport Manager</option>

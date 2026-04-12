@@ -186,7 +186,7 @@ def create_tables():
                     id_number VARCHAR(50) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     profile_picture VARCHAR(500),
-                    role ENUM('employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician') DEFAULT 'employee',
+                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician') DEFAULT 'employee',
                     status ENUM('pending approval', 'active', 'suspended', 'fired', 'retired') DEFAULT 'pending approval',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

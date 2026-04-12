@@ -2,173 +2,173 @@
 
 {% block title %}Contact Us - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block body_class %}public-site school-public{% endblock %}
+
 {% block content %}
-<!-- Hero Section -->
-<section class="relative bg-white py-24 md:py-32 overflow-hidden">
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-gray-900">
-                Contact <span class="text-brand-primary">Us</span>
-            </h1>
-            <p class="text-xl md:text-2xl text-gray-600">We'd love to hear from you</p>
+{% set hero_img = 'https://images.unsplash.com/photo-1423666639041-f56000c27a9a?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="edu-hero edu-hero--page">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="School reception and communication"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+            <div class="max-w-3xl mx-auto text-center">
+                <p class="edu-eyebrow text-white/90 mb-3">{{ school_settings.school_name or "We're here to help" }}</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">Contact us</h1>
+                <p class="text-lg text-white/90">Admissions, visits, or general questions — we’ll respond as soon as we can.</p>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- Contact Section -->
-<section class="py-24 bg-gray-50">
+<section class="py-14 md:py-20 edu-section--tint">
     <div class="container mx-auto px-4 lg:px-8">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            <!-- Contact Form -->
-            <div>
-                <h2 class="text-3xl font-bold mb-8 text-gray-900">Send us a Message</h2>
-                <form method="POST" action="/contact" class="space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14">
+            <div class="edu-card p-6 md:p-8">
+                <h2 class="edu-display text-xl md:text-2xl text-gray-900 dark:text-white mb-2">Send a message</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-8">Fields marked with your details help us route your inquiry.</p>
+                <form method="POST" action="/contact" class="space-y-5">
                     <div>
-                        <label for="name" class="block text-sm font-semibold mb-2 text-gray-700">Full Name</label>
+                        <label for="name" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Full name</label>
                         <input type="text" id="name" name="name" required
-                               class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                               class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
                     </div>
                     <div>
-                        <label for="email" class="block text-sm font-semibold mb-2 text-gray-700">Email Address</label>
+                        <label for="email" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Email</label>
                         <input type="email" id="email" name="email" required
-                               class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                               class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
                     </div>
                     <div>
-                        <label for="phone" class="block text-sm font-semibold mb-2 text-gray-700">Phone Number</label>
+                        <label for="phone" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Phone <span class="font-normal text-gray-500">(optional)</span></label>
                         <input type="tel" id="phone" name="phone"
-                               class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                               class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
                     </div>
                     <div>
-                        <label for="subject" class="block text-sm font-semibold mb-2 text-gray-700">Subject</label>
+                        <label for="subject" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Subject</label>
                         <input type="text" id="subject" name="subject" required
-                               class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
+                               class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all">
                     </div>
                     <div>
-                        <label for="message" class="block text-sm font-semibold mb-2 text-gray-700">Message</label>
+                        <label for="message" class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">Message</label>
                         <textarea id="message" name="message" rows="5" required
-                                  class="w-full px-4 py-3 rounded-xl border-2 border-gray-200 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all"></textarea>
+                                  class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-all resize-y min-h-[120px]"></textarea>
                     </div>
-                    <button type="submit" class="w-full px-6 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl">
-                        <i class="fas fa-paper-plane mr-2"></i>Send Message
+                    <button type="submit" class="edu-btn-primary w-full justify-center">
+                        <i class="fas fa-paper-plane"></i> Send message
                     </button>
                 </form>
             </div>
 
-            <!-- Contact Information -->
             <div>
-                <h2 class="text-3xl font-bold mb-8 text-gray-900">Get in Touch</h2>
-                <div class="space-y-6">
-                    <div class="flex items-start space-x-4 p-6 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                        <div class="flex-shrink-0 w-14 h-14 bg-brand-primary rounded-xl flex items-center justify-center">
-                            <i class="fas fa-map-marker-alt text-white text-xl"></i>
+                <h2 class="edu-display text-xl md:text-2xl text-gray-900 dark:text-white mb-6">Reach {{ school_settings.school_name or 'us' }}</h2>
+                <div class="space-y-4">
+                    <div class="edu-card p-5 flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center text-white shadow-md">
+                            <i class="fas fa-map-marker-alt"></i>
                         </div>
                         <div>
-                            <h3 class="font-bold mb-2 text-gray-900">Address</h3>
-                            <p class="text-gray-600">
+                            <h3 class="font-bold text-gray-900 dark:text-white mb-1">Address</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                                 {% if school_settings.school_location %}
                                     {{ school_settings.school_location|replace('\n', '<br>')|safe }}
                                 {% else %}
-                                    123 Education Street<br>City, State 12345<br>United States
+                                    Update your school location in settings to show it here.
                                 {% endif %}
                             </p>
                         </div>
                     </div>
-
-                    <div class="flex items-start space-x-4 p-6 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                        <div class="flex-shrink-0 w-14 h-14 bg-brand-primary rounded-xl flex items-center justify-center">
-                            <i class="fas fa-phone text-white text-xl"></i>
+                    <div class="edu-card p-5 flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center text-white shadow-md">
+                            <i class="fas fa-phone"></i>
                         </div>
                         <div>
-                            <h3 class="font-bold mb-2 text-gray-900">Phone</h3>
-                            <p class="text-gray-600">
+                            <h3 class="font-bold text-gray-900 dark:text-white mb-1">Phone</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
                                 {% if school_settings.school_phone %}
-                                    {{ school_settings.school_phone }}
+                                    <a href="tel:{{ school_settings.school_phone }}" class="text-brand-primary hover:underline font-medium">{{ school_settings.school_phone }}</a>
                                 {% else %}
-                                    Contact us for phone number
+                                    Add a phone number in school settings.
                                 {% endif %}
                             </p>
                         </div>
                     </div>
-
-                    <div class="flex items-start space-x-4 p-6 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                        <div class="flex-shrink-0 w-14 h-14 bg-brand-primary rounded-xl flex items-center justify-center">
-                            <i class="fas fa-envelope text-white text-xl"></i>
+                    <div class="edu-card p-5 flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center text-white shadow-md">
+                            <i class="fas fa-envelope"></i>
                         </div>
                         <div>
-                            <h3 class="font-bold mb-2 text-gray-900">Email</h3>
-                            <p class="text-gray-600">
+                            <h3 class="font-bold text-gray-900 dark:text-white mb-1">Email</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
                                 {% if school_settings.school_email %}
-                                    <a href="mailto:{{ school_settings.school_email }}" class="text-brand-primary hover:text-brand-maroon-dark hover:underline">{{ school_settings.school_email }}</a>
+                                    <a href="mailto:{{ school_settings.school_email }}" class="text-brand-primary hover:underline font-medium break-all">{{ school_settings.school_email }}</a>
                                 {% else %}
-                                    Contact us for email address
+                                    Add an email in school settings.
                                 {% endif %}
                             </p>
                         </div>
                     </div>
-
-                    <div class="flex items-start space-x-4 p-6 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
-                        <div class="flex-shrink-0 w-14 h-14 bg-brand-primary rounded-xl flex items-center justify-center">
-                            <i class="fas fa-clock text-white text-xl"></i>
+                    <div class="edu-card p-5 flex gap-4">
+                        <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-brand-primary to-brand-accent flex items-center justify-center text-white shadow-md">
+                            <i class="fas fa-clock"></i>
                         </div>
                         <div>
-                            <h3 class="font-bold mb-2 text-gray-900">Office Hours</h3>
-                            <p class="text-gray-600">Monday - Friday: 8:00 AM - 5:00 PM<br>Saturday: 9:00 AM - 1:00 PM<br>Sunday: Closed</p>
+                            <h3 class="font-bold text-gray-900 dark:text-white mb-1">Office hours</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Monday – Friday: 8:00 AM – 5:00 PM<br>Saturday: 9:00 AM – 1:00 PM<br>Sunday: Closed</p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Social Media -->
-                <div class="mt-10">
-                    <h3 class="font-bold mb-5 text-gray-900">Follow Us</h3>
-                    <div class="flex space-x-4">
+                <div class="mt-8">
+                    <h3 class="font-bold text-gray-900 dark:text-white mb-4">Follow us</h3>
+                    <div class="flex flex-wrap gap-3">
                         {% if school_settings.facebook_url %}
-                        <a href="{{ school_settings.facebook_url }}" target="_blank" class="w-12 h-12 bg-gray-100 hover:bg-brand-primary rounded-xl flex items-center justify-center text-gray-600 hover:text-white transition-all shadow-sm hover:shadow-md">
+                        <a href="{{ school_settings.facebook_url }}" target="_blank" rel="noopener noreferrer" class="w-11 h-11 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-brand-primary hover:border-brand-primary rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-white transition-colors" aria-label="Facebook">
                             <i class="fab fa-facebook-f"></i>
                         </a>
                         {% endif %}
                         {% if school_settings.instagram_url %}
-                        <a href="{{ school_settings.instagram_url }}" target="_blank" class="w-12 h-12 bg-gray-100 hover:bg-brand-primary rounded-xl flex items-center justify-center text-gray-600 hover:text-white transition-all shadow-sm hover:shadow-md">
+                        <a href="{{ school_settings.instagram_url }}" target="_blank" rel="noopener noreferrer" class="w-11 h-11 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-brand-primary hover:border-brand-primary rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-white transition-colors" aria-label="Instagram">
                             <i class="fab fa-instagram"></i>
                         </a>
                         {% endif %}
                         {% if school_settings.twitter_url %}
-                        <a href="{{ school_settings.twitter_url }}" target="_blank" class="w-12 h-12 bg-gray-100 hover:bg-brand-primary rounded-xl flex items-center justify-center text-gray-600 hover:text-white transition-all shadow-sm hover:shadow-md">
+                        <a href="{{ school_settings.twitter_url }}" target="_blank" rel="noopener noreferrer" class="w-11 h-11 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-brand-primary hover:border-brand-primary rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-white transition-colors" aria-label="Twitter">
                             <i class="fab fa-twitter"></i>
                         </a>
                         {% endif %}
                         {% if school_settings.tiktok_url %}
-                        <a href="{{ school_settings.tiktok_url }}" target="_blank" class="w-12 h-12 bg-gray-100 hover:bg-brand-primary rounded-xl flex items-center justify-center text-gray-600 hover:text-white transition-all shadow-sm hover:shadow-md">
+                        <a href="{{ school_settings.tiktok_url }}" target="_blank" rel="noopener noreferrer" class="w-11 h-11 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 hover:bg-brand-primary hover:border-brand-primary rounded-lg flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-white transition-colors" aria-label="TikTok">
                             <i class="fab fa-tiktok"></i>
                         </a>
                         {% endif %}
                         {% if school_settings.whatsapp_number %}
-                        <a href="https://wa.me/{{ school_settings.whatsapp_number|replace('+', '')|replace(' ', '')|replace('-', '') }}" target="_blank" class="w-12 h-12 bg-green-500 hover:bg-green-600 rounded-xl flex items-center justify-center text-white transition-all shadow-sm hover:shadow-md">
+                        <a href="https://wa.me/{{ school_settings.whatsapp_number|replace('+', '')|replace(' ', '')|replace('-', '') }}" target="_blank" rel="noopener noreferrer" class="w-11 h-11 bg-green-600 hover:bg-green-700 rounded-lg flex items-center justify-center text-white transition-colors shadow-sm" aria-label="WhatsApp">
                             <i class="fab fa-whatsapp"></i>
                         </a>
                         {% endif %}
                     </div>
+                    {% if not (school_settings.facebook_url or school_settings.instagram_url or school_settings.twitter_url or school_settings.tiktok_url or school_settings.whatsapp_number) %}
+                    <p class="text-sm text-gray-500 dark:text-gray-500 mt-2">Social links appear here when configured in school settings.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Map Section -->
-<section class="py-24 bg-white">
+<section class="py-14 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
     <div class="container mx-auto px-4 lg:px-8">
-        <h2 class="text-4xl md:text-5xl font-bold text-center mb-12 text-gray-900">Find Us</h2>
-        <div class="bg-gray-50 rounded-3xl h-96 flex items-center justify-center border border-gray-200 shadow-sm">
-            <div class="text-center text-gray-600">
-                <i class="fas fa-map-marked-alt text-6xl mb-4 text-brand-primary"></i>
-                <p class="text-lg font-semibold">Interactive Map</p>
-                <p class="text-sm mt-2">
+        <h2 class="edu-display text-xl md:text-2xl text-center text-gray-900 dark:text-white mb-8">Find us</h2>
+        <div class="edu-card rounded-2xl overflow-hidden min-h-[280px] flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-900 border border-gray-200 dark:border-slate-700">
+            <div class="text-center px-6 py-10 text-gray-600 dark:text-gray-400">
+                <i class="fas fa-map-marked-alt text-5xl mb-4 text-brand-primary"></i>
+                <p class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Map &amp; directions</p>
+                <p class="text-sm max-w-md mx-auto leading-relaxed">
                     {% if school_settings.school_location %}
-                        {{ school_settings.school_location }}
+                        {{ school_settings.school_location|replace('\n', ' · ') }}
                     {% else %}
-                        123 Education Street, City, State 12345
+                        Set your address in school settings to display it for visitors.
                     {% endif %}
                 </p>
             </div>
@@ -176,15 +176,12 @@
     </div>
 </section>
 
-<!-- Next Button -->
-<div class="bg-white border-t border-gray-200">
-    <div class="container mx-auto px-4 lg:px-8 py-8">
-    <div class="flex justify-end">
-            <a href="/admission" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
+<div class="edu-strip border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 lg:px-8 py-6 flex justify-end">
+        <a href="/admission" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
             <span>Next</span>
-            <i class="fas fa-arrow-right"></i>
+            <i class="fas fa-arrow-right text-sm"></i>
         </a>
-        </div>
     </div>
 </div>
 {% endblock %}

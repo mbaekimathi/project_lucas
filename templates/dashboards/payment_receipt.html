@@ -200,8 +200,8 @@
                 <span class="receipt__value">{{ student.current_grade or '—' }}</span>
             </div>
             <div class="receipt__row">
-                <span class="receipt__label">Payment for</span>
-                <span class="receipt__value">{{ payment_for_display|default('—') }}</span>
+                <span class="receipt__label">Balance</span>
+                <span class="receipt__value">{{ "%.2f"|format(balance_due|default(0)) }}</span>
             </div>
             <div class="receipt__row">
                 <span class="receipt__label">Date</span>

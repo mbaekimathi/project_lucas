@@ -2,245 +2,181 @@
 
 {% block title %}Home - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}
-<style>
-    .hero-section {
-        position: relative;
-        min-height: 90vh;
-        display: flex;
-        align-items: center;
-        overflow: hidden;
-    }
-    
-    .hero-bg-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 0;
-    }
-    
-    .hero-bg-layer-1 {
-        background-image: url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80');
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        filter: brightness(0.5) contrast(1.2);
-    }
-    
-    .hero-bg-layer-2 {
-        background: linear-gradient(135deg, 
-            rgba(128, 0, 32, 0.7) 0%, 
-            rgba(160, 0, 48, 0.5) 50%,
-            rgba(128, 0, 32, 0.3) 100%);
-    }
-    
-    .hero-bg-layer-3 {
-        background: radial-gradient(circle at 30% 40%, rgba(128, 0, 32, 0.3) 0%, transparent 50%),
-                    radial-gradient(circle at 70% 60%, rgba(160, 0, 48, 0.2) 0%, transparent 50%);
-        animation: heroFloat 20s ease-in-out infinite;
-    }
-    
-    @keyframes heroFloat {
-        0%, 100% { transform: translate(0, 0) scale(1); }
-        50% { transform: translate(20px, -20px) scale(1.05); }
-    }
-    
-    @media (max-width: 768px) {
-        .hero-bg-layer-1 {
-            background-attachment: scroll;
-        }
-        .hero-section {
-            min-height: 80vh;
-        }
-    }
-</style>
-{% endblock %}
+{% block body_class %}public-site school-public{% endblock %}
 
 {% block content %}
-<!-- Hero Section with Modern Parallax -->
-<section class="hero-section relative">
-    <div class="hero-bg-layer hero-bg-layer-1 parallax-bg"></div>
-    <div class="hero-bg-layer hero-bg-layer-2"></div>
-    <div class="hero-bg-layer hero-bg-layer-3"></div>
-    
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-5xl mx-auto text-center">
-            <div class="mb-8 scroll-reveal">
-                <span class="inline-block px-6 py-3 bg-white/90 backdrop-blur-md text-brand-primary rounded-full text-sm font-semibold border-2 border-brand-primary/30 shadow-lg">
-                    <i class="fas fa-heart mr-2"></i>education management made easy
-                </span>
-            </div>
-            <h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold mb-6 text-white leading-tight scroll-reveal" style="text-shadow: 2px 2px 8px rgba(0,0,0,0.3);">
-                Welcome to<br>
-                <span class="gradient-text-maroon" style="-webkit-text-fill-color: #fff; text-shadow: 2px 2px 12px rgba(128,0,32,0.5);">{{ school_settings.school_name or 'Modern School' }}</span>
-            </h1>
-            <p class="text-lg sm:text-xl md:text-2xl mb-12 text-white/95 max-w-3xl mx-auto leading-relaxed scroll-reveal" style="text-shadow: 1px 1px 4px rgba(0,0,0,0.2);">
-                Empowering the next generation through quality education and community support
-            </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center scroll-reveal">
-                <a href="/admission" class="px-8 sm:px-10 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-2xl hover:shadow-brand-primary/50 hover:scale-105 text-base sm:text-lg transform">
-                    <i class="fas fa-file-alt mr-2"></i>Apply Now
-                </a>
-                <a href="/about" class="px-8 sm:px-10 py-4 glass-effect hover:bg-white/95 text-gray-900 rounded-xl font-semibold transition-all border-2 border-white/50 hover:border-white text-base sm:text-lg transform hover:scale-105">
-                    <i class="fas fa-info-circle mr-2"></i>Learn More
-                </a>
-            </div>
-        </div>
-    </div>
-</section>
+{# Hero imagery — learning institution (customizable via future setting; strong default) #}
+{% set hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
 
-<!-- Trust & Values Section with Modern Background -->
-<section class="section-bg-maroon py-20 sm:py-24 md:py-28 relative">
-    <div class="animated-pattern"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-7xl mx-auto">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-                <div class="modern-card text-center p-6 sm:p-8 rounded-2xl scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-lg transform hover:scale-110 transition-transform">
-                        <i class="fas fa-shield-alt text-white text-xl sm:text-2xl"></i>
+<section class="edu-hero">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Campus and learning environment"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
+            <div class="max-w-3xl">
+                <p class="edu-eyebrow text-white/90 mb-4">{{ school_settings.project_name or 'Excellence in education' }}</p>
+                <div class="flex flex-col sm:flex-row sm:items-center gap-6 mb-8">
+                    {% if school_settings.school_logo %}
+                    <div class="edu-logo-ring shrink-0">
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}">
                     </div>
-                    <h3 class="font-bold text-gray-900 mb-2 text-base sm:text-lg">Trusted Institution</h3>
-                    <p class="text-xs sm:text-sm text-gray-600">Proven track record</p>
+                    {% endif %}
+                    <div>
+                        <h1 class="edu-display text-4xl sm:text-5xl md:text-6xl text-white drop-shadow-sm">
+                            {{ school_settings.school_name or 'Modern School' }}
+                        </h1>
+                        <p class="mt-3 text-lg md:text-xl text-white/90 max-w-xl leading-relaxed">
+                            Where curiosity meets rigor — preparing learners for a changing world.</p>
+                    </div>
                 </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-2xl scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-lg transform hover:scale-110 transition-transform">
-                        <i class="fas fa-eye text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-900 mb-2 text-base sm:text-lg">Full Transparency</h3>
-                    <p class="text-xs sm:text-sm text-gray-600">Open and honest</p>
+                <div class="flex flex-wrap gap-3 mb-10">
+                    <span class="edu-stat-pill"><i class="fas fa-graduation-cap opacity-90"></i> Academic excellence</span>
+                    <span class="edu-stat-pill"><i class="fas fa-users opacity-90"></i> Community & care</span>
+                    <span class="edu-stat-pill"><i class="fas fa-lightbulb opacity-90"></i> Innovation</span>
                 </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-2xl scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-lg transform hover:scale-110 transition-transform">
-                        <i class="fas fa-users text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-900 mb-2 text-base sm:text-lg">Community Impact</h3>
-                    <p class="text-xs sm:text-sm text-gray-600">Making a difference</p>
-                </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-2xl scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-5 shadow-lg transform hover:scale-110 transition-transform">
-                        <i class="fas fa-certificate text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="font-bold text-gray-900 mb-2 text-base sm:text-lg">Accredited Programs</h3>
-                    <p class="text-xs sm:text-sm text-gray-600">Quality education</p>
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <a href="/admission" class="edu-btn-primary">
+                        <i class="fas fa-file-signature"></i> Apply for admission
+                    </a>
+                    <a href="/about" class="edu-btn-ghost">
+                        <i class="fas fa-book-open"></i> Discover our story
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Features Section with Glassmorphism -->
-<section class="py-20 sm:py-24 md:py-28 bg-white relative overflow-hidden">
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-12 sm:mb-16 md:mb-20 scroll-reveal">
-                <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-4 sm:mb-5">Why Choose Us</h2>
-                <p class="text-base sm:text-lg md:text-xl text-gray-600 max-w-2xl mx-auto">
-                    We are committed to providing quality education with transparency, trust, and community impact at our core.
-                </p>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 md:gap-10">
-                <div class="group scroll-reveal">
-                    <div class="glass-effect p-8 sm:p-10 rounded-3xl shadow-lg hover:shadow-2xl transition-all border border-brand-primary/10 h-full transform hover:-translate-y-2">
-                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-xl transform group-hover:rotate-6 transition-transform">
-                            <i class="fas fa-graduation-cap text-white text-2xl sm:text-3xl"></i>
-                        </div>
-                        <h3 class="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Quality Education</h3>
-                        <p class="text-gray-600 leading-relaxed text-base sm:text-lg">
-                            World-class curriculum designed to prepare students for success in the modern world.
-                        </p>
-                    </div>
-                </div>
-                <div class="group scroll-reveal">
-                    <div class="glass-effect p-8 sm:p-10 rounded-3xl shadow-lg hover:shadow-2xl transition-all border border-brand-primary/10 h-full transform hover:-translate-y-2">
-                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-xl transform group-hover:rotate-6 transition-transform">
-                            <i class="fas fa-users text-white text-2xl sm:text-3xl"></i>
-                        </div>
-                        <h3 class="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Expert Faculty</h3>
-                        <p class="text-gray-600 leading-relaxed text-base sm:text-lg">
-                            Experienced and dedicated teachers committed to student growth and development.
-                        </p>
-                    </div>
-                </div>
-                <div class="group scroll-reveal">
-                    <div class="glass-effect p-8 sm:p-10 rounded-3xl shadow-lg hover:shadow-2xl transition-all border border-brand-primary/10 h-full transform hover:-translate-y-2">
-                        <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-xl transform group-hover:rotate-6 transition-transform">
-                            <i class="fas fa-laptop text-white text-2xl sm:text-3xl"></i>
-                        </div>
-                        <h3 class="text-xl sm:text-2xl font-bold text-gray-900 mb-4">Modern Facilities</h3>
-                        <p class="text-gray-600 leading-relaxed text-base sm:text-lg">
-                            State-of-the-art technology and facilities to enhance the learning experience.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Impact Stats Section with Animated Counters -->
-<section class="section-bg-maroon py-20 sm:py-24 md:py-28 relative">
-    <div class="animated-pattern"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-12 sm:mb-16 scroll-reveal">
-                <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-5 text-gray-900">Our Impact</h2>
-                <p class="text-base sm:text-lg md:text-xl text-gray-600">Transforming lives through education and community support</p>
-            </div>
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-                <div class="modern-card text-center p-6 sm:p-8 rounded-3xl scroll-reveal">
-                    <div class="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 gradient-text-maroon" data-counter="500">500+</div>
-                    <div class="text-gray-600 font-semibold text-base sm:text-lg">Students</div>
-                </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-3xl scroll-reveal">
-                    <div class="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 gradient-text-maroon" data-counter="50">50+</div>
-                    <div class="text-gray-600 font-semibold text-base sm:text-lg">Teachers</div>
-                </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-3xl scroll-reveal">
-                    <div class="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 gradient-text-maroon" data-counter="20">20+</div>
-                    <div class="text-gray-600 font-semibold text-base sm:text-lg">Programs</div>
-                </div>
-                <div class="modern-card text-center p-6 sm:p-8 rounded-3xl scroll-reveal">
-                    <div class="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 gradient-text-maroon" data-counter="95">95%</div>
-                    <div class="text-gray-600 font-semibold text-base sm:text-lg">Success Rate</div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- CTA Section with Gradient Background -->
-<section class="py-20 sm:py-24 md:py-28 bg-gradient-to-br from-brand-primary via-brand-secondary to-brand-primary relative overflow-hidden">
-    <div class="absolute inset-0 opacity-10">
-        <div class="hero-bg-layer-1" style="background-image: url('https://images.unsplash.com/photo-1503676260728-1c00da094a0b?w=1920&q=80'); filter: brightness(0.3);"></div>
-    </div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-        <div class="max-w-3xl mx-auto scroll-reveal">
-            <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-5 text-white">Ready to Start Your Journey?</h2>
-            <p class="text-lg sm:text-xl mb-8 sm:mb-10 text-white/90">
-                Join us today and unlock your potential
-            </p>
-            <a href="/admission" class="inline-block px-8 sm:px-12 py-4 sm:py-5 bg-white hover:bg-gray-50 text-brand-primary rounded-xl font-semibold transition-all shadow-2xl hover:shadow-white/50 hover:scale-105 text-base sm:text-lg transform">
-                <i class="fas fa-arrow-right mr-2"></i>Apply for Admission
-            </a>
-        </div>
-    </div>
-</section>
-
-<!-- Next Button -->
-<div class="bg-white border-t border-gray-200">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div class="flex justify-end">
-            <a href="/about" class="inline-flex items-center space-x-2 px-6 sm:px-8 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105">
-                <span>Next</span>
-                <i class="fas fa-arrow-right"></i>
-            </a>
-        </div>
+<div class="edu-strip border-y border-gray-200/80 dark:border-slate-700/80 py-4">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-center gap-6 md:gap-12 text-sm text-gray-700 dark:text-gray-300">
+        <span class="inline-flex items-center gap-2 font-medium"><i class="fas fa-map-marker-alt text-brand-primary"></i></span>
+        {% if school_settings.school_location %}
+        <span class="max-w-md text-center">{{ school_settings.school_location|replace('\n', ' · ')|e }}</span>
+        {% else %}
+        <span>Visit us — we’d love to show you around</span>
+        {% endif %}
+        {% if school_settings.school_phone %}
+        <a href="tel:{{ school_settings.school_phone|replace(' ', '') }}" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline">
+            <i class="fas fa-phone"></i> {{ school_settings.school_phone }}
+        </a>
+        {% endif %}
     </div>
 </div>
 
-<!-- Load Scroll Effects Script -->
-<script src="{{ url_for('static', filename='js/scroll-effects.js') }}"></script>
+<section class="edu-section edu-section--tint py-16 md:py-24">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="max-w-2xl mx-auto text-center mb-12 md:mb-16">
+            <p class="edu-eyebrow mb-2">What we stand for</p>
+            <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Built for learners who lead</h2>
+            <p class="edu-divider max-w-xs mx-auto my-6"></p>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">Transparent, trusted, and focused on every student — aligned with <strong class="text-brand-primary">{{ school_settings.school_name or 'our school' }}</strong> mission.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto">
+            <article class="edu-card p-8 md:p-10 text-center">
+                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-book-reader"></i></div>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Rigorous academics</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Curriculum that challenges and supports — literacy, numeracy, and critical thinking at the core.</p>
+            </article>
+            <article class="edu-card p-8 md:p-10 text-center">
+                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-hands-helping"></i></div>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Whole-child support</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Pastoral care, clubs, and leadership opportunities that build character and confidence.</p>
+            </article>
+            <article class="edu-card p-8 md:p-10 text-center">
+                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-globe-americas"></i></div>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Future-ready</h3>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Digital fluency, creativity, and collaboration — skills for university and beyond.</p>
+            </article>
+        </div>
+    </div>
+</section>
+
+{% if academic_levels and academic_levels|length > 0 %}
+<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10 max-w-6xl mx-auto">
+            <div>
+                <p class="edu-eyebrow mb-2">From your system</p>
+                <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Academic levels we offer</h2>
+                <p class="text-gray-600 dark:text-gray-400 mt-2 max-w-xl">Programs configured in your school settings — shown here automatically.</p>
+            </div>
+            <a href="/programs" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline shrink-0">
+                View all programs <i class="fas fa-arrow-right text-sm"></i>
+            </a>
+        </div>
+        <div class="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
+            {% for level in academic_levels %}
+            <span class="edu-level-chip" title="{{ level.level_description or '' }}">{{ level.level_name }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="section-bg-maroon py-16 md:py-20 relative">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+        <div class="max-w-5xl mx-auto">
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 text-center">
+                <div class="edu-card edu-card--glass p-6 md:p-8">
+                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="500">500+</div>
+                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Learners</div>
+                </div>
+                <div class="edu-card edu-card--glass p-6 md:p-8">
+                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="50">50+</div>
+                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Educators</div>
+                </div>
+                <div class="edu-card edu-card--glass p-6 md:p-8">
+                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="20">20+</div>
+                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Programs</div>
+                </div>
+                <div class="edu-card edu-card--glass p-6 md:p-8">
+                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="95">95%</div>
+                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Success focus</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-16 md:py-20 bg-white dark:bg-slate-900">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl">
+        <div class="edu-frame shadow-xl">
+            <div class="grid md:grid-cols-2 gap-0">
+                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&q=80&auto=format&fit=crop');" role="img" aria-label="Library and reading"></div>
+                <div class="p-8 md:p-12 flex flex-col justify-center">
+                    <p class="edu-eyebrow mb-2">Our promise</p>
+                    <blockquote class="edu-quote text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
+                        Every student deserves teaching that respects their potential — and a community that believes in their future.
+                    </blockquote>
+                    <p class="text-sm text-gray-500 dark:text-gray-500">— Leadership, {{ school_settings.school_name or 'Modern School' }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="edu-section edu-section--dark py-16 md:py-20 text-center">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl relative z-10">
+        <h2 class="edu-display text-3xl md:text-4xl text-white mb-4">Take the next step</h2>
+        <p class="text-white/85 text-lg mb-8">Admissions, tours, and questions — we’re here to help.</p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/admission" class="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-semibold bg-white text-brand-primary shadow-lg hover:bg-gray-100 transition-colors">
+                <i class="fas fa-pen-nib"></i> Start application
+            </a>
+            <a href="/contact" class="edu-btn-ghost border-white/50">
+                <i class="fas fa-envelope"></i> Contact the office
+            </a>
+        </div>
+    </div>
+</section>
+
+<div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-end">
+        <a href="/about" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
+            <span>Next</span>
+            <i class="fas fa-arrow-right text-sm"></i>
+        </a>
+    </div>
+</div>
 {% endblock %}

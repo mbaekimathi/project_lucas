@@ -1,0 +1,298 @@
+/**
+ * Simple professional theme — loaded last.
+ * Flattens busy backgrounds, softens motion, improves responsive behavior.
+ * Does not change routes, IDs, or Alpine state.
+ */
+
+/* ----- Page canvas: simple, readable in light & dark ----- */
+:root {
+  --page-canvas-light: #f8fafc;
+  --page-canvas-dark: #020617;
+  --page-text-light: #0f172a;
+  --page-text-dark: #f1f5f9;
+  --page-border-light: #cbd5e1;
+  --page-border-dark: #64748b;
+}
+
+html {
+  background-color: var(--page-canvas-light);
+}
+
+.dark html {
+  background-color: var(--page-canvas-dark);
+}
+
+/* Calm page background (overrides custom.css mesh/orbs) */
+body {
+  background: var(--page-canvas-light) !important;
+  background-attachment: scroll !important;
+  color: var(--page-text-light);
+}
+
+body::before,
+body::after {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
+.dark body {
+  background: var(--page-canvas-dark) !important;
+  color: var(--page-text-dark);
+}
+
+/* Main column stays on canvas; content cards provide structure */
+main {
+  background-color: transparent;
+}
+
+/* Panels & type: clearer against canvas (scoped to main only) */
+main .border-gray-200 {
+  border-color: var(--page-border-light) !important;
+}
+
+.dark main .border-gray-700,
+.dark main .border-gray-600 {
+  border-color: var(--page-border-dark) !important;
+}
+
+.dark main .text-gray-400,
+.dark main .text-gray-500,
+.dark main .text-gray-600 {
+  color: #94a3b8 !important;
+}
+
+/* Light mode: secondary body copy slightly darker for contrast on canvas */
+main .text-gray-500,
+main .text-gray-600 {
+  color: #475569 !important;
+}
+
+/* Flatter shadows on content cards — simpler, less busy */
+main .shadow-lg {
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.08),
+    0 1px 2px rgba(15, 23, 42, 0.05) !important;
+}
+
+.dark main .shadow-lg {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.4),
+    0 1px 2px rgba(0, 0, 0, 0.28) !important;
+}
+
+.dark body::before,
+.dark body::after {
+  display: none !important;
+}
+
+body.has-school-images {
+  background-image: none !important;
+  filter: none !important;
+}
+
+body.has-school-images::before,
+body.has-school-images::after {
+  display: none !important;
+}
+
+/* ----- Sections: solid surfaces instead of heavy glass ----- */
+section.bg-white {
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.dark section.bg-white {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
+}
+
+section.bg-gray-50 {
+  background: #f8fafc !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.dark section.bg-gray-50 {
+  background: #1e293b !important;
+}
+
+/* ----- Cards & interactive: subtle, no aggressive lift ----- */
+.card {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
+  transform: none !important;
+}
+
+.card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+  border-color: rgba(100, 116, 139, 0.25) !important;
+}
+
+.modern-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.modern-card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1) !important;
+}
+
+.dark .modern-card {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+}
+
+/* Page hero blocks (dashboard headers) */
+.page-hero {
+  background: var(--role-primary, var(--brand-primary, #64748b)) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12) !important;
+  border-radius: 0.75rem !important;
+}
+
+.page-hero::before {
+  display: none !important;
+}
+
+/* ----- Tables: horizontal scroll on small screens ----- */
+main table,
+.table-responsive-wrapper table {
+  max-width: 100%;
+}
+
+.table-responsive-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+/* ----- Sidebar: remove decorative nav gradients ----- */
+.sidebar-nav::before,
+.sidebar-nav::after {
+  display: none !important;
+  height: 0 !important;
+  content: none !important;
+}
+
+/* ----- Unified sidebar links (simple, professional, consistent) ----- */
+/* Light mode: dark text | Dark mode: light text */
+aside nav.sidebar-nav a.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #1e293b;
+  text-decoration: none;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  border-left: 3px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  min-height: 2.5rem;
+}
+
+.dark aside nav.sidebar-nav a.sidebar-item {
+  color: #e2e8f0;
+}
+
+aside nav.sidebar-nav a.sidebar-item:hover {
+  color: var(--role-primary, var(--brand-primary, #64748b));
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.dark aside nav.sidebar-nav a.sidebar-item:hover {
+  color: var(--role-primary, var(--brand-primary, #64748b));
+  background: rgba(255, 255, 255, 0.08);
+}
+
+aside nav.sidebar-nav a.sidebar-item > i:first-of-type {
+  width: 1.125rem;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+/* Current page / active — one accent bar + tint (overrides legacy Tailwind on links) */
+aside nav.sidebar-nav a.sidebar-item.active,
+aside nav.sidebar-nav a.sidebar-item.border-l-4,
+aside nav.sidebar-nav a.sidebar-item.sidebar-item-active {
+  color: var(--role-primary, var(--brand-primary, #64748b)) !important;
+  font-weight: 600;
+  border-left-color: var(--role-primary, var(--brand-primary, #64748b)) !important;
+  border-left-width: 3px !important;
+  background: rgba(15, 23, 42, 0.06) !important;
+}
+
+.dark aside nav.sidebar-nav a.sidebar-item.active,
+.dark aside nav.sidebar-nav a.sidebar-item.border-l-4,
+.dark aside nav.sidebar-nav a.sidebar-item.sidebar-item-active {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+@supports (background: color-mix(in srgb, white, black)) {
+  aside nav.sidebar-nav a.sidebar-item.active,
+  aside nav.sidebar-nav a.sidebar-item.border-l-4,
+  aside nav.sidebar-nav a.sidebar-item.sidebar-item-active {
+    background: color-mix(
+      in srgb,
+      var(--role-primary, var(--brand-primary, #64748b)) 12%,
+      transparent
+    ) !important;
+  }
+}
+
+/* Single left indicator only (inline base.html ::before removed below) */
+aside nav.sidebar-nav a.sidebar-item.active::before {
+  display: none !important;
+  content: none !important;
+}
+
+aside nav.sidebar-nav a.sidebar-item:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--role-primary, var(--brand-primary, #64748b)) 45%, transparent);
+  outline-offset: 2px;
+}
+
+/* ----- Public layout (base.html): calmer chrome ----- */
+body > header {
+  box-shadow: 0 1px 0 0 rgba(15, 23, 42, 0.08) !important;
+}
+
+body > footer {
+  box-shadow: none !important;
+}
+
+/* ----- Responsive content width ----- */
+main .container,
+.container {
+  width: 100%;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+@media (min-width: 640px) {
+  main .container,
+  .container {
+    padding-left: max(1.5rem, env(safe-area-inset-left));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+  }
+}
+
+/* Forms: readable on iOS */
+@media (max-width: 1023px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}

@@ -2,81 +2,75 @@
 
 {% block title %}Our Team - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block body_class %}public-site school-public{% endblock %}
+
 {% block content %}
-<!-- Hero Section -->
-<section class="relative bg-white py-24 md:py-32 overflow-hidden">
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-gray-900">
-                Our <span class="text-brand-primary">Team</span>
-            </h1>
-            <p class="text-xl md:text-2xl text-gray-600 mb-10">Dedicated professionals committed to educational excellence</p>
-            <a href="/register-employee" class="inline-block px-10 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
-                <i class="fas fa-user-plus mr-2"></i>Join Our Team
-            </a>
+{% set hero_img = 'https://images.unsplash.com/photo-1524178232363-1fb2b075b655?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="edu-hero edu-hero--page">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Educators collaborating"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+            <div class="max-w-3xl mx-auto text-center">
+                <p class="edu-eyebrow text-white/90 mb-3">{{ school_settings.project_name or 'Our people' }}</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">Our team</h1>
+                <p class="text-lg text-white/90 mb-8 max-w-xl mx-auto">Educators and leaders dedicated to {{ school_settings.school_name or 'student success' }}.</p>
+                <a href="/register-employee" class="edu-btn-primary inline-flex"><i class="fas fa-user-plus"></i> Join our team</a>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- Team Section -->
-<section class="py-16 bg-white section-padding">
+<section class="py-14 md:py-20 edu-section--tint">
     <div class="container mx-auto px-4 lg:px-8">
-        <div class="text-center mb-12 fade-in-section">
-            <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Our Executive Team</h2>
-            <p class="text-lg text-gray-600 max-w-2xl mx-auto">Meet the dedicated professionals leading {{ school_settings.school_name or 'Modern School' }} towards a brighter future for our students.</p>
+        <div class="text-center mb-12 fade-in-section max-w-2xl mx-auto">
+            <h2 class="edu-display text-2xl md:text-3xl text-gray-900 dark:text-white mb-3">Leadership &amp; faculty</h2>
+            <p class="text-gray-600 dark:text-gray-400">The people guiding learning and culture at {{ school_settings.school_name or 'our school' }}.</p>
         </div>
 
-        <!-- Team Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 lg:gap-8 max-w-7xl mx-auto">
             {% for member in team_members %}
-            <div class="team-card-modern group relative overflow-hidden rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-4 fade-in-section">
-                <!-- Background Image -->
+            <div class="team-card-modern group relative overflow-hidden rounded-xl shadow-md border border-gray-200 dark:border-slate-600 hover:shadow-lg transition-shadow duration-300 fade-in-section">
                 <div class="absolute inset-0 bg-cover bg-center bg-no-repeat transform group-hover:scale-110 transition-transform duration-700" style="background-image: url('{{ member.image }}');">
                     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/30"></div>
                 </div>
-                
-                <!-- Content Overlay -->
                 <div class="relative h-96 flex flex-col justify-end p-6">
-                    <!-- Eye Icon Button -->
-                    <button @click="selectedMember = {{ loop.index0 }}; teamMemberModalOpen = true" 
-                            class="absolute top-4 right-4 w-12 h-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-emerald-500/80 transition-all duration-300 transform hover:scale-110 hover:rotate-12 shadow-lg border border-white/30 group-hover:bg-emerald-500/60">
+                    <button type="button" @click="selectedMember = {{ loop.index0 }}; teamMemberModalOpen = true"
+                            class="absolute top-4 right-4 w-12 h-12 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-brand-primary/90 transition-colors duration-200 shadow-sm border border-white/30"
+                            aria-label="View profile of {{ member.name }}">
                         <i class="fas fa-eye text-lg"></i>
                     </button>
-                    
-                    <!-- Floating Info Section -->
-                    <div class="bg-white/95 backdrop-blur-sm rounded-xl p-4 transform group-hover:translate-y-0 transition-all duration-300 border border-white/50 shadow-2xl">
-                        <h3 class="text-xl font-bold text-gray-900 mb-1 group-hover:text-emerald-600 transition-colors">
-                            {{ member.name }}
-                        </h3>
-                        <p class="text-emerald-600 font-semibold text-sm mb-2">{{ member.position }}</p>
-                        <p class="text-gray-600 text-xs line-clamp-2">{{ member.bio }}</p>
+                    <div class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg p-4 border border-white/50 dark:border-slate-600 shadow-lg">
+                        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-1 group-hover:text-brand-primary transition-colors">{{ member.name }}</h3>
+                        <p class="text-brand-primary font-semibold text-sm mb-2">{{ member.position }}</p>
+                        <p class="text-gray-600 dark:text-gray-400 text-xs line-clamp-2">{{ member.bio }}</p>
                     </div>
                 </div>
             </div>
             {% endfor %}
         </div>
 
-        <!-- Join Our Team CTA -->
-        <div class="mt-16 bg-gray-50 rounded-3xl p-10 md:p-12 text-center shadow-sm border border-gray-100">
-            <div class="max-w-3xl mx-auto">
-                <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-6">
-                    <i class="fas fa-user-tie text-white text-3xl"></i>
-                </div>
-                <h2 class="text-3xl md:text-4xl font-bold mb-4 text-gray-900">Want to Join Our Team?</h2>
-                <p class="text-lg md:text-xl text-gray-600 mb-8">We're always looking for passionate professionals and dedicated staff members to join our growing community. If you share our vision of providing quality education, we'd love to hear from you!</p>
-                <a href="/register-employee" class="inline-block px-10 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
-                    <i class="fas fa-user-plus mr-2"></i>Register as Employee
-                </a>
-            </div>
+        <div class="mt-14 edu-card p-8 md:p-10 text-center max-w-3xl mx-auto">
+            <div class="edu-icon-tile w-16 h-16 text-2xl mx-auto mb-6"><i class="fas fa-user-tie"></i></div>
+            <h2 class="edu-display text-2xl text-gray-900 dark:text-white mb-3">Want to join us?</h2>
+            <p class="text-gray-600 dark:text-gray-400 mb-8">We welcome passionate educators and support staff who share our values.</p>
+            <a href="/register-employee" class="edu-btn-primary inline-flex"><i class="fas fa-user-plus"></i> Register as employee</a>
         </div>
     </div>
 </section>
 
-<!-- Team Member Details Modal -->
-<div x-show="teamMemberModalOpen" 
+<div class="edu-strip border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 lg:px-8 py-6 flex justify-end">
+        <a href="/contact" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
+            <span>Next</span>
+            <i class="fas fa-arrow-right text-sm"></i>
+        </a>
+    </div>
+</div>
+
+<div x-show="teamMemberModalOpen"
      @click.away="teamMemberModalOpen = false"
      x-transition:enter="transition-opacity ease-out duration-300"
      x-transition:enter-start="opacity-0"
@@ -95,49 +89,44 @@
          x-transition:leave="transition-all ease-in duration-300"
          x-transition:leave-start="opacity-100 scale-100 translate-y-0"
          x-transition:leave-end="opacity-0 scale-90 translate-y-8"
-         class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col team-member-modal">
+         class="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col team-member-modal border border-gray-200 dark:border-slate-700">
         {% for member in team_members %}
         <div x-show="selectedMember === {{ loop.index0 }}" class="flex flex-col lg:flex-row h-full">
-            <!-- Image Section -->
-            <div class="lg:w-2/5 h-64 lg:h-auto bg-cover bg-center bg-no-repeat relative" 
+            <div class="lg:w-2/5 h-64 lg:h-auto bg-cover bg-center bg-no-repeat relative min-h-[16rem]"
                  style="background-image: url('{{ member.image }}')">
-                <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/20 to-teal-600/20"></div>
+                <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/25 to-brand-accent/30"></div>
                 <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
-                <button @click="teamMemberModalOpen = false" 
-                        class="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-500 transition-all duration-300 transform hover:scale-110 hover:rotate-90 shadow-lg">
+                <button type="button" @click="teamMemberModalOpen = false"
+                        class="absolute top-4 right-4 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white hover:bg-red-600 transition-all duration-300 transform hover:scale-110 shadow-lg"
+                        aria-label="Close">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            
-            <!-- Content Section -->
-            <div class="lg:w-3/5 p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-br from-white to-gray-50">
+            <div class="lg:w-3/5 p-6 lg:p-8 overflow-y-auto flex-1 bg-gradient-to-br from-white to-gray-50 dark:from-slate-900 dark:to-slate-950">
                 <div class="mb-4">
-                    <span class="inline-block px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold mb-3">{{ member.position }}</span>
-                    <h2 class="text-3xl font-bold text-gray-900 mb-2">{{ member.name }}</h2>
+                    <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold mb-3 bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25 dark:text-red-200">{{ member.position }}</span>
+                    <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">{{ member.name }}</h2>
                 </div>
-                
                 <div class="space-y-4 mb-6">
                     <div>
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">About</h3>
-                        <p class="text-gray-700 leading-relaxed">{{ member.details }}</p>
+                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">About</h3>
+                        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">{{ member.details }}</p>
                     </div>
-                    
                     <div>
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase mb-2">Qualifications</h3>
-                        <p class="text-gray-700">{{ member.qualifications }}</p>
+                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Qualifications</h3>
+                        <p class="text-gray-700 dark:text-gray-300">{{ member.qualifications }}</p>
                     </div>
                 </div>
-                
-                <div class="border-t border-gray-200 pt-6 space-y-3">
-                    <div class="flex items-center text-gray-700 hover:text-emerald-600 transition-colors">
-                        <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center mr-3">
-                            <i class="fas fa-envelope text-emerald-600"></i>
+                <div class="border-t border-gray-200 dark:border-slate-700 pt-6 space-y-3">
+                    <div class="flex items-center text-gray-700 dark:text-gray-300 hover:text-brand-primary transition-colors">
+                        <div class="w-10 h-10 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg flex items-center justify-center mr-3">
+                            <i class="fas fa-envelope text-brand-primary"></i>
                         </div>
-                        <a href="mailto:{{ member.email }}" class="font-medium">{{ member.email }}</a>
+                        <a href="mailto:{{ member.email }}" class="font-medium break-all">{{ member.email }}</a>
                     </div>
-                    <div class="flex items-center text-gray-700 hover:text-emerald-600 transition-colors">
-                        <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center mr-3">
-                            <i class="fas fa-phone text-emerald-600"></i>
+                    <div class="flex items-center text-gray-700 dark:text-gray-300 hover:text-brand-primary transition-colors">
+                        <div class="w-10 h-10 bg-brand-primary/10 dark:bg-brand-primary/20 rounded-lg flex items-center justify-center mr-3">
+                            <i class="fas fa-phone text-brand-primary"></i>
                         </div>
                         <a href="tel:{{ member.phone }}" class="font-medium">{{ member.phone }}</a>
                     </div>

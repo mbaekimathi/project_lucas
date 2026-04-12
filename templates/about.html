@@ -2,185 +2,116 @@
 
 {% block title %}About Us - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block extra_head %}
-<style>
-    .hero-section {
-        position: relative;
-        min-height: 70vh;
-        display: flex;
-        align-items: center;
-        overflow: hidden;
-    }
-    
-    .hero-bg-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 0;
-    }
-    
-    .hero-bg-layer-1 {
-        background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1920&q=80');
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-        filter: brightness(0.5) contrast(1.2);
-    }
-    
-    .hero-bg-layer-2 {
-        background: linear-gradient(135deg, 
-            rgba(128, 0, 32, 0.7) 0%, 
-            rgba(160, 0, 48, 0.5) 50%,
-            rgba(128, 0, 32, 0.3) 100%);
-    }
-    
-    @media (max-width: 768px) {
-        .hero-bg-layer-1 {
-            background-attachment: scroll;
-        }
-        .hero-section {
-            min-height: 60vh;
-        }
-    }
-</style>
-{% endblock %}
+{% block body_class %}public-site school-public{% endblock %}
 
 {% block content %}
-<!-- Hero Section with Modern Parallax -->
-<section class="hero-section relative">
-    <div class="hero-bg-layer hero-bg-layer-1 parallax-bg"></div>
-    <div class="hero-bg-layer hero-bg-layer-2"></div>
-    
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold mb-4 sm:mb-6 text-white scroll-reveal" style="text-shadow: 2px 2px 8px rgba(0,0,0,0.3);">
-                About <span class="gradient-text-maroon" style="-webkit-text-fill-color: #fff; text-shadow: 2px 2px 12px rgba(128,0,32,0.5);">{{ school_settings.school_name or 'Modern School' }}</span>
-            </h1>
-            <p class="text-lg sm:text-xl md:text-2xl text-white/95 scroll-reveal" style="text-shadow: 1px 1px 4px rgba(0,0,0,0.2);">Excellence in Education Since 2010 | education management made easy</p>
+{% set hero_img = 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="edu-hero edu-hero--page">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Library and learning"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+            <div class="max-w-3xl">
+                <p class="edu-eyebrow text-white/90 mb-3">About us</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">
+                    The story of {{ school_settings.school_name or 'our school' }}
+                </h1>
+                <p class="text-lg text-white/90 leading-relaxed">
+                    Rooted in {{ school_settings.project_name or 'educational excellence' }} — we grow learners who think clearly, act ethically, and lead with heart.</p>
+            </div>
         </div>
     </div>
 </section>
 
-<!-- Mission Section -->
-<section class="section-bg-maroon py-20 sm:py-24 md:py-28 relative">
-    <div class="animated-pattern"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-6xl mx-auto">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10 md:gap-12 items-center">
-                <div class="scroll-reveal">
-                    <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold mb-4 sm:mb-6 text-gray-900">Our Mission</h2>
-                    <p class="text-base sm:text-lg text-gray-600 mb-4 leading-relaxed">
-                        At {{ school_settings.school_name or 'Modern School' }}, we are committed to providing a transformative educational experience that prepares students for success in an ever-changing world. We believe in nurturing critical thinking, creativity, and character development.
-                    </p>
-                    <p class="text-base sm:text-lg text-gray-600 leading-relaxed">
-                        Our mission is to empower every student to reach their full potential through innovative teaching methods, personalized attention, and a supportive learning environment. We ensure transparency, trust, and community impact in everything we do.
-                    </p>
+<section class="edu-section edu-section--tint py-16 md:py-24">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+            <div>
+                <p class="edu-eyebrow mb-2">Mission</p>
+                <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white mb-6">Education that transforms</h2>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed mb-4 text-lg">
+                    At <strong class="text-brand-primary">{{ school_settings.school_name or 'Modern School' }}</strong>, we nurture critical thinking, creativity, and character — so every student can thrive in a complex world.
+                </p>
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    We combine high expectations with genuine care: clear communication with families, transparent processes, and a commitment to community impact.
+                </p>
+            </div>
+            <div class="edu-frame shadow-2xl">
+                <div class="aspect-[4/3] bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=900&q=80&auto=format&fit=crop');" role="img" aria-label="Students learning"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+            <p class="edu-eyebrow mb-2">Values</p>
+            <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">What guides us every day</h2>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {% set items = [
+                ('fa-star', 'Excellence', 'High standards in teaching, learning, and conduct.'),
+                ('fa-shield-alt', 'Transparency', 'Open communication and accountable leadership.'),
+                ('fa-heart', 'Trust', 'Relationships built on integrity and respect.'),
+                ('fa-users', 'Community', 'Partnership with families and local stakeholders.')
+            ] %}
+            {% for icon, title, desc in items %}
+            <article class="edu-card p-8">
+                <div class="edu-icon-tile mb-5"><i class="fas {{ icon }}"></i></div>
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ title }}</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ desc }}</p>
+            </article>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+
+<section class="section-bg-maroon py-16 md:py-20 relative">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 max-w-3xl mx-auto">
+        <h2 class="edu-display text-3xl md:text-4xl text-center text-gray-900 dark:text-white mb-12">Milestones</h2>
+        <div class="space-y-8">
+            {% set sn = school_settings.school_name or 'Modern School' %}
+            <div class="flex gap-4 md:gap-6">
+                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2010</div>
+                <div class="edu-card edu-card--glass p-6 flex-1">
+                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Foundation</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ sn }} was founded with a vision for student-centered learning and community partnership.</p>
                 </div>
-                <div class="modern-card glass-effect p-8 sm:p-10 rounded-3xl shadow-xl scroll-reveal">
-                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-lg">
-                        <i class="fas fa-bullseye text-white text-2xl sm:text-3xl"></i>
-                    </div>
-                    <h3 class="text-xl sm:text-2xl font-bold mb-4 text-gray-900 text-center">Our Vision</h3>
-                    <p class="text-gray-600 text-center leading-relaxed text-base sm:text-lg">
-                        To be a leading educational institution recognized for academic excellence, innovation, student success, and positive community impact.
-                    </p>
+            </div>
+            <div class="flex gap-4 md:gap-6">
+                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2015</div>
+                <div class="edu-card edu-card--glass p-6 flex-1">
+                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Growth</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Expanded facilities, labs, and programs — with transparent reporting to families.</p>
+                </div>
+            </div>
+            <div class="flex gap-4 md:gap-6">
+                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2020</div>
+                <div class="edu-card edu-card--glass p-6 flex-1">
+                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Digital learning</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Robust online and blended learning without losing our values.</p>
+                </div>
+            </div>
+            <div class="flex gap-4 md:gap-6">
+                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">Now</div>
+                <div class="edu-card edu-card--glass p-6 flex-1">
+                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Forward</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">We continue to innovate — with learners at the center of every decision.</p>
                 </div>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Values Section -->
-<section class="py-20 sm:py-24 md:py-28 bg-white relative overflow-hidden">
-    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-secondary/5"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-7xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold text-center mb-12 sm:mb-16 text-gray-900 scroll-reveal">Our Core Values</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
-                <div class="modern-card glass-effect p-6 sm:p-8 rounded-3xl shadow-lg scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                        <i class="fas fa-star text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">Excellence</h3>
-                    <p class="text-sm sm:text-base text-gray-600">Striving for the highest standards in everything we do.</p>
-                </div>
-                <div class="modern-card glass-effect p-6 sm:p-8 rounded-3xl shadow-lg scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                        <i class="fas fa-shield-alt text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">Transparency</h3>
-                    <p class="text-sm sm:text-base text-gray-600">Open communication and accountability in all operations.</p>
-                </div>
-                <div class="modern-card glass-effect p-6 sm:p-8 rounded-3xl shadow-lg scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                        <i class="fas fa-heart text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">Trust</h3>
-                    <p class="text-sm sm:text-base text-gray-600">Building confidence through integrity and reliability.</p>
-                </div>
-                <div class="modern-card glass-effect p-6 sm:p-8 rounded-3xl shadow-lg scroll-reveal">
-                    <div class="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center mb-6 shadow-lg">
-                        <i class="fas fa-users text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg sm:text-xl font-bold mb-3 text-gray-900">Community</h3>
-                    <p class="text-sm sm:text-base text-gray-600">Building strong relationships and positive impact.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- History Section -->
-<section class="section-bg-maroon py-20 sm:py-24 md:py-28 relative">
-    <div class="animated-pattern"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto">
-            <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold text-center mb-12 sm:mb-16 text-gray-900 scroll-reveal">Our History</h2>
-            <div class="space-y-6 sm:space-y-8">
-                <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 scroll-reveal">
-                    <div class="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-lg">2010</div>
-                    <div class="modern-card glass-effect p-5 sm:p-6 rounded-2xl shadow-lg flex-1">
-                        <h3 class="text-lg sm:text-xl font-bold mb-2 text-gray-900">Foundation</h3>
-                        <p class="text-sm sm:text-base text-gray-600">{{ school_settings.school_name or 'Modern School' }} was founded with a vision to revolutionize education through innovative teaching methods and student-centered learning, supported by our community and partners.</p>
-                    </div>
-                </div>
-                <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 scroll-reveal">
-                    <div class="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-lg">2015</div>
-                    <div class="modern-card glass-effect p-5 sm:p-6 rounded-2xl shadow-lg flex-1">
-                        <h3 class="text-lg sm:text-xl font-bold mb-2 text-gray-900">Expansion</h3>
-                        <p class="text-sm sm:text-base text-gray-600">We expanded our facilities and programs, introducing new technology labs and specialized learning centers with transparent community reporting.</p>
-                    </div>
-                </div>
-                <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 scroll-reveal">
-                    <div class="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-lg">2020</div>
-                    <div class="modern-card glass-effect p-5 sm:p-6 rounded-2xl shadow-lg flex-1">
-                        <h3 class="text-lg sm:text-xl font-bold mb-2 text-gray-900">Digital Transformation</h3>
-                        <p class="text-sm sm:text-base text-gray-600">We embraced digital learning platforms and online education, ensuring continuity during challenging times while maintaining our commitment to transparency.</p>
-                    </div>
-                </div>
-                <div class="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 scroll-reveal">
-                    <div class="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-2xl flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-lg">2025</div>
-                    <div class="modern-card glass-effect p-5 sm:p-6 rounded-2xl shadow-lg flex-1">
-                        <h3 class="text-lg sm:text-xl font-bold mb-2 text-gray-900">Today</h3>
-                        <p class="text-sm sm:text-base text-gray-600">We continue to innovate and excel, preparing students for success in the modern world with cutting-edge programs, facilities, and unwavering commitment to community impact.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Next Button -->
-<div class="bg-white border-t border-gray-200">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div class="flex justify-end">
-            <a href="/programs" class="inline-flex items-center space-x-2 px-6 sm:px-8 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl transform hover:scale-105">
-                <span>Next</span>
-                <i class="fas fa-arrow-right"></i>
-            </a>
-        </div>
+<div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-end">
+        <a href="/programs" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
+            <span>Next</span>
+            <i class="fas fa-arrow-right text-sm"></i>
+        </a>
     </div>
 </div>
 {% endblock %}

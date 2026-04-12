@@ -56,12 +56,12 @@
 }
 
 .modern-card:hover {
-  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.12);
+  transform: none;
 }
 
 .dark .modern-card:hover {
-  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.35);
 }
 
 /* ===== Responsive Table Wrapper ===== */
@@ -135,8 +135,8 @@
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 16px 32px -12px rgba(0, 0, 0, 0.2);
+  transform: none;
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.1);
 }
 
 /* ===== Section Headers ===== */

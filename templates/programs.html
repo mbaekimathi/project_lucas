@@ -2,288 +2,154 @@
 
 {% block title %}Programs - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block content %}
-<!-- Hero Section -->
-<section class="relative bg-white py-24 md:py-32 overflow-hidden">
-    <div class="absolute top-0 right-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    <div class="absolute bottom-0 left-0 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl"></div>
-    
-    <div class="container mx-auto px-4 lg:px-8 relative z-10">
-        <div class="max-w-4xl mx-auto text-center">
-            <h1 class="text-5xl sm:text-6xl md:text-7xl font-bold mb-6 text-gray-900">
-                Our <span class="text-brand-primary">Programs</span>
-            </h1>
-            <p class="text-xl md:text-2xl text-gray-600">Comprehensive educational programs designed for success</p>
-        </div>
-    </div>
-</section>
+{% block body_class %}public-site school-public{% endblock %}
 
-<!-- Programs Intro Section -->
-<section class="py-16 bg-gray-50">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="max-w-4xl mx-auto text-center mb-12">
-            <h2 class="text-4xl md:text-5xl font-bold text-gray-900 mb-6">Explore Our Educational Programs</h2>
-            <p class="text-lg md:text-xl text-gray-600 mb-8 leading-relaxed">
-                We offer a comprehensive range of programs designed to nurture every student's potential, from early childhood through high school graduation.
-            </p>
-            <div class="flex flex-wrap justify-center gap-4">
-                <div class="bg-white px-6 py-3 rounded-full shadow-sm border border-gray-200">
-                    <span class="text-base font-semibold text-brand-primary"><i class="fas fa-users mr-2"></i>500+ Students</span>
-                </div>
-                <div class="bg-white px-6 py-3 rounded-full shadow-sm border border-gray-200">
-                    <span class="text-base font-semibold text-brand-primary"><i class="fas fa-certificate mr-2"></i>20+ Programs</span>
-                </div>
-                <div class="bg-white px-6 py-3 rounded-full shadow-sm border border-gray-200">
-                    <span class="text-base font-semibold text-brand-primary"><i class="fas fa-star mr-2"></i>95% Success Rate</span>
-                </div>
+{% block content %}
+{% set hero_img = 'https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=1920&q=80&auto=format&fit=crop' %}
+
+<section class="edu-hero edu-hero--page">
+    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Classroom and learning"></div>
+    <div class="edu-hero__mesh" aria-hidden="true"></div>
+    <div class="edu-hero__pattern" aria-hidden="true"></div>
+    <div class="edu-hero__content">
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+            <div class="max-w-3xl mx-auto text-center">
+                <p class="edu-eyebrow text-white/90 mb-3">Academic programs</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">
+                    Learning pathways at {{ school_settings.school_name or 'our school' }}
+                </h1>
+                <p class="text-lg text-white/90">Structured programs from foundation years to graduation — aligned with your institution’s goals.</p>
             </div>
         </div>
     </div>
 </section>
 
-<!-- Programs Grid -->
-<section class="py-24 bg-white">
+<section class="edu-section edu-section--tint py-14 md:py-16">
+    <div class="container mx-auto px-4 lg:px-8 max-w-4xl text-center">
+        <p class="edu-eyebrow mb-2">Overview</p>
+        <h2 class="edu-display text-2xl md:text-3xl text-gray-900 dark:text-white mb-4">Designed for every stage</h2>
+        <p class="text-gray-600 dark:text-gray-400 text-lg leading-relaxed mb-8">
+            {{ school_settings.school_name or 'We' }} offer a broad continuum of learning experiences — so students grow in confidence, skill, and character from their first day to graduation.
+        </p>
+        <div class="flex flex-wrap justify-center gap-3">
+            <span class="edu-level-chip"><i class="fas fa-users mr-2"></i>500+ learners</span>
+            <span class="edu-level-chip"><i class="fas fa-layer-group mr-2"></i>20+ pathways</span>
+            <span class="edu-level-chip"><i class="fas fa-chart-line mr-2"></i>95% focus rate</span>
+        </div>
+    </div>
+</section>
+
+{% if academic_levels and academic_levels|length > 0 %}
+<section class="py-12 bg-white dark:bg-slate-900 border-y border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 lg:px-8 max-w-4xl text-center">
+        <p class="edu-eyebrow mb-2">Your configured levels</p>
+        <div class="flex flex-wrap justify-center gap-2">
+            {% for level in academic_levels %}
+            <span class="edu-level-chip text-base py-2 px-4">{{ level.level_name }}</span>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="py-16 md:py-20 bg-white dark:bg-slate-900">
     <div class="container mx-auto px-4 lg:px-8">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <!-- Program 1 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8 group">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-brand-primary px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white">K-5</span>
+                    <div class="absolute top-0 right-0 bg-brand-primary px-3 py-1.5 rounded-full text-xs font-bold text-white">K–5</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-book"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-book text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">Elementary Education</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">Foundational learning programs for grades K-5, focusing on core subjects and character development.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-clock mr-1"></i>Full Day Program
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Mathematics & Science</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Language Arts</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Social Studies</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Arts & Music</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Elementary</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">Core literacy, numeracy, and character — joyful foundations for lifelong learning.</p>
+                <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-6">
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Mathematics & science</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Language arts</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Arts & music</li>
+                </ul>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Apply <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
 
-            <!-- Program 2 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-brand-primary px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white">6-8</span>
+                    <div class="absolute top-0 right-0 bg-brand-primary px-3 py-1.5 rounded-full text-xs font-bold text-white">6–8</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-graduation-cap"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-graduation-cap text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">Middle School</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">Comprehensive programs for grades 6-8, preparing students for high school with advanced coursework.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-clock mr-1"></i>Full Day Program
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Advanced Mathematics</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Science Labs</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Foreign Languages</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Elective Courses</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Middle school</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">Deeper inquiry, electives, and study habits that prepare students for upper grades.</p>
+                <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-6">
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Advanced math & labs</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> World languages</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Student leadership</li>
+                </ul>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Apply <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
 
-            <!-- Program 3 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-brand-primary px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white">9-12</span>
+                    <div class="absolute top-0 right-0 bg-brand-primary px-3 py-1.5 rounded-full text-xs font-bold text-white">9–12</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-university"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-brand-primary rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-university text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">High School</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">College-preparatory programs for grades 9-12, including AP courses and career pathways.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-graduation-cap mr-1"></i>College Prep
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>AP Courses</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>College Prep</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Career Pathways</li>
-                    <li class="flex items-center"><i class="fas fa-check text-brand-primary mr-2"></i>Internships</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">High school</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">College-preparatory rigor, AP-style depth, and career pathways.</p>
+                <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400 mb-6">
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> AP & honors tracks</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Guidance & counseling</li>
+                    <li class="flex items-center gap-2"><i class="fas fa-check text-brand-primary"></i> Internships & service</li>
+                </ul>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Apply <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
 
-            <!-- Program 4 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-gray-600 px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white"><i class="fas fa-star mr-1"></i>Specialized</span>
+                    <div class="absolute top-0 right-0 bg-brand-maroon-dark px-3 py-1.5 rounded-full text-xs font-bold text-white">STEM</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-laptop-code"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-gray-600 rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-laptop-code text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">STEM Program</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">Specialized Science, Technology, Engineering, and Mathematics program with hands-on projects.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-flask mr-1"></i>Lab-Based
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Robotics</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Programming</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Engineering</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Research Projects</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">STEM</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">Hands-on science, coding, robotics, and engineering design challenges.</p>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Learn more <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
 
-            <!-- Program 5 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-gray-600 px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white"><i class="fas fa-palette mr-1"></i>Creative</span>
+                    <div class="absolute top-0 right-0 bg-brand-maroon-dark px-3 py-1.5 rounded-full text-xs font-bold text-white">Arts</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-palette"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-gray-600 rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-palette text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">Arts & Music</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">Creative arts programs including visual arts, music, theater, and dance.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-music mr-1"></i>Performance-Based
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Visual Arts</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Music Performance</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Theater & Drama</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Dance</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Arts & music</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">Visual arts, band, choir, theater, and performance opportunities.</p>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Learn more <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
 
-            <!-- Program 6 -->
-            <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 hover:shadow-lg transition-all group">
+            <article class="edu-card p-8">
                 <div class="relative mb-6">
-                    <div class="absolute top-0 right-0 bg-gray-600 px-4 py-2 rounded-full">
-                        <span class="text-sm font-bold text-white"><i class="fas fa-trophy mr-1"></i>Competitive</span>
+                    <div class="absolute top-0 right-0 bg-brand-maroon-dark px-3 py-1.5 rounded-full text-xs font-bold text-white">Athletics</div>
+                    <div class="edu-icon-tile w-16 h-16 text-2xl"><i class="fas fa-running"></i></div>
                 </div>
-                    <div class="w-20 h-20 bg-gray-600 rounded-2xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-running text-white text-3xl"></i>
-                    </div>
-                </div>
-                <h3 class="text-2xl font-bold mb-3 text-gray-900">Athletics</h3>
-                <p class="text-gray-600 mb-4 leading-relaxed">Comprehensive sports programs promoting physical fitness and teamwork.</p>
-                <div class="mb-4">
-                    <span class="inline-block bg-gray-100 px-3 py-1 rounded-lg text-sm text-gray-700">
-                            <i class="fas fa-medal mr-1"></i>Varsity Teams
-                        </span>
-                    </div>
-                <ul class="space-y-2 text-gray-600 mb-6 text-sm">
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Basketball</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Soccer</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Track & Field</li>
-                    <li class="flex items-center"><i class="fas fa-check text-gray-600 mr-2"></i>Swimming</li>
-                    </ul>
-                <a href="/admission" class="inline-flex items-center text-brand-primary font-semibold hover:text-brand-maroon-dark transition-colors">
-                    Learn More <i class="fas fa-arrow-right ml-2"></i>
-                    </a>
-            </div>
+                <h3 class="text-xl font-bold mb-3 text-gray-900 dark:text-white">Athletics</h3>
+                <p class="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">Team sports, fitness, and character through disciplined practice.</p>
+                <a href="/admission" class="font-semibold text-brand-primary inline-flex items-center gap-2 hover:gap-3 transition-all">Learn more <i class="fas fa-arrow-right text-xs"></i></a>
+            </article>
         </div>
     </div>
 </section>
 
-<!-- Program Highlights Section -->
-<section class="py-24 bg-gray-50">
-    <div class="container mx-auto px-4 lg:px-8">
-        <div class="max-w-6xl mx-auto">
-            <h2 class="text-4xl md:text-5xl font-bold text-center text-gray-900 mb-16">
-                Why Choose Our Programs?
-            </h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-md transition-all">
-                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-5">
-                        <i class="fas fa-chalkboard-teacher text-white text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-gray-900 mb-2">Expert Teachers</h3>
-                    <p class="text-gray-600 text-sm">Certified educators with years of experience</p>
-                </div>
-                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-md transition-all">
-                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-5">
-                        <i class="fas fa-laptop text-white text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-gray-900 mb-2">Modern Facilities</h3>
-                    <p class="text-gray-600 text-sm">State-of-the-art equipment and resources</p>
-                </div>
-                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-md transition-all">
-                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-5">
-                        <i class="fas fa-users text-white text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-gray-900 mb-2">Small Class Sizes</h3>
-                    <p class="text-gray-600 text-sm">Personalized attention for every student</p>
-                </div>
-                <div class="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center hover:shadow-md transition-all">
-                    <div class="w-16 h-16 bg-brand-primary rounded-2xl flex items-center justify-center mx-auto mb-5">
-                        <i class="fas fa-certificate text-white text-2xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-gray-900 mb-2">Accredited</h3>
-                    <p class="text-gray-600 text-sm">Recognized by educational authorities</p>
-                </div>
-            </div>
+<section class="edu-section edu-section--dark py-16 text-center">
+    <div class="container mx-auto px-4 lg:px-8 max-w-2xl">
+        <h2 class="edu-display text-2xl md:text-3xl text-white mb-4">Ready to enroll?</h2>
+        <p class="text-white/85 mb-8">Start a conversation with {{ school_settings.school_name or 'our admissions office' }}.</p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a href="/admission" class="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl font-semibold bg-white text-brand-primary shadow-lg hover:bg-gray-100 transition-colors">Apply now</a>
+            <a href="/contact" class="edu-btn-ghost border-white/50">Contact us</a>
         </div>
     </div>
 </section>
 
-<!-- CTA Section -->
-<section class="py-24 bg-white">
-    <div class="container mx-auto px-4 lg:px-8 text-center">
-        <div class="max-w-3xl mx-auto">
-            <h2 class="text-4xl md:text-5xl font-bold mb-5 text-gray-900">Ready to Enroll?</h2>
-            <p class="text-xl mb-10 text-gray-600">Discover the perfect program for your child</p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="/admission" class="px-10 py-4 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl text-lg">
-                <i class="fas fa-file-alt mr-2"></i>Apply Now
-            </a>
-                <a href="/contact" class="px-10 py-4 bg-white hover:bg-gray-50 text-gray-900 rounded-xl font-semibold transition-all border-2 border-gray-200 hover:border-gray-300 text-lg">
-                <i class="fas fa-phone mr-2"></i>Contact Us
-            </a>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- Next Button -->
-<div class="bg-white border-t border-gray-200">
-    <div class="container mx-auto px-4 lg:px-8 py-8">
-    <div class="flex justify-end">
-            <a href="/news" class="inline-flex items-center space-x-2 px-8 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-xl font-semibold transition-colors">
+<div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
+    <div class="container mx-auto px-4 lg:px-8 py-6 flex justify-end">
+        <a href="/news" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gray-100 dark:bg-slate-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors">
             <span>Next</span>
-            <i class="fas fa-arrow-right"></i>
+            <i class="fas fa-arrow-right text-sm"></i>
         </a>
-        </div>
     </div>
 </div>
 {% endblock %}

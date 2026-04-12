@@ -43,19 +43,18 @@
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
 <a href="/role-switch"
-    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-3 border-b border-gray-700/50 pb-3">
+    class="sidebar-item mb-3 border-b border-gray-700/50 pb-3">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 
 <a href="/system-settings"
-    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+    class="sidebar-item">
     <i class="fas fa-cog w-5"></i>
     <span>System Settings</span>
 </a>
 <a href="{{ url_for('database_management') }}"
-    class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-white bg-gray-700/50 border-l-4"
-    style="border-color: var(--role-primary);">
+    class="sidebar-item sidebar-item-active">
     <i class="fas fa-database w-5"></i>
     <span>Database</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
@@ -67,35 +66,35 @@
         Management</p>
 
     <a href="{{ url_for('database_backup_restore') }}"
-        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_backup_restore' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-        {% if request.endpoint=='database_backup_restore' %}style="border-color: var(--role-primary);" {% endif %}>
+        class="sidebar-item mb-2 {% if request.endpoint == 'database_backup_restore' %}sidebar-item-active{% endif %}"
+        {% if request.endpoint=='database_backup_restore' %} {% endif %}>
         <i class="fas fa-download w-5"></i>
         <span>Database Backup & Restore</span>
         <span class="ml-auto text-xs bg-blue-600 text-white px-2 py-0.5 rounded">Core</span>
     </a>
 
     <a @click.prevent="comingSoonTitle = 'Data Integrity & Maintenance'; comingSoonModalOpen = true"
-        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2">
+        class="sidebar-item mb-2">
         <i class="fas fa-shield-alt w-5"></i>
         <span>Data Integrity & Maintenance</span>
     </a>
 
     <a href="{{ url_for('database_health_status') }}"
-        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'database_health_status' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-        {% if request.endpoint=='database_health_status' %}style="border-color: var(--role-primary);" {% endif %}>
+        class="sidebar-item mb-2 {% if request.endpoint == 'database_health_status' %}sidebar-item-active{% endif %}"
+        {% if request.endpoint=='database_health_status' %} {% endif %}>
         <i class="fas fa-heartbeat w-5"></i>
         <span>Database Health & Status</span>
     </a>
 
     <a href="{{ url_for('logs_audit_trails') }}"
-        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 {% if request.endpoint == 'logs_audit_trails' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-        {% if request.endpoint=='logs_audit_trails' %}style="border-color: var(--role-primary);" {% endif %}>
+        class="sidebar-item mb-2 {% if request.endpoint == 'logs_audit_trails' %}sidebar-item-active{% endif %}"
+        {% if request.endpoint=='logs_audit_trails' %} {% endif %}>
         <i class="fas fa-history w-5"></i>
         <span>Logs & Audit Trails</span>
     </a>
 
     <a @click.prevent="comingSoonTitle = 'Access Control'; comingSoonModalOpen = true"
-        class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mb-2 border-2 border-yellow-500/50 hover:border-yellow-500">
+        class="sidebar-item mb-2 border-2 border-yellow-500/50 hover:border-yellow-500">
         <i class="fas fa-lock w-5 text-yellow-400"></i>
         <span class="font-semibold">Access Control</span>
         <span class="ml-auto text-xs bg-yellow-600 text-white px-2 py-0.5 rounded font-bold">Very Important</span>

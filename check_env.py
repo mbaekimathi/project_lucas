@@ -18,7 +18,7 @@ if env_path.exists():
         print("Note: python-dotenv not installed. Using system environment only.")
 else:
     print(f"WARNING: .env not found at {env_path}")
-    print("  Run: cp .env.example .env")
+    print("  Create a .env file in the project root with your configuration.")
     print("  Then edit .env with your values\n")
 
 def is_hosted():

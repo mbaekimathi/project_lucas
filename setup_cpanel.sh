@@ -27,8 +27,7 @@ pip install -r requirements.txt
 if [ ! -f ".env" ]; then
     echo ""
     echo "WARNING: .env not found!"
-    echo "  cp .env.example .env"
-    echo "  Then edit .env with your DB credentials and SECRET_KEY"
+    echo "  Create .env in the project root with DB credentials and SECRET_KEY"
     echo ""
 else
     echo ".env found."
@@ -38,8 +37,7 @@ fi
 if [ ! -f ".htaccess" ]; then
     echo ""
     echo "WARNING: .htaccess not found!"
-    echo "  cp .htaccess.example .htaccess"
-    echo "  Then edit .htaccess and set PassengerAppRoot to your full server path"
+    echo "  Add .htaccess for Passenger and set PassengerAppRoot to your full server path"
     echo "  (e.g. /home/username/public_html or /home1/account/elimu_centric)"
     echo ""
 else
@@ -58,5 +56,5 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Setup complete. See DEPLOYMENT.md for full guide."
+echo "Setup complete."
 echo "=========================================="

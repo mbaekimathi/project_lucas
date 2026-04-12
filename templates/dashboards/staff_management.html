@@ -6,76 +6,70 @@
 {% if filter_role == 'teachers' %}
 <!-- Teacher Management Links -->
 <a href="/dashboard/employee/teacher-management" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-tie w-5"></i>
     <span>Teacher Management</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
 <a href="/dashboard/employee/classes-subjects" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Classes & Subjects</span>
 </a>
 
 <a href="/dashboard/employee/subject-class-allocation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-tasks w-5"></i>
     <span>Subject & Class Allocation Panel</span>
 </a>
 
 <a href="/dashboard/employee/academic-subject-registration" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path == '/dashboard/employee/academic-subject-registration' %}sidebar-item-active{% endif %}">
     <i class="fas fa-book-open w-5"></i>
     <span>Academic Subject Registration</span>
 </a>
 
 <a href="/dashboard/employee/exam-evaluation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam & Evaluation</span>
 </a>
 
 <a href="/dashboard/employee" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
 {% else %}
 <!-- Staff Management Links -->
 <a href="/staff-management" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-tie w-5"></i>
     <span>Staff Management</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
 <a href="/assign-roles-approve" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-user-check w-5"></i>
     <span>Assign Roles & Approve</span>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-calendar-times w-5"></i>
     <span>Leave Management</span>
 </a>
 
 <a href="/dashboard/employee/staff-and-salaries" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-money-check-alt w-5"></i>
     <span>Payroll Management</span>
 </a>
 
 <a @click.prevent="comingSoonTitle = 'Job Attendance'; comingSoonModalOpen = true" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-clock w-5"></i>
     <span>Job Attendance</span>
 </a>
@@ -269,11 +263,12 @@
                                 class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
                             <option value="employee">Employee</option>
                             <option value="super admin">Super Admin</option>
-                            <option value="principal">Principal</option>
-                            <option value="deputy principal">Deputy Principal</option>
-                            <option value="academic coordinator">Academic Coordinator</option>
+                            <option value="head of institution">Head of Institution</option>
+                            <option value="deputy head of institution">Deputy Head of Institution</option>
+                            <option value="curriculum coordinator">Curriculum Coordinator</option>
                             <option value="teachers">Teachers</option>
                             <option value="accountant">Accountant</option>
+                            <option value="secretary">Secretary</option>
                             <option value="librarian">Librarian</option>
                             <option value="warden">Warden</option>
                             <option value="transport manager">Transport Manager</option>

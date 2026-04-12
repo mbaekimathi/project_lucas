@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 import os
 import re
 import json
+import copy
+import time
 from functools import wraps
 from dotenv import load_dotenv
 try:
@@ -26,7 +28,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
-from io import BytesIO
+from io import BytesIO, StringIO
 import csv
 try:
     from openpyxl import Workbook
@@ -40,6 +42,12 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+
+# Employee sub-roles stored in employees.role — must match MySQL ENUM, role switch, and UI
+EMPLOYEE_SUB_ROLES = (
+    'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
+    'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician',
+)
 
 # Email configuration
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
@@ -84,9 +92,20 @@ def _parse_student_id_digits(val):
     except (TypeError, ValueError):
         return 3
 
-def get_school_settings():
-    """Get school settings from database (includes theme colors)"""
-    school_data = {
+
+# In-memory cache for school_settings (avoids 2 DB round-trips per request: info_schema + SELECT)
+_SCHOOL_SETTINGS_CACHE = {'data': None, 'expires_at': 0.0}
+SCHOOL_SETTINGS_CACHE_TTL = int(os.environ.get('SCHOOL_SETTINGS_CACHE_TTL', '300'))
+
+
+def invalidate_school_settings_cache():
+    """Call after any INSERT/UPDATE to school_settings."""
+    _SCHOOL_SETTINGS_CACHE['data'] = None
+    _SCHOOL_SETTINGS_CACHE['expires_at'] = 0.0
+
+
+def _default_school_data():
+    return {
         'school_name': 'Modern School',
         'school_email': '',
         'school_phone': '',
@@ -105,75 +124,75 @@ def get_school_settings():
         'accent_color': '#5C0014',
         'font_family': 'Inter',
     }
-    
+
+
+def get_school_settings():
+    """Get school settings from database (includes theme colors). Cached with TTL."""
+    now = time.monotonic()
+    cached = _SCHOOL_SETTINGS_CACHE['data']
+    if cached is not None and now < _SCHOOL_SETTINGS_CACHE['expires_at']:
+        return copy.copy(cached)
+
+    school_data = _default_school_data()
     connection = None
     try:
         connection = get_db_connection()
         if connection:
             with connection.cursor() as cursor:
-                # Check if table exists first
-                cursor.execute("""
-                    SELECT COUNT(*) as count 
-                    FROM information_schema.tables 
-                    WHERE table_schema = %s AND table_name = 'school_settings'
-                """, (DB_CONFIG['database'],))
-                table_exists = cursor.fetchone()
-                
-                if table_exists and table_exists['count'] > 0:
-                    # Table exists, fetch settings
-                    cursor.execute("SELECT * FROM school_settings ORDER BY id DESC LIMIT 1")
-                    result = cursor.fetchone()
-                    if result:
-                        # Handle both tuple and dict results
-                        if isinstance(result, dict):
-                            school_data = {
-                                'school_name': result.get('school_name') or 'Modern School',
-                                'school_email': result.get('school_email') or '',
-                                'school_phone': result.get('school_phone') or '',
-                                'school_logo': result.get('school_logo') or None,
-                                'twitter_url': result.get('twitter_url') or '',
-                                'facebook_url': result.get('facebook_url') or '',
-                                'instagram_url': result.get('instagram_url') or '',
-                                'tiktok_url': result.get('tiktok_url') or '',
-                                'whatsapp_number': result.get('whatsapp_number') or '',
-                                'school_location': result.get('school_location') or '',
-                                'project_name': result.get('project_name') or 'Elimu Centric',
-                                'student_id_prefix': (result.get('student_id_prefix') or 'STU').strip().upper()[:10],
-                                'student_id_digits': _parse_student_id_digits(result.get('student_id_digits')),
-                                'primary_color': (result.get('primary_color') or '#800020').strip(),
-                                'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
-                                'accent_color': (result.get('accent_color') or '#5C0014').strip(),
-                                'font_family': (result.get('font_family') or 'Inter').strip(),
-                            }
-                        else:
-                            # Tuple result (fallback) - theme cols may be at different indices
-                            school_data = {
-                                'school_name': (result[1] if len(result) > 1 else None) or 'Modern School',
-                                'school_email': (result[2] if len(result) > 2 else None) or '',
-                                'school_phone': (result[3] if len(result) > 3 else None) or '',
-                                'school_logo': (result[4] if len(result) > 4 else None) or None,
-                                'twitter_url': (result[5] if len(result) > 5 else None) or '',
-                                'facebook_url': (result[6] if len(result) > 6 else None) or '',
-                                'instagram_url': (result[7] if len(result) > 7 else None) or '',
-                                'tiktok_url': (result[8] if len(result) > 8 else None) or '',
-                                'whatsapp_number': (result[9] if len(result) > 9 else None) or '',
-                                'school_location': (result[10] if len(result) > 10 else None) or '',
-                                'project_name': (result[11] if len(result) > 11 else None) or 'Elimu Centric',
-                                'primary_color': '#800020', 'secondary_color': '#A00030',
-                                'accent_color': '#5C0014', 'font_family': 'Inter',
-                            }
-    except Exception as e:
-        # Silently return default values if there's an error
-        # Don't print errors for context processor to avoid cluttering logs
+                # Single SELECT — no information_schema probe (saves a round-trip per cold cache)
+                cursor.execute("SELECT * FROM school_settings ORDER BY id DESC LIMIT 1")
+                result = cursor.fetchone()
+                if result:
+                    if isinstance(result, dict):
+                        school_data = {
+                            'school_name': result.get('school_name') or 'Modern School',
+                            'school_email': result.get('school_email') or '',
+                            'school_phone': result.get('school_phone') or '',
+                            'school_logo': result.get('school_logo') or None,
+                            'twitter_url': result.get('twitter_url') or '',
+                            'facebook_url': result.get('facebook_url') or '',
+                            'instagram_url': result.get('instagram_url') or '',
+                            'tiktok_url': result.get('tiktok_url') or '',
+                            'whatsapp_number': result.get('whatsapp_number') or '',
+                            'school_location': result.get('school_location') or '',
+                            'project_name': result.get('project_name') or 'Elimu Centric',
+                            'student_id_prefix': (result.get('student_id_prefix') or 'STU').strip().upper()[:10],
+                            'student_id_digits': _parse_student_id_digits(result.get('student_id_digits')),
+                            'primary_color': (result.get('primary_color') or '#800020').strip(),
+                            'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
+                            'accent_color': (result.get('accent_color') or '#5C0014').strip(),
+                            'font_family': (result.get('font_family') or 'Inter').strip(),
+                        }
+                    else:
+                        school_data = {
+                            'school_name': (result[1] if len(result) > 1 else None) or 'Modern School',
+                            'school_email': (result[2] if len(result) > 2 else None) or '',
+                            'school_phone': (result[3] if len(result) > 3 else None) or '',
+                            'school_logo': (result[4] if len(result) > 4 else None) or None,
+                            'twitter_url': (result[5] if len(result) > 5 else None) or '',
+                            'facebook_url': (result[6] if len(result) > 6 else None) or '',
+                            'instagram_url': (result[7] if len(result) > 7 else None) or '',
+                            'tiktok_url': (result[8] if len(result) > 8 else None) or '',
+                            'whatsapp_number': (result[9] if len(result) > 9 else None) or '',
+                            'school_location': (result[10] if len(result) > 10 else None) or '',
+                            'project_name': (result[11] if len(result) > 11 else None) or 'Elimu Centric',
+                            'primary_color': '#800020',
+                            'secondary_color': '#A00030',
+                            'accent_color': '#5C0014',
+                            'font_family': 'Inter',
+                        }
+    except Exception:
         pass
     finally:
         if connection:
             try:
                 connection.close()
-            except:
+            except Exception:
                 pass
-    
-    return school_data
+
+    _SCHOOL_SETTINGS_CACHE['data'] = copy.copy(school_data)
+    _SCHOOL_SETTINGS_CACHE['expires_at'] = time.monotonic() + SCHOOL_SETTINGS_CACHE_TTL
+    return copy.copy(school_data)
 
 @app.context_processor
 def inject_school_settings():
@@ -206,9 +225,7 @@ def inject_school_settings():
                 # Update employee profile picture in session if user is logged in as employee
                 if session.get('user_id') and session.get('role'):
                     user_role = session.get('role', '').lower()
-                    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-                    if user_role in employee_roles:
+                    if user_role in EMPLOYEE_SUB_ROLES:
                         employee_id = session.get('employee_id') or session.get('user_id')
                         cursor.execute("SELECT profile_picture FROM employees WHERE id = %s OR employee_id = %s", 
                                      (employee_id, employee_id))
@@ -308,6 +325,10 @@ else:
         'charset': 'utf8mb4',
         'cursorclass': pymysql.cursors.DictCursor
     }
+
+# Long cache for /static on production hosts (repeat visits skip re-downloading CSS/JS)
+if is_hosted():
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(os.environ.get('STATIC_MAX_AGE', '86400'))
 
 def ensure_database_exists():
     """Check if database exists, create it if it doesn't"""
@@ -536,7 +557,7 @@ def init_db():
                     id_number VARCHAR(50) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     profile_picture VARCHAR(500),
-                    role ENUM('employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician') DEFAULT 'employee',
+                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician') DEFAULT 'employee',
                     status ENUM('pending approval', 'active', 'suspended', 'fired', 'retired') DEFAULT 'pending approval',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -544,6 +565,46 @@ def init_db():
                     INDEX idx_employee_id (employee_id)
                 )
             """)
+            
+            # Migration: extend employees.role ENUM for existing databases (no-op if already applied)
+            try:
+                cursor.execute("""
+                    ALTER TABLE employees MODIFY COLUMN role ENUM(
+                        'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                    ) DEFAULT 'employee'
+                """)
+            except Exception:
+                pass
+            
+            # Migration: legacy role titles -> head of institution, deputy head of institution, curriculum coordinator
+            try:
+                cursor.execute("""
+                    ALTER TABLE employees MODIFY COLUMN role ENUM(
+                        'employee', 'super admin',
+                        'principal', 'head of institution',
+                        'deputy principal', 'deputy head of institution',
+                        'academic coordinator', 'curriculum coordinator',
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                    ) DEFAULT 'employee'
+                """)
+            except Exception:
+                pass
+            try:
+                cursor.execute("UPDATE employees SET role = 'head of institution' WHERE role = 'principal'")
+                cursor.execute("UPDATE employees SET role = 'deputy head of institution' WHERE role = 'deputy principal'")
+                cursor.execute("UPDATE employees SET role = 'curriculum coordinator' WHERE role = 'academic coordinator'")
+            except Exception:
+                pass
+            try:
+                cursor.execute("""
+                    ALTER TABLE employees MODIFY COLUMN role ENUM(
+                        'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                    ) DEFAULT 'employee'
+                """)
+            except Exception:
+                pass
             
             # Create employee_salaries table
             cursor.execute("""
@@ -733,7 +794,9 @@ def init_db():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS academic_coordinator_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
+                    profile_name VARCHAR(255) DEFAULT 'Default Profile',
                     study_days VARCHAR(255) DEFAULT 'Monday,Tuesday,Wednesday,Thursday,Friday',
+                    applicable_levels TEXT,
                     class_time_allocation TEXT,
                     class_duration INT DEFAULT 60,
                     activity_time_allocation TEXT,
@@ -753,6 +816,18 @@ def init_db():
                 cursor.execute("ALTER TABLE academic_coordinator_settings MODIFY COLUMN activity_time_allocation TEXT")
             except Exception as e:
                 print(f"Note: activity_time_allocation column may already be TEXT: {e}")
+
+            # Add applicable_levels column if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN applicable_levels TEXT AFTER study_days")
+            except Exception as e:
+                print(f"Note: applicable_levels column may already exist: {e}")
+
+            # Add profile_name column if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN profile_name VARCHAR(255) DEFAULT 'Default Profile' AFTER id")
+            except Exception as e:
+                print(f"Note: profile_name column may already exist: {e}")
             
             # Insert default settings if not exists
             cursor.execute("SELECT COUNT(*) as count FROM academic_coordinator_settings")
@@ -771,8 +846,8 @@ def init_db():
                     {'name': 'Prep', 'start_time': '14:00', 'duration': 20, 'end_time': '14:20'}
                 ])
                 cursor.execute("""
-                    INSERT INTO academic_coordinator_settings (study_days, class_time_allocation, class_duration, activity_time_allocation)
-                    VALUES ('Monday,Tuesday,Wednesday,Thursday,Friday', %s, 60, %s)
+                    INSERT INTO academic_coordinator_settings (profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation)
+                    VALUES ('Default Profile', 'Monday,Tuesday,Wednesday,Thursday,Friday', '[]', %s, 60, %s)
                 """, (default_class_times, default_activities))
             
             # Create academic_levels table (must be before timetables, terms, fee_structures)
@@ -1018,6 +1093,14 @@ def init_db():
                 """)
             except Exception as e:
                 print(f"Note: fk_exams_supervisor may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE exams ADD COLUMN is_locked BOOLEAN DEFAULT FALSE")
+            except Exception as e:
+                print(f"Note: exams.is_locked may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE exams ADD COLUMN locked_at TIMESTAMP NULL")
+            except Exception as e:
+                print(f"Note: exams.locked_at may already exist: {e}")
             
             # Create exam_supervisors table
             cursor.execute("""
@@ -1552,7 +1635,7 @@ def check_permission_or_role(permission_key, allowed_roles=None):
         # Check if employee has ever had any permissions (by checking if they exist in the table at all)
         # Actually, we can't easily check "ever had" without an audit table
         # So for now: if accountant/principal with 0 permissions, deny access (require explicit permissions)
-        if user_role in ['accountant', 'principal'] and total_permissions == 0:
+        if user_role in ['accountant', 'head of institution'] and total_permissions == 0:
             # For accountants/principals, require explicit permissions - no role fallback
             print(f"  - RESULT: DENIED (accountant/principal with no permissions - requires explicit permission)")
             return False
@@ -1562,7 +1645,7 @@ def check_permission_or_role(permission_key, allowed_roles=None):
     # 2. User is not an accountant/principal (they require explicit permissions)
     if allowed_roles and user_role in allowed_roles:
         # Only allow role fallback for non-accountant/principal roles
-        if user_role not in ['accountant', 'principal']:
+        if user_role not in ['accountant', 'head of institution']:
             print(f"  - RESULT: GRANTED (role-based fallback: {user_role} in {allowed_roles})")
             return True
         else:
@@ -3724,17 +3807,13 @@ def student_fees_view():
 @app.route('/dashboard/employee')
 @login_required
 def dashboard_employee():
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
     # Check if user is a teacher (either actual role or viewing as teacher)
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('home'))
     
@@ -3758,12 +3837,10 @@ def dashboard_employee():
     # Check if user is technician (for role switching)
     is_technician = user_role == 'technician'
     current_view_role = session.get('viewing_as_role', user_role)
-    current_employee_role = session.get('viewing_as_employee_role', user_role if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] else 'employee')
+    current_employee_role = session.get('viewing_as_employee_role', user_role if user_role in EMPLOYEE_SUB_ROLES else 'employee')
     
     # List of all employee roles for technician to view
-    employee_roles_list = ['employee', 'super admin', 'principal', 'deputy principal', 
-                          'academic coordinator', 'teachers', 'accountant', 'librarian', 
-                          'warden', 'transport manager', 'technician']
+    employee_roles_list = list(EMPLOYEE_SUB_ROLES)
     
     return render_template('dashboards/dashboard_employee.html', 
                          role=session.get('role', 'employee'),
@@ -3856,10 +3933,11 @@ def exams_and_grades():
                 
                 academic_levels = list(levels_dict.values())
                 
-                # Get exams for this teacher's subjects
+                # Get exams for this teacher's subjects (one row per subject slot; is_locked matches exam-evaluation lock)
                 cursor.execute("""
                     SELECT DISTINCT e.id, e.exam_name, e.exam_type, e.exam_date, e.academic_level_id,
-                           al.level_name, ay.year_name, t.term_name
+                           al.level_name, ay.year_name, t.term_name,
+                           COALESCE(e.is_locked, 0) AS is_locked
                     FROM exams e
                     INNER JOIN academic_levels al ON e.academic_level_id = al.id
                     INNER JOIN academic_years ay ON e.academic_year_id = ay.id
@@ -3879,6 +3957,7 @@ def exams_and_grades():
                         exam_date_str = exam_date.strftime('%Y-%m-%d')
                     else:
                         exam_date_str = str(exam_date) if exam_date else '-'
+                    il = row.get('is_locked', 0) if isinstance(row, dict) else (row[8] if len(row) > 8 else 0)
                     
                     exams.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
@@ -3888,7 +3967,8 @@ def exams_and_grades():
                         'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else row[4],
                         'level_name': row.get('level_name') if isinstance(row, dict) else row[5],
                         'year_name': row.get('year_name') if isinstance(row, dict) else row[6],
-                        'term_name': row.get('term_name') if isinstance(row, dict) else row[7]
+                        'term_name': row.get('term_name') if isinstance(row, dict) else row[7],
+                        'is_locked': bool(il) if not isinstance(il, bool) else il
                     })
         except Exception as e:
             print(f"Error fetching teacher assignments: {e}")
@@ -4114,58 +4194,186 @@ def finance_overview():
     
     # Check if user is accountant, principal, or viewing as accountant/principal
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_technician = user_role == 'technician'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
     # Check permission-based access
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
+    if not (is_technician or has_view_fees_permission or has_manage_fees_permission or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
-    # Get finance summary data
+    # Get finance summary + detail lists (fees, student payments, salary/expense outflows)
     connection = get_db_connection()
     finance_summary = {
         'total_students': 0,
         'total_fee_structures': 0,
-        'total_revenue': 0,
-        'pending_payments': 0,
-        'paid_payments': 0
+        'total_revenue': 0.0,
+        'payment_transaction_count': 0,
+        'total_expenses': 0.0,
+        'expense_transaction_count': 0,
     }
-    
+    fee_details = []
+    payment_details = []
+    expense_details = []
+
+    def _fmt_date(val):
+        if val is None:
+            return ''
+        if hasattr(val, 'strftime'):
+            return val.strftime('%Y-%m-%d')
+        return str(val)[:10]
+
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Get total students
                 cursor.execute("SELECT COUNT(*) as count FROM students WHERE status = 'active'")
                 result = cursor.fetchone()
                 finance_summary['total_students'] = result.get('count', 0) if result else 0
-                
-                # Get total fee structures
+
                 cursor.execute("SELECT COUNT(*) as count FROM fee_structures WHERE status = 'active'")
                 result = cursor.fetchone()
                 finance_summary['total_fee_structures'] = result.get('count', 0) if result else 0
-                
-                # Get total revenue (paid payments)
-                cursor.execute("SELECT COALESCE(SUM(amount_paid), 0) as total FROM student_payments")
+
+                cursor.execute("SELECT COALESCE(SUM(amount_paid), 0) as total, COUNT(*) as cnt FROM student_payments")
                 result = cursor.fetchone()
-                finance_summary['total_revenue'] = float(result.get('total', 0) if result else 0)
-                
-                # Get pending payments (this would need to be calculated from fee structures - payments)
-                # For now, we'll set it to 0 or calculate it if needed
-                finance_summary['pending_payments'] = 0
-                finance_summary['paid_payments'] = finance_summary['total_revenue']
+                if result:
+                    finance_summary['total_revenue'] = float(result.get('total', 0) or 0)
+                    finance_summary['payment_transaction_count'] = int(result.get('cnt', 0) or 0)
+
+                try:
+                    cursor.execute(
+                        "SELECT COALESCE(SUM(amount_paid), 0) as total, COUNT(*) as cnt FROM employee_salary_payments"
+                    )
+                    er = cursor.fetchone()
+                    if er:
+                        finance_summary['total_expenses'] = float(er.get('total', 0) or 0)
+                        finance_summary['expense_transaction_count'] = int(er.get('cnt', 0) or 0)
+                except Exception:
+                    pass
+
+                # Fee structures (active) with level / term / year
+                try:
+                    cursor.execute(
+                        """
+                        SELECT fs.id, fs.fee_name, al.level_name, fs.total_amount,
+                               fs.start_date, fs.end_date, fs.payment_deadline, fs.status,
+                               t.term_name, ay.year_name
+                        FROM fee_structures fs
+                        INNER JOIN academic_levels al ON fs.academic_level_id = al.id
+                        LEFT JOIN terms t ON fs.term_id = t.id
+                        LEFT JOIN academic_years ay ON fs.academic_year_id = ay.id
+                        WHERE fs.status = 'active'
+                        ORDER BY fs.start_date DESC, al.level_name, fs.fee_name
+                        LIMIT 150
+                        """
+                    )
+                    fee_rows = cursor.fetchall() or []
+                except Exception:
+                    fee_rows = []
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT fs.id, fs.fee_name, al.level_name, fs.total_amount,
+                                   fs.start_date, fs.end_date, fs.payment_deadline, fs.status
+                            FROM fee_structures fs
+                            INNER JOIN academic_levels al ON fs.academic_level_id = al.id
+                            WHERE fs.status = 'active'
+                            ORDER BY fs.start_date DESC, al.level_name, fs.fee_name
+                            LIMIT 150
+                            """
+                        )
+                        fee_rows = cursor.fetchall() or []
+                    except Exception as ex:
+                        print(f"Error loading fee_details (fallback) for finance overview: {ex}")
+                try:
+                    for r in fee_rows:
+                        fee_details.append({
+                            'id': r.get('id'),
+                            'fee_name': r.get('fee_name') or '—',
+                            'level_name': r.get('level_name') or '—',
+                            'total_amount': float(r.get('total_amount') or 0),
+                            'start_date': _fmt_date(r.get('start_date')),
+                            'end_date': _fmt_date(r.get('end_date')),
+                            'payment_deadline': _fmt_date(r.get('payment_deadline')),
+                            'status': r.get('status') or '—',
+                            'term_name': r.get('term_name') or '',
+                            'year_name': r.get('year_name') or '',
+                        })
+                except Exception as ex:
+                    print(f"Error loading fee_details for finance overview: {ex}")
+
+                # Recent student fee payments
+                try:
+                    cursor.execute(
+                        """
+                        SELECT sp.id, sp.student_id, COALESCE(s.full_name, sp.student_id) AS student_name,
+                               sp.amount_paid, sp.payment_date, sp.payment_method,
+                               sp.reference_number, fs.fee_name
+                        FROM student_payments sp
+                        LEFT JOIN students s ON sp.student_id = s.student_id
+                        LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+                        ORDER BY sp.payment_date DESC, sp.id DESC
+                        LIMIT 100
+                        """
+                    )
+                    for r in cursor.fetchall() or []:
+                        payment_details.append({
+                            'id': r.get('id'),
+                            'student_id': r.get('student_id'),
+                            'student_name': r.get('student_name') or '—',
+                            'amount_paid': float(r.get('amount_paid') or 0),
+                            'payment_date': _fmt_date(r.get('payment_date')),
+                            'payment_method': r.get('payment_method') or '—',
+                            'reference_number': r.get('reference_number') or '',
+                            'fee_name': r.get('fee_name') or '—',
+                        })
+                except Exception as ex:
+                    print(f"Error loading payment_details for finance overview: {ex}")
+
+                # Salary disbursements (recorded operational expenses)
+                try:
+                    cursor.execute(
+                        """
+                        SELECT esp.id, esp.amount_paid, esp.payment_date, esp.payment_method,
+                               esp.reference_number, esp.notes,
+                               e.full_name AS employee_name
+                        FROM employee_salary_payments esp
+                        INNER JOIN employees e ON esp.employee_id = e.id
+                        ORDER BY esp.payment_date DESC, esp.id DESC
+                        LIMIT 100
+                        """
+                    )
+                    for r in cursor.fetchall() or []:
+                        expense_details.append({
+                            'id': r.get('id'),
+                            'amount_paid': float(r.get('amount_paid') or 0),
+                            'payment_date': _fmt_date(r.get('payment_date')),
+                            'payment_method': r.get('payment_method') or '—',
+                            'reference_number': r.get('reference_number') or '',
+                            'notes': (r.get('notes') or '')[:200],
+                            'employee_name': r.get('employee_name') or '—',
+                        })
+                except Exception as ex:
+                    print(f"Error loading expense_details for finance overview: {ex}")
         except Exception as e:
-            print(f"Error fetching finance summary: {e}")
+            print(f"Error fetching finance overview: {e}")
         finally:
             connection.close()
-    
-    return render_template('dashboards/finance_overview.html',
-                         finance_summary=finance_summary,
-                         role=user_role)
+
+    return render_template(
+        'dashboards/finance_overview.html',
+        finance_summary=finance_summary,
+        fee_details=fee_details,
+        payment_details=payment_details,
+        expense_details=expense_details,
+        role=user_role,
+        is_secretary_finance=is_secretary,
+    )
 
 # Student Fees Route
 @app.route('/dashboard/employee/student-fees')
@@ -4185,7 +4393,7 @@ def student_fees():
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     
     # Check if user is principal or viewing as principal
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     # Also allow technicians (they can switch to accountant role)
     is_technician = user_role == 'technician'
@@ -4207,7 +4415,7 @@ def student_fees():
                             print(f"  - db_role: {db_role}")
                             if db_role == 'accountant':
                                 is_accountant = True
-                            elif db_role == 'principal':
+                            elif db_role == 'head of institution':
                                 is_principal = True
             except Exception as e:
                 print(f"Error fetching employee role: {e}")
@@ -4216,16 +4424,16 @@ def student_fees():
     
     # Check permission-based access
     employee_id = session.get('employee_id') or session.get('user_id')
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Check specific permissions for accountant features
-    can_view_students = check_permission_or_role('view_students', ['accountant', 'principal', 'deputy principal'])
-    can_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'principal'])
-    can_record_payments = check_permission_or_role('process_payments', ['accountant', 'principal'])
-    can_add_fee_structure = check_permission_or_role('add_fee_structure', ['accountant', 'principal'])
-    can_edit_fee_structure = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
-    can_delete_fee_structure = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
+    can_view_students = check_permission_or_role('view_students', ['accountant', 'head of institution', 'deputy head of institution'])
+    can_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'head of institution'])
+    can_record_payments = check_permission_or_role('process_payments', ['accountant', 'head of institution'])
+    can_add_fee_structure = check_permission_or_role('add_fee_structure', ['accountant', 'head of institution'])
+    can_edit_fee_structure = check_permission_or_role('edit_fee_structure', ['accountant', 'head of institution'])
+    can_delete_fee_structure = check_permission_or_role('delete_fee_structure', ['accountant', 'head of institution'])
     
     # Allow access if: technician OR has permission-based access (permission check handles role fallback)
     # Note: check_permission_or_role already handles role fallback if no permissions are assigned
@@ -4949,7 +5157,7 @@ def student_fees():
             connection.close()
     
     # Check additional permissions
-    can_generate_invoices = check_permission_or_role('generate_invoices', ['accountant', 'principal'])
+    can_generate_invoices = check_permission_or_role('generate_invoices', ['accountant', 'head of institution'])
     
     return render_template('dashboards/student_fees.html', 
                          students=students, 
@@ -6215,16 +6423,6 @@ def download_payment_receipt(student_id, payment_id):
                     'year_name': payment_result[21] if len(payment_result) > 21 else None
                 }
             
-            # Build "payment for this term, this year" display
-            term_name = payment.get('term_name') or ''
-            year_name = payment.get('year_name') or ''
-            if term_name and year_name:
-                payment_for_display = f"{term_name.upper()}, {year_name}"
-            elif payment.get('fee_name'):
-                payment_for_display = payment.get('fee_name', '')
-            else:
-                payment_for_display = 'N/A'
-            
             # Get student information
             cursor.execute("""
                 SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
@@ -6479,8 +6677,20 @@ def download_payment_receipt(student_id, payment_id):
                 })
                 total_paid = amount
             
-            # For single-payment receipt: balance_due not applicable; show 0 for consistency
-            balance_due = 0.0
+            # Outstanding balance for this student (total expected fees minus all payments)
+            cursor.execute("""
+                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                FROM student_payments
+                WHERE student_id = %s
+            """, (student_id,))
+            all_paid_row = cursor.fetchone()
+            if all_paid_row:
+                total_paid_all = float(
+                    all_paid_row.get('total_paid', 0) if isinstance(all_paid_row, dict) else (all_paid_row[0] or 0)
+                )
+            else:
+                total_paid_all = 0.0
+            balance_due = max(0.0, float(total_fees) - total_paid_all)
             
             # Prepare single payment transaction for template (current payment)
             amount_paid = payment.get('amount_paid')
@@ -6581,7 +6791,7 @@ def download_payment_receipt(student_id, payment_id):
                     [Paragraph("<b>NAME:</b>", bold_style), Paragraph(student['full_name'], normal_style)],
                     [Paragraph("<b>GRADE:</b>", bold_style), Paragraph(student.get('current_grade', 'N/A'), normal_style)],
                     [Paragraph("<b>PAID ON:</b>", bold_style), Paragraph(receipt_date, normal_style)],
-                    [Paragraph("<b>PAYMENT FOR:</b>", bold_style), Paragraph(payment_for_display, normal_style)],
+                    [Paragraph("<b>BALANCE:</b>", bold_style), Paragraph(f"{balance_due:,.2f}", normal_style)],
                 ]
                 student_table = Table(student_data, colWidths=[1.5*inch, 5.5*inch])
                 student_table.setStyle(TableStyle([
@@ -6680,8 +6890,7 @@ def download_payment_receipt(student_id, payment_id):
                                  school_settings=school_settings,
                                  receipt_date=receipt_date,
                                  receipt_time=receipt_time,
-                                 receipt_number=receipt_number,
-                                 payment_for_display=payment_for_display)
+                                 receipt_number=receipt_number)
                                  
     except Exception as e:
         print(f"Error generating payment receipt: {e}")
@@ -6761,8 +6970,8 @@ def check_fee_structure():
     
     # Check permission to view fee structure details
     is_technician = user_role == 'technician'
-    has_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'principal'])
-    has_view_fees = check_permission_or_role('view_fees', ['accountant', 'principal'])
+    has_view_fee_structure_details = check_permission_or_role('view_fee_structure_details', ['accountant', 'head of institution'])
+    has_view_fees = check_permission_or_role('view_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fee_structure_details or has_view_fees):
@@ -6923,8 +7132,8 @@ def create_fee_structure():
     is_technician = user_role == 'technician'
     
     # Check permission-based access - specific permission for adding fee structures
-    has_add_fee_structure_permission = check_permission_or_role('add_fee_structure', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_add_fee_structure_permission = check_permission_or_role('add_fee_structure', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_fee_structure_permission or has_manage_fees_permission):
@@ -7271,8 +7480,8 @@ def payments_audit():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
@@ -7815,8 +8024,8 @@ def update_fee_structure(structure_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access - specific permission for editing fee structures
-    has_edit_fee_structure_permission = check_permission_or_role('edit_fee_structure', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_edit_fee_structure_permission = check_permission_or_role('edit_fee_structure', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_edit_fee_structure_permission or has_manage_fees_permission):
@@ -8048,8 +8257,8 @@ def delete_fee_structure(structure_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access - specific permission for deleting fee structures
-    has_delete_fee_structure_permission = check_permission_or_role('delete_fee_structure', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_delete_fee_structure_permission = check_permission_or_role('delete_fee_structure', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_delete_fee_structure_permission or has_manage_fees_permission):
@@ -8082,14 +8291,14 @@ def staff_and_salaries():
     
     # Check permissions - accountant, principal, super admin, technician can access
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
     # Check permission-based access
     is_technician = user_role == 'technician'
     has_salary_permission = check_permission_or_role('manage_salaries', 
-                                                     ['accountant', 'principal', 'super admin'])
+                                                     ['accountant', 'head of institution', 'super admin'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_salary_permission):
@@ -8406,7 +8615,7 @@ def salary_records():
     
     # Check permissions - accountant, principal, super admin, technician can access
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -8593,7 +8802,7 @@ def register_salary():
     
     # Check permissions - accountant, principal, super admin, technician can access
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -8745,7 +8954,7 @@ def get_salary(salary_id):
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -8811,7 +9020,7 @@ def update_salary():
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -8878,7 +9087,7 @@ def update_salary():
                 # If we couldn't find the editor, use a default or skip audit
                 if not editor_id:
                     # Try to get any admin/accountant as fallback
-                    cursor.execute("SELECT id, full_name FROM employees WHERE role IN ('super admin', 'accountant', 'principal') AND status = 'active' LIMIT 1")
+                    cursor.execute("SELECT id, full_name FROM employees WHERE role IN ('super admin', 'accountant', 'head of institution') AND status = 'active' LIMIT 1")
                     fallback_editor = cursor.fetchone()
                     if fallback_editor:
                         editor_id = fallback_editor.get('id')
@@ -9024,7 +9233,7 @@ def get_employees_with_salaries():
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -9072,7 +9281,7 @@ def get_employee_salary(employee_id):
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -9187,7 +9396,7 @@ def record_salary_payment():
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -9334,7 +9543,7 @@ def get_payment_history(employee_id, salary_id):
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -9412,7 +9621,7 @@ def salary_audits():
     
     # Check permissions
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
@@ -9467,8 +9676,8 @@ def staff_management():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('view_staff', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -9476,9 +9685,9 @@ def staff_management():
         return redirect(url_for('dashboard_employee'))
     
     # Check what actions the user can perform
-    can_add = check_permission_or_role('add_staff', ['principal', 'deputy principal'])
-    can_edit = check_permission_or_role('edit_staff', ['principal', 'deputy principal', 'academic coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['principal'])
+    can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution'])
+    can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    can_delete = check_permission_or_role('delete_staff', ['head of institution'])
     
     # Fetch all employees
     connection = get_db_connection()
@@ -9516,9 +9725,9 @@ def teacher_management():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_super_admin = user_role == 'super admin'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_super_admin):
@@ -9526,9 +9735,9 @@ def teacher_management():
         return redirect(url_for('dashboard_employee'))
     
     # Check what actions the user can perform
-    can_add = check_permission_or_role('add_staff', ['principal', 'deputy principal', 'academic coordinator'])
-    can_edit = check_permission_or_role('edit_staff', ['principal', 'deputy principal', 'academic coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['principal'])
+    can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    can_delete = check_permission_or_role('delete_staff', ['head of institution'])
     
     # Fetch only teachers
     connection = get_db_connection()
@@ -9568,11 +9777,7 @@ def assign_roles_approve():
     """Assign Roles & Approve page for employees"""
     user_role = session.get('role', '').lower()
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('home'))
     
@@ -9608,11 +9813,7 @@ def approve_employee(employee_id):
     """Approve employee, assign role, and send email"""
     user_role = session.get('role', '').lower()
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'success': False, 'message': 'You do not have permission to approve employees.'}), 403
     
     data = request.get_json()
@@ -9683,8 +9884,8 @@ def update_employee(employee_id):
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('edit_staff', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -9742,8 +9943,8 @@ def delete_employee(employee_id):
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('delete_staff', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -9781,11 +9982,7 @@ def toggle_suspend_employee(employee_id):
     """Toggle suspend/unsuspend employee"""
     user_role = session.get('role', '').lower()
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'success': False, 'message': 'You do not have permission to suspend/unsuspend employees.'}), 403
     
     connection = get_db_connection()
@@ -9832,11 +10029,7 @@ def get_employee(employee_id):
     """Get employee details for editing"""
     user_role = session.get('role', '').lower()
     
-    # Check if user is an employee (any employee role)
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'success': False, 'message': 'You do not have permission to view employee details.'}), 403
     
     connection = get_db_connection()
@@ -9872,8 +10065,8 @@ def student_management():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('view_students', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -9881,9 +10074,9 @@ def student_management():
         return redirect(url_for('dashboard_employee'))
     
     # Check what actions the user can perform
-    can_add = check_permission_or_role('add_students', ['principal', 'deputy principal', 'academic coordinator'])
-    can_edit = check_permission_or_role('edit_students', ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant'])
-    can_delete = check_permission_or_role('delete_students', ['principal', 'deputy principal'])
+    can_add = check_permission_or_role('add_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
+    can_edit = check_permission_or_role('edit_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant'])
+    can_delete = check_permission_or_role('delete_students', ['head of institution', 'deputy head of institution'])
     
     # Fetch all students with parent information
     connection = get_db_connection()
@@ -9935,8 +10128,8 @@ def get_student(student_id):
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('view_students', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -10002,10 +10195,8 @@ def get_student(student_id):
 def check_student_id(student_id):
     """Check if student ID already exists"""
     user_role = session.get('role', '').lower()
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
     
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'exists': False, 'message': 'Unauthorized'}), 403
     
     connection = get_db_connection()
@@ -10032,8 +10223,8 @@ def update_student(student_id):
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('edit_students', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -10158,8 +10349,8 @@ def delete_student(student_id):
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('delete_students', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -10199,8 +10390,8 @@ def approve_student(student_id):
     
     # Check permission OR role-based access (approve requires edit permission)
     has_access = check_permission_or_role('edit_students', 
-                                         allowed_roles=['employee', 'super admin', 'principal', 'deputy principal', 
-                                                       'academic coordinator', 'teachers', 'accountant', 'librarian', 
+                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
+                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
                                                        'warden', 'transport manager', 'technician'])
     
     if not has_access:
@@ -10381,13 +10572,496 @@ def _get_teacher_level_ids(teacher_user_id):
     return level_names
 
 
+def _filter_students_by_level_for_ids(students_by_level_all, allowed_ids):
+    """Restrict grouped students to those whose student_id is in allowed_ids."""
+    allowed = {str(x).strip() for x in allowed_ids if x is not None and str(x).strip()}
+    out = []
+    for lg in students_by_level_all:
+        sts = [s for s in (lg.get('students') or []) if str(s.get('student_id', '')).strip() in allowed]
+        if sts:
+            out.append({**lg, 'students': sts})
+    return out
+
+
+def _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, req_args):
+    """Build template variables for student attendance register (GET). req_args is typically request.args."""
+    term_id = req_args.get('term_id', type=int)
+    academic_year_id = req_args.get('academic_year_id', type=int)
+    default_filter_type = 'day' if is_teacher else 'month'
+    filter_type = (req_args.get('filter_type') or default_filter_type).strip().lower()
+    if filter_type not in ('month', 'day', 'period'):
+        filter_type = default_filter_type
+    selected_month = (req_args.get('month') or '').strip()
+    selected_day = (req_args.get('day') or '').strip()
+    selected_period_start = (req_args.get('period_start') or '').strip()
+    selected_period_end = (req_args.get('period_end') or '').strip()
+    if is_teacher and filter_type == 'day' and not selected_day:
+        selected_day = datetime.now().date().strftime('%Y-%m-%d')
+    academic_years = []
+    terms = []
+    weeks_options = []
+    selected_week_days = []
+    attendance_records = {}
+    attendance_summary = {}
+    schedule_days_list = []
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC")
+                for r in cursor.fetchall() or []:
+                    academic_years.append({'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False)})
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    FROM terms t
+                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                    ORDER BY t.academic_year_id DESC, t.id DESC
+                """)
+                for r in cursor.fetchall() or []:
+                    terms.append({'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')})
+
+                level_id_by_name = {}
+                level_name_by_id = {}
+                cursor.execute("SELECT id, level_name FROM academic_levels")
+                for r in cursor.fetchall() or []:
+                    lid = r.get('id') if isinstance(r, dict) else r[0]
+                    lname = r.get('level_name') if isinstance(r, dict) else r[1]
+                    if lid and lname:
+                        level_id_by_name[str(lname)] = int(lid)
+                        level_name_by_id[int(lid)] = str(lname)
+
+                level_days_map = {}
+                latest_profile_days = None
+                cursor.execute("""
+                    SELECT study_days, applicable_levels
+                    FROM academic_coordinator_settings
+                    ORDER BY updated_at DESC, id DESC
+                """)
+                for r in cursor.fetchall() or []:
+                    sd = (r.get('study_days') if isinstance(r, dict) else r[0]) or ''
+                    app_levels_raw = (r.get('applicable_levels') if isinstance(r, dict) else r[1]) or '[]'
+                    try:
+                        app_levels = json.loads(app_levels_raw)
+                    except Exception:
+                        app_levels = []
+                    day_list = [d.strip() for d in str(sd).split(',') if d and d.strip()]
+                    if latest_profile_days is None and day_list:
+                        latest_profile_days = day_list
+                    for lid in app_levels:
+                        try:
+                            lid_int = int(lid)
+                        except Exception:
+                            continue
+                        if day_list:
+                            level_days_map[lid_int] = day_list
+
+                visible_level_ids = set()
+                for lg in students_by_level:
+                    lname = str(lg.get('level_name') or '')
+                    if lname and lname in level_id_by_name:
+                        visible_level_ids.add(level_id_by_name[lname])
+                allowed_weekdays = set()
+                for lid in visible_level_ids:
+                    for d in (level_days_map.get(lid) or []):
+                        allowed_weekdays.add(d)
+                if not allowed_weekdays:
+                    if latest_profile_days:
+                        allowed_weekdays = set(latest_profile_days)
+                    else:
+                        allowed_weekdays = {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}
+                schedule_days_list = sorted(list(allowed_weekdays), key=lambda d: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].index(d) if d in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] else 99)
+
+                if term_id:
+                    cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s", (term_id,))
+                    tr = cursor.fetchone()
+                    if tr:
+                        start = tr.get('start_date') if isinstance(tr, dict) else tr[0]
+                        end = tr.get('end_date') if isinstance(tr, dict) else tr[1]
+                        if start and end:
+                            range_start = start
+                            range_end = end
+
+                            if filter_type == 'day' and selected_day:
+                                try:
+                                    d = datetime.strptime(selected_day, '%Y-%m-%d').date()
+                                    range_start = d
+                                    range_end = d
+                                except Exception:
+                                    pass
+                            elif filter_type == 'period':
+                                try:
+                                    if selected_period_start:
+                                        range_start = datetime.strptime(selected_period_start, '%Y-%m-%d').date()
+                                    if selected_period_end:
+                                        range_end = datetime.strptime(selected_period_end, '%Y-%m-%d').date()
+                                except Exception:
+                                    pass
+                                if range_end < range_start:
+                                    range_start, range_end = range_end, range_start
+                            else:
+                                month_dt = None
+                                if selected_month:
+                                    try:
+                                        month_dt = datetime.strptime(selected_month + '-01', '%Y-%m-%d').date()
+                                    except Exception:
+                                        month_dt = None
+                                if month_dt is None:
+                                    month_dt = start.replace(day=1)
+                                    selected_month = month_dt.strftime('%Y-%m')
+                                first_day = month_dt.replace(day=1)
+                                if first_day.month == 12:
+                                    next_month = first_day.replace(year=first_day.year + 1, month=1, day=1)
+                                else:
+                                    next_month = first_day.replace(month=first_day.month + 1, day=1)
+                                last_day = next_month - timedelta(days=1)
+                                range_start = first_day
+                                range_end = last_day
+
+                            if range_start < start:
+                                range_start = start
+                            if range_end > end:
+                                range_end = end
+
+                            selected_week_days = []
+                            cur_date = range_start
+                            while cur_date <= range_end:
+                                weekday_name = cur_date.strftime('%A')
+                                if weekday_name in allowed_weekdays:
+                                    selected_week_days.append({
+                                        'date': cur_date,
+                                        'date_str': cur_date.strftime('%Y-%m-%d'),
+                                        'label': cur_date.strftime('%a %d')
+                                    })
+                                cur_date += timedelta(days=1)
+
+                    if is_academic_coordinator:
+                        cursor.execute("""
+                            SELECT sar.student_id, sar.attendance_date, sar.present
+                            FROM student_attendance_records sar
+                            LEFT JOIN employees e
+                                ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
+                            WHERE sar.term_id = %s
+                              AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
+                        """, (term_id,))
+                    else:
+                        cursor.execute("""
+                            SELECT sar.student_id, sar.attendance_date, sar.present
+                            FROM student_attendance_records sar
+                            WHERE sar.term_id = %s
+                        """, (term_id,))
+                    for r in cursor.fetchall() or []:
+                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
+                        dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
+                        pres = r.get('present') if isinstance(r, dict) else r[2]
+                        date_str = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
+                        attendance_records[(sid, date_str)] = bool(pres)
+
+                    if selected_week_days:
+                        date_list = [d['date_str'] for d in selected_week_days]
+                        placeholders = ",".join(["%s"] * len(date_list))
+                        if is_academic_coordinator:
+                            cursor.execute(f"""
+                                SELECT sar.student_id, SUM(sar.present) as present_days, COUNT(*) as total_days
+                                FROM student_attendance_records sar
+                                LEFT JOIN employees e
+                                    ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
+                                WHERE sar.term_id = %s
+                                  AND sar.attendance_date IN ({placeholders})
+                                  AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
+                                GROUP BY sar.student_id
+                            """, tuple([term_id] + date_list))
+                        else:
+                            cursor.execute(f"""
+                                SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                                FROM student_attendance_records
+                                WHERE term_id = %s AND attendance_date IN ({placeholders})
+                                GROUP BY student_id
+                            """, tuple([term_id] + date_list))
+                    else:
+                        if is_academic_coordinator:
+                            cursor.execute("""
+                                SELECT sar.student_id, SUM(sar.present) as present_days, COUNT(*) as total_days
+                                FROM student_attendance_records sar
+                                LEFT JOIN employees e
+                                    ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
+                                WHERE sar.term_id = %s
+                                  AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
+                                GROUP BY sar.student_id
+                            """, (term_id,))
+                        else:
+                            cursor.execute("""
+                                SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                                FROM student_attendance_records
+                                WHERE term_id = %s
+                                GROUP BY student_id
+                            """, (term_id,))
+                    for r in cursor.fetchall() or []:
+                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
+                        pres = int(r.get('present_days') or 0) if isinstance(r, dict) else int(r[1] or 0)
+                        tot = int(r.get('total_days') or 0) if isinstance(r, dict) else int(r[2] or 0)
+                        pct = round(100 * pres / tot, 1) if tot else 0
+                        if pct >= 80:
+                            cat = 'excellent'
+                        elif pct >= 60:
+                            cat = 'good'
+                        elif pct >= 40:
+                            cat = 'fair'
+                        elif tot > 0:
+                            cat = 'poor'
+                        else:
+                            cat = 'none'
+                        attendance_summary[sid] = {'present': pres, 'total': tot, 'pct': pct, 'category': cat}
+        except Exception as e:
+            print(f"Error in _attendance_register_get_context: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    attendance_student_ids_csv = ''
+    if students_by_level:
+        _sid_list = []
+        for _lg in students_by_level:
+            for _st in (_lg.get('students') or []):
+                _sid = _st.get('student_id')
+                if _sid is not None and str(_sid).strip():
+                    _sid_list.append(str(_sid).strip())
+        attendance_student_ids_csv = ','.join(_sid_list)
+
+    return {
+        'students_by_level': students_by_level,
+        'attendance_student_ids_csv': attendance_student_ids_csv,
+        'academic_years': academic_years,
+        'terms': terms,
+        'weeks_options': weeks_options,
+        'selected_week_days': selected_week_days,
+        'selected_term_id': term_id,
+        'selected_academic_year_id': academic_year_id,
+        'selected_week': 1,
+        'selected_filter_type': filter_type,
+        'selected_month': selected_month,
+        'selected_day': selected_day,
+        'selected_period_start': selected_period_start,
+        'selected_period_end': selected_period_end,
+        'schedule_days_list': schedule_days_list,
+        'attendance_records': attendance_records,
+        'attendance_summary': attendance_summary,
+    }
+
+
+def _fetch_parent_attendance_analytics(student_id, req_args):
+    """Aggregated attendance analytics for one student (parent dashboard)."""
+    from collections import defaultdict
+    from datetime import date as date_type
+
+    student = None
+    academic_years = []
+    terms = []
+    term_id = req_args.get('term_id', type=int)
+    academic_year_id = req_args.get('academic_year_id', type=int)
+    term_label = ''
+    summary = {
+        'total_recorded': 0, 'present': 0, 'absent': 0, 'pct': 0.0, 'category': 'none',
+    }
+    by_week = []
+    daily_points = []
+    recent_days = []
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT student_id, full_name, current_grade, status
+                    FROM students WHERE student_id = %s
+                """, (student_id,))
+                row = cursor.fetchone()
+                if row:
+                    student = {
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                        'status': row.get('status') if isinstance(row, dict) else row[3],
+                    }
+
+                cursor.execute("SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC")
+                for r in cursor.fetchall() or []:
+                    academic_years.append({
+                        'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False),
+                    })
+
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    FROM terms t
+                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                    ORDER BY t.academic_year_id DESC, t.id DESC
+                """)
+                terms_all = []
+                for r in cursor.fetchall() or []:
+                    terms_all.append({
+                        'id': r.get('id') if isinstance(r, dict) else r[0],
+                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                    })
+
+                terms = [t for t in terms_all if t.get('academic_year_id') == academic_year_id] if academic_year_id else list(terms_all)
+                if academic_year_id and not terms:
+                    terms = list(terms_all)
+
+                if not term_id:
+                    cursor.execute("""
+                        SELECT t.id FROM terms t
+                        INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                        WHERE ay.is_current = 1
+                        ORDER BY t.id ASC
+                        LIMIT 1
+                    """)
+                    tr = cursor.fetchone()
+                    if tr:
+                        term_id = tr.get('id') if isinstance(tr, dict) else tr[0]
+                    if not term_id and terms:
+                        term_id = terms[0]['id']
+                    elif not term_id and terms_all:
+                        term_id = terms_all[0]['id']
+
+                if term_id and academic_year_id:
+                    if not any(t.get('id') == term_id for t in terms):
+                        term_id = terms[0]['id'] if terms else term_id
+
+                if term_id:
+                    cursor.execute("""
+                        SELECT t.term_name, ay.year_name
+                        FROM terms t
+                        LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                        WHERE t.id = %s
+                    """, (term_id,))
+                    tl = cursor.fetchone()
+                    if tl:
+                        tn = tl.get('term_name') if isinstance(tl, dict) else tl[0]
+                        yn = tl.get('year_name') if isinstance(tl, dict) else (tl[1] if len(tl) > 1 else '')
+                        term_label = f"{tn}" + (f" ({yn})" if yn else '')
+
+                    cursor.execute("""
+                        SELECT sar.attendance_date, sar.present
+                        FROM student_attendance_records sar
+                        WHERE sar.student_id = %s AND sar.term_id = %s
+                        ORDER BY sar.attendance_date ASC
+                    """, (student_id, term_id))
+                    raw_rows = cursor.fetchall() or []
+
+                    pts = []
+                    for r in raw_rows:
+                        dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
+                        pres = r.get('present') if isinstance(r, dict) else r[1]
+                        if dt is None:
+                            continue
+                        if isinstance(dt, datetime):
+                            d = dt.date()
+                        elif isinstance(dt, date_type):
+                            d = dt
+                        else:
+                            try:
+                                d = datetime.strptime(str(dt)[:10], '%Y-%m-%d').date()
+                            except Exception:
+                                continue
+                        is_present = bool(int(pres)) if pres is not None else False
+                        pts.append({'date': d, 'present': is_present})
+
+                    summary['total_recorded'] = len(pts)
+                    summary['present'] = sum(1 for p in pts if p['present'])
+                    summary['absent'] = summary['total_recorded'] - summary['present']
+                    if summary['total_recorded']:
+                        summary['pct'] = round(100.0 * summary['present'] / summary['total_recorded'], 1)
+                    p = summary['pct']
+                    if summary['total_recorded'] == 0:
+                        summary['category'] = 'none'
+                    elif p >= 80:
+                        summary['category'] = 'excellent'
+                    elif p >= 60:
+                        summary['category'] = 'good'
+                    elif p >= 40:
+                        summary['category'] = 'fair'
+                    elif p > 0:
+                        summary['category'] = 'poor'
+                    else:
+                        summary['category'] = 'none'
+
+                    week_acc = defaultdict(lambda: [0, 0])
+                    for pt in pts:
+                        d = pt['date']
+                        iso = d.isocalendar()
+                        key = (iso[0], iso[1])
+                        week_acc[key][1] += 1
+                        if pt['present']:
+                            week_acc[key][0] += 1
+                    for (y, wnum) in sorted(week_acc.keys()):
+                        pr, tot = week_acc[(y, wnum)]
+                        pct_w = round(100 * pr / tot, 1) if tot else 0
+                        by_week.append({
+                            'label': f'Week {wnum}, {y}',
+                            'present': pr,
+                            'total': tot,
+                            'absent': tot - pr,
+                            'pct': pct_w,
+                        })
+
+                    for pt in pts:
+                        d = pt['date']
+                        daily_points.append({
+                            'date_str': d.strftime('%Y-%m-%d'),
+                            'label': d.strftime('%d %b'),
+                            'value': 100.0 if pt['present'] else 0.0,
+                        })
+
+                    for pt in sorted(pts, key=lambda x: x['date'], reverse=True)[:45]:
+                        d = pt['date']
+                        recent_days.append({
+                            'date_str': d.strftime('%Y-%m-%d'),
+                            'weekday': d.strftime('%a'),
+                            'display': d.strftime('%a, %d %b %Y'),
+                            'present': pt['present'],
+                        })
+        except Exception as e:
+            print(f"Error in _fetch_parent_attendance_analytics: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    return {
+        'student': student,
+        'academic_years': academic_years,
+        'terms': terms,
+        'selected_term_id': term_id,
+        'selected_academic_year_id': academic_year_id,
+        'term_label': term_label,
+        'summary': summary,
+        'by_week': by_week,
+        'daily_points': daily_points,
+        'recent_days': recent_days,
+    }
+
+
 @app.route('/student-management/student-attendance', methods=['GET', 'POST'])
 @login_required
 def student_attendance():
-    """Student Attendance - register with checkboxes for days attended, by week (term/year). Teachers see only their classes."""
+    """Student Attendance register with calendar filters and schedule-day constraints."""
     has_access = check_permission_or_role('view_students',
-        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
-                      'academic coordinator', 'teachers', 'accountant', 'librarian',
+        allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
+                      'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
                       'warden', 'transport manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
@@ -10396,13 +11070,37 @@ def student_attendance():
     user_role = session.get('role', '').lower()
     viewing_as = session.get('viewing_as_employee_role', '').lower()
     is_teacher = user_role in ('teachers', 'teacher') or viewing_as in ('teachers', 'teacher')
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as == 'curriculum coordinator'
     teacher_id = session.get('user_id') if is_teacher else None
+
+    # Build visible classes first (teacher sees only assigned classes)
+    students_by_level = _get_students_by_level()
+    if is_teacher and teacher_id:
+        teacher_levels = _get_teacher_level_ids(teacher_id)
+        # Strictly show only teacher-assigned levels (empty list if none assigned)
+        students_by_level = [lg for lg in students_by_level if lg['level_name'] in teacher_levels]
 
     if request.method == 'POST':
         term_id = request.form.get('term_id', type=int)
         week_dates_str = request.form.get('week_dates', '')
         student_ids_str = request.form.get('student_ids', '')
-        if term_id and week_dates_str and student_ids_str:
+        week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
+        student_ids = [s.strip() for s in student_ids_str.split(',') if s.strip()]
+        if not student_ids and week_dates:
+            seen_ids = set()
+            for key in request.form:
+                if not key.startswith('att_'):
+                    continue
+                rest = key[4:]
+                idx = rest.rfind('_')
+                if idx <= 0:
+                    continue
+                sid, date_str = rest[:idx], rest[idx + 1:]
+                if date_str in week_dates and sid:
+                    seen_ids.add(sid)
+            student_ids = sorted(seen_ids)
+
+        if term_id and week_dates_str and student_ids:
             conn = get_db_connection()
             if conn:
                 try:
@@ -10410,8 +11108,6 @@ def student_attendance():
                         cur.execute("SELECT id, level_name FROM academic_levels")
                         level_id_by_name = {r.get('level_name') if isinstance(r, dict) else r[1]: r.get('id') if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])}
                         emp_id = session.get('user_id') or session.get('employee_id')
-                        week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
-                        student_ids = [s.strip() for s in student_ids_str.split(',') if s.strip()]
                         checked = set()
                         for key in request.form:
                             if key.startswith('att_') and request.form.get(key) == 'on':
@@ -10456,145 +11152,99 @@ def student_attendance():
             params['term_id'] = request.form.get('term_id')
         if request.form.get('academic_year_id'):
             params['academic_year_id'] = request.form.get('academic_year_id')
-        if request.form.get('week'):
-            params['week'] = request.form.get('week')
+        if request.form.get('filter_type'):
+            params['filter_type'] = request.form.get('filter_type')
+        if request.form.get('month'):
+            params['month'] = request.form.get('month')
+        if request.form.get('day'):
+            params['day'] = request.form.get('day')
+        if request.form.get('period_start'):
+            params['period_start'] = request.form.get('period_start')
+        if request.form.get('period_end'):
+            params['period_end'] = request.form.get('period_end')
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
-    term_id = request.args.get('term_id', type=int)
-    academic_year_id = request.args.get('academic_year_id', type=int)
-    week_param = request.args.get('week', type=int)
-    academic_years = []
-    terms = []
-    weeks_options = []
-    selected_week_days = []
-    attendance_records = {}  # (student_id, date_str) -> True if present
-    attendance_summary = {}  # student_id -> {present, total, pct, category}
+    ctx = _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, request.args)
+    return render_template('dashboards/student_attendance.html', **ctx, is_teacher_view=is_teacher)
 
-    connection = get_db_connection()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC")
-                for r in cursor.fetchall() or []:
-                    academic_years.append({'id': r.get('id') if isinstance(r, dict) else r[0],
-                        'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
-                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False)})
-                cursor.execute("""
-                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
-                    FROM terms t
-                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
-                    ORDER BY t.academic_year_id DESC, t.id DESC
-                """)
-                for r in cursor.fetchall() or []:
-                    terms.append({'id': r.get('id') if isinstance(r, dict) else r[0],
-                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
-                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
-                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')})
 
-                if term_id:
-                    cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s", (term_id,))
-                    tr = cursor.fetchone()
-                    if tr:
-                        start = tr.get('start_date') if isinstance(tr, dict) else tr[0]
-                        end = tr.get('end_date') if isinstance(tr, dict) else tr[1]
-                        if start and end:
-                            week_param = request.args.get('week', type=int) or 1
-                            weeks_options, selected_week_days = _build_weeks_and_days(start, end, week_param)
+def _parent_dashboard_auth():
+    """Shared auth + parent email resolution for /dashboard/parent/* routes (parent or technician-as-parent)."""
+    user_role = session.get('role', '').lower()
+    viewing_as = session.get('viewing_as_role', '')
+    parent_email = session.get('email', '')
+    all_students = []
+    selected_student_id = request.args.get('student_id', '') or session.get('parent_view_student_id', '')
+    is_technician = user_role == 'technician'
 
+    if user_role != 'parent' and not (user_role == 'technician' and viewing_as == 'parent'):
+        return None
+
+    if is_technician and viewing_as == 'parent':
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
                     cursor.execute("""
-                        SELECT sar.student_id, sar.attendance_date, sar.present
-                        FROM student_attendance_records sar
-                        WHERE sar.term_id = %s
-                    """, (term_id,))
-                    for r in cursor.fetchall() or []:
-                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
-                        dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
-                        pres = r.get('present') if isinstance(r, dict) else r[2]
-                        date_str = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
-                        attendance_records[(sid, date_str)] = bool(pres)
+                        SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status,
+                               p.full_name as parent_name, p.email as parent_email
+                        FROM students s
+                        LEFT JOIN parents p ON s.student_id = p.student_id
+                        WHERE s.status = 'in session'
+                        ORDER BY s.full_name ASC
+                    """)
+                    all_students = cursor.fetchall()
+            except Exception as e:
+                print(f"Error fetching students for technician: {e}")
+            finally:
+                if connection:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
 
-                    cursor.execute("""
-                        SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
-                        FROM student_attendance_records
-                        WHERE term_id = %s
-                        GROUP BY student_id
-                    """, (term_id,))
-                    for r in cursor.fetchall() or []:
-                        sid = r.get('student_id') if isinstance(r, dict) else r[0]
-                        pres = int(r.get('present_days') or 0) if isinstance(r, dict) else int(r[1] or 0)
-                        tot = int(r.get('total_days') or 0) if isinstance(r, dict) else int(r[2] or 0)
-                        pct = round(100 * pres / tot, 1) if tot else 0
-                        if pct >= 80:
-                            cat = 'excellent'
-                        elif pct >= 60:
-                            cat = 'good'
-                        elif pct >= 40:
-                            cat = 'fair'
-                        elif tot > 0:
-                            cat = 'poor'
-                        else:
-                            cat = 'none'
-                        attendance_summary[sid] = {'present': pres, 'total': tot, 'pct': pct, 'category': cat}
-        except Exception as e:
-            print(f"Error in student_attendance: {e}")
-        finally:
+        if selected_student_id:
+            session['parent_view_student_id'] = selected_student_id
+            connection = get_db_connection()
             if connection:
-                try: connection.close()
-                except: pass
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT p.email
+                            FROM parents p
+                            WHERE p.student_id = %s
+                            LIMIT 1
+                        """, (selected_student_id,))
+                        parent_result = cursor.fetchone()
+                        if parent_result:
+                            parent_email = parent_result.get('email', '') if isinstance(parent_result, dict) else parent_result[0]
+                except Exception as e:
+                    print(f"Error fetching parent email: {e}")
+                finally:
+                    if connection:
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
 
-    students_by_level = _get_students_by_level()
-    if is_teacher and teacher_id:
-        teacher_levels = _get_teacher_level_ids(teacher_id)
-        if teacher_levels:
-            students_by_level = [lg for lg in students_by_level if lg['level_name'] in teacher_levels]
-
-    return render_template('dashboards/student_attendance.html',
-        students_by_level=students_by_level,
-        academic_years=academic_years,
-        terms=terms,
-        weeks_options=weeks_options,
-        selected_week_days=selected_week_days,
-        selected_term_id=term_id,
-        selected_academic_year_id=academic_year_id,
-        selected_week=week_param or 1,
-        attendance_records=attendance_records,
-        attendance_summary=attendance_summary,
-        is_teacher_view=is_teacher,
-    )
-
-
-@app.route('/student-management/students-progress')
-@login_required
-def students_progress():
-    """Students Progress - list all students to select and view progress"""
-    has_access = check_permission_or_role('view_students',
-        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
-                      'academic coordinator', 'teachers', 'accountant', 'librarian',
-                      'warden', 'transport manager', 'technician'])
-    if not has_access:
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-    students_by_level = _get_students_by_level()
-    return render_template('dashboards/students_progress.html', students_by_level=students_by_level)
+    current_view_role = viewing_as if is_technician and viewing_as else user_role
+    return {
+        'parent_email': parent_email,
+        'all_students': all_students,
+        'selected_student_id': selected_student_id,
+        'is_technician': is_technician,
+        'current_view_role': current_view_role,
+    }
 
 
-@app.route('/student-management/students-progress/<student_id>')
-@login_required
-def student_progress_detail(student_id):
-    """View a single student's exam progress"""
-    has_access = check_permission_or_role('view_students',
-        allowed_roles=['employee', 'super admin', 'principal', 'deputy principal',
-                      'academic coordinator', 'teachers', 'accountant', 'librarian',
-                      'warden', 'transport manager', 'technician'])
-    if not has_access:
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('dashboard_employee'))
-
+def _fetch_student_progress_payload(student_id):
+    """Load student marks and aggregates for progress / exam report (staff and parent views)."""
     student = None
     progress_data = []
-    by_subject = []       # [{subject_name, mean, count, min, max}] for bar chart
-    by_period = []        # [{label, mean, count}] for trend line (chronological)
-    summary = None        # {overall_mean, pass_rate, total_entries, best_subject, weakest_subject}
+    by_subject = []
+    by_period = []
+    by_exam = []
+    summary = None
     connection = get_db_connection()
     if connection:
         try:
@@ -10642,7 +11292,6 @@ def student_progress_detail(student_id):
                             'marks': m,
                         })
 
-                    # Build by_subject: mean per subject
                     subject_marks = {}
                     for p in progress_data:
                         if p['marks'] is not None:
@@ -10660,7 +11309,6 @@ def student_progress_detail(student_id):
                             'max': round(max(vals), 1),
                         })
 
-                    # Build by_period: mean per term (year + term as label)
                     period_marks = {}
                     for p in progress_data:
                         if p['marks'] is not None:
@@ -10673,7 +11321,41 @@ def student_progress_detail(student_id):
                     for label, vals in sorted(period_marks.items(), reverse=True):
                         by_period.insert(0, {'label': label, 'mean': round(sum(vals) / len(vals), 1), 'count': len(vals)})
 
-                    # Summary stats
+                    exam_order = []
+                    exam_rows = {}
+                    for p in progress_data:
+                        key = (p['year_name'] or '', p['term_name'] or '', p['exam_name'] or '')
+                        if key not in exam_rows:
+                            exam_rows[key] = []
+                            exam_order.append(key)
+                        exam_rows[key].append(p)
+                    for key in exam_order:
+                        rows = exam_rows[key]
+                        marks_list = [r['marks'] for r in rows if r['marks'] is not None]
+                        subj_list = []
+                        for r in rows:
+                            if r['marks'] is not None:
+                                subj_list.append({'subject_name': r['subject_name'], 'marks': r['marks']})
+                        if not subj_list:
+                            continue
+                        subj_list.sort(key=lambda x: x['subject_name'])
+                        first = rows[0]
+                        parts = [x for x in (first.get('year_name'), first.get('term_name'), first.get('exam_name')) if x]
+                        label = ' · '.join(parts) if parts else 'Unknown'
+                        mean = round(sum(marks_list) / len(marks_list), 1)
+                        pass_count = sum(1 for m in marks_list if m >= 50)
+                        pr = round(100 * pass_count / len(marks_list), 0)
+                        by_exam.append({
+                            'label': label,
+                            'year_name': first.get('year_name'),
+                            'term_name': first.get('term_name'),
+                            'exam_name': first.get('exam_name'),
+                            'mean': mean,
+                            'count': len(marks_list),
+                            'pass_rate': pr,
+                            'subjects': subj_list,
+                        })
+
                     all_marks = [p['marks'] for p in progress_data if p['marks'] is not None]
                     total = len(all_marks)
                     overall_mean = round(sum(all_marks) / total, 1) if total else 0
@@ -10692,24 +11374,322 @@ def student_progress_detail(student_id):
                     }
         except Exception as e:
             print(f"Error fetching student progress: {e}")
-            flash('Error loading student progress.', 'error')
+            raise
         finally:
             if connection:
                 try:
                     connection.close()
-                except:
+                except Exception:
                     pass
 
+    return {
+        'student': student,
+        'progress_data': progress_data,
+        'by_subject': by_subject if student else [],
+        'by_period': by_period if student else [],
+        'by_exam': by_exam if student else [],
+        'summary': summary,
+    }
+
+
+@app.route('/dashboard/parent/exam-progress')
+@login_required
+def parent_exam_progress():
+    """List linked children; single child redirects to their exam progress detail."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    children = []
+    connection = get_db_connection()
+    if connection and parent_email:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT s.student_id, s.full_name, s.current_grade
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    ORDER BY s.full_name ASC
+                """, (parent_email,))
+                for row in cursor.fetchall() or []:
+                    children.append({
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                    })
+        except Exception as e:
+            print(f"Error listing parent exam progress children: {e}")
+            flash('Error loading children.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if len(children) == 1:
+        return redirect(url_for('parent_exam_progress_detail', student_id=children[0]['student_id']))
+
+    return render_template(
+        'dashboards/parent_exam_progress_list.html',
+        children=children,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/exam-progress/<student_id>')
+@login_required
+def parent_exam_progress_detail(student_id):
+    """Parent-safe exam progress & analytics for one linked child."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(url_for('dashboard_parent'))
+
+    allowed = False
+    sibling_count = 0
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                """, (parent_email,))
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+
+                cursor.execute("""
+                    SELECT 1 FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.student_id = %s AND s.status = 'in session'
+                    LIMIT 1
+                """, (parent_email, student_id))
+                allowed = cursor.fetchone() is not None
+        except Exception as e:
+            print(f"Error verifying parent exam access: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if not allowed:
+        flash('You cannot view exam progress for this student.', 'error')
+        return redirect(url_for('parent_exam_progress'))
+
+    try:
+        payload = _fetch_student_progress_payload(student_id)
+    except Exception:
+        flash('Error loading student progress.', 'error')
+        return redirect(url_for('parent_exam_progress'))
+
+    if not payload['student']:
+        flash('Student not found.', 'error')
+        return redirect(url_for('parent_exam_progress'))
+
+    return render_template(
+        'dashboards/parent_student_exam_progress.html',
+        student=payload['student'],
+        progress_data=payload['progress_data'],
+        by_subject=payload['by_subject'],
+        by_period=payload['by_period'],
+        by_exam=payload['by_exam'],
+        summary=payload['summary'],
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+        show_sibling_nav=sibling_count > 1,
+    )
+
+
+@app.route('/dashboard/parent/attendance')
+@login_required
+def parent_attendance():
+    """List linked children; single child redirects to their attendance view."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    children = []
+    connection = get_db_connection()
+    if connection and parent_email:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT DISTINCT s.student_id, s.full_name, s.current_grade
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    ORDER BY s.full_name ASC
+                """, (parent_email,))
+                for row in cursor.fetchall() or []:
+                    children.append({
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                    })
+        except Exception as e:
+            print(f"Error listing parent attendance children: {e}")
+            flash('Error loading children.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if len(children) == 1:
+        return redirect(url_for('parent_attendance_detail', student_id=children[0]['student_id']))
+
+    return render_template(
+        'dashboards/parent_attendance_list.html',
+        children=children,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/attendance/<student_id>')
+@login_required
+def parent_attendance_detail(student_id):
+    """Parent read-only attendance for one linked child."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(url_for('dashboard_parent'))
+
+    allowed = False
+    sibling_count = 0
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                """, (parent_email,))
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+
+                cursor.execute("""
+                    SELECT 1 FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.student_id = %s AND s.status = 'in session'
+                    LIMIT 1
+                """, (parent_email, student_id))
+                allowed = cursor.fetchone() is not None
+        except Exception as e:
+            print(f"Error verifying parent attendance access: {e}")
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if not allowed:
+        flash('You cannot view attendance for this student.', 'error')
+        return redirect(url_for('parent_attendance'))
+
+    analytics = _fetch_parent_attendance_analytics(student_id, request.args)
+    if not analytics.get('student'):
+        flash('Student not found.', 'error')
+        return redirect(url_for('parent_attendance'))
+
+    return render_template(
+        'dashboards/parent_student_attendance_analytics.html',
+        student=analytics['student'],
+        academic_years=analytics['academic_years'],
+        terms=analytics['terms'],
+        selected_term_id=analytics['selected_term_id'],
+        selected_academic_year_id=analytics['selected_academic_year_id'],
+        term_label=analytics['term_label'],
+        summary=analytics['summary'],
+        by_week=analytics['by_week'],
+        daily_points=analytics['daily_points'],
+        recent_days=analytics['recent_days'],
+        parent_student_id=student_id,
+        show_sibling_nav=sibling_count > 1,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/student-management/students-progress')
+@login_required
+def students_progress():
+    """Students Progress - list all students to select and view progress"""
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
+                      'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+                      'warden', 'transport manager', 'technician'])
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+    students_by_level = _get_students_by_level()
+    return render_template('dashboards/students_progress.html', students_by_level=students_by_level)
+
+
+@app.route('/student-management/students-progress/<student_id>')
+@login_required
+def student_progress_detail(student_id):
+    """View a single student's exam progress"""
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
+                      'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+                      'warden', 'transport manager', 'technician'])
+    if not has_access:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    try:
+        payload = _fetch_student_progress_payload(student_id)
+    except Exception as e:
+        print(f"Error fetching student progress: {e}")
+        flash('Error loading student progress.', 'error')
+        return redirect(url_for('students_progress'))
+
+    student = payload['student']
     if not student:
         flash('Student not found.', 'error')
         return redirect(url_for('students_progress'))
 
     return render_template('dashboards/student_progress_detail.html',
         student=student,
-        progress_data=progress_data,
-        by_subject=by_subject if student else [],
-        by_period=by_period if student else [],
-        summary=summary,
+        progress_data=payload['progress_data'],
+        by_subject=payload['by_subject'],
+        by_period=payload['by_period'],
+        by_exam=payload['by_exam'],
+        summary=payload['summary'],
     )
 
 
@@ -10722,9 +11702,7 @@ def profile(role):
     
     # Validate role access
     if role == 'employee':
-        employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                         'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-        if user_role not in employee_roles:
+        if user_role not in EMPLOYEE_SUB_ROLES:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
         
@@ -10782,35 +11760,86 @@ def settings(role):
     is_technician = user_role == 'technician'
     
     # Validate role access
-    if role == 'principal':
-        # Allow principals and technicians to access
-        if user_role != 'principal' and not is_technician:
+    if role in ('head of institution', 'deputy head of institution'):
+        if user_role != role and not is_technician:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
         
         return render_template('dashboards/settings_principal.html', role=user_role)
     
-    elif role == 'academic coordinator':
-        # Allow academic coordinators and technicians to access
-        if user_role != 'academic coordinator' and not is_technician:
+    elif role == 'curriculum coordinator':
+        # Allow broader schedule-management roles to access
+        schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
+        if user_role not in schedule_management_roles:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
         
         # Fetch existing settings
         connection = get_db_connection()
         settings = {}
+        settings_profiles = []
+        selected_profile_id = request.args.get('profile_id', '').strip()
         if connection:
             try:
                 with connection.cursor() as cursor:
                     cursor.execute("""
-                        SELECT study_days, class_time_allocation, class_duration, activity_time_allocation
+                        SELECT id, profile_name, applicable_levels, updated_at
                         FROM academic_coordinator_settings
-                        LIMIT 1
+                        ORDER BY updated_at DESC, id DESC
                     """)
+                    profile_rows = cursor.fetchall() or []
+                    for row in profile_rows:
+                        if isinstance(row, dict):
+                            raw_profile_levels = row.get('applicable_levels') or '[]'
+                            profile_id = row.get('id')
+                            profile_name = row.get('profile_name') or f'Profile {profile_id}'
+                        else:
+                            raw_profile_levels = row[2] if row[2] else '[]'
+                            profile_id = row[0]
+                            profile_name = row[1] if row[1] else f'Profile {profile_id}'
+
+                        try:
+                            parsed_profile_levels = json.loads(raw_profile_levels)
+                        except:
+                            parsed_profile_levels = []
+
+                        settings_profiles.append({
+                            'id': profile_id,
+                            'profile_name': profile_name,
+                            'applicable_levels': parsed_profile_levels
+                        })
+
+                    # Determine which profile to load (query param or latest)
+                    selected_id = None
+                    if selected_profile_id.isdigit():
+                        selected_id = int(selected_profile_id)
+                    elif settings_profiles:
+                        selected_id = settings_profiles[0]['id']
+
+                    if selected_id:
+                        cursor.execute("""
+                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                            FROM academic_coordinator_settings
+                            WHERE id = %s
+                            LIMIT 1
+                        """, (selected_id,))
+                    else:
+                        cursor.execute("""
+                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                            FROM academic_coordinator_settings
+                            ORDER BY updated_at DESC, id DESC
+                            LIMIT 1
+                        """)
                     result = cursor.fetchone()
                     if result:
                         if isinstance(result, dict):
                             settings = result
+                            # Parse applicable levels JSON
+                            raw_levels = settings.get('applicable_levels') or '[]'
+                            try:
+                                settings['applicable_levels'] = json.loads(raw_levels)
+                            except:
+                                settings['applicable_levels'] = []
                             # Parse class times JSON
                             if settings.get('class_time_allocation'):
                                 try:
@@ -10828,8 +11857,13 @@ def settings(role):
                             else:
                                 settings['activities'] = []
                         else:
-                            class_times_json = result[1] if result[1] else '[]'
-                            activities_json = result[3] if result[3] else '[]'
+                            applicable_levels_json = result[3] if result[3] else '[]'
+                            class_times_json = result[4] if result[4] else '[]'
+                            activities_json = result[6] if result[6] else '[]'
+                            try:
+                                applicable_levels = json.loads(applicable_levels_json)
+                            except:
+                                applicable_levels = []
                             try:
                                 class_times = json.loads(class_times_json)
                             except:
@@ -10839,10 +11873,13 @@ def settings(role):
                             except:
                                 activities = []
                             settings = {
-                                'study_days': result[0] if result[0] else '',
+                                'id': result[0],
+                                'profile_name': result[1] if result[1] else '',
+                                'study_days': result[2] if result[2] else '',
+                                'applicable_levels': applicable_levels,
                                 'class_time_allocation': class_times_json,
                                 'class_times': class_times,
-                                'class_duration': result[2] if result[2] else '',
+                                'class_duration': result[5] if result[5] else '',
                                 'activity_time_allocation': activities_json,
                                 'activities': activities
                             }
@@ -10856,13 +11893,23 @@ def settings(role):
             settings['activities'] = []
         if 'class_times' not in settings:
             settings['class_times'] = []
+        if 'applicable_levels' not in settings:
+            settings['applicable_levels'] = []
+        if 'profile_name' not in settings:
+            settings['profile_name'] = ''
+        if 'id' not in settings:
+            settings['id'] = ''
         
-        return render_template('dashboards/settings_academic_coordinator.html', role=user_role, settings=settings)
+        return render_template(
+            'dashboards/settings_academic_coordinator.html',
+            role=user_role,
+            settings=settings,
+            settings_profiles=settings_profiles
+        )
     
     elif role == 'employee':
-        employee_roles = ['employee', 'super admin', 'deputy principal', 'academic coordinator', 
-                         'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-        if user_role not in employee_roles:
+        employee_settings_roles = [r for r in EMPLOYEE_SUB_ROLES if r not in ('head of institution', 'super admin')]
+        if user_role not in employee_settings_roles:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
         
@@ -10885,10 +11932,7 @@ def settings(role):
 def update_employee_profile():
     """Update employee profile information"""
     user_role = session.get('role', '').lower()
-    employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 
-                     'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-    
-    if user_role not in employee_roles:
+    if user_role not in EMPLOYEE_SUB_ROLES:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('home'))
     
@@ -10986,10 +12030,9 @@ def update_password(role):
     """Update user password"""
     user_role = session.get('role', '').lower()
     
-    if role == 'principal':
+    if role in ('head of institution', 'deputy head of institution'):
         is_technician = user_role == 'technician'
-        # Allow principals and technicians to update password
-        if user_role != 'principal' and not is_technician:
+        if user_role != role and not is_technician:
             flash('You do not have permission to perform this action.', 'error')
             return redirect(url_for('home'))
         
@@ -10999,15 +12042,15 @@ def update_password(role):
         
         if not all([current_password, new_password, confirm_password]):
             flash('Please fill in all password fields.', 'error')
-            return redirect(url_for('settings', role='principal'))
+            return redirect(url_for('settings', role=role))
         
         if new_password != confirm_password:
             flash('New passwords do not match.', 'error')
-            return redirect(url_for('settings', role='principal'))
+            return redirect(url_for('settings', role=role))
         
         if len(new_password) < 6:
             flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('settings', role='principal'))
+            return redirect(url_for('settings', role=role))
         
         connection = get_db_connection()
         if connection:
@@ -11038,12 +12081,11 @@ def update_password(role):
         else:
             flash('Database connection error. Please try again later.', 'error')
         
-        return redirect(url_for('settings', role='principal'))
+        return redirect(url_for('settings', role=role))
     
     elif role == 'employee':
-        employee_roles = ['employee', 'super admin', 'deputy principal', 'academic coordinator', 
-                         'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician']
-        if user_role not in employee_roles:
+        employee_settings_roles = [r for r in EMPLOYEE_SUB_ROLES if r not in ('head of institution', 'deputy head of institution', 'super admin')]
+        if user_role not in employee_settings_roles:
             flash('You do not have permission to perform this action.', 'error')
             return redirect(url_for('home'))
         
@@ -11124,62 +12166,148 @@ def update_preferences(role):
     return redirect(url_for('settings', role=role))
 
 # Academic Coordinator Settings Save Route
-@app.route('/settings/academic coordinator/save', methods=['POST'])
+@app.route('/settings/curriculum coordinator/save', methods=['POST'])
 @login_required
 def save_academic_coordinator_settings():
     """Save academic coordinator settings"""
     user_role = session.get('role', '').lower()
-    is_technician = user_role == 'technician'
-    
-    if user_role != 'academic coordinator' and not is_technician:
+    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
+
+    if user_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(url_for('dashboard_employee'))
     
     study_days = request.form.get('study_days', '')
     class_duration = request.form.get('class_duration', '60')
+    profile_name = request.form.get('profile_name', '').strip()
+    profile_id = request.form.get('profile_id', '').strip()
+    return_to = request.form.get('return_to', '').strip().lower()
+    selected_levels = request.form.getlist('applicable_levels')
     
     # Get class times and activities from form (as JSON strings)
     class_times_json = request.form.get('class_times_json', '[]')
     activities_json = request.form.get('activities_json', '[]')
+    applicable_levels_json = json.dumps(selected_levels)
+
+    if not profile_name:
+        flash('Please provide a profile name.', 'error')
+        return redirect(url_for('settings', role='curriculum coordinator'))
+
+    if not selected_levels:
+        flash('Please select at least one academic level.', 'error')
+        return redirect(url_for('settings', role='curriculum coordinator'))
     
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
-        return redirect(url_for('settings', role='academic coordinator'))
+        return redirect(url_for('settings', role='curriculum coordinator'))
     
     try:
         with connection.cursor() as cursor:
-            # Check if settings exist
-            cursor.execute("SELECT COUNT(*) as count FROM academic_coordinator_settings")
-            result = cursor.fetchone()
-            count = result['count'] if isinstance(result, dict) else result[0]
-            
-            if count > 0:
-                # Update existing settings
+            if profile_id.isdigit():
+                # Update selected profile
                 cursor.execute("""
                     UPDATE academic_coordinator_settings 
-                    SET study_days = %s, 
+                    SET profile_name = %s,
+                        study_days = %s, 
+                        applicable_levels = %s,
                         class_time_allocation = %s, 
                         class_duration = %s,
                         activity_time_allocation = %s
-                    WHERE id = (SELECT id FROM (SELECT id FROM academic_coordinator_settings ORDER BY id DESC LIMIT 1) AS tmp)
-                """, (study_days, class_times_json, int(class_duration), activities_json))
+                    WHERE id = %s
+                """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json, int(profile_id)))
+                saved_profile_id = int(profile_id)
             else:
-                # Insert new settings
+                # Create new profile
                 cursor.execute("""
-                    INSERT INTO academic_coordinator_settings (study_days, class_time_allocation, class_duration, activity_time_allocation)
-                    VALUES (%s, %s, %s, %s)
-                """, (study_days, class_times_json, int(class_duration), activities_json))
+                    INSERT INTO academic_coordinator_settings (profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json))
+                saved_profile_id = cursor.lastrowid
             
             connection.commit()
-            flash('Academic settings saved successfully!', 'success')
+            flash('Academic settings profile saved successfully!', 'success')
     except Exception as e:
         print(f"Error saving academic coordinator settings: {e}")
         flash('Error saving settings. Please try again.', 'error')
+        saved_profile_id = profile_id if profile_id else ''
     finally:
         connection.close()
-    
-    return redirect(url_for('settings', role='academic coordinator'))
+
+    if return_to == 'academic-settings':
+        if str(saved_profile_id).isdigit():
+            return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=saved_profile_id))
+        return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+
+    if str(saved_profile_id).isdigit():
+        return redirect(url_for('settings', role='curriculum coordinator', profile_id=saved_profile_id))
+    return redirect(url_for('settings', role='curriculum coordinator'))
+
+@app.route('/settings/curriculum coordinator/delete/<int:profile_id>', methods=['POST'])
+@login_required
+def delete_academic_coordinator_settings(profile_id):
+    """Delete a saved academic coordinator settings profile"""
+    user_role = session.get('role', '').lower()
+    return_to = request.form.get('return_to', '').strip().lower()
+    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
+
+    if user_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('settings', role='curriculum coordinator'))
+
+    next_profile_id = None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM academic_coordinator_settings")
+            result = cursor.fetchone()
+            profile_count = result['count'] if isinstance(result, dict) else result[0]
+
+            if profile_count <= 1:
+                flash('Cannot delete the only remaining schedule profile.', 'error')
+                if return_to == 'academic-settings':
+                    return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=profile_id))
+                return redirect(url_for('settings', role='curriculum coordinator', profile_id=profile_id))
+
+            cursor.execute("DELETE FROM academic_coordinator_settings WHERE id = %s", (profile_id,))
+
+            if cursor.rowcount == 0:
+                flash('Schedule profile not found.', 'error')
+                if return_to == 'academic-settings':
+                    return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+                return redirect(url_for('settings', role='curriculum coordinator'))
+
+            cursor.execute("""
+                SELECT id
+                FROM academic_coordinator_settings
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+            """)
+            next_row = cursor.fetchone()
+            if next_row:
+                next_profile_id = next_row.get('id') if isinstance(next_row, dict) else next_row[0]
+
+            connection.commit()
+            flash('Schedule profile deleted successfully.', 'success')
+    except Exception as e:
+        print(f"Error deleting academic coordinator settings profile: {e}")
+        connection.rollback()
+        flash('Error deleting schedule profile. Please try again.', 'error')
+    finally:
+        connection.close()
+
+    if return_to == 'academic-settings':
+        if next_profile_id:
+            return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=next_profile_id))
+        return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+
+    if next_profile_id:
+        return redirect(url_for('settings', role='curriculum coordinator', profile_id=next_profile_id))
+    return redirect(url_for('settings', role='curriculum coordinator'))
 
 # Role Switching Route (for technicians)
 @app.route('/switch-role/<path:target_role>')
@@ -11204,10 +12332,8 @@ def switch_role(target_role):
     # Valid main roles to switch to
     valid_main_roles = ['employee', 'student', 'parent']
     
-    # Valid employee sub-roles
-    valid_employee_roles = ['employee', 'super admin', 'principal', 'deputy principal', 
-                           'academic coordinator', 'teachers', 'accountant', 'librarian', 
-                           'warden', 'transport manager', 'technician']
+    # Valid employee sub-roles (must match EMPLOYEE_SUB_ROLES / DB ENUM)
+    valid_employee_roles = list(EMPLOYEE_SUB_ROLES)
     
     # Check if it's a main role
     if target_role in valid_main_roles:
@@ -11258,13 +12384,8 @@ def role_switch_page():
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
-    # List of all employee roles
-    employee_roles_list = ['employee', 'super admin', 'principal', 'deputy principal', 
-                          'academic coordinator', 'teachers', 'accountant', 'librarian', 
-                          'warden', 'transport manager', 'technician']
-    
     return render_template('dashboards/role_switch.html', 
-                         employee_roles_list=employee_roles_list)
+                         employee_roles_list=list(EMPLOYEE_SUB_ROLES))
 
 @app.route('/switch-role/reset')
 @login_required
@@ -11698,6 +12819,7 @@ def system_settings():
                          login_settings=login_settings)
 
 @app.route('/dashboard/employee/academic-settings')
+@app.route('/dashboard/employee/academic-schedule-management')
 @login_required
 def academic_settings():
     """Academic settings page for accountants - shows only Academic Levels, Years, and Terms"""
@@ -11710,8 +12832,8 @@ def academic_settings():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'principal'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'principal'])
+    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
@@ -11723,8 +12845,11 @@ def academic_settings():
     academic_levels = []
     academic_years = []
     terms = []
+    schedule_settings = {}
+    schedule_profiles = []
     current_academic_year = None
     today = datetime.now().date()
+    selected_profile_id = request.args.get('profile_id', '').strip()
     
     if connection:
         try:
@@ -11797,6 +12922,85 @@ def academic_settings():
                 except Exception as e:
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
+
+                # Get schedule profiles and selected schedule settings
+                try:
+                    cursor.execute("""
+                        SELECT id, profile_name, applicable_levels
+                        FROM academic_coordinator_settings
+                        ORDER BY updated_at DESC, id DESC
+                    """)
+                    raw_profiles = cursor.fetchall() or []
+                    for row in raw_profiles:
+                        if isinstance(row, dict):
+                            raw_levels = row.get('applicable_levels') or '[]'
+                            profile_id = row.get('id')
+                            profile_name = row.get('profile_name') or f'Profile {profile_id}'
+                        else:
+                            raw_levels = row[2] if row[2] else '[]'
+                            profile_id = row[0]
+                            profile_name = row[1] if row[1] else f'Profile {profile_id}'
+                        try:
+                            parsed_levels = json.loads(raw_levels)
+                        except Exception:
+                            parsed_levels = []
+                        schedule_profiles.append({'id': profile_id, 'profile_name': profile_name, 'applicable_levels': parsed_levels})
+
+                    selected_id = int(selected_profile_id) if selected_profile_id.isdigit() else (schedule_profiles[0]['id'] if schedule_profiles else None)
+                    if selected_id:
+                        cursor.execute("""
+                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                            FROM academic_coordinator_settings
+                            WHERE id = %s
+                            LIMIT 1
+                        """, (selected_id,))
+                    else:
+                        cursor.execute("""
+                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                            FROM academic_coordinator_settings
+                            ORDER BY updated_at DESC, id DESC
+                            LIMIT 1
+                        """)
+                    srow = cursor.fetchone()
+                    if srow:
+                        if isinstance(srow, dict):
+                            schedule_settings = dict(srow)
+                            try:
+                                schedule_settings['applicable_levels'] = json.loads(schedule_settings.get('applicable_levels') or '[]')
+                            except Exception:
+                                schedule_settings['applicable_levels'] = []
+                            try:
+                                schedule_settings['class_times'] = json.loads(schedule_settings.get('class_time_allocation') or '[]')
+                            except Exception:
+                                schedule_settings['class_times'] = []
+                            try:
+                                schedule_settings['activities'] = json.loads(schedule_settings.get('activity_time_allocation') or '[]')
+                            except Exception:
+                                schedule_settings['activities'] = []
+                        else:
+                            try:
+                                parsed_levels = json.loads(srow[3] if srow[3] else '[]')
+                            except Exception:
+                                parsed_levels = []
+                            try:
+                                parsed_class_times = json.loads(srow[4] if srow[4] else '[]')
+                            except Exception:
+                                parsed_class_times = []
+                            try:
+                                parsed_activities = json.loads(srow[6] if srow[6] else '[]')
+                            except Exception:
+                                parsed_activities = []
+                            schedule_settings = {
+                                'id': srow[0],
+                                'profile_name': srow[1] if srow[1] else '',
+                                'study_days': srow[2] if srow[2] else '',
+                                'applicable_levels': parsed_levels,
+                                'class_times': parsed_class_times,
+                                'class_duration': srow[5] if srow[5] else 60,
+                                'activities': parsed_activities
+                            }
+                except Exception as e:
+                    print(f"Note: schedule settings unavailable: {e}")
         except Exception as e:
             print(f"Error fetching academic settings: {e}")
         finally:
@@ -11808,7 +13012,9 @@ def academic_settings():
                          terms=terms,
                          current_academic_year=current_academic_year,
                          today=today,
-                         role=user_role)
+                         role=user_role,
+                         schedule_settings=schedule_settings,
+                         schedule_profiles=schedule_profiles)
 
 # Classes & Subjects Route (for academic coordinators)
 @app.route('/dashboard/employee/subject-class-allocation')
@@ -11818,9 +13024,9 @@ def subject_class_allocation():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -11945,9 +13151,9 @@ def save_teacher_subject_allocation():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -11988,6 +13194,16 @@ def save_teacher_subject_allocation():
             
             if existing:
                 return jsonify({'success': False, 'message': 'This allocation already exists'}), 400
+
+            cursor.execute("""
+                SELECT id FROM employees
+                WHERE id = %s AND status = 'active' AND (role = 'teachers' OR role = 'teacher')
+            """, (teacher_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Only active employees with role Teacher can be assigned to a class and subject.'
+                }), 400
             
             # Insert new allocation
             if created_by:
@@ -12021,9 +13237,9 @@ def delete_teacher_subject_allocation():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12062,9 +13278,9 @@ def create_subject():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12125,9 +13341,9 @@ def academic_subject_registration():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -12174,9 +13390,9 @@ def update_subject():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12244,9 +13460,9 @@ def delete_subject():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12293,9 +13509,9 @@ def exam_evaluation():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -12412,7 +13628,10 @@ def exam_evaluation():
                 try:
                     cursor.execute("""
                         SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
-                               e.duration_minutes, e.venue, e.status, e.academic_level_id, e.subject_id, e.supervisor_id,
+                               e.duration_minutes, e.venue, e.status,
+                               e.academic_year_id, e.term_id,
+                               COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
+                               e.academic_level_id, e.subject_id, e.supervisor_id,
                                al.level_name, al.level_category,
                                s.subject_name, s.subject_code,
                                ay.year_name, t.term_name,
@@ -12472,6 +13691,14 @@ def exam_evaluation():
                                 end_time_str = str(end_time_val)
                         else:
                             end_time_str = None
+
+                        locked_raw = row.get('is_locked', 0) if isinstance(row, dict) else 0
+                        is_locked_flag = bool(locked_raw) if not isinstance(locked_raw, bool) else locked_raw
+                        lat = row.get('locked_at') if isinstance(row, dict) else None
+                        if lat and hasattr(lat, 'strftime'):
+                            locked_at_str = lat.strftime('%Y-%m-%d %H:%M:%S')
+                        else:
+                            locked_at_str = str(lat) if lat else None
                         
                         exams.append({
                             'id': row.get('id') if isinstance(row, dict) else row[0],
@@ -12484,17 +13711,21 @@ def exam_evaluation():
                             'duration_minutes': row.get('duration_minutes') if isinstance(row, dict) else row[7],
                             'venue': row.get('venue', '') if isinstance(row, dict) else row[8],
                             'status': row.get('status', 'scheduled') if isinstance(row, dict) else (row[9] if len(row) > 9 else 'scheduled'),
-                            'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else row[10],
-                            'subject_id': row.get('subject_id') if isinstance(row, dict) else row[11],
-                            'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else row[12],
-                            'level_name': row.get('level_name', '') if isinstance(row, dict) else row[13],
-                            'level_category': row.get('level_category', '') if isinstance(row, dict) else row[14],
-                            'subject_name': row.get('subject_name', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else ''),
-                            'subject_code': row.get('subject_code', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else ''),
-                            'year_name': row.get('year_name', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else ''),
-                            'term_name': row.get('term_name', '') if isinstance(row, dict) else (row[18] if len(row) > 18 else ''),
-                            'supervisor_name': row.get('supervisor_name', '') if isinstance(row, dict) else (row[19] if len(row) > 19 else ''),
-                            'supervisor_employee_id': row.get('supervisor_employee_id', '') if isinstance(row, dict) else (row[20] if len(row) > 20 else '')
+                            'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else None,
+                            'term_id': row.get('term_id') if isinstance(row, dict) else None,
+                            'is_locked': is_locked_flag,
+                            'locked_at': locked_at_str,
+                            'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else None,
+                            'subject_id': row.get('subject_id') if isinstance(row, dict) else None,
+                            'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else None,
+                            'level_name': row.get('level_name', '') if isinstance(row, dict) else '',
+                            'level_category': row.get('level_category', '') if isinstance(row, dict) else '',
+                            'subject_name': row.get('subject_name', '') if isinstance(row, dict) else '',
+                            'subject_code': row.get('subject_code', '') if isinstance(row, dict) else '',
+                            'year_name': row.get('year_name', '') if isinstance(row, dict) else '',
+                            'term_name': row.get('term_name', '') if isinstance(row, dict) else '',
+                            'supervisor_name': row.get('supervisor_name', '') if isinstance(row, dict) else '',
+                            'supervisor_employee_id': row.get('supervisor_employee_id', '') if isinstance(row, dict) else ''
                         })
                 except Exception as e:
                     print(f"Note: exams table may not exist yet: {e}")
@@ -12503,6 +13734,8 @@ def exam_evaluation():
             print(f"Error fetching exam data: {e}")
         finally:
             connection.close()
+
+    open_edit_id = request.args.get('open_edit', type=int)
     
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
@@ -12511,7 +13744,205 @@ def exam_evaluation():
                          academic_levels=academic_levels,
                          subjects=subjects,
                          teachers=teachers,
-                         exams=exams)
+                         exams=exams,
+                         open_edit_id=open_edit_id)
+
+
+@app.route('/dashboard/employee/exam-evaluation/registered')
+@login_required
+def exam_evaluation_registered_detail():
+    """Per-exam page: all allocation rows as class timetables (by level and date)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    exam_name_raw = (request.args.get('exam_name') or '').strip()
+    try:
+        academic_year_id = int(request.args.get('academic_year_id', 0))
+        term_id = int(request.args.get('term_id', 0))
+    except (ValueError, TypeError):
+        flash('Invalid exam link.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    if not exam_name_raw or academic_year_id <= 0 or term_id <= 0:
+        flash('Missing exam details.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    exam_name_key = exam_name_raw.upper()
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    records = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
+                       e.duration_minutes, e.venue, e.status,
+                       e.academic_year_id, e.term_id,
+                       COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
+                       e.academic_level_id, e.subject_id, e.supervisor_id,
+                       al.level_name, al.level_category,
+                       s.subject_name, s.subject_code,
+                       ay.year_name, t.term_name,
+                       emp.full_name as supervisor_name, emp.employee_id as supervisor_employee_id
+                FROM exams e
+                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                LEFT JOIN subjects s ON e.subject_id = s.id
+                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                LEFT JOIN terms t ON e.term_id = t.id
+                LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                WHERE e.exam_name = %s AND e.academic_year_id = %s AND e.term_id = %s
+                ORDER BY al.level_name ASC, al.level_category ASC, e.exam_date ASC, e.start_time ASC, e.id ASC
+            """, (exam_name_key, academic_year_id, term_id))
+            rows = cursor.fetchall()
+
+            for row in rows:
+                exam_date_val = row.get('exam_date') if isinstance(row, dict) else row[3]
+                start_time_val = row.get('start_time') if isinstance(row, dict) else row[5]
+                end_time_val = row.get('end_time') if isinstance(row, dict) else row[6]
+
+                if exam_date_val:
+                    if hasattr(exam_date_val, 'strftime'):
+                        exam_date_str = exam_date_val.strftime('%Y-%m-%d')
+                    else:
+                        exam_date_str = str(exam_date_val)
+                else:
+                    exam_date_str = None
+
+                if start_time_val:
+                    if isinstance(start_time_val, timedelta):
+                        total_seconds = int(start_time_val.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        start_time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    elif hasattr(start_time_val, 'strftime'):
+                        start_time_str = start_time_val.strftime('%H:%M:%S')
+                    else:
+                        start_time_str = str(start_time_val)
+                else:
+                    start_time_str = None
+
+                if end_time_val:
+                    if isinstance(end_time_val, timedelta):
+                        total_seconds = int(end_time_val.total_seconds())
+                        hours = total_seconds // 3600
+                        minutes = (total_seconds % 3600) // 60
+                        seconds = total_seconds % 60
+                        end_time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    elif hasattr(end_time_val, 'strftime'):
+                        end_time_str = end_time_val.strftime('%H:%M:%S')
+                    else:
+                        end_time_str = str(end_time_val)
+                else:
+                    end_time_str = None
+
+                locked_raw = row.get('is_locked', 0) if isinstance(row, dict) else 0
+                is_locked_flag = bool(locked_raw) if not isinstance(locked_raw, bool) else locked_raw
+
+                records.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'exam_name': row.get('exam_name', '') if isinstance(row, dict) else row[1],
+                    'exam_type': row.get('exam_type', '') if isinstance(row, dict) else row[2],
+                    'exam_date': exam_date_str,
+                    'session_type': row.get('session_type', '') if isinstance(row, dict) else row[4],
+                    'start_time': start_time_str,
+                    'end_time': end_time_str,
+                    'duration_minutes': row.get('duration_minutes') if isinstance(row, dict) else row[7],
+                    'venue': row.get('venue', '') if isinstance(row, dict) else row[8],
+                    'status': row.get('status', 'scheduled') if isinstance(row, dict) else (row[9] if len(row) > 9 else 'scheduled'),
+                    'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else None,
+                    'term_id': row.get('term_id') if isinstance(row, dict) else None,
+                    'is_locked': is_locked_flag,
+                    'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else None,
+                    'subject_id': row.get('subject_id') if isinstance(row, dict) else None,
+                    'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else None,
+                    'level_name': row.get('level_name', '') if isinstance(row, dict) else '',
+                    'level_category': row.get('level_category', '') if isinstance(row, dict) else '',
+                    'subject_name': row.get('subject_name', '') if isinstance(row, dict) else '',
+                    'subject_code': row.get('subject_code', '') if isinstance(row, dict) else '',
+                    'year_name': row.get('year_name', '') if isinstance(row, dict) else '',
+                    'term_name': row.get('term_name', '') if isinstance(row, dict) else '',
+                    'supervisor_name': row.get('supervisor_name', '') if isinstance(row, dict) else '',
+                    'supervisor_employee_id': row.get('supervisor_employee_id', '') if isinstance(row, dict) else ''
+                })
+    except Exception as e:
+        print(f"Error loading registered exam detail: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Could not load this exam.', 'error')
+        return redirect(url_for('exam_evaluation'))
+    finally:
+        if connection:
+            connection.close()
+
+    if not records:
+        flash('Exam not found.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    from collections import defaultdict
+
+    r0 = records[0]
+    exam_meta = {
+        'exam_name': r0.get('exam_name') or exam_name_key,
+        'exam_type': r0.get('exam_type') or '',
+        'year_name': r0.get('year_name') or '',
+        'term_name': r0.get('term_name') or '',
+        'is_locked': bool(r0.get('is_locked')),
+        'academic_year_id': academic_year_id,
+        'term_id': term_id,
+    }
+
+    by_level = defaultdict(list)
+    for rec in records:
+        lid = rec.get('academic_level_id')
+        if lid is None:
+            continue
+        by_level[int(lid)].append(rec)
+
+    timetables_by_level = []
+    for level_id in sorted(by_level.keys(), key=lambda x: (
+        (by_level[x][0].get('level_name') or ''),
+        (by_level[x][0].get('level_category') or '')
+    )):
+        level_rows = by_level[level_id]
+        ln = level_rows[0].get('level_name') or ''
+        lc = level_rows[0].get('level_category') or ''
+        by_date = defaultdict(list)
+        for rec in level_rows:
+            d = rec.get('exam_date') or ''
+            by_date[d].append(rec)
+        date_blocks = []
+        for d in sorted(by_date.keys()):
+            slots = sorted(
+                by_date[d],
+                key=lambda x: ((x.get('start_time') or ''), (x.get('subject_name') or ''), x.get('id') or 0)
+            )
+            date_blocks.append({'date': d, 'slots': slots})
+        timetables_by_level.append({
+            'academic_level_id': level_id,
+            'level_name': ln,
+            'level_category': lc,
+            'dates': date_blocks,
+        })
+
+    return render_template(
+        'dashboards/exam_registered_detail.html',
+        role=user_role,
+        exam_meta=exam_meta,
+        timetables_by_level=timetables_by_level,
+        allocation_count=len(records),
+    )
+
 
 # Save Exam Route
 @app.route('/dashboard/employee/exam-evaluation/save', methods=['POST'])
@@ -12521,9 +13952,9 @@ def save_exam():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12536,14 +13967,26 @@ def save_exam():
         academic_year_id = int(data.get('academic_year_id', 0))
         term_id = int(data.get('term_id', 0))
         allocations = data.get('allocations') or []
+        auto_generate = bool(data.get('auto_generate'))
+        base_exam_date = (data.get('base_exam_date') or '').strip()
+        level_ids_raw = data.get('level_ids')
+        default_venue = (data.get('default_venue') or '').strip().upper()
     except (ValueError, TypeError) as e:
         return jsonify({'success': False, 'message': f'Invalid data: {str(e)}'}), 400
 
     if not all([exam_name, exam_type, academic_year_id > 0, term_id > 0]):
         return jsonify({'success': False, 'message': 'Missing required fields'}), 400
 
-    if not isinstance(allocations, list) or len(allocations) == 0:
-        return jsonify({'success': False, 'message': 'Please add at least one subject allocation'}), 400
+    if not auto_generate:
+        if not isinstance(allocations, list) or len(allocations) == 0:
+            return jsonify({'success': False, 'message': 'Please add at least one subject allocation'}), 400
+    else:
+        if not base_exam_date:
+            return jsonify({'success': False, 'message': 'Auto-register requires a base exam start date.'}), 400
+        try:
+            datetime.strptime(base_exam_date, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid base exam date. Use YYYY-MM-DD.'}), 400
 
     # Session presets (school can adjust later)
     session_presets = {
@@ -12552,6 +13995,7 @@ def save_exam():
         'AFTERNOON': ('14:00:00', '16:00:00'),
         'EVENING': ('17:00:00', '19:00:00'),
     }
+    SESSION_ORDER = ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING']
 
     def _time_to_minutes(t: str) -> int | None:
         try:
@@ -12579,8 +14023,8 @@ def save_exam():
     normalized_allocations = []
     seen_teacher_slots = []  # for within-request conflicts: list of (teacher_id, exam_date, start_min, end_min)
 
-    # Normalize + validate payload
-    for idx, a in enumerate(allocations):
+    # Normalize + validate payload (manual mode only)
+    for idx, a in enumerate(allocations if not auto_generate else []):
         try:
             academic_level_id = int(a.get('academic_level_id', 0))
             subject_id = int(a.get('subject_id', 0))
@@ -12661,6 +14105,123 @@ def save_exam():
                     created_by = emp.get('id') if isinstance(emp, dict) else emp[0]
         
         with connection.cursor() as cursor:
+            if auto_generate:
+                from collections import defaultdict
+
+                level_ids = []
+                if level_ids_raw and isinstance(level_ids_raw, list):
+                    try:
+                        level_ids = sorted({int(x) for x in level_ids_raw if int(x) > 0})
+                    except (ValueError, TypeError):
+                        return jsonify({'success': False, 'message': 'Invalid level_ids.'}), 400
+                if not level_ids:
+                    cursor.execute("""
+                        SELECT id FROM academic_levels
+                        WHERE level_status = 'active'
+                        ORDER BY level_category, level_name ASC
+                    """)
+                    level_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall()]
+                if not level_ids:
+                    return jsonify({'success': False, 'message': 'No active academic levels found.'}), 400
+
+                ph = ','.join(['%s'] * len(level_ids))
+                cursor.execute(f"""
+                    SELECT id, level_name FROM academic_levels
+                    WHERE id IN ({ph})
+                """, tuple(level_ids))
+                level_venue_by_id = {}
+                for r in cursor.fetchall():
+                    lid = r.get('id') if isinstance(r, dict) else r[0]
+                    lname = (r.get('level_name') if isinstance(r, dict) else r[1]) or ''
+                    label = lname.strip().upper()
+                    level_venue_by_id[lid] = label if label else f'LEVEL {lid}'
+
+                cursor.execute(f"""
+                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN subjects s ON s.id = tsa.subject_id AND s.status = 'active'
+                    INNER JOIN academic_levels al ON al.id = tsa.academic_level_id AND al.level_status = 'active'
+                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                        AND emp.status = 'active'
+                        AND (emp.role = 'teachers' OR emp.role = 'teacher')
+                    WHERE tsa.academic_level_id IN ({ph})
+                    ORDER BY tsa.teacher_id, tsa.academic_level_id, tsa.subject_id
+                """, tuple(level_ids))
+                assign_rows = cursor.fetchall()
+                if not assign_rows:
+                    return jsonify({
+                        'success': False,
+                        'message': 'No subject–class allocations with active teachers for the selected levels. Add them in Subject & Class Allocation, or ensure each assigned employee has role Teacher.'
+                    }), 400
+
+                by_ls = {}
+                for row in assign_rows:
+                    lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
+                    sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+                    tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
+                    key = (lid, sid)
+                    if key not in by_ls:
+                        by_ls[key] = tid
+
+                task_list = [
+                    {'academic_level_id': k[0], 'subject_id': k[1], 'teacher_id': v}
+                    for k, v in sorted(by_ls.items())
+                ]
+
+                by_teacher = defaultdict(list)
+                for t in task_list:
+                    by_teacher[t['teacher_id']].append(t)
+
+                d0 = datetime.strptime(base_exam_date, '%Y-%m-%d').date()
+                normalized_allocations.clear()
+                seen_teacher_slots.clear()
+
+                for teacher_id in sorted(by_teacher.keys()):
+                    tlist = by_teacher[teacher_id]
+                    for i, task in enumerate(tlist):
+                        day_offset = i // len(SESSION_ORDER)
+                        sess_idx = i % len(SESSION_ORDER)
+                        session_type = SESSION_ORDER[sess_idx]
+                        exam_d = d0 + timedelta(days=day_offset)
+                        allocation_exam_date = exam_d.strftime('%Y-%m-%d')
+                        start_time_str, end_time_str = session_presets[session_type]
+                        smin = _time_to_minutes(start_time_str)
+                        emin = _time_to_minutes(end_time_str)
+                        if smin is None or emin is None:
+                            return jsonify({'success': False, 'message': 'Invalid session preset times.'}), 500
+                        if emin <= smin:
+                            emin += 24 * 60
+                        for (t_id, ed, os, oe) in seen_teacher_slots:
+                            if t_id == teacher_id and ed == allocation_exam_date and (smin < oe and emin > os):
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'Auto-schedule produced an internal teacher time conflict. Contact support.'
+                                }), 500
+                        seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
+                        smin_dur = _time_to_minutes(start_time_str)
+                        emin_dur = _time_to_minutes(end_time_str)
+                        duration_minutes = (emin_dur - smin_dur) if (
+                            smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
+                        ) else None
+
+                        normalized_allocations.append({
+                            'academic_level_id': task['academic_level_id'],
+                            'subject_id': task['subject_id'],
+                            'teacher_id': teacher_id,
+                            'exam_date': allocation_exam_date,
+                            'venue': level_venue_by_id.get(
+                                task['academic_level_id'],
+                                (default_venue or '').strip().upper() or f'LEVEL {task["academic_level_id"]}'
+                            ),
+                            'session_type': session_type,
+                            'start_time': start_time_str,
+                            'end_time': end_time_str,
+                            'duration_minutes': duration_minutes,
+                        })
+
+            if not normalized_allocations:
+                return jsonify({'success': False, 'message': 'No allocations to save.'}), 400
+
             # Validate teacher IDs exist and are active teachers
             teacher_ids = list({na['teacher_id'] for na in normalized_allocations})
             if teacher_ids:
@@ -12673,6 +14234,17 @@ def save_exam():
                 invalid = [tid for tid in teacher_ids if tid not in valid_teacher_ids]
                 if invalid:
                     return jsonify({'success': False, 'message': 'One or more selected teachers are invalid or inactive'}), 400
+
+            cursor.execute("""
+                SELECT id FROM exams
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s AND COALESCE(is_locked, 0) = 1
+                LIMIT 1
+            """, (exam_name, academic_year_id, term_id))
+            if cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'This exam is locked. Unlock it on the Registered Exam Allocations list before adding allocations.'
+                }), 400
 
             # For each allocation: ensure no DB conflicts + insert row
             inserted_ids = []
@@ -12759,9 +14331,9 @@ def update_exam():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
 
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12839,9 +14411,23 @@ def update_exam():
     try:
         with connection.cursor() as cursor:
             # Verify exam exists
-            cursor.execute("SELECT id FROM exams WHERE id = %s", (exam_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+            ex = cursor.fetchone()
+            if not ex:
                 return jsonify({'success': False, 'message': 'Exam not found'}), 404
+            il = ex.get('il') if isinstance(ex, dict) else ex[1]
+            if il:
+                return jsonify({'success': False, 'message': 'This exam is locked and cannot be edited. Unlock it first.'}), 400
+
+            cursor.execute("""
+                SELECT id FROM employees
+                WHERE id = %s AND status = 'active' AND (role = 'teachers' OR role = 'teacher')
+            """, (supervisor_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Supervisor must be an active employee with role Teacher.'
+                }), 400
 
             # Teacher conflict on same date (overlap) excluding this exam row
             cursor.execute("""
@@ -12907,9 +14493,9 @@ def delete_exam():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
 
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12929,9 +14515,13 @@ def delete_exam():
 
     try:
         with connection.cursor() as cursor:
-            cursor.execute("SELECT id FROM exams WHERE id = %s", (exam_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT id, COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+            ex = cursor.fetchone()
+            if not ex:
                 return jsonify({'success': False, 'message': 'Exam not found'}), 404
+            il = ex.get('il') if isinstance(ex, dict) else ex[1]
+            if il:
+                return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before deleting allocations.'}), 400
 
             cursor.execute("DELETE FROM exams WHERE id = %s", (exam_id,))
             connection.commit()
@@ -12957,9 +14547,9 @@ def allocate_exam_supervisor():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -12982,6 +14572,24 @@ def allocate_exam_supervisor():
     
     try:
         with connection.cursor() as cursor:
+            cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+            ex = cursor.fetchone()
+            if not ex:
+                return jsonify({'success': False, 'message': 'Exam not found'}), 404
+            il = ex.get('il') if isinstance(ex, dict) else ex[0]
+            if il:
+                return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before allocating supervisors.'}), 400
+
+            cursor.execute("""
+                SELECT id FROM employees
+                WHERE id = %s AND status = 'active' AND (role = 'teachers' OR role = 'teacher')
+            """, (supervisor_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Supervisor must be an active employee with role Teacher.'
+                }), 400
+
             # Check if allocation already exists
             cursor.execute("""
                 SELECT id FROM exam_supervisors
@@ -13008,6 +14616,73 @@ def allocate_exam_supervisor():
     finally:
         if connection:
             connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/set-lock', methods=['POST'])
+@login_required
+def set_exam_lock():
+    """Lock or unlock all allocation rows for one exam (same name, year, term)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    exam_name = (data.get('exam_name') or '').strip().upper()
+    locked_raw = data.get('locked')
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
+
+    if locked_raw is None:
+        return jsonify({'success': False, 'message': 'Missing locked flag'}), 400
+    locked = bool(locked_raw) if not isinstance(locked_raw, str) else locked_raw.lower() in ('1', 'true', 'yes')
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    lock_int = 1 if locked else 0
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                UPDATE exams SET
+                    is_locked = %s,
+                    locked_at = CASE WHEN %s = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+            """, (lock_int, lock_int, exam_name, academic_year_id, term_id))
+            n = cursor.rowcount
+            if n == 0:
+                return jsonify({'success': False, 'message': 'No allocations found for that exam'}), 404
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': 'Exam locked.' if locked else 'Exam unlocked.',
+                'locked': locked,
+                'updated': n
+            })
+    except Exception as e:
+        print(f"Error setting exam lock: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error updating lock: {str(e)}'}), 500
+    finally:
+        connection.close()
+
 
 # Get Terms for Academic Year
 @app.route('/dashboard/employee/exam-evaluation/get-terms', methods=['POST'])
@@ -13056,9 +14731,9 @@ def classes_subjects():
     employee_id = session.get('employee_id') or session.get('user_id')
     
     # Check if user is academic coordinator or viewing as academic coordinator
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     # Allow academic coordinators, principals, and technicians
     if not (is_academic_coordinator or is_technician or is_principal):
@@ -13089,6 +14764,46 @@ def classes_subjects():
                         'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
                         'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
                     })
+
+                # Per-level: subjects with allocated teachers (subject-class allocation)
+                allocations_by_level = {}
+                try:
+                    cursor.execute("""
+                        SELECT tsa.id, tsa.academic_level_id, tsa.subject_id, tsa.teacher_id,
+                               s.subject_name, s.subject_code, COALESCE(s.status, 'active') AS subject_status,
+                               e.full_name AS teacher_name, e.employee_id AS teacher_employee_id
+                        FROM teacher_subject_assignments tsa
+                        INNER JOIN academic_levels al ON tsa.academic_level_id = al.id AND al.level_status = 'active'
+                        LEFT JOIN subjects s ON tsa.subject_id = s.id
+                        LEFT JOIN employees e ON tsa.teacher_id = e.id
+                        ORDER BY al.level_name ASC, s.subject_name ASC, e.full_name ASC
+                    """)
+                    assign_rows = cursor.fetchall()
+                    for arow in assign_rows:
+                        lid = arow.get('academic_level_id') if isinstance(arow, dict) else arow[1]
+                        if lid is None:
+                            continue
+                        subj_name = (arow.get('subject_name', '') if isinstance(arow, dict) else arow[4]) or ''
+                        subj_status = (arow.get('subject_status', 'active') if isinstance(arow, dict) else (arow[6] if len(arow) > 6 else 'active'))
+                        if str(subj_status or '').lower() == 'inactive':
+                            continue
+                        teach_name = (arow.get('teacher_name', '') if isinstance(arow, dict) else arow[7]) or ''
+                        teach_code = (arow.get('teacher_employee_id', '') if isinstance(arow, dict) else (arow[8] if len(arow) > 8 else '')) or ''
+                        item = {
+                            'assignment_id': arow.get('id') if isinstance(arow, dict) else arow[0],
+                            'subject_id': arow.get('subject_id') if isinstance(arow, dict) else arow[2],
+                            'teacher_id': arow.get('teacher_id') if isinstance(arow, dict) else arow[3],
+                            'subject_name': subj_name or 'Subject',
+                            'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[5] if len(arow) > 5 else '')) or '',
+                            'teacher_name': teach_name or '—',
+                            'teacher_employee_id': teach_code,
+                        }
+                        allocations_by_level.setdefault(lid, []).append(item)
+                except Exception as e:
+                    print(f"Note: teacher_subject_assignments for classes-subjects: {e}")
+
+                for level in academic_levels:
+                    level['subject_allocations'] = allocations_by_level.get(level['id'], [])
         except Exception as e:
             print(f"Error fetching academic levels: {e}")
         finally:
@@ -13106,10 +14821,10 @@ def timetable_management():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
-    is_deputy_principal = user_role == 'deputy principal' or viewing_as_role == 'deputy principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy_principal = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -13195,6 +14910,95 @@ def timetable_management():
                          settings=settings)
 
 # Register Timetable Route
+def _get_schedule_settings_for_level(cursor, academic_level_id):
+    """Resolve timetable schedule settings for a specific academic level."""
+    default_settings = {
+        'id': None,
+        'profile_name': 'Default Profile',
+        'study_days': 'Monday,Tuesday,Wednesday,Thursday,Friday',
+        'class_times': [],
+        'class_duration': 60,
+        'activities': []
+    }
+
+    cursor.execute("""
+        SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+        FROM academic_coordinator_settings
+        ORDER BY updated_at DESC, id DESC
+    """)
+    rows = cursor.fetchall() or []
+    if not rows:
+        return default_settings
+
+    selected = None
+    for row in rows:
+        if isinstance(row, dict):
+            raw_levels = row.get('applicable_levels') or '[]'
+            row_id = row.get('id')
+            row_profile = row.get('profile_name') or f'Profile {row_id}'
+            row_days = row.get('study_days') or ''
+            row_class_json = row.get('class_time_allocation') or '[]'
+            row_duration = row.get('class_duration') or 60
+            row_activities_json = row.get('activity_time_allocation') or '[]'
+        else:
+            raw_levels = row[3] if row[3] else '[]'
+            row_id = row[0]
+            row_profile = row[1] if row[1] else f'Profile {row_id}'
+            row_days = row[2] if row[2] else ''
+            row_class_json = row[4] if row[4] else '[]'
+            row_duration = row[5] if row[5] else 60
+            row_activities_json = row[6] if row[6] else '[]'
+
+        try:
+            parsed_levels = json.loads(raw_levels)
+        except Exception:
+            parsed_levels = []
+
+        normalized_levels = {str(level_id) for level_id in parsed_levels}
+        if str(academic_level_id) in normalized_levels:
+            selected = {
+                'id': row_id,
+                'profile_name': row_profile,
+                'study_days': row_days,
+                'class_time_allocation': row_class_json,
+                'class_duration': row_duration,
+                'activity_time_allocation': row_activities_json
+            }
+            break
+
+    if selected is None:
+        # fallback to latest profile if no level-targeted profile exists
+        row = rows[0]
+        if isinstance(row, dict):
+            selected = {
+                'id': row.get('id'),
+                'profile_name': row.get('profile_name') or f"Profile {row.get('id')}",
+                'study_days': row.get('study_days') or '',
+                'class_time_allocation': row.get('class_time_allocation') or '[]',
+                'class_duration': row.get('class_duration') or 60,
+                'activity_time_allocation': row.get('activity_time_allocation') or '[]'
+            }
+        else:
+            selected = {
+                'id': row[0],
+                'profile_name': row[1] if row[1] else f'Profile {row[0]}',
+                'study_days': row[2] if row[2] else '',
+                'class_time_allocation': row[4] if row[4] else '[]',
+                'class_duration': row[5] if row[5] else 60,
+                'activity_time_allocation': row[6] if row[6] else '[]'
+            }
+
+    try:
+        selected['class_times'] = json.loads(selected.get('class_time_allocation') or '[]')
+    except Exception:
+        selected['class_times'] = []
+    try:
+        selected['activities'] = json.loads(selected.get('activity_time_allocation') or '[]')
+    except Exception:
+        selected['activities'] = []
+
+    return selected
+
 @app.route('/dashboard/employee/timetable-management/register-timetable')
 @login_required
 def register_timetable():
@@ -13202,9 +15006,9 @@ def register_timetable():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -13278,49 +15082,15 @@ def register_timetable():
                         'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
                     })
                 
-                # Get academic coordinator settings
-                cursor.execute("""
-                    SELECT study_days, class_time_allocation, class_duration, activity_time_allocation
-                    FROM academic_coordinator_settings
-                    LIMIT 1
-                """)
-                settings_result = cursor.fetchone()
-                settings = {}
-                if settings_result:
-                    if isinstance(settings_result, dict):
-                        settings = settings_result
-                    else:
-                        settings = {
-                            'study_days': settings_result[0] if settings_result[0] else '',
-                            'class_time_allocation': settings_result[1] if settings_result[1] else '',
-                            'class_duration': settings_result[2] if settings_result[2] else 60,
-                            'activity_time_allocation': settings_result[3] if settings_result[3] else ''
-                        }
-                    
-                    # Parse JSON fields
-                    if settings.get('class_time_allocation'):
-                        try:
-                            settings['class_times'] = json.loads(settings['class_time_allocation'])
-                        except:
-                            settings['class_times'] = []
-                    else:
-                        settings['class_times'] = []
-                    
-                    if settings.get('activity_time_allocation'):
-                        try:
-                            settings['activities'] = json.loads(settings['activity_time_allocation'])
-                        except:
-                            settings['activities'] = []
-                    else:
-                        settings['activities'] = []
-                else:
-                    # Default settings if none exist
-                    settings = {
-                        'study_days': 'Monday,Tuesday,Wednesday,Thursday,Friday',
-                        'class_times': [],
-                        'class_duration': 60,
-                        'activities': []
-                    }
+                # Default settings shown before class/level is selected
+                settings = {
+                    'id': None,
+                    'profile_name': '',
+                    'study_days': 'Monday,Tuesday,Wednesday,Thursday,Friday',
+                    'class_times': [],
+                    'class_duration': 60,
+                    'activities': []
+                }
                 
                 # Get teachers (employees with role 'teachers')
                 cursor.execute("""
@@ -13357,6 +15127,43 @@ def register_timetable():
                          teachers=teachers,
                          role=user_role)
 
+@app.route('/dashboard/employee/timetable-management/register-timetable/level-settings', methods=['POST'])
+@login_required
+def get_level_schedule_settings():
+    """Get schedule settings profile that applies to a selected academic level."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        academic_level_id = int(data.get('academic_level_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid academic level'}), 400
+
+    if academic_level_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing academic level'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            settings = _get_schedule_settings_for_level(cursor, academic_level_id)
+        return jsonify({'success': True, 'settings': settings})
+    except Exception as e:
+        print(f"Error fetching level schedule settings: {e}")
+        return jsonify({'success': False, 'message': 'Error fetching schedule settings'}), 500
+    finally:
+        connection.close()
+
 # Load Existing Timetable Route
 @app.route('/dashboard/employee/timetable-management/register-timetable/load', methods=['POST'])
 @login_required
@@ -13365,9 +15172,9 @@ def load_timetable():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -13442,9 +15249,9 @@ def check_teacher_conflict():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -13521,6 +15328,242 @@ def check_teacher_conflict():
         if connection:
             connection.close()
 
+# Auto Generate Timetable Route
+@app.route('/dashboard/employee/timetable-management/register-timetable/auto-generate', methods=['POST'])
+@login_required
+def auto_generate_timetable():
+    """Auto-generate timetable for all active levels without teacher collisions"""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid ID values'}), 400
+
+    if term_id <= 0 or academic_year_id <= 0:
+        return jsonify({'success': False, 'message': 'Academic year and term are required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            # Validate term belongs to selected academic year
+            cursor.execute("SELECT id FROM terms WHERE id = %s AND academic_year_id = %s LIMIT 1", (term_id, academic_year_id))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Selected term does not belong to selected academic year.'}), 400
+
+            # Active levels
+            cursor.execute("""
+                SELECT id, level_name
+                FROM academic_levels
+                WHERE level_status = 'active'
+                ORDER BY level_category, level_name ASC
+            """)
+            level_rows = cursor.fetchall() or []
+            levels = []
+            for row in level_rows:
+                if isinstance(row, dict):
+                    levels.append({'id': int(row.get('id')), 'level_name': row.get('level_name', '')})
+                else:
+                    levels.append({'id': int(row[0]), 'level_name': row[1] if len(row) > 1 else ''})
+
+            if not levels:
+                return jsonify({'success': False, 'message': 'No active academic levels found.'}), 400
+
+            # Teachers assigned to each level via subject-class allocation
+            cursor.execute("""
+                SELECT DISTINCT tsa.academic_level_id, e.id AS teacher_id, e.full_name, e.employee_id
+                FROM teacher_subject_assignments tsa
+                INNER JOIN employees e ON e.id = tsa.teacher_id
+                WHERE (e.role = 'teachers' OR e.role = 'teacher') AND e.status = 'active'
+                ORDER BY tsa.academic_level_id ASC, e.full_name ASC
+            """)
+            assignment_rows = cursor.fetchall() or []
+            level_teacher_map = {}
+            for row in assignment_rows:
+                if isinstance(row, dict):
+                    level_id = int(row.get('academic_level_id'))
+                    teacher_id = int(row.get('teacher_id'))
+                    full_name = row.get('full_name', '')
+                    employee_code = row.get('employee_id', '')
+                else:
+                    level_id = int(row[0])
+                    teacher_id = int(row[1])
+                    full_name = row[2] if len(row) > 2 else ''
+                    employee_code = row[3] if len(row) > 3 else ''
+                if level_id not in level_teacher_map:
+                    level_teacher_map[level_id] = []
+                if all(t['id'] != teacher_id for t in level_teacher_map[level_id]):
+                    level_teacher_map[level_id].append({'id': teacher_id, 'full_name': full_name, 'employee_id': employee_code})
+
+            # Busy map from existing timetable entries in selected term
+            cursor.execute("""
+                SELECT day_of_week, time_slot, teacher_id
+                FROM timetables
+                WHERE term_id = %s
+            """, (term_id,))
+            busy_rows = cursor.fetchall() or []
+            busy = {}
+            for row in busy_rows:
+                if isinstance(row, dict):
+                    day = row.get('day_of_week', '')
+                    time_slot = row.get('time_slot', '')
+                    teacher_id = row.get('teacher_id')
+                else:
+                    day = row[0] if len(row) > 0 else ''
+                    time_slot = row[1] if len(row) > 1 else ''
+                    teacher_id = row[2] if len(row) > 2 else None
+                if day and time_slot and teacher_id:
+                    key = (str(day), str(time_slot))
+                    if key not in busy:
+                        busy[key] = set()
+                    busy[key].add(int(teacher_id))
+
+            total_slots = 0
+            assigned_count = 0
+            blank_count = 0
+            per_level_summary = []
+            generated_slots_for_level = {}
+            created_by = None
+
+            employee_id_from_session = session.get('employee_id') or session.get('user_id')
+            if employee_id_from_session:
+                cursor.execute("""
+                    SELECT id FROM employees
+                    WHERE id = %s OR employee_id = %s
+                    LIMIT 1
+                """, (employee_id_from_session, employee_id_from_session))
+                creator_row = cursor.fetchone()
+                if creator_row:
+                    created_by = creator_row.get('id') if isinstance(creator_row, dict) else creator_row[0]
+
+            # Generate for each level independently with level-eligible teachers
+            for level in levels:
+                level_id = int(level['id'])
+                level_name = level.get('level_name', f'Level {level_id}')
+                settings = _get_schedule_settings_for_level(cursor, level_id)
+                days = [d.strip() for d in (settings.get('study_days') or '').split(',') if d and d.strip()]
+                class_times = [ct.get('start_time') for ct in (settings.get('class_times') or []) if ct and ct.get('start_time')]
+                class_times = sorted(list(dict.fromkeys([str(t) for t in class_times])))
+                eligible_teachers = level_teacher_map.get(level_id, [])
+
+                level_total = len(days) * len(class_times)
+                total_slots += level_total
+                level_assigned = 0
+                level_blank = 0
+                generated_slots_for_level[level_id] = []
+
+                if level_total == 0:
+                    per_level_summary.append({
+                        'level_id': level_id,
+                        'level_name': level_name,
+                        'profile_name': settings.get('profile_name', ''),
+                        'assigned': 0,
+                        'blank': 0,
+                        'total': 0
+                    })
+                    continue
+
+                teacher_count = len(eligible_teachers)
+                pointer = 0
+
+                for day in days:
+                    for start_time in class_times:
+                        key = (day, start_time)
+                        occupied = busy.get(key, set())
+                        selected_teacher = None
+
+                        if teacher_count > 0:
+                            for offset in range(teacher_count):
+                                idx = (pointer + offset) % teacher_count
+                                candidate = eligible_teachers[idx]
+                                candidate_id = int(candidate['id'])
+                                if candidate_id not in occupied:
+                                    selected_teacher = candidate
+                                    pointer = (idx + 1) % teacher_count
+                                    break
+
+                        if selected_teacher:
+                            selected_teacher_id = int(selected_teacher['id'])
+                            generated_slots_for_level[level_id].append({
+                                'day': day,
+                                'time': start_time,
+                                'teacher_id': selected_teacher_id,
+                                'teacher_name': selected_teacher.get('full_name', ''),
+                                'teacher_code': selected_teacher.get('employee_id', '')
+                            })
+                            if key not in busy:
+                                busy[key] = set()
+                            busy[key].add(selected_teacher_id)
+                            assigned_count += 1
+                            level_assigned += 1
+                        else:
+                            blank_count += 1
+                            level_blank += 1
+
+                per_level_summary.append({
+                    'level_id': level_id,
+                    'level_name': level_name,
+                    'profile_name': settings.get('profile_name', ''),
+                    'assigned': level_assigned,
+                    'blank': level_blank,
+                    'total': level_total
+                })
+
+            # Replace timetable entries for selected term/year across all levels, then insert generated
+            cursor.execute("""
+                DELETE FROM timetables
+                WHERE term_id = %s AND academic_year_id = %s
+            """, (term_id, academic_year_id))
+
+            for level in levels:
+                level_id = int(level['id'])
+                for slot in generated_slots_for_level.get(level_id, []):
+                    if created_by:
+                        cursor.execute("""
+                            INSERT INTO timetables (academic_year_id, term_id, academic_level_id, day_of_week, time_slot, teacher_id, created_by)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """, (academic_year_id, term_id, level_id, slot['day'], slot['time'], slot['teacher_id'], created_by))
+                    else:
+                        cursor.execute("""
+                            INSERT INTO timetables (academic_year_id, term_id, academic_level_id, day_of_week, time_slot, teacher_id)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (academic_year_id, term_id, level_id, slot['day'], slot['time'], slot['teacher_id']))
+
+            connection.commit()
+
+            return jsonify({
+                'success': True,
+                'message': 'Auto generation completed for all active levels.',
+                'assigned_count': assigned_count,
+                'blank_count': blank_count,
+                'total_slots': total_slots,
+                'levels_processed': len(levels),
+                'level_summaries': per_level_summary
+            })
+    except Exception as e:
+        print(f"Error auto-generating timetable: {e}")
+        import traceback
+        traceback.print_exc()
+        if connection:
+            connection.rollback()
+        return jsonify({'success': False, 'message': f'Error auto-generating timetable: {str(e)}'}), 500
+    finally:
+        if connection:
+            connection.close()
+
 # Save Timetable Route
 @app.route('/dashboard/employee/timetable-management/register-timetable/save', methods=['POST'])
 @login_required
@@ -13529,9 +15572,9 @@ def save_timetable():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -13573,6 +15616,37 @@ def save_timetable():
     
     try:
         with connection.cursor() as cursor:
+            # Validate submitted slots against schedule settings for this academic level
+            level_settings = _get_schedule_settings_for_level(cursor, academic_level_id)
+            valid_days = set([d.strip() for d in (level_settings.get('study_days') or '').split(',') if d.strip()])
+            valid_time_slots = set()
+            for ct in level_settings.get('class_times', []):
+                start_time = (ct or {}).get('start_time')
+                if start_time:
+                    valid_time_slots.add(str(start_time))
+
+            if not valid_days or not valid_time_slots:
+                return jsonify({
+                    'success': False,
+                    'message': 'No valid timetable schedule is configured for this level. Configure Academic Schedule Management first.'
+                }), 400
+
+            for slot in slots:
+                day_name = str(slot.get('day', '')).strip()
+                time_slot = str(slot.get('time', '')).strip()
+                if day_name.startswith('day_'):
+                    day_index = day_name.replace('day_', '')
+                    day_map = {
+                        '0': 'Monday', '1': 'Tuesday', '2': 'Wednesday',
+                        '3': 'Thursday', '4': 'Friday', '5': 'Saturday', '6': 'Sunday'
+                    }
+                    day_name = day_map.get(day_index, day_name)
+
+                if day_name not in valid_days:
+                    return jsonify({'success': False, 'message': f'Invalid day "{day_name}" for this level schedule.'}), 400
+                if time_slot not in valid_time_slots:
+                    return jsonify({'success': False, 'message': f'Invalid class time "{time_slot}" for this level schedule.'}), 400
+
             # Verify and get the actual employee ID from the database
             created_by = None
             employee_id_from_session = session.get('employee_id') or session.get('user_id')
@@ -13689,10 +15763,10 @@ def manage_timetable():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
-    is_deputy_principal = user_role == 'deputy principal' or viewing_as_role == 'deputy principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy_principal = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -13777,42 +15851,7 @@ def manage_timetable():
                         'full_name': row.get('full_name', '') if isinstance(row, dict) else row[2]
                     })
                 
-                # Get academic coordinator settings (study days and class times)
-                cursor.execute("""
-                    SELECT study_days, class_time_allocation, class_duration, activity_time_allocation
-                    FROM academic_coordinator_settings
-                    LIMIT 1
-                """)
-                settings_result = cursor.fetchone()
-                if settings_result:
-                    import json
-                    if isinstance(settings_result, dict):
-                        study_days = settings_result.get('study_days', '')
-                        class_times_json = settings_result.get('class_time_allocation', '[]')
-                        class_duration = settings_result.get('class_duration', 60)
-                        activities_json = settings_result.get('activity_time_allocation', '[]')
-                    else:
-                        study_days = settings_result[0] if settings_result[0] else ''
-                        class_times_json = settings_result[1] if settings_result[1] else '[]'
-                        class_duration = settings_result[2] if settings_result[2] else 60
-                        activities_json = settings_result[3] if settings_result[3] else '[]'
-                    
-                    try:
-                        class_times = json.loads(class_times_json) if class_times_json else []
-                    except:
-                        class_times = []
-                    
-                    try:
-                        activities = json.loads(activities_json) if activities_json else []
-                    except:
-                        activities = []
-                    
-                    settings = {
-                        'study_days': study_days,
-                        'class_times': class_times,
-                        'class_duration': class_duration,
-                        'activities': activities
-                    }
+                # Keep defaults; class-specific schedule settings are resolved per selected level
                 
         except Exception as e:
             print(f"Error fetching data for manage timetable: {e}")
@@ -13836,9 +15875,9 @@ def get_class_timetable():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -13943,11 +15982,20 @@ def get_class_timetable():
                         'level_category': level_info[2] if len(level_info) > 2 else '',
                         'level_description': level_info[3] if len(level_info) > 3 else ''
                     }
+
+            level_settings = _get_schedule_settings_for_level(cursor, academic_level_id)
             
             return jsonify({
                 'success': True,
                 'academic_level': level_data,
-                'entries': timetable_entries
+                'entries': timetable_entries,
+                'settings': {
+                    'profile_name': level_settings.get('profile_name', ''),
+                    'study_days': level_settings.get('study_days', ''),
+                    'class_times': level_settings.get('class_times', []),
+                    'class_duration': level_settings.get('class_duration', 60),
+                    'activities': level_settings.get('activities', [])
+                }
             })
             
     except Exception as e:
@@ -13967,10 +16015,10 @@ def get_teacher_conflicts():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
-    is_deputy_principal = user_role == 'deputy principal' or viewing_as_role == 'deputy principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_deputy_principal = user_role == 'deputy head of institution' or viewing_as_role == 'deputy head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_deputy_principal):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
@@ -14044,9 +16092,9 @@ def timetable_analytics():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -14062,9 +16110,9 @@ def attendance():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
@@ -14078,9 +16126,9 @@ def exams_assessments():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -14122,9 +16170,9 @@ def exam_analytics():
     """Exam analytics page - list all registered exams (one row per exam, latest first)"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
@@ -14177,9 +16225,9 @@ def exam_analytics_detail(exam_id):
     """View details for one exam (all subject/supervisor slots for that exam)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
@@ -14471,9 +16519,9 @@ def exam_analytics_slot(exam_id, slot_id):
     """View analytics for one class (subject): mean grade, position, top ranking teachers."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
@@ -14552,9 +16600,9 @@ def students_by_academic_level(level_id):
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
@@ -14678,32 +16726,34 @@ def students_by_academic_level(level_id):
                 try:
                     if is_teacher and teacher_id:
                         cursor.execute("""
-                            SELECT e.exam_name, e.id
+                            SELECT e.exam_name, MIN(e.id) AS id
                             FROM exams e
                             INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
                                 AND e.subject_id = tsa.subject_id
                             WHERE e.academic_level_id = %s 
                               AND tsa.teacher_id = %s
-                            ORDER BY e.exam_name ASC, e.id ASC
+                            GROUP BY e.exam_name
+                            HAVING MAX(COALESCE(e.is_locked, 0)) = 0
+                            ORDER BY e.exam_name ASC
                         """, (level_id, teacher_id))
                     else:
                         cursor.execute("""
-                            SELECT exam_name, id
+                            SELECT exam_name, MIN(id) AS id
                             FROM exams
                             WHERE academic_level_id = %s
-                            ORDER BY exam_name ASC, id ASC
+                            GROUP BY exam_name
+                            HAVING MAX(COALESCE(is_locked, 0)) = 0
+                            ORDER BY exam_name ASC
                         """, (level_id,))
                     exams_results = cursor.fetchall()
-                    # Unique by exam_name: keep first id per name
-                    seen_names = set()
                     for row in exams_results:
                         exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[0] or '').strip()
-                        if not exam_name or exam_name in seen_names:
+                        if not exam_name:
                             continue
-                        seen_names.add(exam_name)
                         exams.append({
                             'id': row.get('id') if isinstance(row, dict) else row[1],
-                            'exam_name': exam_name
+                            'exam_name': exam_name,
+                            'is_locked': False
                         })
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
@@ -14770,6 +16820,29 @@ def students_by_academic_level(level_id):
                             if subject_id not in student_marks[student_id]:
                                 student_marks[student_id][subject_id] = {}
                             student_marks[student_id][subject_id][exam_id] = marks
+                    try:
+                        cursor.execute("""
+                            SELECT id FROM exams
+                            WHERE academic_level_id = %s AND COALESCE(is_locked, 0) = 1
+                        """, (level_id,))
+                        locked_ids = {r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall()}
+                        if locked_ids and student_marks:
+                            for sid in list(student_marks.keys()):
+                                for subid in list(student_marks[sid].keys()):
+                                    emap = student_marks[sid][subid]
+                                    for eid in list(emap.keys()):
+                                        try:
+                                            eid_int = int(eid)
+                                        except (TypeError, ValueError):
+                                            eid_int = eid
+                                        if eid_int in locked_ids:
+                                            del emap[eid]
+                                    if not emap:
+                                        del student_marks[sid][subid]
+                                if not student_marks[sid]:
+                                    del student_marks[sid]
+                    except Exception as _le:
+                        print(f"Note filtering locked marks for level page: {_le}")
                 except Exception as e:
                     print(f"Marks table not found or error fetching marks: {e}")
                     student_marks = {}
@@ -14803,9 +16876,9 @@ def get_marks_by_exam():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
     
     if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
@@ -14848,6 +16921,16 @@ def get_marks_by_exam():
                     
                     level_name = level_result.get('level_name') if isinstance(level_result, dict) else level_result[0]
                     
+                    locked_exam_ids_for_level = set()
+                    try:
+                        cursor.execute("""
+                            SELECT id FROM exams
+                            WHERE academic_level_id = %s AND COALESCE(is_locked, 0) = 1
+                        """, (level_id,))
+                        locked_exam_ids_for_level = {r.get('id') if isinstance(r, dict) else r[0] for r in cursor.fetchall()}
+                    except Exception as _lk:
+                        print(f"Note locked exam ids for get-marks: {_lk}")
+                    
                     # Get teacher's assigned subject IDs for this level (if teacher)
                     teacher_subject_ids = []
                     if is_teacher and teacher_id:
@@ -14862,6 +16945,17 @@ def get_marks_by_exam():
                     
                     # Build query based on whether exam_id is provided
                     if exam_id:
+                        cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+                        exlock = cursor.fetchone()
+                        if not exlock:
+                            return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+                        el = exlock.get('il') if isinstance(exlock, dict) else exlock[0]
+                        if el:
+                            return jsonify({
+                                'success': False,
+                                'message': 'This exam is locked. Marks cannot be viewed or edited.',
+                                'locked': True
+                            }), 403
                         # Get marks filtered by exam
                         try:
                             if is_teacher and teacher_id and teacher_subject_ids:
@@ -14933,6 +17027,22 @@ def get_marks_by_exam():
                         except Exception as e:
                             print(f"Marks table not found or error: {e}")
                             pass
+
+                    if locked_exam_ids_for_level and student_marks:
+                        for sid in list(student_marks.keys()):
+                            for subid in list(student_marks[sid].keys()):
+                                emap = student_marks[sid][subid]
+                                for eid in list(emap.keys()):
+                                    try:
+                                        eid_int = int(eid)
+                                    except (TypeError, ValueError):
+                                        eid_int = eid
+                                    if eid_int in locked_exam_ids_for_level:
+                                        del emap[eid]
+                                if not emap:
+                                    del student_marks[sid][subid]
+                            if not student_marks[sid]:
+                                del student_marks[sid]
                     
                     return jsonify({
                         'success': True,
@@ -14960,8 +17070,8 @@ def save_marks():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     # Teachers, academic coordinators, and principals can save marks
     if not (is_teacher or is_academic_coordinator or is_principal):
@@ -14996,6 +17106,18 @@ def save_marks():
         
         try:
             with connection.cursor() as cursor:
+                cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+                ex_row = cursor.fetchone()
+                if not ex_row:
+                    return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+                ex_il = ex_row.get('il') if isinstance(ex_row, dict) else ex_row[0]
+                if ex_il:
+                    return jsonify({
+                        'success': False,
+                        'message': 'This exam is locked. Marks cannot be changed.',
+                        'locked': True
+                    }), 403
+
                 # Teachers must be assigned to this subject and level; coordinators/principals can save any
                 if is_teacher and teacher_id:
                     cursor.execute("""
@@ -15075,9 +17197,9 @@ def get_students_by_academic_level():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
@@ -15160,17 +17282,59 @@ def get_students_by_academic_level():
 @app.route('/dashboard/employee/reports')
 @login_required
 def reports():
-    """Reports page - generate exam reports by class, performance and subjects"""
+    """Exam reports for staff; secretary sees class analytics overview only (see academic_reports)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
+    
+    # Secretary: lightweight class analytics only (no heavy exam aggregates on load)
+    if is_secretary:
+        class_analytics = []
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT al.id, al.level_name, al.level_category,
+                            (SELECT COUNT(*) FROM students s
+                             WHERE s.status = 'active' AND s.current_grade = al.level_name) AS student_count,
+                            (SELECT COUNT(DISTINCT tsa.teacher_id) FROM teacher_subject_assignments tsa
+                             WHERE tsa.academic_level_id = al.id) AS teacher_count,
+                            (SELECT COUNT(DISTINCT tsa.subject_id) FROM teacher_subject_assignments tsa
+                             WHERE tsa.academic_level_id = al.id) AS subject_count
+                        FROM academic_levels al
+                        WHERE al.level_status = 'active'
+                        ORDER BY al.level_name
+                    """)
+                    for row in cursor.fetchall() or []:
+                        class_analytics.append({
+                            'id': row.get('id') if isinstance(row, dict) else row[0],
+                            'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+                            'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                            'student_count': int(row.get('student_count') or 0) if isinstance(row, dict) else int(row[3] or 0),
+                            'teacher_count': int(row.get('teacher_count') or 0) if isinstance(row, dict) else int(row[4] or 0),
+                            'subject_count': int(row.get('subject_count') or 0) if isinstance(row, dict) else int(row[5] or 0),
+                        })
+            except Exception as e:
+                print(f"Error in reports class analytics: {e}")
+                import traceback
+                traceback.print_exc()
+                flash('Error loading class overview.', 'error')
+            finally:
+                connection.close()
+        return render_template(
+            'dashboards/reports_class_analytics.html',
+            role=user_role,
+            class_analytics=class_analytics,
+        )
     
     level_id = request.args.get('level_id', type=int)
     term_id = request.args.get('term_id', type=int)
@@ -15345,6 +17509,851 @@ def reports():
         selected_academic_year_id=academic_year_id,
     )
 
+
+def _reports_access_roles_ok():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    return (
+        user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+        or user_role == 'technician'
+        or user_role == 'head of institution' or viewing_as_role == 'head of institution'
+        or user_role == 'secretary' or viewing_as_role == 'secretary'
+    )
+
+
+def _term_date_bounds(cursor, term_id):
+    if not term_id:
+        return None, None
+    cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s", (term_id,))
+    r = cursor.fetchone()
+    if not r:
+        return None, None
+    a = r.get('start_date') if isinstance(r, dict) else r[0]
+    b = r.get('end_date') if isinstance(r, dict) else r[1]
+    return a, b
+
+
+def _coerce_academic_report_filters(f):
+    """Normalize academic report filters from JSON POST or GET query args."""
+    if not f:
+        f = {}
+    out = {}
+    for key in ('academic_year_id', 'term_id', 'level_id', 'teacher_id'):
+        v = f.get(key)
+        if v in (None, '', 'null'):
+            out[key] = None
+        else:
+            try:
+                out[key] = int(v)
+            except (TypeError, ValueError):
+                out[key] = None
+    sid = f.get('student_id')
+    if sid is None or sid == '' or sid == 'null':
+        out['student_id'] = None
+    else:
+        out['student_id'] = str(sid).strip() or None
+    for dk in ('date_from', 'date_to'):
+        dv = f.get(dk)
+        if dv is None or dv == '' or dv == 'null':
+            out[dk] = None
+        else:
+            out[dk] = str(dv).strip() or None
+    return out
+
+
+def _group_class_list_rows(rows):
+    """Split flat student rows into sections by current_grade (for all-classes reports)."""
+    from itertools import groupby
+    if not rows:
+        return []
+
+    def _grade_key(r):
+        g = (r.get('current_grade') or '').strip()
+        return g if g else '— Unassigned —'
+
+    rows_sorted = sorted(rows, key=lambda r: (_grade_key(r).lower(), (r.get('full_name') or '').lower()))
+    sections = []
+    for class_name, group in groupby(rows_sorted, key=_grade_key):
+        sections.append({'class_name': class_name, 'rows': list(group)})
+    return sections
+
+
+def _make_academic_report_csv_response(bundle, report_type):
+    """Build CSV download response from a successful report bundle."""
+    columns = bundle.get('columns') or []
+    rows = bundle.get('rows') or []
+    meta = bundle.get('meta') or {}
+    sections = meta.get('class_sections')
+    si = StringIO()
+    si.write('\ufeff')
+    writer = csv.writer(si)
+    writer.writerow([c.replace('_', ' ').title() for c in columns])
+    if sections and report_type in ('class_list_attendance', 'class_list_exam'):
+        for i, sec in enumerate(sections):
+            if i > 0:
+                writer.writerow([])
+            writer.writerow([f"Class: {sec.get('class_name', '')}"])
+            for row in sec.get('rows') or []:
+                writer.writerow([row.get(c, '') for c in columns])
+    else:
+        for row in rows:
+            writer.writerow([row.get(c, '') for c in columns])
+    output = make_response(si.getvalue())
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
+    output.headers['Content-Type'] = 'text/csv; charset=utf-8'
+    output.headers['Content-Disposition'] = f'attachment; filename={safe_name}.csv'
+    return output
+
+
+def _build_timetable_grid(rows, teacher_mode=False):
+    """Grid: days x time slots; each cell is a list of entry dicts."""
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    days_present = set()
+    slots = set()
+    for r in rows:
+        d = r.get('day_of_week') or ''
+        if d:
+            days_present.add(d)
+        t = r.get('time_slot') or ''
+        if t:
+            slots.add(t)
+    days = [d for d in day_order if d in days_present]
+    slots_sorted = sorted(slots)
+    cells = {}
+    for d in days:
+        cells[d] = {}
+        for s in slots_sorted:
+            cells[d][s] = []
+    for r in rows:
+        d = r.get('day_of_week')
+        t = r.get('time_slot')
+        if not d or t is None or t == '' or d not in cells or t not in cells[d]:
+            continue
+        if teacher_mode:
+            cells[d][t].append({
+                'primary': r.get('level_name') or '—',
+                'secondary': '',
+                'badge': '',
+            })
+        else:
+            code = (r.get('subject_code') or '').strip()
+            cells[d][t].append({
+                'primary': r.get('subject_name') or '—',
+                'secondary': ' · '.join(
+                    x for x in (r.get('level_name'), r.get('teacher_name')) if x
+                ),
+                'badge': code,
+            })
+    return {'days': days, 'slots': slots_sorted, 'cells': cells}
+
+
+def _build_exam_schedule_by_date(rows):
+    from collections import defaultdict
+    by_date = defaultdict(list)
+    for r in rows:
+        by_date[r.get('exam_date') or ''].append(r)
+    dates = sorted(k for k in by_date.keys() if k)
+    return [{'date': d, 'exams': sorted(by_date[d], key=lambda x: (str(x.get('start_time') or ''), x.get('level_name') or ''))} for d in dates]
+
+
+def _exam_time_sort_key(row):
+    st = str(row.get('start_time') or '99:99')
+    parts = st.replace('.', ':').split(':')
+    try:
+        h = int(parts[0])
+        m = int(parts[1]) if len(parts) > 1 else 0
+        s = int(parts[2]) if len(parts) > 2 else 0
+    except (TypeError, ValueError):
+        return (99, 99, 99)
+    return (h, m, s)
+
+
+def _exam_time_label(r):
+    st = str(r.get('start_time') or '').strip()
+    et = str(r.get('end_time') or '').strip()
+    if et and et != st:
+        return f"{st} – {et}"
+    return st or '—'
+
+
+def _format_exam_date_header(iso_str):
+    if not iso_str:
+        return ''
+    try:
+        from datetime import datetime as _dt
+        d = _dt.strptime(str(iso_str)[:10], '%Y-%m-%d')
+        return d.strftime('%a %d %b %Y')
+    except (TypeError, ValueError):
+        return str(iso_str)
+
+
+def _build_exam_timetable_grid(rows):
+    """Rows = time sessions; columns = exam dates — like a printed exam timetable."""
+    if not rows:
+        return {'dates': [], 'date_headers': [], 'time_labels': [], 'cells': {}}
+    dates = sorted(set(r.get('exam_date') for r in rows if r.get('exam_date')))
+    label_to_row = {}
+    for r in rows:
+        lbl = _exam_time_label(r)
+        if lbl not in label_to_row:
+            label_to_row[lbl] = r
+    time_labels = sorted(label_to_row.keys(), key=lambda lbl: _exam_time_sort_key(label_to_row[lbl]))
+    date_headers = [{'iso': d, 'label': _format_exam_date_header(d)} for d in dates]
+    cells = {d: {lbl: [] for lbl in time_labels} for d in dates}
+    for r in rows:
+        d = r.get('exam_date')
+        if not d or d not in cells:
+            continue
+        lbl = _exam_time_label(r)
+        if lbl not in cells[d]:
+            continue
+        cells[d][lbl].append(r)
+    for d in dates:
+        for lbl in time_labels:
+            cells[d][lbl].sort(key=lambda x: (str(x.get('level_name') or ''), str(x.get('exam_name') or '')))
+    return {'dates': dates, 'date_headers': date_headers, 'time_labels': time_labels, 'cells': cells}
+
+
+def _build_attendance_by_student(rows):
+    from collections import defaultdict
+    by_sid = defaultdict(lambda: {'full_name': '', 'level_name': '', 'rows': []})
+    for r in rows:
+        sid = r.get('student_id')
+        by_sid[sid]['full_name'] = r.get('full_name') or ''
+        by_sid[sid]['level_name'] = r.get('level_name') or ''
+        by_sid[sid]['rows'].append(r)
+    for sid in by_sid:
+        by_sid[sid]['rows'].sort(key=lambda x: (x.get('attendance_date') or '',))
+    ordered = sorted(by_sid.items(), key=lambda x: ((x[1]['full_name'] or x[0] or '').lower(), x[0]))
+    return [{'student_id': sid, **data} for sid, data in ordered]
+
+
+def _build_exam_marks_by_student(rows):
+    from collections import defaultdict
+    by_sid = defaultdict(lambda: {'full_name': '', 'level_name': '', 'marks': []})
+    for r in rows:
+        sid = r.get('student_id')
+        by_sid[sid]['full_name'] = r.get('full_name') or ''
+        by_sid[sid]['level_name'] = r.get('level_name') or ''
+        by_sid[sid]['marks'].append(r)
+    for sid in by_sid:
+        by_sid[sid]['marks'].sort(key=lambda x: (x.get('exam_date') or '', x.get('subject_name') or ''))
+    ordered = sorted(by_sid.items(), key=lambda x: ((x[1]['full_name'] or x[0] or '').lower(), x[0]))
+    return [{'student_id': sid, **data} for sid, data in ordered]
+
+
+def _preview_display_context(report_type, bundle):
+    """Extra template variables for rich preview layouts (not used for CSV)."""
+    rows = bundle.get('rows') or []
+    meta = bundle.get('meta') or {}
+    ctx = {
+        'layout': 'plain',
+        'timetable': None,
+        'exam_schedule': None,
+        'exam_timetable_grid': None,
+        'attendance_register': None,
+        'exam_by_student': None,
+    }
+    if report_type in ('timetable_subject', 'timetable_teacher'):
+        ctx['layout'] = 'timetable'
+        ctx['timetable'] = _build_timetable_grid(rows, report_type == 'timetable_teacher')
+    elif report_type == 'timetable_exam':
+        ctx['layout'] = 'exam_timetable'
+        ctx['exam_schedule'] = _build_exam_schedule_by_date(rows)
+        ctx['exam_timetable_grid'] = _build_exam_timetable_grid(rows)
+    elif report_type == 'attendance_class':
+        ctx['layout'] = 'attendance_summary'
+    elif report_type == 'attendance_individual':
+        ctx['layout'] = 'attendance_register'
+        ctx['attendance_register'] = _build_attendance_by_student(rows)
+    elif report_type in ('exam_class_performance', 'exam_subject_performance'):
+        ctx['layout'] = 'exam_performance'
+    elif report_type == 'exam_individual':
+        ctx['layout'] = 'exam_marks'
+        ctx['exam_by_student'] = _build_exam_marks_by_student(rows)
+    elif report_type in ('class_list_attendance', 'class_list_exam'):
+        if meta.get('class_sections'):
+            ctx['layout'] = 'class_list_grouped'
+            ctx['class_sections'] = meta['class_sections']
+        else:
+            ctx['layout'] = 'class_list'
+    return ctx
+
+
+def _build_academic_report_payload(cursor, report_type, f):
+    """Return dict with title, columns, rows, meta; or {'error': str}."""
+    from collections import defaultdict
+
+    def _float_marks(x):
+        if x is None:
+            return None
+        try:
+            return float(x)
+        except (TypeError, ValueError):
+            return None
+
+    def _str_opt(v):
+        if v is None or v == '' or v == 'null':
+            return None
+        return str(v).strip() or None
+
+    ay = f.get('academic_year_id')
+    tid = f.get('term_id')
+    lid = f.get('level_id')
+    teacher_id = f.get('teacher_id')
+    student_id = _str_opt(f.get('student_id'))
+    date_from = _str_opt(f.get('date_from'))
+    date_to = _str_opt(f.get('date_to'))
+
+    # Only auto-fill dates from term for attendance reports (optional dates elsewhere)
+    if report_type in ('attendance_class', 'attendance_individual') and tid and (not date_from or not date_to):
+        df, dt = _term_date_bounds(cursor, tid)
+        if df and dt:
+            if hasattr(df, 'strftime'):
+                date_from = date_from or df.strftime('%Y-%m-%d')
+                date_to = date_to or dt.strftime('%Y-%m-%d')
+            else:
+                date_from = date_from or str(df)[:10]
+                date_to = date_to or str(dt)[:10]
+
+    meta = {}
+
+    if report_type in ('class_list_attendance', 'class_list_exam'):
+        title = 'Class list — attendance' if report_type == 'class_list_attendance' else 'Class list — exam entry'
+        cols = ['student_id', 'full_name', 'gender', 'current_grade', 'status']
+        q = "SELECT student_id, full_name, gender, current_grade, status FROM students WHERE status = 'active'"
+        params = []
+        if lid:
+            q += " AND current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
+            params.append(lid)
+        # Group by class in output: sort by grade then name (all classes = every class, each section separate)
+        q += " ORDER BY current_grade, full_name"
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
+                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
+                'gender': r.get('gender') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
+                'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                'status': r.get('status') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+            })
+        meta['class_sections'] = _group_class_list_rows(rows)
+        if not lid:
+            meta['all_classes'] = True
+        return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'timetable_subject':
+        if not tid:
+            return {
+                'title': 'Subject timetable',
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code'],
+                'rows': [],
+                'meta': {'hint': 'Select a term in Global filters to load timetable rows.'},
+            }
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code']
+        q = """
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name,
+                   COALESCE(sub.subject_name, '-') AS subject_name, COALESCE(sub.subject_code, '') AS subject_code
+            FROM timetables t
+            JOIN academic_levels al ON t.academic_level_id = al.id
+            JOIN employees e ON t.teacher_id = e.id
+            LEFT JOIN teacher_subject_assignments tsa ON tsa.academic_level_id = t.academic_level_id AND tsa.teacher_id = t.teacher_id
+            LEFT JOIN subjects sub ON sub.id = tsa.subject_id
+            WHERE t.term_id = %s
+        """
+        params = [tid]
+        if ay:
+            q += " AND t.academic_year_id = %s"
+            params.append(ay)
+        if lid:
+            q += " AND t.academic_level_id = %s"
+            params.append(lid)
+        q += """
+            ORDER BY FIELD(t.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
+                     t.time_slot, al.level_name
+        """
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'day_of_week': r.get('day_of_week') if isinstance(r, dict) else r[0],
+                'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
+                'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
+                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[4],
+                'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+            })
+        return {'title': 'Subject timetable', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'timetable_exam':
+        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'status']
+        q = """
+            SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, al.level_name,
+                   COALESCE(sub.subject_name, '-') AS subject_name, COALESCE(e.venue, '') AS venue, e.status
+            FROM exams e
+            JOIN academic_levels al ON e.academic_level_id = al.id
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
+            WHERE 1=1
+        """
+        params = []
+        if tid:
+            q += " AND e.term_id = %s"
+            params.append(tid)
+        if ay:
+            q += " AND e.academic_year_id = %s"
+            params.append(ay)
+        if lid:
+            q += " AND e.academic_level_id = %s"
+            params.append(lid)
+        q += " ORDER BY e.exam_date, e.start_time, al.level_name"
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            ed = r.get('exam_date') if isinstance(r, dict) else r[1]
+            rows.append({
+                'exam_name': r.get('exam_name') if isinstance(r, dict) else r[0],
+                'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
+                'start_time': str(r.get('start_time') if isinstance(r, dict) else r[2] or ''),
+                'end_time': str(r.get('end_time') if isinstance(r, dict) else r[3] or ''),
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[4],
+                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[5],
+                'venue': r.get('venue') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
+                'status': r.get('status') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
+            })
+        return {'title': 'Exam timetable', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'timetable_teacher':
+        if not tid or not teacher_id:
+            return {
+                'title': 'Teacher timetable',
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name'],
+                'rows': [],
+                'meta': {
+                    'hint': 'Select both a term and a teacher in Global filters for this report.',
+                },
+            }
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name']
+        cursor.execute("""
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name
+            FROM timetables t
+            JOIN academic_levels al ON t.academic_level_id = al.id
+            JOIN employees e ON t.teacher_id = e.id
+            WHERE t.term_id = %s AND t.teacher_id = %s
+            ORDER BY FIELD(t.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
+                     t.time_slot
+        """, (tid, teacher_id))
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'day_of_week': r.get('day_of_week') if isinstance(r, dict) else r[0],
+                'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
+                'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
+            })
+        return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type in ('exam_class_performance', 'exam_subject_performance'):
+        q = """
+            SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name, sm.marks
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN academic_levels al ON e.academic_level_id = al.id
+            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
+            WHERE 1=1
+        """
+        params = []
+        if tid:
+            q += " AND e.term_id = %s"
+            params.append(tid)
+        if ay:
+            q += " AND e.academic_year_id = %s"
+            params.append(ay)
+        if lid:
+            q += " AND e.academic_level_id = %s"
+            params.append(lid)
+        cursor.execute(q, params)
+        grp_level_subj = defaultdict(list)
+        grp_subj = defaultdict(list)
+        for r in cursor.fetchall() or []:
+            ln = r.get('level_name') if isinstance(r, dict) else r[0]
+            sn = r.get('subject_name') if isinstance(r, dict) else r[1]
+            mv = _float_marks(r.get('marks') if isinstance(r, dict) else r[2])
+            if mv is None:
+                continue
+            grp_level_subj[(ln, sn)].append(mv)
+            grp_subj[sn].append(mv)
+
+        if report_type == 'exam_class_performance':
+            cols = ['level_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
+            rows = []
+            for (ln, sn) in sorted(grp_level_subj.keys()):
+                marks = grp_level_subj[(ln, sn)]
+                pc = sum(1 for x in marks if x >= 50)
+                rows.append({
+                    'level_name': ln,
+                    'subject_name': sn,
+                    'mean': round(sum(marks) / len(marks), 2),
+                    'min': round(min(marks), 2),
+                    'max': round(max(marks), 2),
+                    'count': len(marks),
+                    'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+                })
+            return {'title': 'Exam performance — by class & subject', 'columns': cols, 'rows': rows, 'meta': meta}
+
+        cols = ['subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
+        rows = []
+        for sn in sorted(grp_subj.keys()):
+            marks = grp_subj[sn]
+            pc = sum(1 for x in marks if x >= 50)
+            rows.append({
+                'subject_name': sn,
+                'mean': round(sum(marks) / len(marks), 2),
+                'min': round(min(marks), 2),
+                'max': round(max(marks), 2),
+                'count': len(marks),
+                'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+            })
+        return {'title': 'Exam performance — by subject (all selected classes)', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'exam_individual':
+        cols = ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks']
+        q = """
+            SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   e.exam_name, e.exam_date, sm.marks
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN academic_levels al ON e.academic_level_id = al.id
+            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
+            WHERE 1=1
+        """
+        params = []
+        if tid:
+            q += " AND e.term_id = %s"
+            params.append(tid)
+        if ay:
+            q += " AND e.academic_year_id = %s"
+            params.append(ay)
+        if lid:
+            q += " AND e.academic_level_id = %s"
+            params.append(lid)
+        if student_id:
+            q += " AND st.student_id = %s"
+            params.append(student_id)
+        q += " ORDER BY st.full_name, e.exam_date, sub.subject_name LIMIT 3000"
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            ed = r.get('exam_date') if isinstance(r, dict) else r[5]
+            rows.append({
+                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
+                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
+                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[3],
+                'exam_name': r.get('exam_name') if isinstance(r, dict) else r[4],
+                'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
+                'marks': r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
+            })
+        meta['row_limit'] = 3000
+        return {'title': 'Individual exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'attendance_class':
+        cols = ['level_name', 'records', 'present_count', 'absent_count', 'unique_students', 'unique_days']
+        if not date_from or not date_to:
+            return {
+                'title': 'Attendance summary by class',
+                'columns': cols,
+                'rows': [],
+                'meta': {'hint': 'Select a term (dates default to the term) or set Date from / Date to.'},
+            }
+        aq = None
+        ap = None
+        if tid:
+            aq = """
+            SELECT al.level_name,
+                   COUNT(*) AS records,
+                   SUM(CASE WHEN sar.present THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN sar.present THEN 0 ELSE 1 END) AS absent_count,
+                   COUNT(DISTINCT sar.student_id) AS unique_students,
+                   COUNT(DISTINCT sar.attendance_date) AS unique_days
+            FROM student_attendance_records sar
+            JOIN academic_levels al ON sar.academic_level_id = al.id
+            WHERE sar.term_id = %s AND sar.attendance_date BETWEEN %s AND %s
+            """
+            ap = [tid, date_from, date_to]
+        else:
+            aq = """
+            SELECT al.level_name,
+                   COUNT(*) AS records,
+                   SUM(CASE WHEN sar.present THEN 1 ELSE 0 END) AS present_count,
+                   SUM(CASE WHEN sar.present THEN 0 ELSE 1 END) AS absent_count,
+                   COUNT(DISTINCT sar.student_id) AS unique_students,
+                   COUNT(DISTINCT sar.attendance_date) AS unique_days
+            FROM student_attendance_records sar
+            JOIN academic_levels al ON sar.academic_level_id = al.id
+            WHERE sar.attendance_date BETWEEN %s AND %s
+            """
+            ap = [date_from, date_to]
+        if lid:
+            aq += " AND sar.academic_level_id = %s"
+            ap.append(lid)
+        aq += """
+            GROUP BY al.id, al.level_name
+            ORDER BY al.level_name
+        """
+        cursor.execute(aq, ap)
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[0],
+                'records': int(r.get('records') or 0) if isinstance(r, dict) else int(r[1] or 0),
+                'present_count': int(r.get('present_count') or 0) if isinstance(r, dict) else int(r[2] or 0),
+                'absent_count': int(r.get('absent_count') or 0) if isinstance(r, dict) else int(r[3] or 0),
+                'unique_students': int(r.get('unique_students') or 0) if isinstance(r, dict) else int(r[4] or 0),
+                'unique_days': int(r.get('unique_days') or 0) if isinstance(r, dict) else int(r[5] or 0),
+            })
+        return {'title': 'Attendance summary by class', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'attendance_individual':
+        cols = ['student_id', 'full_name', 'level_name', 'attendance_date', 'present']
+        if not date_from or not date_to:
+            return {
+                'title': 'Individual attendance',
+                'columns': cols,
+                'rows': [],
+                'meta': {'hint': 'Select a term or set Date from / Date to.'},
+            }
+        q = """
+            SELECT s.student_id, s.full_name, al.level_name, sar.attendance_date, sar.present
+            FROM student_attendance_records sar
+            JOIN students s ON s.student_id = sar.student_id
+            JOIN academic_levels al ON sar.academic_level_id = al.id
+            WHERE sar.attendance_date BETWEEN %s AND %s
+        """
+        params = [date_from, date_to]
+        if tid:
+            q += " AND sar.term_id = %s"
+            params.append(tid)
+        if lid:
+            q += " AND sar.academic_level_id = %s"
+            params.append(lid)
+        if student_id:
+            q += " AND s.student_id = %s"
+            params.append(student_id)
+        q += " ORDER BY s.full_name, sar.attendance_date LIMIT 5000"
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            ad = r.get('attendance_date') if isinstance(r, dict) else r[3]
+            pr = r.get('present') if isinstance(r, dict) else r[4]
+            rows.append({
+                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
+                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
+                'attendance_date': ad.strftime('%Y-%m-%d') if ad and hasattr(ad, 'strftime') else (str(ad)[:10] if ad else ''),
+                'present': 'Yes' if pr else 'No',
+            })
+        meta['row_limit'] = 5000
+        return {'title': 'Individual attendance', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    return {'error': 'Unknown report type.'}
+
+
+@app.route('/dashboard/employee/academic-reports')
+@login_required
+def academic_reports():
+    """Academic report hub — filter shell only; data loads on demand via API."""
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    academic_levels = []
+    terms = []
+    academic_years = []
+    teachers = []
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_name, level_category FROM academic_levels
+                    WHERE level_status = 'active' ORDER BY level_name
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_levels.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+                        'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                    })
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    FROM terms t
+                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                    ORDER BY t.academic_year_id DESC, t.id DESC
+                """)
+                for row in cursor.fetchall() or []:
+                    terms.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'term_name': row.get('term_name') if isinstance(row, dict) else row[1],
+                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else row[2],
+                        'year_name': row.get('year_name') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                    })
+                cursor.execute("""
+                    SELECT id, year_name, is_current FROM academic_years ORDER BY id DESC
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_years.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'year_name': row.get('year_name') if isinstance(row, dict) else row[1],
+                        'is_current': row.get('is_current') if isinstance(row, dict) else (row[2] if len(row) > 2 else False),
+                    })
+                cursor.execute("""
+                    SELECT id, full_name FROM employees
+                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+                    ORDER BY full_name
+                """)
+                for row in cursor.fetchall() or []:
+                    teachers.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                    })
+        except Exception as e:
+            print(f"Error loading academic_reports shell: {e}")
+            flash('Error loading report options.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/academic_reports.html',
+        role=session.get('role', '').lower(),
+        academic_levels=academic_levels,
+        terms=terms,
+        academic_years=academic_years,
+        teachers=teachers,
+    )
+
+
+@app.route('/dashboard/employee/academic-reports/preview')
+@login_required
+def academic_report_preview():
+    """Full-page report preview (GET); add format=csv to download."""
+    from urllib.parse import urlencode
+
+    if not _reports_access_roles_ok():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('dashboard_employee'))
+
+    report_type = (request.args.get('report_type') or '').strip()
+    if not report_type:
+        flash('Missing report type.', 'error')
+        return redirect(url_for('academic_reports'))
+
+    fmt = (request.args.get('format') or '').strip().lower()
+    arg_dict = {k: v for k, v in request.args.items() if k not in ('format', 'report_type')}
+    filters = _coerce_academic_report_filters(arg_dict)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database unavailable.', 'error')
+        return redirect(url_for('academic_reports'))
+
+    bundle = None
+    try:
+        with connection.cursor() as cursor:
+            bundle = _build_academic_report_payload(cursor, report_type, filters)
+    except Exception as e:
+        print(f"academic_report_preview: {e}")
+        import traceback
+        traceback.print_exc()
+        flash('Could not load this report.', 'error')
+        return redirect(url_for('academic_reports'))
+    finally:
+        connection.close()
+
+    if not bundle or bundle.get('error'):
+        flash((bundle or {}).get('error') or 'Could not build this report.', 'error')
+        return redirect(url_for('academic_reports'))
+
+    if fmt == 'csv':
+        return _make_academic_report_csv_response(bundle, report_type)
+
+    args_flat = request.args.to_dict(flat=True)
+    args_flat['format'] = 'csv'
+    download_url = url_for('academic_report_preview') + '?' + urlencode(args_flat)
+
+    display = _preview_display_context(report_type, bundle)
+    return render_template(
+        'dashboards/academic_report_preview.html',
+        role=session.get('role', '').lower(),
+        report_type=report_type,
+        title=bundle.get('title', 'Report'),
+        columns=bundle.get('columns') or [],
+        rows=bundle.get('rows') or [],
+        meta=bundle.get('meta') or {},
+        download_url=download_url,
+        layout=display['layout'],
+        timetable=display.get('timetable'),
+        exam_schedule=display.get('exam_schedule'),
+        exam_timetable_grid=display.get('exam_timetable_grid'),
+        attendance_register=display.get('attendance_register'),
+        exam_by_student=display.get('exam_by_student'),
+        class_sections=display.get('class_sections'),
+    )
+
+
+@app.route('/api/employee/academic-reports/generate', methods=['POST'])
+@login_required
+def api_academic_reports_generate():
+    """Generate or export academic report data (no auto-run on page load)."""
+    if not _reports_access_roles_ok():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    payload = request.get_json(silent=True) or {}
+    report_type = (payload.get('report_type') or '').strip()
+    fmt = (payload.get('format') or 'json').strip().lower()
+    filters = payload.get('filters') or {}
+    if not report_type:
+        return jsonify({'success': False, 'message': 'report_type is required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            filters = _coerce_academic_report_filters(filters)
+
+            bundle = _build_academic_report_payload(cursor, report_type, filters)
+            if bundle.get('error'):
+                return jsonify({'success': False, 'message': bundle['error']}), 400
+
+            title = bundle.get('title', 'Report')
+            columns = bundle.get('columns') or []
+            rows = bundle.get('rows') or []
+            meta = bundle.get('meta') or {}
+
+            if fmt == 'csv':
+                return _make_academic_report_csv_response(bundle, report_type)
+
+            return jsonify({
+                'success': True,
+                'title': title,
+                'columns': columns,
+                'rows': rows,
+                'meta': meta,
+            })
+    except Exception as e:
+        print(f"api_academic_reports_generate: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+
 # Communication Route (for academic coordinators)
 @app.route('/dashboard/employee/communication')
 @login_required
@@ -15353,11 +18362,12 @@ def communication():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -15371,9 +18381,9 @@ def notifications():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    is_academic_coordinator = user_role == 'academic coordinator' or viewing_as_role == 'academic coordinator'
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
-    is_principal = user_role == 'principal' or viewing_as_role == 'principal'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
@@ -15469,7 +18479,7 @@ def database_management():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('view_database', 
-                                         allowed_roles=['technician', 'principal'])
+                                         allowed_roles=['technician', 'head of institution'])
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
@@ -15760,7 +18770,7 @@ def database_backup_restore():
     user_role = session.get('role', '').lower()
     
     # Only technicians and principals can access this page
-    if user_role not in ['technician', 'principal']:
+    if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -15872,7 +18882,7 @@ def database_backup_export():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('manage_backups', 
-                                         allowed_roles=['technician', 'principal'])
+                                         allowed_roles=['technician', 'head of institution'])
     
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
@@ -16045,7 +19055,7 @@ def database_backup_settings():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('manage_backups', 
-                                         allowed_roles=['technician', 'principal'])
+                                         allowed_roles=['technician', 'head of institution'])
     
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
@@ -16128,7 +19138,7 @@ def database_health_status():
     user_role = session.get('role', '').lower()
     
     # Only technicians and principals can access this page
-    if user_role not in ['technician', 'principal']:
+    if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
         return redirect(url_for('dashboard_employee'))
     
@@ -16349,7 +19359,7 @@ def logs_audit_trails():
     
     # Check permission OR role-based access
     has_access = check_permission_or_role('view_audit_logs', 
-                                         allowed_roles=['technician', 'principal'])
+                                         allowed_roles=['technician', 'head of institution'])
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
@@ -16535,48 +19545,48 @@ def get_employee_permissions(employee_id):
     
     # Define all available permissions
     all_permissions = [
-        {'key': 'view_students', 'name': 'View Students', 'description': 'View student information and records', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager']},
-        {'key': 'add_students', 'name': 'Add Students', 'description': 'Add new students to the system', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
-        {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant']},
-        {'key': 'delete_students', 'name': 'Delete Students', 'description': 'Remove students from the system', 'roles': ['principal', 'deputy principal']},
-        {'key': 'view_student_fees', 'name': 'View Student Fees', 'description': 'View student fee information', 'roles': ['principal', 'accountant', 'deputy principal']},
-        {'key': 'view_fee_structure_details', 'name': 'View Fee Structure Details', 'description': 'View detailed fee structure information', 'roles': ['principal', 'accountant', 'deputy principal']},
-        {'key': 'process_payments', 'name': 'Record Payments', 'description': 'Record and process student payments', 'roles': ['principal', 'accountant']},
-        {'key': 'view_staff', 'name': 'View Staff', 'description': 'View staff member information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'add_staff', 'name': 'Add Staff', 'description': 'Add new staff members', 'roles': ['principal', 'deputy principal']},
-        {'key': 'edit_staff', 'name': 'Edit Staff', 'description': 'Edit staff member information', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
-        {'key': 'delete_staff', 'name': 'Delete Staff', 'description': 'Remove staff members', 'roles': ['principal']},
-        {'key': 'manage_salaries', 'name': 'Manage Salaries', 'description': 'View and manage staff salaries', 'roles': ['principal', 'accountant', 'deputy principal']},
-        {'key': 'view_fees', 'name': 'View Fees', 'description': 'View fee structures and information', 'roles': ['principal', 'accountant', 'deputy principal']},
-        {'key': 'manage_fees', 'name': 'Manage Fees', 'description': 'Create and edit fee structures', 'roles': ['principal', 'accountant']},
-        {'key': 'add_fee_structure', 'name': 'Add Fee Structure', 'description': 'Create new fee structures', 'roles': ['principal', 'accountant']},
-        {'key': 'edit_fee_structure', 'name': 'Edit Fee Structure', 'description': 'Edit existing fee structures', 'roles': ['principal', 'accountant']},
-        {'key': 'delete_fee_structure', 'name': 'Delete Fee Structure', 'description': 'Delete fee structures', 'roles': ['principal', 'accountant']},
-        {'key': 'view_financial_reports', 'name': 'View Financial Reports', 'description': 'Access financial reports and analytics', 'roles': ['principal', 'accountant', 'deputy principal']},
-        {'key': 'generate_invoices', 'name': 'Generate Invoices', 'description': 'Create and generate invoices', 'roles': ['principal', 'accountant']},
-        {'key': 'view_academic_levels', 'name': 'View Academic Levels', 'description': 'View academic levels and grades', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
-        {'key': 'manage_academic_levels', 'name': 'Manage Academic Levels', 'description': 'Create and edit academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
-        {'key': 'add_academic_level', 'name': 'Add Academic Level', 'description': 'Create new academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'edit_academic_level', 'name': 'Edit Academic Level', 'description': 'Edit existing academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'delete_academic_level', 'name': 'Delete Academic Level', 'description': 'Delete academic levels', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'add_academic_year', 'name': 'Add Academic Year', 'description': 'Create new academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'edit_academic_year', 'name': 'Edit Academic Year', 'description': 'Edit existing academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'delete_academic_year', 'name': 'Delete Academic Year', 'description': 'Delete academic years', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'add_term', 'name': 'Add Term', 'description': 'Create new terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'edit_term', 'name': 'Edit Term', 'description': 'Edit existing terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'delete_term', 'name': 'Delete Term', 'description': 'Delete terms', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'view_exams', 'name': 'View Exams', 'description': 'View exam information', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
-        {'key': 'manage_exams', 'name': 'Manage Exams', 'description': 'Create and edit exams', 'roles': ['principal', 'deputy principal', 'academic coordinator']},
-        {'key': 'view_results', 'name': 'View Results', 'description': 'View exam and academic results', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'teachers']},
-        {'key': 'view_database', 'name': 'View Database', 'description': 'Access database management tools', 'roles': ['principal']},
-        {'key': 'manage_backups', 'name': 'Manage Backups', 'description': 'Create and restore database backups', 'roles': ['principal']},
+        {'key': 'view_students', 'name': 'View Students', 'description': 'View student information and records', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager']},
+        {'key': 'add_students', 'name': 'Add Students', 'description': 'Add new students to the system', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator']},
+        {'key': 'edit_students', 'name': 'Edit Students', 'description': 'Edit existing student information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary']},
+        {'key': 'delete_students', 'name': 'Delete Students', 'description': 'Remove students from the system', 'roles': ['head of institution', 'deputy head of institution']},
+        {'key': 'view_student_fees', 'name': 'View Student Fees', 'description': 'View student fee information', 'roles': ['head of institution', 'accountant', 'deputy head of institution']},
+        {'key': 'view_fee_structure_details', 'name': 'View Fee Structure Details', 'description': 'View detailed fee structure information', 'roles': ['head of institution', 'accountant', 'deputy head of institution']},
+        {'key': 'process_payments', 'name': 'Record Payments', 'description': 'Record and process student payments', 'roles': ['head of institution', 'accountant']},
+        {'key': 'view_staff', 'name': 'View Staff', 'description': 'View staff member information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'add_staff', 'name': 'Add Staff', 'description': 'Add new staff members', 'roles': ['head of institution', 'deputy head of institution']},
+        {'key': 'edit_staff', 'name': 'Edit Staff', 'description': 'Edit staff member information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator']},
+        {'key': 'delete_staff', 'name': 'Delete Staff', 'description': 'Remove staff members', 'roles': ['head of institution']},
+        {'key': 'manage_salaries', 'name': 'Manage Salaries', 'description': 'View and manage staff salaries', 'roles': ['head of institution', 'accountant', 'deputy head of institution']},
+        {'key': 'view_fees', 'name': 'View Fees', 'description': 'View fee structures and information', 'roles': ['head of institution', 'accountant', 'deputy head of institution']},
+        {'key': 'manage_fees', 'name': 'Manage Fees', 'description': 'Create and edit fee structures', 'roles': ['head of institution', 'accountant']},
+        {'key': 'add_fee_structure', 'name': 'Add Fee Structure', 'description': 'Create new fee structures', 'roles': ['head of institution', 'accountant']},
+        {'key': 'edit_fee_structure', 'name': 'Edit Fee Structure', 'description': 'Edit existing fee structures', 'roles': ['head of institution', 'accountant']},
+        {'key': 'delete_fee_structure', 'name': 'Delete Fee Structure', 'description': 'Delete fee structures', 'roles': ['head of institution', 'accountant']},
+        {'key': 'view_financial_reports', 'name': 'View Financial Reports', 'description': 'Access financial reports and analytics', 'roles': ['head of institution', 'accountant', 'deputy head of institution']},
+        {'key': 'generate_invoices', 'name': 'Generate Invoices', 'description': 'Create and generate invoices', 'roles': ['head of institution', 'accountant']},
+        {'key': 'view_academic_levels', 'name': 'View Academic Levels', 'description': 'View academic levels and grades', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers']},
+        {'key': 'manage_academic_levels', 'name': 'Manage Academic Levels', 'description': 'Create and edit academic levels', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator']},
+        {'key': 'add_academic_level', 'name': 'Add Academic Level', 'description': 'Create new academic levels', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'edit_academic_level', 'name': 'Edit Academic Level', 'description': 'Edit existing academic levels', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'delete_academic_level', 'name': 'Delete Academic Level', 'description': 'Delete academic levels', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'add_academic_year', 'name': 'Add Academic Year', 'description': 'Create new academic years', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'edit_academic_year', 'name': 'Edit Academic Year', 'description': 'Edit existing academic years', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'delete_academic_year', 'name': 'Delete Academic Year', 'description': 'Delete academic years', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'add_term', 'name': 'Add Term', 'description': 'Create new terms', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'edit_term', 'name': 'Edit Term', 'description': 'Edit existing terms', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'delete_term', 'name': 'Delete Term', 'description': 'Delete terms', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'view_exams', 'name': 'View Exams', 'description': 'View exam information', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers']},
+        {'key': 'manage_exams', 'name': 'Manage Exams', 'description': 'Create and edit exams', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator']},
+        {'key': 'view_results', 'name': 'View Results', 'description': 'View exam and academic results', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers']},
+        {'key': 'view_database', 'name': 'View Database', 'description': 'Access database management tools', 'roles': ['head of institution']},
+        {'key': 'manage_backups', 'name': 'Manage Backups', 'description': 'Create and restore database backups', 'roles': ['head of institution']},
         {'key': 'system_settings', 'name': 'System Settings', 'description': 'Access and modify system settings', 'roles': []},  # Only technicians
         {'key': 'manage_users', 'name': 'Manage Users', 'description': 'Manage user accounts and permissions', 'roles': []},  # Only technicians
-        {'key': 'view_audit_logs', 'name': 'View Audit Logs', 'description': 'View system audit trails and logs', 'roles': ['principal']},
-        {'key': 'view_reports', 'name': 'View Reports', 'description': 'View system reports', 'roles': ['principal', 'deputy principal', 'academic coordinator', 'accountant']},
-        {'key': 'generate_reports', 'name': 'Generate Reports', 'description': 'Generate custom reports', 'roles': ['principal', 'deputy principal', 'accountant']},
-        {'key': 'export_data', 'name': 'Export Data', 'description': 'Export data to various formats', 'roles': ['principal', 'deputy principal', 'accountant']},
-        {'key': 'view_analytics', 'name': 'View Analytics', 'description': 'Access analytics and insights', 'roles': ['principal', 'deputy principal', 'accountant']}
+        {'key': 'view_audit_logs', 'name': 'View Audit Logs', 'description': 'View system audit trails and logs', 'roles': ['head of institution']},
+        {'key': 'view_reports', 'name': 'View Reports', 'description': 'View system reports', 'roles': ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant']},
+        {'key': 'generate_reports', 'name': 'Generate Reports', 'description': 'Generate custom reports', 'roles': ['head of institution', 'deputy head of institution', 'accountant']},
+        {'key': 'export_data', 'name': 'Export Data', 'description': 'Export data to various formats', 'roles': ['head of institution', 'deputy head of institution', 'accountant']},
+        {'key': 'view_analytics', 'name': 'View Analytics', 'description': 'Access analytics and insights', 'roles': ['head of institution', 'deputy head of institution', 'accountant']}
     ]
     
     connection = get_db_connection()
@@ -16843,6 +19853,7 @@ def update_school_profile():
                             raise
                 
                 connection.commit()
+                invalidate_school_settings_cache()
                 flash('School profile updated successfully!', 'success')
         except Exception as e:
             import traceback
@@ -16900,6 +19911,7 @@ def update_theme():
                         VALUES ('Modern School', %s, %s, %s, %s)
                     """, (primary_color, secondary_color, accent_color, font_family))
                 connection.commit()
+                invalidate_school_settings_cache()
             flash('Theme updated successfully! Changes apply across the entire site.', 'success')
         except Exception as e:
             if connection:
@@ -16926,8 +19938,8 @@ def add_academic_level():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_add_academic_level_permission = check_permission_or_role('add_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    has_add_academic_level_permission = check_permission_or_role('add_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_academic_level_permission or has_manage_academic_levels_permission):
@@ -17038,8 +20050,8 @@ def update_academic_level(level_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_edit_academic_level_permission = check_permission_or_role('edit_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    has_edit_academic_level_permission = check_permission_or_role('edit_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_edit_academic_level_permission or has_manage_academic_levels_permission):
@@ -17108,8 +20120,8 @@ def delete_academic_level(level_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_delete_academic_level_permission = check_permission_or_role('delete_academic_level', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
-    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['principal', 'deputy principal', 'academic coordinator'])
+    has_delete_academic_level_permission = check_permission_or_role('delete_academic_level', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
+    has_manage_academic_levels_permission = check_permission_or_role('manage_academic_levels', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_delete_academic_level_permission or has_manage_academic_levels_permission):
@@ -17159,7 +20171,7 @@ def create_academic_year():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_add_academic_year_permission = check_permission_or_role('add_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_add_academic_year_permission = check_permission_or_role('add_academic_year', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_academic_year_permission):
@@ -17216,7 +20228,7 @@ def update_academic_year(year_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_edit_academic_year_permission = check_permission_or_role('edit_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_edit_academic_year_permission = check_permission_or_role('edit_academic_year', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_edit_academic_year_permission):
@@ -17400,7 +20412,7 @@ def delete_academic_year(year_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_delete_academic_year_permission = check_permission_or_role('delete_academic_year', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_delete_academic_year_permission = check_permission_or_role('delete_academic_year', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_delete_academic_year_permission):
@@ -17461,7 +20473,7 @@ def create_term():
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_add_term_permission = check_permission_or_role('add_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_add_term_permission = check_permission_or_role('add_term', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_add_term_permission):
@@ -17577,7 +20589,7 @@ def update_term(term_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_edit_term_permission = check_permission_or_role('edit_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_edit_term_permission = check_permission_or_role('edit_term', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_edit_term_permission):
@@ -17733,7 +20745,7 @@ def delete_term(term_id):
     is_technician = user_role == 'technician'
     
     # Check permission-based access
-    has_delete_term_permission = check_permission_or_role('delete_term', ['principal', 'deputy principal', 'academic coordinator', 'accountant'])
+    has_delete_term_permission = check_permission_or_role('delete_term', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'])
     
     # Permission check handles role fallback if no permissions are assigned
     if not (is_technician or has_delete_term_permission):

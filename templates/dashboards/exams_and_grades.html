@@ -4,21 +4,20 @@
 
 {% block sidebar_content %}
 <a href="/dashboard/employee/exams-and-grades" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exams and Grades</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 <a href="/dashboard/employee" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto" x-data="{ lockedModal: false }">
     <!-- Modern Hero Header -->
     <div class="page-hero mb-6 sm:mb-8">
         <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -200,9 +199,16 @@
                 </thead>
                 <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {% for exam in exams %}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                    <tr class="transition-colors {% if exam.is_locked %}bg-amber-50/50 dark:bg-amber-900/10{% else %}hover:bg-gray-50 dark:hover:bg-gray-700/50{% endif %}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
-                            {{ exam.exam_name }}
+                            <span class="inline-flex items-center gap-2 flex-wrap">
+                                {{ exam.exam_name }}
+                                {% if exam.is_locked %}
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
+                                    <i class="fas fa-lock mr-0.5"></i>Locked
+                                </span>
+                                {% endif %}
+                            </span>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
                             {{ exam.exam_type or '-' }}
@@ -218,11 +224,20 @@
                             {{ exam.exam_date or '-' }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
+                            {% if exam.is_locked %}
+                            <button type="button"
+                                    @click="lockedModal = true"
+                                    class="touch-btn inline-flex items-center px-3 py-2 bg-gray-400 dark:bg-gray-600 text-white rounded-xl text-xs font-semibold cursor-pointer hover:bg-gray-500 dark:hover:bg-gray-500 transition-all">
+                                <i class="fas fa-lock mr-1"></i>
+                                Locked
+                            </button>
+                            {% else %}
                             <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
                                class="touch-btn inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all">
                                 <i class="fas fa-users mr-1"></i>
                                 View Students
                             </a>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -233,9 +248,16 @@
         <!-- Mobile Card View -->
         <div class="md:hidden space-y-4">
             {% for exam in exams %}
-            <div class="modern-card p-5">
+            <div class="modern-card p-5 {% if exam.is_locked %}border-2 border-amber-300/70 dark:border-amber-700/50{% endif %}">
                 <div class="mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ exam.exam_name }}</h3>
+                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2 inline-flex items-center gap-2 flex-wrap">
+                        {{ exam.exam_name }}
+                        {% if exam.is_locked %}
+                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
+                            <i class="fas fa-lock mr-0.5"></i>Locked
+                        </span>
+                        {% endif %}
+                    </h3>
                     <div class="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                         <p><span class="font-semibold">Type:</span> {{ exam.exam_type or '-' }}</p>
                         <p><span class="font-semibold">Level:</span> {{ exam.level_name }}</p>
@@ -244,11 +266,19 @@
                         <p><span class="font-semibold">Date:</span> {{ exam.exam_date or '-' }}</p>
                     </div>
                 </div>
+                {% if exam.is_locked %}
+                <button type="button" @click="lockedModal = true"
+                        class="w-full touch-btn mt-4 bg-gray-500 hover:bg-gray-600 text-white rounded-xl text-sm font-semibold transition-all">
+                    <i class="fas fa-lock mr-2"></i>
+                    Exam locked
+                </button>
+                {% else %}
                 <a href="/dashboard/employee/exams-assessments/level/{{ exam.academic_level_id }}/students" 
                    class="w-full touch-btn mt-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all">
                     <i class="fas fa-users mr-2"></i>
                     View Students
                 </a>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -260,6 +290,26 @@
             <p class="text-gray-600 dark:text-gray-400">No exams found for your assigned subjects.</p>
         </div>
         {% endif %}
+    </div>
+
+    <!-- Locked exam notice (teachers cannot open marks) -->
+    <div x-show="lockedModal"
+         x-cloak
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+         @click.self="lockedModal = false">
+        <div class="modern-card max-w-md w-full p-8 text-center shadow-2xl border border-amber-200 dark:border-amber-800" @click.stop role="alertdialog" aria-modal="true">
+            <div class="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto mb-5 ring-4 ring-amber-200/60 dark:ring-amber-800/50">
+                <i class="fas fa-lock text-4xl text-amber-700 dark:text-amber-300" aria-hidden="true"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam is locked</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+                This exam has been locked by administration. Student marks cannot be opened or edited until the exam is unlocked in Exam Registration.
+            </p>
+            <button type="button" @click="lockedModal = false"
+                    class="touch-btn w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+                OK
+            </button>
+        </div>
     </div>
 </div>
 

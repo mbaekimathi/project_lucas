@@ -4,14 +4,13 @@
 
 {% block sidebar_content %}
 <a href="/dashboard/employee/reports" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-file-alt w-5"></i>
     <span>Reports</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 <a href="/dashboard/employee" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary">
+   class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
@@ -33,16 +32,30 @@
             <i class="fas fa-filter text-brand-primary mr-2"></i>
             Report Filters
         </h2>
-        <form method="GET" action="{{ url_for('reports') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <form method="GET" action="{{ url_for('reports') }}" class="space-y-4">
             <div>
-                <label for="level_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Class / Level</label>
-                <select name="level_id" id="level_id" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
-                    <option value="">All classes</option>
-                    {% for level in academic_levels %}
-                    <option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>{{ level.level_name }}{% if level.level_category %} ({{ level.level_category }}){% endif %}</option>
-                    {% endfor %}
-                </select>
+                <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Class / Level</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Select one class below, or <strong>All classes</strong> to include every level in the report.</p>
+                <div class="max-h-56 sm:max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+                        <label class="block cursor-pointer">
+                            <input type="radio" name="level_id" value="" class="peer sr-only" {% if selected_level_id is none %}checked{% endif %}>
+                            <span class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-brand-primary/50 peer-checked:border-brand-primary peer-checked:ring-2 peer-checked:ring-brand-primary/25 peer-checked:bg-brand-primary/10 dark:peer-checked:bg-brand-primary/15">
+                                <span class="font-medium text-gray-900 dark:text-white">All classes</span>
+                            </span>
+                        </label>
+                        {% for level in academic_levels %}
+                        <label class="block cursor-pointer">
+                            <input type="radio" name="level_id" value="{{ level.id }}" class="peer sr-only" {% if selected_level_id == level.id %}checked{% endif %}>
+                            <span class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-brand-primary/50 peer-checked:border-brand-primary peer-checked:ring-2 peer-checked:ring-brand-primary/25 peer-checked:bg-brand-primary/10 dark:peer-checked:bg-brand-primary/15">
+                                <span class="text-gray-900 dark:text-white">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400">({{ level.level_category }})</span>{% endif %}</span>
+                            </span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
             <div>
                 <label for="term_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term</label>
                 <select name="term_id" id="term_id" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
@@ -69,6 +82,7 @@
                 <a href="{{ url_for('reports') }}" class="px-4 py-2.5 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">
                     Reset
                 </a>
+            </div>
             </div>
         </form>
     </div>

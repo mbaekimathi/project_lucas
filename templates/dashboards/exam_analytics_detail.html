@@ -23,13 +23,12 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
 {% block sidebar_content %}
 <a href="{{ url_for('exam_analytics') }}"
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Exam Analytics</span>
 </a>
 <a href="{{ url_for('exams_assessments') }}"
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Exams & Assessments</span>
 </a>

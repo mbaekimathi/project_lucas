@@ -1,0 +1,195 @@
+<div class="max-w-4xl mx-auto flex flex-col" x-data="academicCoordinatorSettings()">
+    <div class="order-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Academic Schedule Configuration</h3>
+
+        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" @submit.prevent="saveSettings()">
+            <input type="hidden" name="profile_id" :value="profileId">
+            <input type="hidden" name="return_to" value="academic-settings">
+
+            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Existing Profiles</label>
+                        <select x-model="selectedProfileSelector" @change="loadProfile()"
+                                class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            <option value="">-- New Profile --</option>
+                            <template x-for="profile in settingsProfiles" :key="profile.id">
+                                <option :value="String(profile.id)" x-text="profile.profile_name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Profile Name <span class="text-red-500">*</span></label>
+                        <input type="text" name="profile_name" x-model="profileName" required
+                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button type="button" @click="createNewProfile()"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-600 dark:hover:bg-gray-500 text-gray-800 dark:text-white rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Create New Profile
+                    </button>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Days of the Week for Studying <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <template x-for="day in weekDays" :key="day.value">
+                        <label class="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all"
+                               :class="selectedDays.includes(day.value) ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-green-400'">
+                            <input type="checkbox" :value="day.value" x-model="selectedDays" class="w-4 h-4">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300" x-text="day.label"></span>
+                        </label>
+                    </template>
+                </div>
+                <input type="hidden" name="study_days" :value="selectedDays.join(',')">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Applicable Academic Levels <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <template x-for="level in availableLevels" :key="level.id">
+                        <label class="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all"
+                               :class="selectedLevels.includes(String(level.id)) ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-green-400'">
+                            <input type="checkbox" name="applicable_levels" :value="String(level.id)" x-model="selectedLevels" class="w-4 h-4">
+                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300" x-text="level.level_name"></span>
+                        </label>
+                    </template>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Duration of Class (minutes)</label>
+                <input type="number" name="class_duration" x-model="classDuration" min="1" required class="w-full md:w-64 px-4 py-2.5 border rounded-lg bg-white dark:bg-gray-700">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Class Time Slots</label>
+                <button type="button" @click="addClassTime()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm mb-3">Add Class Time</button>
+                <div class="space-y-3">
+                    <template x-for="(classTime, index) in classTimes" :key="classTime.id">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input type="time" x-model="classTime.start_time" @change="validateAndCalculateClassTime(index)" class="px-3 py-2 border rounded-lg bg-white dark:bg-gray-700">
+                            <input type="text" x-model="classTime.end_time" readonly class="px-3 py-2 border rounded-lg bg-gray-100 dark:bg-gray-800">
+                            <button type="button" @click="removeClassTime(index)" class="px-3 py-2 bg-red-600 text-white rounded-lg">Remove</button>
+                        </div>
+                    </template>
+                </div>
+                <input type="hidden" name="class_times_json" :value="JSON.stringify(classTimes)">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Activities</label>
+                <button type="button" @click="addActivity()" class="px-3 py-2 bg-green-600 text-white rounded-lg text-sm mb-3">Add Activity</button>
+                <div class="space-y-3">
+                    <template x-for="(activity, index) in activities" :key="activity.id">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <select x-model="activity.name" @change="calculateEndTime(index)" class="px-3 py-2 border rounded-lg bg-white dark:bg-gray-700">
+                                <option value="Short Break">Short Break</option><option value="Long Break">Long Break</option><option value="Prep">Prep</option><option value="Lunch">Lunch</option><option value="Assembly">Assembly</option><option value="Other">Other</option>
+                            </select>
+                            <input type="time" x-model="activity.start_time" @change="calculateEndTime(index)" class="px-3 py-2 border rounded-lg bg-white dark:bg-gray-700">
+                            <input type="number" x-model="activity.duration" @change="calculateEndTime(index)" min="5" max="120" step="5" class="px-3 py-2 border rounded-lg bg-white dark:bg-gray-700">
+                            <input type="text" x-model="activity.end_time" readonly class="px-3 py-2 border rounded-lg bg-gray-100 dark:bg-gray-800">
+                        </div>
+                    </template>
+                </div>
+                <input type="hidden" name="activities_json" :value="JSON.stringify(activities)">
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold">Save Settings</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="order-1 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white">Saved Schedules</h3>
+            <span class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  x-text="settingsProfiles.length + ' profile(s)'"></span>
+        </div>
+
+        <div x-show="settingsProfiles.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+            No saved schedule profiles yet.
+        </div>
+
+        <div x-show="settingsProfiles.length > 0" class="space-y-3">
+            <template x-for="profile in settingsProfiles" :key="profile.id">
+                <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <p class="font-semibold text-gray-900 dark:text-white" x-text="profile.profile_name"></p>
+                                <span x-show="String(profile.id) === String(profileId)"
+                                      class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Active</span>
+                            </div>
+                            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                Applies to: <span x-text="getProfileLevelsLabel(profile)"></span>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a :href="'/dashboard/employee/academic-settings?tab=academic-schedule-management&profile_id=' + encodeURIComponent(profile.id)"
+                               class="px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
+                                <i class="fas fa-pen mr-1"></i>Edit
+                            </a>
+                            <form method="POST"
+                                  :action="'/settings/curriculum coordinator/delete/' + profile.id"
+                                  @submit="if(!confirm('Delete this saved schedule profile?')) $event.preventDefault();">
+                                <input type="hidden" name="return_to" value="academic-settings">
+                                <button type="submit"
+                                        class="px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
+                                    <i class="fas fa-trash mr-1"></i>Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function academicCoordinatorSettings() {
+    return {
+        weekDays: [{ value: 'Monday', label: 'Monday' }, { value: 'Tuesday', label: 'Tuesday' }, { value: 'Wednesday', label: 'Wednesday' }, { value: 'Thursday', label: 'Thursday' }, { value: 'Friday', label: 'Friday' }, { value: 'Saturday', label: 'Saturday' }, { value: 'Sunday', label: 'Sunday' }],
+        settingsProfiles: {% if settings_profiles %}{{ settings_profiles|tojson|safe }}{% else %}[]{% endif %},
+        profileId: {% if settings and settings.id %}{{ settings.id|tojson|safe }}{% else %}''{% endif %},
+        selectedProfileSelector: {% if settings and settings.id %}String({{ settings.id|tojson|safe }}){% else %}''{% endif %},
+        profileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
+        availableLevels: {% if academic_levels %}{{ academic_levels|tojson|safe }}{% else %}[]{% endif %},
+        selectedDays: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        selectedLevels: (function(){ const raw={% if settings and settings.applicable_levels is defined %}{{ settings.applicable_levels|tojson|safe }}{% else %}[]{% endif %}; if(Array.isArray(raw)&&raw.length>0){ return raw.map(String);} const all={% if academic_levels %}{{ academic_levels|tojson|safe }}{% else %}[]{% endif %}; return all.map(l=>String(l.id)); })(),
+        classDuration: {% if settings and settings.class_duration %}{{ settings.class_duration }}{% else %}60{% endif %},
+        classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
+        activities: {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %},
+        classTimeCounter: {% if settings and settings.class_times %}{{ settings.class_times|length }}{% else %}0{% endif %},
+        activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
+        getProfileLevelsLabel(profile){
+            if (!profile || !Array.isArray(profile.applicable_levels)) return 'No levels selected';
+            const selected = this.availableLevels
+                .filter(level => profile.applicable_levels.includes(String(level.id)) || profile.applicable_levels.includes(level.id))
+                .map(level => level.level_name);
+            return selected.length ? selected.join(', ') : 'No levels selected';
+        },
+        loadProfile(){ if(!this.selectedProfileSelector){ this.createNewProfile(); return; } window.location.href = `/dashboard/employee/academic-settings?tab=academic-schedule-management&profile_id=${encodeURIComponent(this.selectedProfileSelector)}`; },
+        createNewProfile(){
+            this.profileId = '';
+            this.selectedProfileSelector = '';
+            this.profileName = '';
+            this.selectedDays = ['Monday','Tuesday','Wednesday','Thursday','Friday'];
+            this.selectedLevels = this.availableLevels.map(level => String(level.id));
+            this.classDuration = 60;
+            this.classTimes = [];
+            this.activities = [];
+        },
+        addClassTime(){ this.classTimes.push({ id:'class_time_'+(++this.classTimeCounter), start_time:'08:00', end_time:'' }); this.validateAndCalculateClassTime(this.classTimes.length-1); },
+        removeClassTime(i){ this.classTimes.splice(i,1); },
+        validateAndCalculateClassTime(i){ const c=this.classTimes[i]; if(!c||!c.start_time||!this.classDuration){ if(c){c.end_time='';} return;} const [h,m]=c.start_time.split(':').map(Number); const d=new Date(); d.setHours(h,m,0,0); const e=new Date(d.getTime()+this.classDuration*60000); c.end_time=`${String(e.getHours()).padStart(2,'0')}:${String(e.getMinutes()).padStart(2,'0')}`; },
+        addActivity(){ this.activities.push({ id:'activity_'+(++this.activityCounter), name:'Short Break', start_time:'10:00', duration:15, end_time:'10:15' }); },
+        calculateEndTime(i){ const a=this.activities[i]; if(!a||!a.start_time||!a.duration){ if(a){a.end_time='';} return;} const [h,m]=a.start_time.split(':').map(Number); const d=new Date(); d.setHours(h,m,0,0); const e=new Date(d.getTime()+a.duration*60000); a.end_time=`${String(e.getHours()).padStart(2,'0')}:${String(e.getMinutes()).padStart(2,'0')}`; },
+        saveSettings(){ if(!this.profileName || !this.selectedLevels.length){ alert('Please provide profile name and select at least one level.'); return false; } this.classTimes.forEach((_,i)=>this.validateAndCalculateClassTime(i)); this.activities.forEach((_,i)=>this.calculateEndTime(i)); this.$el.submit(); }
+    }
+}
+</script>

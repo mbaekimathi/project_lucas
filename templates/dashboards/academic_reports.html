@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}Academic reports - {{ school_settings.school_name or 'School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include "dashboards/_secretary_academic_nav_sidebar.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6 print:p-2">
+    <div class="mb-6 no-print">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+            <i class="fas fa-file-export text-brand-primary"></i>
+            Academic reports
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+            Set global filters, then <strong>Generate</strong> or <strong>Preview</strong> to open the report on a <strong>full page</strong> (new view).
+            Use <strong>Download</strong> for CSV here, or open a preview and use <strong>Download CSV</strong> / <strong>Print</strong> there.
+        </p>
+    </div>
+
+    <!-- Global filters -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-6 no-print">
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <i class="fas fa-sliders-h text-brand-primary"></i>
+            Global filters
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Academic year</label>
+                <select id="gf-year" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">All years</option>
+                    {% for y in academic_years %}
+                    <option value="{{ y.id }}" {% if y.is_current %}data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term <span class="text-gray-400 font-normal">(optional)</span></label>
+                <select id="gf-term" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">—</option>
+                    {% for t in terms %}
+                    <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}">{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Class / level</label>
+                <select id="gf-level" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">All classes</option>
+                    {% for lv in academic_levels %}
+                    <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teacher <span class="text-gray-400 font-normal">(optional — teacher timetable only)</span></label>
+                <select id="gf-teacher" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">—</option>
+                    {% for te in teachers %}
+                    <option value="{{ te.id }}">{{ te.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Student ID <span class="text-gray-400 font-normal">(optional — individual reports)</span></label>
+                <input type="text" id="gf-student" placeholder="e.g. STU001" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date from <span class="text-gray-400 font-normal">(optional)</span></label>
+                <input type="date" id="gf-dfrom" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date to <span class="text-gray-400 font-normal">(optional)</span></label>
+                <input type="date" id="gf-dto" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">
+            Only the filters that apply to the report you run are sent. Class lists and most exam reports ignore teacher, student, and dates.
+            For <strong>attendance</strong>, pick a term (dates default to that term) or set dates manually. Subject timetable needs a <strong>term</strong>; teacher timetable needs <strong>term + teacher</strong>.
+        </p>
+    </div>
+
+    <!-- Generation status (below filters — always easy to see) -->
+    <div id="ar-status-banner" class="hidden no-print mb-6 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm" role="status" aria-live="polite">
+        <span id="ar-status-icon" class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm" aria-hidden="true"></span>
+        <div class="min-w-0 flex-1">
+            <p id="ar-status-title" class="font-semibold text-gray-900 dark:text-white"></p>
+            <p id="ar-status-detail" class="text-sm text-gray-600 dark:text-gray-400 mt-0.5"></p>
+        </div>
+    </div>
+
+    <!-- Report catalogue -->
+    <div class="space-y-8 no-print">
+        {% set sections = [
+            ['Class lists', 'fas fa-list', [
+                ['class_list_attendance', 'Class list — attendance', 'Student roster for registers and attendance taking.'],
+                ['class_list_exam', 'Class list — exam entry', 'Same roster; label indicates use for exam capture.'],
+            ]],
+            ['Timetables', 'fas fa-table', [
+                ['timetable_subject', 'Subject / class timetable', 'Periods by day with level, teacher, and subject. Requires term.'],
+                ['timetable_exam', 'Exam timetable', 'Scheduled exams by date and level.'],
+                ['timetable_teacher', 'Teacher timetable', 'One teacher’s periods. Requires term and teacher.'],
+            ]],
+            ['Exams', 'fas fa-chart-line', [
+                ['exam_class_performance', 'Class & subject performance', 'Means and pass rates by class and subject.'],
+                ['exam_subject_performance', 'Subject performance (aggregated)', 'Overall subject stats for filtered exams.'],
+                ['exam_individual', 'Individual performance', 'Marks per student and exam (may be large).'],
+            ]],
+            ['Attendance', 'fas fa-user-check', [
+                ['attendance_class', 'Class attendance summary', 'Present/absent totals by class for the date range.'],
+                ['attendance_individual', 'Individual attendance', 'Daily attendance rows; optional student filter.'],
+            ]],
+        ] %}
+        {% for title, icon, items in sections %}
+        <div>
+            <h3 class="text-md font-bold text-gray-800 dark:text-gray-200 mb-3 flex items-center gap-2">
+                <i class="{{ icon }} text-brand-primary"></i> {{ title }}
+            </h3>
+            <div class="space-y-3">
+                {% for rid, rlabel, rdesc in items %}
+                <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ rlabel }}</p>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">{{ rdesc }}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2 shrink-0">
+                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg bg-brand-primary text-white hover:opacity-90" data-action="generate" data-report="{{ rid }}">Generate</button>
+                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-500" data-action="preview" data-report="{{ rid }}">Preview</button>
+                        <button type="button" class="ar-btn px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700" data-action="download" data-report="{{ rid }}">Download</button>
+                        <button type="button" class="ar-btn-print px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" data-report="{{ rid }}" title="Opens the same full-page preview where you can print">Print</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+(function() {
+  const API = {{ url_for('api_academic_reports_generate')|tojson }};
+  const PREVIEW = {{ url_for('academic_report_preview')|tojson }};
+
+  function val(id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    const v = el.value;
+    return v === '' ? null : v;
+  }
+
+  /** Send only filters relevant to this report so optional fields never block class lists / exams. */
+  function getFiltersForReport(reportType) {
+    const yi = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
+    const ti = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
+    const li = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
+    const base = {
+      academic_year_id: yi,
+      term_id: ti,
+      level_id: li,
+    };
+    const needsTeacher = reportType === 'timetable_teacher';
+    const needsStudent = reportType === 'exam_individual' || reportType === 'attendance_individual';
+    const needsDates = reportType === 'attendance_class' || reportType === 'attendance_individual';
+    const out = Object.assign({}, base);
+    out.teacher_id = needsTeacher && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
+    if (needsStudent) {
+      const s = val('gf-student');
+      out.student_id = (s && String(s).trim()) ? String(s).trim() : null;
+    } else {
+      out.student_id = null;
+    }
+    if (needsDates) {
+      out.date_from = val('gf-dfrom') || null;
+      out.date_to = val('gf-dto') || null;
+    } else {
+      out.date_from = null;
+      out.date_to = null;
+    }
+    return out;
+  }
+
+  function buildPreviewUrl(reportType) {
+    const f = getFiltersForReport(reportType);
+    const p = new URLSearchParams();
+    p.set('report_type', reportType);
+    Object.keys(f).forEach(function(k) {
+      var v = f[k];
+      if (v !== null && v !== undefined && v !== '') {
+        p.set(k, String(v));
+      }
+    });
+    return PREVIEW + '?' + p.toString();
+  }
+
+  function setBanner(kind, title, detail) {
+    var bar = document.getElementById('ar-status-banner');
+    var icon = document.getElementById('ar-status-icon');
+    var tEl = document.getElementById('ar-status-title');
+    var dEl = document.getElementById('ar-status-detail');
+    if (!bar || !icon || !tEl || !dEl) return;
+    bar.classList.remove('hidden');
+    bar.className = 'no-print mb-6 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm';
+    icon.className = 'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm';
+    if (kind === 'loading') {
+      bar.classList.add('border-blue-200', 'bg-blue-50', 'dark:border-blue-800', 'dark:bg-blue-900/30');
+      icon.classList.add('bg-blue-200', 'dark:bg-blue-800', 'text-blue-600');
+      icon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    } else if (kind === 'success') {
+      bar.classList.add('border-green-200', 'bg-green-50', 'dark:border-green-800', 'dark:bg-green-900/25');
+      icon.classList.add('bg-green-200', 'dark:bg-green-800', 'text-green-700', 'dark:text-green-300');
+      icon.innerHTML = '<i class="fas fa-check"></i>';
+    } else if (kind === 'warning') {
+      bar.classList.add('border-amber-200', 'bg-amber-50', 'dark:border-amber-800', 'dark:bg-amber-900/25');
+      icon.classList.add('bg-amber-200', 'dark:bg-amber-800', 'text-amber-800', 'dark:text-amber-200');
+      icon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
+    } else {
+      bar.classList.add('border-red-200', 'bg-red-50', 'dark:border-red-900', 'dark:bg-red-900/25');
+      icon.classList.add('bg-red-200', 'dark:bg-red-900', 'text-red-700', 'dark:text-red-300');
+      icon.innerHTML = '<i class="fas fa-times"></i>';
+    }
+    tEl.textContent = title || '';
+    dEl.textContent = detail || '';
+    try {
+      bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) {}
+  }
+
+  async function runCsvDownload(reportType) {
+    setBanner('loading', 'Preparing download…', 'Please wait.');
+    const res = await fetch(API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report_type: reportType, format: 'csv', filters: getFiltersForReport(reportType) }),
+    });
+    const ct = (res.headers.get('content-type') || '');
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      setBanner('error', 'Download failed', (j.message || ('HTTP ' + res.status)));
+      return;
+    }
+    if (ct.indexOf('application/json') !== -1) {
+      const j = await res.json().catch(() => ({}));
+      setBanner('error', 'Download failed', j.message || 'Server returned an error.');
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = reportType + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    setBanner('success', 'Download successful', 'Your CSV file should start downloading.');
+  }
+
+  document.querySelectorAll('.ar-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const report = btn.getAttribute('data-report');
+      const action = btn.getAttribute('data-action');
+      if (action === 'download') {
+        runCsvDownload(report);
+        return;
+      }
+      if (action === 'generate' || action === 'preview') {
+        window.location.href = buildPreviewUrl(report);
+        return;
+      }
+    });
+  });
+
+  document.querySelectorAll('.ar-btn-print').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const report = btn.getAttribute('data-report');
+      window.location.href = buildPreviewUrl(report);
+    });
+  });
+
+  // Sync term → academic year when possible
+  const termEl = document.getElementById('gf-term');
+  const yearEl = document.getElementById('gf-year');
+  termEl.addEventListener('change', function() {
+    const opt = termEl.options[termEl.selectedIndex];
+    const y = opt && opt.getAttribute('data-year');
+    if (y) {
+      for (let i = 0; i < yearEl.options.length; i++) {
+        if (yearEl.options[i].value === y) {
+          yearEl.selectedIndex = i;
+          break;
+        }
+      }
+    }
+  });
+})();
+</script>
+{% endblock %}

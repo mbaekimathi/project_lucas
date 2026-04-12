@@ -1,0 +1,82 @@
+/**
+ * Public marketing pages (/, /about, /programs, /gallery, /team, /contact)
+ * Scoped with body.public-site — simple surfaces, no busy motion layers.
+ */
+
+/* Muted section backgrounds: flat, no animated mesh */
+.public-site .section-bg-maroon {
+  background: #f8fafc !important;
+  overflow: visible;
+}
+
+.dark .public-site .section-bg-maroon {
+  background: #0f172a !important;
+}
+
+.public-site .section-bg-maroon::before,
+.public-site .animated-pattern {
+  display: none !important;
+  content: none !important;
+  animation: none !important;
+}
+
+/* Cards: solid, readable, minimal lift */
+.public-site .modern-card {
+  transform: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.dark .public-site .modern-card {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+  color: #e2e8f0;
+}
+
+.public-site .modern-card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+}
+
+.public-site .modern-card::before {
+  display: none !important;
+}
+
+/* Glass panels → solid */
+.public-site .glass-effect {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+.dark .public-site .glass-effect {
+  background: #1e293b !important;
+  border-color: #475569 !important;
+}
+
+/* Headings on light/dark sections */
+.dark .public-site .section-bg-maroon h2,
+.dark .public-site .section-bg-maroon h3 {
+  color: #f1f5f9;
+}
+
+.dark .public-site .section-bg-maroon .text-gray-600,
+.dark .public-site .section-bg-maroon .text-gray-900 {
+  color: #cbd5e1;
+}
+
+.dark .public-site .section-bg-maroon h3.text-gray-900 {
+  color: #f1f5f9 !important;
+}
+
+/* Stat numbers: use brand on dark without gradient clip issues */
+.dark .public-site .gradient-text-maroon {
+  -webkit-text-fill-color: currentColor;
+  background: none;
+  color: var(--brand-secondary, #e2e8f0);
+}

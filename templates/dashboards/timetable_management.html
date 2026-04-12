@@ -5,36 +5,32 @@
 {% block sidebar_content %}
 <div class="space-y-2">
     <a href="/dashboard/employee/timetable-management" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all mb-2"
-       style="border-color: var(--role-primary);">
+       class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>Timetable Management</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
     
     <a href="/dashboard/employee/timetable-management/register-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.path == '/dashboard/employee/timetable-management/register-timetable' %}sidebar-item-active{% endif %}">
         <i class="fas fa-plus-circle w-5"></i>
         <span>Register Timetable</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/manage-timetable" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.path == '/dashboard/employee/timetable-management/manage-timetable' %}sidebar-item-active{% endif %}">
         <i class="fas fa-edit w-5"></i>
         <span>Manage Timetable</span>
     </a>
     
     <a href="/dashboard/employee/timetable-management/timetable-analytics" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.path == '/dashboard/employee/timetable-management/timetable-analytics' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-       {% if request.path == '/dashboard/employee/timetable-management/timetable-analytics' %}style="border-color: var(--role-primary);"{% endif %}>
+       class="w-full sidebar-item {% if request.path == '/dashboard/employee/timetable-management/timetable-analytics' %}sidebar-item-active{% endif %}">
         <i class="fas fa-chart-bar w-5"></i>
         <span>Timetable Analytics</span>
     </a>
     
     <a href="/dashboard/employee" 
-       class="w-full sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+       class="w-full sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
         <i class="fas fa-arrow-left w-5"></i>
         <span>Back to Dashboard</span>
     </a>
@@ -194,12 +190,12 @@
                                 <tbody>
                                     <template x-for="time in getTimeSlots({{ level.id }})" :key="time">
                                         <tr>
-                                            <td x-text="formatTime(time)"></td>
+                                            <td x-text="formatTimeRange({{ level.id }}, time)"></td>
                                             <template x-for="day in days" :key="day">
                                                 <td>
                                                     <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
                                                         <div>
-                                                            <div class="teacher-name" x-text="entry.teacher_name || '—'"></div>
+                                                            <div class="teacher-name" x-text="entry.employee_id || entry.teacher_code || entry.teacher_name || '—'"></div>
                                                             <div x-show="entry.subject_name" class="subject-name" x-text="entry.subject_name"></div>
                                                         </div>
                                                     </template>
@@ -232,6 +228,7 @@ function timetablesApp() {
     return {
         loading: true,
         timetables: {},
+        levelSettings: {},
         academicLevels: {{ academic_levels | tojson | safe if academic_levels else '[]' }},
         days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
@@ -255,31 +252,39 @@ function timetablesApp() {
                         body: JSON.stringify({ academic_level_id: level.id })
                     });
                     const result = await res.json();
-                    return { id: level.id, data: result.success ? (result.entries || []) : [] };
+                    return {
+                        id: level.id,
+                        data: result.success ? (result.entries || []) : [],
+                        settings: result.success ? (result.settings || {}) : {}
+                    };
                 } catch (e) {
-                    return { id: level.id, data: [] };
+                    return { id: level.id, data: [], settings: {} };
                 }
             });
             
             const results = await Promise.all(promises);
-            results.forEach(({ id, data }) => {
+            results.forEach(({ id, data, settings }) => {
                 this.timetables[id] = data;
+                this.levelSettings[id] = settings || {};
             });
             
             this.loading = false;
         },
         
         getTimeSlots(levelId) {
+            const levelCfg = this.levelSettings[levelId] || {};
+            const configured = Array.isArray(levelCfg.class_times) ? levelCfg.class_times : [];
+            const configuredStartTimes = configured
+                .map(t => (t && t.start_time ? String(t.start_time) : ''))
+                .filter(Boolean);
+            if (configuredStartTimes.length > 0) {
+                return [...new Set(configuredStartTimes)].sort((a, b) => a.localeCompare(b));
+            }
+
             const data = this.timetables[levelId];
             if (!data || !data.length) return [];
             const times = [...new Set(data.map(e => e.time).filter(t => t))];
-            return times.sort((a, b) => {
-                const getHour = (t) => {
-                    const match = t.match(/(\d+)/);
-                    return match ? parseInt(match[1]) : 0;
-                };
-                return getHour(a) - getHour(b);
-            });
+            return times.sort((a, b) => String(a).localeCompare(String(b)));
         },
         
         getEntry(levelId, day, time) {
@@ -288,8 +293,18 @@ function timetablesApp() {
             return data.filter(e => e.day === day && e.time === time);
         },
         
-        formatTime(time) {
-            return time.replace(':00', '').replace(' - ', '-');
+        formatTimeRange(levelId, time) {
+            const start = String(time || '');
+            if (!start) return '';
+            const levelCfg = this.levelSettings[levelId] || {};
+            const levelClassTimes = Array.isArray(levelCfg.class_times) ? levelCfg.class_times : [];
+            if (levelClassTimes.length > 0) {
+                const match = levelClassTimes.find(t => String((t || {}).start_time || '') === start);
+                if (match && match.end_time) {
+                    return `${start} - ${match.end_time}`;
+                }
+            }
+            return start;
         }
     };
 }

@@ -5,36 +5,32 @@
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
 <a href="/dashboard/employee/classes-subjects" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path == '/dashboard/employee/classes-subjects' %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Classes & Subjects</span>
 </a>
 
 <a href="/dashboard/employee/subject-class-allocation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path == '/dashboard/employee/subject-class-allocation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-tasks w-5"></i>
     <span>Subject & Class Allocation Panel</span>
 </a>
 
 <a href="/dashboard/employee/academic-subject-registration" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-white bg-gray-700/50 border-l-4 transition-all"
-   style="border-color: var(--role-primary);">
+   class="sidebar-item sidebar-item-active">
     <i class="fas fa-book-open w-5"></i>
     <span>Academic Subject Registration</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
 <a href="/dashboard/employee/exam-evaluation" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}text-white bg-gray-700/50 border-l-4{% endif %}"
-   {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}style="border-color: var(--role-primary);"{% endif %}>
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path == '/dashboard/employee/exam-evaluation' %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam & Evaluation</span>
 </a>
 
 <a href="/dashboard/employee" 
-   class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg transition-all text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>

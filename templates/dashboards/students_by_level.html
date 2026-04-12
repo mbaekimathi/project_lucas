@@ -3,7 +3,7 @@
 {% block title %}{{ academic_level.level_name }} - Marks{% endblock %}
 
 {% block sidebar_content %}
-<a href="/dashboard/employee/exams-assessments" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700">
+<a href="/dashboard/employee/exams-assessments" class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Exams</span>
 </a>
@@ -84,7 +84,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <p class="text-sm text-gray-500">{{ students|length }} students · {{ subjects|length }} subjects</p>
             </div>
             <div class="flex items-center gap-3">
-                <select x-model="selectedExam" @change="loadMarks()" 
+                <select x-model="selectedExam" @change="onExamSelected()"
                         class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                     <option value="">Choose Exam</option>
                     {% for exam in exams %}
@@ -141,7 +141,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                        @blur="saveMark('{{ student.student_id }}', {{ subject.id }}, $event.target.value)"
                                        @keydown.enter="$event.target.blur()"
                                        @keypress="$event.charCode >= 48 && $event.charCode <= 57 || $event.preventDefault()"
-                                       :disabled="!selectedExam"
+                                       :disabled="!selectedExam || examIsLocked"
                                        :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
                                        class="mark-input">
                                 {% else %}
@@ -166,6 +166,25 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </div>
         </div>
 
+        <!-- Locked exam — cannot open marks -->
+        <div x-show="lockedModal" x-cloak
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+             @click.self="lockedModal = false">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 text-center border border-amber-200 dark:border-amber-800" @click.stop role="alertdialog" aria-modal="true">
+                <div class="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto mb-5 ring-4 ring-amber-200/60 dark:ring-amber-800/50">
+                    <i class="fas fa-lock text-4xl text-amber-700 dark:text-amber-300" aria-hidden="true"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam is locked</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+                    This exam has been locked from Exam Registration. Marks cannot be viewed or edited here until an administrator unlocks it.
+                </p>
+                <button type="button" @click="lockedModal = false"
+                        class="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+                    OK
+                </button>
+            </div>
+        </div>
+
         {% else %}
         <!-- Empty State -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
@@ -185,13 +204,36 @@ function marksSheet() {
         marks: {{ (student_marks or {})|tojson|safe }},
         loading: false,
         saveStatus: {},
-        
+        lockedModal: false,
+        examList: {{ (exams or [])|tojson|safe }},
+
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
         studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
         levelId: {{ academic_level.id }},
         canEdit: {{ 'true' if can_edit else 'false' }},
 
+        get examIsLocked() {
+            if (!this.selectedExam) return false;
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            return !!(ex && ex.is_locked);
+        },
+
         init() {},
+
+        async onExamSelected() {
+            if (!this.selectedExam) {
+                await this.loadMarks();
+                return;
+            }
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            if (ex && ex.is_locked) {
+                this.lockedModal = true;
+                this.selectedExam = '';
+                this.marks = {};
+                return;
+            }
+            await this.loadMarks();
+        },
 
         getMark(studentId, subjectId) {
             const studentMarks = this.marks[studentId];
@@ -254,7 +296,7 @@ function marksSheet() {
         },
 
         async saveMark(studentId, subjectId, value) {
-            if (!this.selectedExam || !this.canEdit) return;
+            if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
             
             const intValue = value ? parseInt(value.replace(/\D/g, '')) : null;
             const key = `${studentId}_${subjectId}`;
@@ -279,7 +321,13 @@ function marksSheet() {
                     })
                 });
                 const result = await response.json();
-                this.saveStatus[key] = result.success ? 'saved' : 'error';
+                if (response.status === 403 && result.locked) {
+                    this.lockedModal = true;
+                    this.selectedExam = '';
+                    this.saveStatus[key] = 'error';
+                } else {
+                    this.saveStatus[key] = result.success ? 'saved' : 'error';
+                }
             } catch (error) {
                 this.saveStatus[key] = 'error';
             }
@@ -300,7 +348,11 @@ function marksSheet() {
                     })
                 });
                 const result = await response.json();
-                if (result.success) {
+                if (response.status === 403 && result.locked) {
+                    this.lockedModal = true;
+                    this.selectedExam = '';
+                    this.marks = {};
+                } else if (result.success) {
                     this.marks = result.marks || {};
                 }
             } catch (error) {

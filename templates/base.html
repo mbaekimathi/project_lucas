@@ -9,7 +9,9 @@
     loginModalOpen: false,
     admissionModalOpen: false,
     comingSoonModalOpen: false,
-    comingSoonTitle: ''
+    comingSoonTitle: '',
+    teamMemberModalOpen: false,
+    selectedMember: null
 }" 
       :class="{ 'dark': darkMode }"
       x-init="
@@ -176,7 +178,13 @@
     <meta name="MobileOptimized" content="width">
     <title>{% block title %}{{ school_settings.school_name or 'Modern School' }}{% endblock %}</title>
     
-    <!-- Tailwind CSS -->
+    <!-- Early DNS resolution for third-party assets (reduces serial connection delay) -->
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com">
+    
+    <!-- Tailwind CDN: compiles utility CSS in the browser (consider a built CSS bundle for production) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -208,16 +216,21 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;600;700&family=Open+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Theme fonts (400–700 only; matches system-settings font dropdown) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
     <!-- Page Enhancements - Modern UI/UX -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/page-enhancements.css') }}">
-    <!-- Modern Background Images CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-background.css') }}">
     <!-- Modern Scroll Effects CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/modern-scroll-effects.css') }}">
+    <!-- Simple professional theme (loads last; calms backgrounds & chrome) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app-simple-theme.css') }}">
+    <!-- Public marketing pages (home, about, programs, …) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/public-pages.css') }}">
+    <!-- School marketing theme (heroes, cards, institution visuals) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/school-site.css') }}">
     
     <!-- Site-wide theme colors (from System Settings) -->
     <style>
@@ -370,27 +383,26 @@
             touch-action: manipulation;
         }
         
-        /* Modern button styles */
+        /* Buttons & cards — subtle feedback only */
         button, .btn {
-            transition: all 0.2s ease;
+            transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
         }
         
         button:hover, .btn:hover {
-            transform: translateY(-1px);
+            transform: none;
         }
         
         button:active, .btn:active {
-            transform: translateY(0);
+            transform: none;
         }
         
-        /* Modern card styles */
         .card {
-            transition: all 0.3s ease;
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
         }
         
         .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transform: none;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
         }
         
         /* Improved focus styles */
@@ -416,24 +428,16 @@
             scroll-behavior: smooth;
         }
         
-        /* Sidebar item styles */
+        /* Sidebar item styles — layout; colors/active in app-simple-theme.css */
         .sidebar-item {
-            transition: all 0.2s ease;
+            transition: background-color 0.15s ease, color 0.15s ease;
             min-height: 44px;
             font-weight: 500;
+            position: relative;
         }
         
         .sidebar-item:hover {
-            transform: translateX(2px);
-        }
-        
-        .sidebar-item.active {
-            font-weight: 600;
-            color: var(--role-primary, #1D3557) !important;
-        }
-        
-        .dark .sidebar-item.active {
-            color: var(--role-secondary, #E63946) !important;
+            transform: none;
         }
         
         .sidebar-item i {
@@ -488,27 +492,6 @@
             margin-bottom: 0.25rem;
         }
         
-        /* Active link indicator */
-        .sidebar-item.active::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 3px;
-            height: 60%;
-            background: var(--role-primary, #1D3557);
-            border-radius: 0 2px 2px 0;
-        }
-        
-        .dark .sidebar-item.active::before {
-            background: var(--role-secondary, #E63946);
-        }
-        
-        .sidebar-item {
-            position: relative;
-        }
-        
         /* Footer improvements */
         footer {
             flex-shrink: 0;
@@ -548,10 +531,10 @@
     
     {% block extra_head %}{% endblock %}
 </head>
-<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300">
+<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% block body_class %}{% endblock %}">
     
     <!-- Header -->
-    <header class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 shadow-md border-b border-gray-200 dark:border-gray-700">
+    <header class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div class="container mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-16">
                 <!-- Left: Back Button, Logo and Sidebar Toggle -->
@@ -685,8 +668,8 @@
                              x-cloak
                              class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50">
                             {% set user_role = session.get('role', 'employee')|lower %}
-                            {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
-                            {% if user_role in ['employee', 'super admin', 'principal', 'deputy principal', 'academic coordinator', 'teachers', 'accountant', 'librarian', 'warden', 'transport manager', 'technician'] %}
+                            {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
+                            {% if user_role in ['employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'] %}
                             <a href="/dashboard/employee" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
                             </a>
@@ -760,33 +743,33 @@
              style="overscroll-behavior: contain; -webkit-overflow-scrolling: touch;">
             {% block sidebar_content %}
             <!-- Default sidebar links for public pages -->
-            <a href="/" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'home' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/" class="sidebar-item {% if request.endpoint == 'home' %}active{% endif %}">
                 <i class="fas fa-home"></i>
-                <span class="font-medium">Home</span>
+                <span>Home</span>
             </a>
-            <a href="/about" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'about' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/about" class="sidebar-item {% if request.endpoint == 'about' %}active{% endif %}">
                 <i class="fas fa-info-circle"></i>
-                <span class="font-medium">About</span>
+                <span>About</span>
             </a>
-            <a href="/programs" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'programs' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/programs" class="sidebar-item {% if request.endpoint == 'programs' %}active{% endif %}">
                 <i class="fas fa-book"></i>
-                <span class="font-medium">Programs</span>
+                <span>Programs</span>
             </a>
-            <a href="/gallery" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'gallery' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/gallery" class="sidebar-item {% if request.endpoint == 'gallery' %}active{% endif %}">
                 <i class="fas fa-images"></i>
-                <span class="font-medium">Gallery</span>
+                <span>Gallery</span>
             </a>
-            <a href="/news" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'news' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/news" class="sidebar-item {% if request.endpoint == 'news' %}active{% endif %}">
                 <i class="fas fa-newspaper"></i>
-                <span class="font-medium">News</span>
+                <span>News</span>
             </a>
-            <a href="/team" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'team' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/team" class="sidebar-item {% if request.endpoint == 'team' %}active{% endif %}">
                 <i class="fas fa-users"></i>
-                <span class="font-medium">Team</span>
+                <span>Team</span>
             </a>
-            <a href="/contact" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-900 dark:text-gray-100 hover:text-brand-primary dark:hover:text-brand-secondary transition-all {% if request.endpoint == 'contact' %}active text-brand-primary dark:text-brand-secondary{% endif %}">
+            <a href="/contact" class="sidebar-item {% if request.endpoint == 'contact' %}active{% endif %}">
                 <i class="fas fa-envelope"></i>
-                <span class="font-medium">Contact</span>
+                <span>Contact</span>
             </a>
             {% endblock %}
                 </nav>
@@ -878,8 +861,8 @@
                 </div>
             </div>
 
-    <!-- Scroll Effects Script -->
-    <script src="{{ url_for('static', filename='js/scroll-effects.js') }}"></script>
+    <!-- Scroll Effects Script (deferred; non-blocking for first paint) -->
+    <script defer src="{{ url_for('static', filename='js/scroll-effects.js') }}"></script>
     
     <!-- Extra Scripts Block -->
     {% block extra_scripts %}{% endblock %}
