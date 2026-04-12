@@ -458,51 +458,19 @@ body.app-shell {
 
 header.app-chrome-header {
   position: fixed;
-  padding-top: 3px;
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-bottom: 1px solid color-mix(in srgb, var(--brand-primary, #800020) 12%, #e2e8f0);
-  box-shadow:
-    0 4px 28px -8px rgba(15, 23, 42, 0.1),
-    0 1px 0 0 rgba(255, 255, 255, 0.65) inset;
+  background: #ffffff;
+  border-bottom-color: #e2e8f0;
+  box-shadow: 0 1px 0 0 rgba(15, 23, 42, 0.06);
 }
 
 .dark header.app-chrome-header {
-  background: rgba(15, 23, 42, 0.86);
-  border-bottom-color: color-mix(in srgb, var(--brand-primary, #800020) 22%, #334155);
-  box-shadow:
-    0 12px 40px -12px rgba(0, 0, 0, 0.55),
-    0 1px 0 0 rgba(255, 255, 255, 0.05) inset;
-}
-
-header.app-chrome-header::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  z-index: 1;
-  background: linear-gradient(
-    90deg,
-    var(--brand-primary, #800020),
-    var(--brand-secondary, #a00030),
-    var(--brand-accent, #5c0014)
-  );
-  pointer-events: none;
+  background: #0f172a;
+  border-bottom-color: #334155;
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.35);
 }
 
 .app-chrome-btn {
-  transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.12s ease;
-}
-
-.app-chrome-btn:active {
-  transform: scale(0.97);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 footer.app-chrome-footer {
@@ -536,20 +504,13 @@ html.dark aside.app-sidebar.app-sidebar--brand::after {
   opacity: 0.55;
 }
 
-/* Dropdowns under app header */
+/* Dropdowns: keep utility classes from template; optional polish */
 header.app-chrome-header .absolute.right-0.mt-2 {
-  border-radius: 0.75rem;
-  box-shadow:
-    0 12px 40px -8px rgba(15, 23, 42, 0.18),
-    0 0 0 1px rgba(15, 23, 42, 0.06);
-  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 10px 40px -10px rgba(15, 23, 42, 0.2);
 }
 
 .dark header.app-chrome-header .absolute.right-0.mt-2 {
-  border-color: rgba(51, 65, 85, 0.95);
-  box-shadow:
-    0 16px 48px -12px rgba(0, 0, 0, 0.55),
-    0 0 0 1px rgba(255, 255, 255, 0.04);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 /* ----- Responsive content width ----- */
