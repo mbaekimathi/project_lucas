@@ -84,12 +84,26 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <p class="text-sm text-gray-500">{{ students|length }} students · {{ subjects|length }} subjects</p>
             </div>
             <div class="flex items-center gap-3">
+                <select x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <option value="">Academic Year</option>
+                    <template x-for="year in academicYears" :key="year.id">
+                        <option :value="String(year.id)" x-text="year.year_name"></option>
+                    </template>
+                </select>
+                <select x-model="selectedTermId" @change="onTermChange()"
+                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <option value="">Term</option>
+                    <template x-for="term in filteredTerms" :key="term.id">
+                        <option :value="String(term.id)" x-text="term.term_name"></option>
+                    </template>
+                </select>
                 <select x-model="selectedExam" @change="onExamSelected()"
                         class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                     <option value="">Choose Exam</option>
-                    {% for exam in exams %}
-                    <option value="{{ exam.id }}">{{ exam.exam_name }}</option>
-                    {% endfor %}
+                    <template x-for="exam in filteredExams" :key="exam.id">
+                        <option :value="String(exam.id)" x-text="exam.exam_name"></option>
+                    </template>
                 </select>
                 <a href="{{ employee_dash_url('exams-assessments') }}" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                     ← Back
@@ -201,11 +215,15 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 function marksSheet() {
     return {
         selectedExam: '',
+        selectedAcademicYearId: '{{ selected_academic_year_id or "" }}',
+        selectedTermId: '{{ selected_term_id or "" }}',
         marks: {{ (student_marks or {})|tojson|safe }},
         loading: false,
         saveStatus: {},
         lockedModal: false,
         examList: {{ (exams or [])|tojson|safe }},
+        academicYears: {{ (academic_years or [])|tojson|safe }},
+        terms: {{ (terms or [])|tojson|safe }},
 
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
         studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
@@ -218,7 +236,47 @@ function marksSheet() {
             return !!(ex && ex.is_locked);
         },
 
-        init() {},
+        get filteredTerms() {
+            if (!this.selectedAcademicYearId) return [];
+            return this.terms.filter(t => String(t.academic_year_id) === String(this.selectedAcademicYearId));
+        },
+
+        get filteredExams() {
+            return this.examList.filter(e => {
+                const yearOk = this.selectedAcademicYearId ? String(e.academic_year_id) === String(this.selectedAcademicYearId) : true;
+                const termOk = this.selectedTermId ? String(e.term_id) === String(this.selectedTermId) : true;
+                return yearOk && termOk;
+            });
+        },
+
+        init() {
+            // Ensure defaults point to current year/term and exam list matches them.
+            if (this.selectedAcademicYearId && !this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
+                const firstTerm = this.filteredTerms[0];
+                this.selectedTermId = firstTerm ? String(firstTerm.id) : '';
+            }
+            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
+                this.selectedExam = '';
+            }
+        },
+
+        onAcademicYearChange() {
+            if (!this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
+                const firstTerm = this.filteredTerms[0];
+                this.selectedTermId = firstTerm ? String(firstTerm.id) : '';
+            }
+            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
+                this.selectedExam = '';
+                this.marks = {};
+            }
+        },
+
+        onTermChange() {
+            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
+                this.selectedExam = '';
+                this.marks = {};
+            }
+        },
 
         async onExamSelected() {
             if (!this.selectedExam) {

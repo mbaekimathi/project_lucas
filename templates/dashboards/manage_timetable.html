@@ -4,6 +4,12 @@
 
 {% block sidebar_content %}
 <div class="space-y-2">
+    <a href="{{ employee_dash_url() }}" 
+       class="w-full sidebar-item">
+        <i class="fas fa-arrow-left w-5"></i>
+        <span>Back to Dashboard</span>
+    </a>
+
     <a href="{{ employee_dash_url('timetable-management') }}" 
        class="w-full sidebar-item">
         <i class="fas fa-calendar-alt w-5"></i>
@@ -13,7 +19,7 @@
     <a href="{{ employee_dash_url('timetable-management/register-timetable') }}" 
        class="w-full sidebar-item">
         <i class="fas fa-plus-circle w-5"></i>
-        <span>Register Timetable</span>
+        <span>Manual Timetable Allocation</span>
     </a>
     
     <a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" 
@@ -29,11 +35,6 @@
         <span>Timetable Analytics</span>
     </a>
     
-    <a href="{{ employee_dash_url() }}" 
-       class="w-full sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span>Back to Dashboard</span>
-    </a>
 </div>
 {% endblock %}
 
@@ -158,18 +159,42 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="manageApp()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
+<div x-data="manageApp()" x-init="init()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
 
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
                 <h1 class="text-lg font-bold text-gray-900 dark:text-white">
                     <i class="fas fa-edit text-blue-600 mr-2"></i>Manage Timetable
         </h1>
-                <p class="text-sm text-gray-500">Select a class and click on cells to edit</p>
+                <p class="text-sm text-gray-500">Select a class and click on cells to edit (one session = one teacher + one subject)</p>
     </div>
-            <div class="flex items-center gap-2">
+            <div class="flex flex-col sm:items-end gap-2">
+                <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                        <i class="fas fa-filter"></i> Filters
+                    </span>
+                    <select x-model="yearId" @change="onYearChange()"
+                            class="min-w-[170px] px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 text-gray-900 dark:text-white">
+                        <option value="">Academic Year</option>
+                        {% for year in academic_years %}
+                        <option value="{{ year.id }}" {% if year.is_current %}selected{% endif %}>{{ year.year_name }}{% if year.is_current %} (Current){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <select x-model="termId" @change="selectedClassId = null;" :disabled="!yearId"
+                            class="min-w-[140px] px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 text-gray-900 dark:text-white disabled:opacity-50">
+                        <option value="">Term</option>
+                        <template x-for="term in filteredTerms" :key="term.id">
+                            <option :value="term.id" x-text="term.term_name + (term.is_current ? ' (Current)' : '')"></option>
+                        </template>
+                    </select>
+                </div>
+                <div class="flex flex-wrap items-center gap-2 sm:justify-end text-[11px]">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><i class="fas fa-calendar-alt"></i> Year</span>
+                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><i class="fas fa-layer-group"></i> Term</span>
+                </div>
+                <div class="flex items-center gap-2">
                 <!-- Save Status -->
                 <span x-show="saveStatus === 'saving'" class="text-sm text-yellow-600 save-status">
                     <i class="fas fa-spinner fa-spin mr-1"></i>Saving...
@@ -185,40 +210,14 @@
                     ← Back
                 </a>
             </div>
+            </div>
         </div>
     </div>
 
     <div class="p-4">
-        <!-- Year/Term Selection -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <!-- Academic Year -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Academic Year</label>
-                    <select x-model="yearId" @change="termId = ''; selectedClassId = null;"
-                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <option value="">Select Year</option>
-                        {% for year in academic_years %}
-                        <option value="{{ year.id }}" {% if year.is_current %}selected{% endif %}>{{ year.year_name }}{% if year.is_current %} (Current){% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <!-- Term -->
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term</label>
-                    <select x-model="termId" @change="selectedClassId = null;" :disabled="!yearId"
-                            class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50">
-                        <option value="">Select Term</option>
-                        <template x-for="term in filteredTerms" :key="term.id">
-                            <option :value="term.id" x-text="term.term_name + (term.is_current ? ' (Current)' : '')"></option>
-                        </template>
-                    </select>
-                </div>
-                        </div>
-            <p x-show="!yearId || !termId" class="text-xs text-amber-600 mt-2">
-                <i class="fas fa-info-circle mr-1"></i>Please select Academic Year and Term first
-            </p>
-                        </div>
+        <p x-show="!yearId || !termId" class="text-xs text-amber-600 mb-3">
+            <i class="fas fa-info-circle mr-1"></i>Please select Academic Year and Term first
+        </p>
 
         <!-- Class Selection -->
         <template x-if="yearId && termId">
@@ -264,7 +263,7 @@
                     <div>
                         <h2 class="font-bold text-white text-lg" x-text="selectedClassName"></h2>
                         <p class="text-blue-100 text-xs">
-                            Click on any cell to assign or change teacher
+                            Click on any cell to assign or change teacher and subject
                             <span x-show="settingsProfileName">· Schedule: <span class="font-semibold" x-text="settingsProfileName"></span></span>
                         </p>
                     </div>
@@ -298,7 +297,8 @@
                                         <div class="p-2 min-h-[50px] flex flex-col justify-center relative">
                                             <template x-if="getSlot(day, time)">
                                                 <div>
-                                                    <div class="teacher-name" x-text="getTeacherName(getSlot(day, time))"></div>
+                                                    <div class="teacher-name" x-text="getTeacherName(getSlot(day, time)?.teacher_id)"></div>
+                                                    <div class="subject-name text-[11px] text-blue-700 dark:text-blue-300 mt-1" x-text="getSlot(day, time)?.subject_code || '—'"></div>
                                                     <button @click.stop="removeSlot(day, time)" 
                                                             class="cell-actions text-red-500 hover:text-red-700 text-xs">
                                                         <i class="fas fa-times"></i>
@@ -329,7 +329,7 @@
         </div>
     </div>
 
-    <!-- Teacher Selection Modal -->
+    <!-- Teacher + Subject Selection Modal -->
     <div x-show="modalOpen" 
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
@@ -348,7 +348,7 @@
             <!-- Modal Header -->
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
                 <h3 class="font-semibold text-gray-900 dark:text-white">
-                    <i class="fas fa-user-plus text-blue-600 mr-2"></i>Assign Teacher
+                    <i class="fas fa-user-plus text-blue-600 mr-2"></i>Assign Teacher and Subject
                 </h3>
                 <p class="text-sm text-gray-500 mt-1">
                     <span x-text="modalDay"></span> • <span x-text="modalTime"></span>
@@ -369,7 +369,7 @@
                 <span class="text-sm text-gray-500">Checking availability...</span>
             </div>
 
-            <!-- Teacher List -->
+            <!-- Teacher/Subject Selection -->
             <div x-show="!loadingConflicts" class="p-4 max-h-80 overflow-y-auto">
                 <!-- Search -->
                 <div class="mb-3">
@@ -382,35 +382,49 @@
                 <!-- Teachers -->
                 <div class="space-y-1">
                     <template x-for="teacher in filteredTeachers" :key="teacher.id">
-                        <button @click="assignTeacher(teacher.id)"
+                        <button @click="onTeacherSelected(teacher.id)"
                                 class="w-full text-left px-3 py-2 rounded-lg transition flex items-center gap-3"
                                 :class="{ 
-                                    'bg-blue-100 dark:bg-blue-900/50': getSlot(modalDay, modalTime) == teacher.id,
-                                    'teacher-busy': conflicts[teacher.id] && getSlot(modalDay, modalTime) != teacher.id,
-                                    'hover:bg-blue-50 dark:hover:bg-blue-900/30': !conflicts[teacher.id]
+                                    'bg-blue-100 dark:bg-blue-900/50': modalTeacherId == teacher.id,
+                                    'teacher-busy': conflicts[teacher.id] && modalTeacherId != teacher.id,
+                                    'bg-green-100 dark:bg-green-900/30 hover:bg-green-200 dark:hover:bg-green-900/50': !conflicts[teacher.id] && isEligibleTeacher(teacher.id) && modalTeacherId != teacher.id,
+                                    'hover:bg-blue-50 dark:hover:bg-blue-900/30': !conflicts[teacher.id] && !isEligibleTeacher(teacher.id) && modalTeacherId != teacher.id
                                 }">
                             <div class="w-8 h-8 rounded-full flex items-center justify-center"
-                                 :class="conflicts[teacher.id] ? 'bg-red-100 dark:bg-red-800' : 'bg-blue-100 dark:bg-blue-800'">
-                                <i class="text-sm" :class="conflicts[teacher.id] ? 'fas fa-user-clock text-red-600 dark:text-red-400' : 'fas fa-user text-blue-600 dark:text-blue-400'"></i>
+                                 :class="conflicts[teacher.id] ? 'bg-red-100 dark:bg-red-800' : (isEligibleTeacher(teacher.id) ? 'bg-green-100 dark:bg-green-800' : 'bg-blue-100 dark:bg-blue-800')">
+                                <i class="text-sm" :class="conflicts[teacher.id] ? 'fas fa-user-clock text-red-600 dark:text-red-400' : (isEligibleTeacher(teacher.id) ? 'fas fa-user-check text-green-600 dark:text-green-400' : 'fas fa-user text-blue-600 dark:text-blue-400')"></i>
                             </div>
                             <div class="flex-1">
                                 <div class="font-medium text-sm" 
-                                     :class="conflicts[teacher.id] ? 'text-red-700 dark:text-red-300' : 'text-gray-900 dark:text-white'"
+                                     :class="conflicts[teacher.id] ? 'text-red-700 dark:text-red-300' : (isEligibleTeacher(teacher.id) ? 'text-green-700 dark:text-green-300' : 'text-gray-900 dark:text-white')"
                                      x-text="teacher.full_name"></div>
-                                <div class="text-xs" :class="conflicts[teacher.id] ? 'text-red-500' : 'text-gray-500'">
+                                <div class="text-xs" :class="conflicts[teacher.id] ? 'text-red-500' : (isEligibleTeacher(teacher.id) ? 'text-green-600 dark:text-green-400' : 'text-gray-500')">
                                     <span x-text="teacher.employee_id"></span>
                                     <template x-if="conflicts[teacher.id]">
                                         <span class="ml-1">• Busy in <span x-text="conflicts[teacher.id]"></span></span>
                                     </template>
+                                    <template x-if="!conflicts[teacher.id] && isEligibleTeacher(teacher.id)">
+                                        <span class="ml-1">• Available for this level</span>
+                                    </template>
                                 </div>
                             </div>
-                            <i x-show="getSlot(modalDay, modalTime) == teacher.id" class="fas fa-check text-blue-600"></i>
-                            <i x-show="conflicts[teacher.id] && getSlot(modalDay, modalTime) != teacher.id" class="fas fa-exclamation-circle text-red-500"></i>
+                            <i x-show="modalTeacherId == teacher.id" class="fas fa-check text-blue-600"></i>
+                            <i x-show="conflicts[teacher.id] && modalTeacherId != teacher.id" class="fas fa-exclamation-circle text-red-500"></i>
                         </button>
                     </template>
                     <p x-show="filteredTeachers.length === 0" class="text-center text-gray-500 text-sm py-4">
                         No teachers found
                     </p>
+                </div>
+
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Subject</label>
+                    <select x-model="modalSubjectId" :disabled="!modalTeacherId" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50">
+                        <option value="">Choose subject...</option>
+                        <template x-for="subject in modalSubjects" :key="subject.id">
+                            <option :value="subject.id" x-text="subject.label"></option>
+                        </template>
+                    </select>
                 </div>
             </div>
 
@@ -423,6 +437,11 @@
                 </button>
                 <button @click="closeModal()" class="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 ml-auto">
                     Cancel
+                </button>
+                <button @click="assignTeacherSubject()"
+                        :disabled="!modalTeacherId || !modalSubjectId"
+                        class="ml-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                    Save Slot
                 </button>
             </div>
         </div>
@@ -467,6 +486,8 @@ function manageApp() {
         modalOpen: false,
         modalDay: '',
         modalTime: '',
+        modalTeacherId: '',
+        modalSubjectId: '',
         teacherSearch: '',
         saveStatus: '',
         loadingConflicts: false,
@@ -485,6 +506,7 @@ function manageApp() {
         terms: {{ terms | tojson | safe if terms else '[]' }},
         days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         teachers: {{ teachers | tojson | safe if teachers else '[]' }},
+        teacherSubjectPairs: {{ teacher_subject_pairs | tojson | safe if teacher_subject_pairs else '[]' }},
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
         activities: {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %},
         slots: {},
@@ -493,6 +515,36 @@ function manageApp() {
         get filteredTerms() {
             if (!this.yearId) return [];
             return this.terms.filter(t => t.academic_year_id == this.yearId);
+        },
+
+        init() {
+            const currentYear = this.academicYears.find(y => y.is_current);
+            if (!this.yearId && currentYear) {
+                this.yearId = String(currentYear.id);
+            }
+            if (!this.yearId && this.academicYears.length > 0) {
+                this.yearId = String(this.academicYears[0].id);
+            }
+
+            const currentTerm = this.filteredTerms.find(t => t.is_current);
+            if (currentTerm) {
+                this.termId = String(currentTerm.id);
+            } else if (this.filteredTerms.length > 0) {
+                this.termId = String(this.filteredTerms[0].id);
+            }
+        },
+
+        onYearChange() {
+            this.selectedClassId = null;
+            const yearTerms = this.filteredTerms;
+            const currentTerm = yearTerms.find(t => t.is_current);
+            if (currentTerm) {
+                this.termId = String(currentTerm.id);
+            } else if (yearTerms.length > 0) {
+                this.termId = String(yearTerms[0].id);
+            } else {
+                this.termId = '';
+            }
         },
         
         get displayTimeSlots() {
@@ -529,7 +581,7 @@ function manageApp() {
         },
         
         get filteredTeachers() {
-            let list = this.teachers;
+            let list = this.teachersForSelectedClass;
             if (this.teacherSearch) {
                 const search = this.teacherSearch.toLowerCase();
                 list = list.filter(t => 
@@ -537,13 +589,62 @@ function manageApp() {
                     (t.employee_id && t.employee_id.toLowerCase().includes(search))
                 );
             }
-            // Sort: available teachers first, then busy teachers
+            // Sort: available first, then busy
             return list.sort((a, b) => {
-                const aConflict = this.conflicts[a.id] ? 1 : 0;
-                const bConflict = this.conflicts[b.id] ? 1 : 0;
-                if (aConflict !== bConflict) return aConflict - bConflict;
+                const rank = (teacher) => {
+                    if (this.conflicts[teacher.id]) return 2;
+                    return 0;
+                };
+                const aRank = rank(a);
+                const bRank = rank(b);
+                if (aRank !== bRank) return aRank - bRank;
                 return a.full_name.localeCompare(b.full_name);
             });
+        },
+
+        get levelPairs() {
+            if (!this.selectedClassId) return [];
+            return this.teacherSubjectPairs.filter(p => p.academic_level_id == this.selectedClassId);
+        },
+
+        get teachersForSelectedClass() {
+            const byId = {};
+            this.levelPairs.forEach(p => {
+                if (!byId[p.teacher_id]) {
+                    byId[p.teacher_id] = {
+                        id: p.teacher_id,
+                        full_name: p.teacher_name,
+                        employee_id: p.employee_id || ''
+                    };
+                }
+            });
+            return Object.values(byId);
+        },
+
+        get modalSubjects() {
+            if (!this.modalTeacherId) return [];
+            return this.levelPairs
+                .filter(p => p.teacher_id == this.modalTeacherId)
+                .map(p => ({
+                    id: p.subject_id,
+                    subject_name: p.subject_name,
+                    subject_code: p.subject_code || '',
+                    label: `${p.subject_name}${p.subject_code ? ' (' + p.subject_code + ')' : ''}`
+                }))
+                .sort((a, b) => a.label.localeCompare(b.label));
+        },
+
+        onTeacherSelected(teacherId) {
+            this.modalTeacherId = teacherId;
+            const subjects = this.levelPairs
+                .filter(p => p.teacher_id == teacherId)
+                .map(p => ({ id: p.subject_id }))
+                .filter((v, i, arr) => arr.findIndex(x => x.id == v.id) === i);
+            this.modalSubjectId = subjects.length > 0 ? subjects[0].id : '';
+        },
+
+        isEligibleTeacher(teacherId) {
+            return this.levelPairs.some(p => p.teacher_id == teacherId);
         },
         
         showToast(type, title, message, duration = 4000) {
@@ -565,8 +666,8 @@ function manageApp() {
             }, 200);
         },
         
-        async selectClass(classId, className) {
-            if (this.selectedClassId === classId) return;
+        async selectClass(classId, className, forceReload = false) {
+            if (this.selectedClassId === classId && !forceReload) return;
             
             this.selectedClassId = classId;
             this.selectedClassName = className;
@@ -595,7 +696,12 @@ function manageApp() {
                     }
                     result.entries.forEach(entry => {
                         const key = `${entry.day}|${entry.time}`;
-                        this.slots[key] = entry.teacher_id;
+                        this.slots[key] = {
+                            teacher_id: entry.teacher_id,
+                            subject_id: entry.subject_id,
+                            subject_code: entry.subject_code || '',
+                            subject_name: entry.subject_name || ''
+                        };
                     });
                 }
             } catch (e) {
@@ -618,6 +724,9 @@ function manageApp() {
             this.modalDay = day;
             this.modalTime = time;
             this.teacherSearch = '';
+            const existing = this.getSlot(day, time);
+            this.modalTeacherId = existing ? existing.teacher_id : '';
+            this.modalSubjectId = existing ? existing.subject_id : '';
             this.conflicts = {};
             this.modalOpen = true;
             this.loadingConflicts = true;
@@ -650,8 +759,10 @@ function manageApp() {
             this.conflicts = {};
         },
         
-        async assignTeacher(teacherId) {
-            // Check for conflict
+        async assignTeacherSubject() {
+            const teacherId = this.modalTeacherId;
+            const subjectId = this.modalSubjectId;
+            if (!teacherId || !subjectId) return;
             if (this.conflicts[teacherId]) {
                 const className = this.conflicts[teacherId];
                 const teacher = this.teachers.find(t => t.id == teacherId);
@@ -666,7 +777,13 @@ function manageApp() {
             }
             
             const key = `${this.modalDay}|${this.modalTime}`;
-            this.slots[key] = teacherId;
+            const subject = this.modalSubjects.find(s => s.id == subjectId);
+            this.slots[key] = {
+                teacher_id: teacherId,
+                subject_id: subjectId,
+                subject_name: subject ? subject.subject_name : '',
+                subject_code: subject ? subject.subject_code : ''
+            };
             this.closeModal();
             await this.saveChanges();
             
@@ -690,12 +807,13 @@ function manageApp() {
             
             const slotsArray = [];
             for (const key in this.slots) {
-                if (this.slots[key]) {
+                if (this.slots[key] && this.slots[key].teacher_id && this.slots[key].subject_id) {
                     const [day, time] = key.split('|');
                     slotsArray.push({
                         day: day,
                         time: time,
-                        teacher_id: this.slots[key]
+                        teacher_id: this.slots[key].teacher_id,
+                        subject_id: this.slots[key].subject_id
                     });
                 }
             }
@@ -715,6 +833,7 @@ function manageApp() {
                 
                 if (result.success) {
                     this.saveStatus = 'saved';
+                    await this.selectClass(this.selectedClassId, this.selectedClassName, true);
                     setTimeout(() => { this.saveStatus = ''; }, 2000);
                 } else {
                     this.saveStatus = 'error';

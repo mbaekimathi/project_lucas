@@ -220,6 +220,11 @@
         <i class="fas fa-clipboard-list w-5"></i>
         <span>Exams & Assessments</span>
     </a>
+    <a href="{{ employee_dash_url('grades-registration') }}"
+       class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-list-check w-5"></i>
+        <span>Grades Registration</span>
+    </a>
     <a href="{{ employee_dash_url('reports') }}"
        class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') or request.path.endswith('/reports') %}sidebar-item-active{% endif %}">
         <i class="fas fa-file-alt w-5"></i>
@@ -239,6 +244,11 @@
        class="sidebar-item {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}sidebar-item-active{% endif %}">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
+    </a>
+    <a href="{{ employee_dash_url('settings/curriculum coordinator') }}"
+       class="sidebar-item {% if request.endpoint == 'settings' and request.view_args.get('role') == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-sliders-h w-5"></i>
+        <span>Curriculum settings</span>
     </a>{% elif current_role == 'teachers' %}
     <!-- Teacher Links -->
     <a href="{{ employee_dash_url('my-classes') }}" 

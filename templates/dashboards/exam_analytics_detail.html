@@ -106,7 +106,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 </h2>
                 {% if students_marks and students_marks|length > 0 and distinct_subjects and distinct_subjects|length > 0 %}
                 <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-                    <i class="fas fa-chart-line text-green-600 mr-2"></i>Class mean: <span class="text-green-700 dark:text-green-400">{{ "%.2f"|format(class_mean|float) }}</span>
+                    <i class="fas fa-chart-line text-green-600 mr-2"></i>Class mean:
+                    <span class="text-green-700 dark:text-green-400">{{ "%.2f"|format(class_mean|float) }}</span>
+                    {% if class_mean_grade %}
+                    <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ class_mean_grade }})</span>
+                    {% endif %}
                 </p>
                 <div class="overflow-x-auto rounded-lg shadow" style="max-height: calc(100vh - 280px);">
                     <table class="w-full text-sm border-collapse">
@@ -130,9 +134,18 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                     <span class="text-gray-500 dark:text-gray-400 font-normal text-xs block">({{ sm.student_id }})</span>
                                 </td>
                                 {% for m in sm.marks_list %}
-                                <td class="px-1 py-2 text-center text-gray-900 dark:text-white font-semibold text-base">{% if m.marks is not none %}{{ "%.0f"|format(m.marks|float) }}{% else %}—{% endif %}</td>
+                                <td class="px-1 py-2 text-center text-gray-900 dark:text-white font-semibold text-base">
+                                    {% if m.marks is not none %}
+                                        {{ "%.0f"|format(m.marks|float) }}{% if m.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ m.grade }})</span>{% endif %}
+                                    {% else %}—{% endif %}
+                                </td>
                                 {% endfor %}
-                                <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">{{ "%.0f"|format(sm.total_marks|float) }}</td>
+                                <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
+                                    {{ "%.0f"|format(sm.total_marks|float) }}
+                                    {% if sm.total_grade %}
+                                    <span class="block text-xs font-bold text-emerald-800 dark:text-emerald-300">({{ sm.total_grade }})</span>
+                                    {% endif %}
+                                </td>
                                 <td class="px-3 py-2 text-center text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20">
                                     {% if sm.position == 1 %}<i class="fas fa-medal text-yellow-500 mr-1"></i>{% elif sm.position == 2 %}<i class="fas fa-medal text-gray-400 mr-1"></i>{% elif sm.position == 3 %}<i class="fas fa-medal text-amber-600 mr-1"></i>{% endif %}
                                     {{ sm.position }}{% if sm.position == 1 %}st{% elif sm.position == 2 %}nd{% elif sm.position == 3 %}rd{% elif sm.position %}th{% endif %}
@@ -168,7 +181,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                     <tr>
                                         <th class="p-3 text-left font-semibold">#</th>
                                         <th class="p-3 text-left font-semibold">Student</th>
-                                        <th class="p-3 text-right font-semibold">Marks</th>
+                                        <th class="p-3 text-right font-semibold">Marks (Grade)</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -179,7 +192,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                             {{ s.rank }}
                                         </td>
                                         <td class="p-3 text-gray-900 dark:text-white">{{ s.full_name }} <span class="text-gray-500 dark:text-gray-400 font-normal">({{ s.student_id }})</span></td>
-                                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{% if s.marks is not none %}{{ "%.2f"|format(s.marks|float) }}{% else %}—{% endif %}</td>
+                                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">
+                                            {% if s.marks is not none %}
+                                                {{ "%.2f"|format(s.marks|float) }}{% if s.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ s.grade }})</span>{% endif %}
+                                            {% else %}—{% endif %}
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                     {% if subj.top_students|length == 0 %}
@@ -212,7 +229,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <th class="p-3 text-left font-semibold">#</th>
                                 <th class="p-3 text-left font-semibold">Subject</th>
                                 <th class="p-3 text-left font-semibold">Teacher</th>
-                                <th class="p-3 text-right font-semibold">Mean Grade</th>
+                                <th class="p-3 text-right font-semibold">Mean Grade (Band)</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -224,7 +241,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 </td>
                                 <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.subject_name or '—' }}</td>
                                 <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.supervisor_name }}</td>
-                                <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{{ "%.2f"|format(t.mean_grade) }}</td>
+                                <td class="p-3 text-right font-medium text-gray-900 dark:text-white">
+                                    {{ "%.2f"|format(t.mean_grade) }}{% if t.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ t.grade }})</span>{% endif %}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>

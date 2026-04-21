@@ -2,7 +2,7 @@
     <div class="order-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Academic Schedule Configuration</h3>
 
-        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" @submit.prevent="saveSettings()">
+        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
             <input type="hidden" name="profile_id" :value="profileId">
             <input type="hidden" name="return_to" value="academic-settings">
 
@@ -121,7 +121,7 @@
                         <div>
                             <div class="flex items-center gap-2">
                                 <p class="font-semibold text-gray-900 dark:text-white" x-text="profile.profile_name"></p>
-                                <span x-show="String(profile.id) === String(profileId)"
+                                <span x-show="Boolean(profile.is_active)"
                                       class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">Active</span>
                             </div>
                             <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
@@ -189,7 +189,7 @@ function academicCoordinatorSettings() {
         validateAndCalculateClassTime(i){ const c=this.classTimes[i]; if(!c||!c.start_time||!this.classDuration){ if(c){c.end_time='';} return;} const [h,m]=c.start_time.split(':').map(Number); const d=new Date(); d.setHours(h,m,0,0); const e=new Date(d.getTime()+this.classDuration*60000); c.end_time=`${String(e.getHours()).padStart(2,'0')}:${String(e.getMinutes()).padStart(2,'0')}`; },
         addActivity(){ this.activities.push({ id:'activity_'+(++this.activityCounter), name:'Short Break', start_time:'10:00', duration:15, end_time:'10:15' }); },
         calculateEndTime(i){ const a=this.activities[i]; if(!a||!a.start_time||!a.duration){ if(a){a.end_time='';} return;} const [h,m]=a.start_time.split(':').map(Number); const d=new Date(); d.setHours(h,m,0,0); const e=new Date(d.getTime()+a.duration*60000); a.end_time=`${String(e.getHours()).padStart(2,'0')}:${String(e.getMinutes()).padStart(2,'0')}`; },
-        saveSettings(){ if(!this.profileName || !this.selectedLevels.length){ alert('Please provide profile name and select at least one level.'); return false; } this.classTimes.forEach((_,i)=>this.validateAndCalculateClassTime(i)); this.activities.forEach((_,i)=>this.calculateEndTime(i)); this.$el.submit(); }
+        saveSettings(){ if(!this.profileName || !this.selectedLevels.length){ alert('Please provide profile name and select at least one level.'); return false; } this.classTimes.forEach((_,i)=>this.validateAndCalculateClassTime(i)); this.activities.forEach((_,i)=>this.calculateEndTime(i)); this.$refs.settingsForm.submit(); }
     }
 }
 </script>

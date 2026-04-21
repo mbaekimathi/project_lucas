@@ -1048,6 +1048,22 @@ a.edu-strip__link:hover {
     linear-gradient(to top, rgba(0, 0, 0, 0.45) 0%, transparent 55%);
 }
 
+/* School’s own campus photo: show the image (lighter scrim, not a near-black veil) */
+.edu-cta-band--school-photo .edu-cta-band__media-scrim {
+  background:
+    linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--brand-primary, #800020) 38%, rgba(15, 23, 42, 0.5)) 0%,
+      rgba(15, 23, 42, 0.45) 50%,
+      rgba(15, 23, 42, 0.62) 100%
+    ),
+    linear-gradient(to top, rgba(0, 0, 0, 0.35) 0%, transparent 50%);
+}
+
+.edu-cta-band--school-photo .edu-cta-band__glow {
+  opacity: 0.22;
+}
+
 /* CTA band */
 .edu-cta-band .edu-cta-band__glow {
   position: absolute;

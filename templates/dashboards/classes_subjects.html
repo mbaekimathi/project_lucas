@@ -4,6 +4,12 @@
 
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
+<a href="{{ employee_dash_url() }}" 
+   class="sidebar-item">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+
 <a href="{{ employee_dash_url('classes-subjects') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-book w-5"></i>
@@ -17,23 +23,6 @@
     <span>Subject & Class Allocation Panel</span>
 </a>
 
-<a href="{{ employee_dash_url('academic-subject-registration') }}" 
-   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-book-open w-5"></i>
-    <span>Academic Subject Registration</span>
-</a>
-
-<a href="{{ employee_dash_url('exam-evaluation') }}" 
-   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam & Evaluation</span>
-</a>
-
-<a href="{{ employee_dash_url() }}" 
-   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 {% endblock %}
 
 {% block extra_head %}
@@ -61,7 +50,7 @@
                 Classes &amp; subjects
             </h1>
             <p class="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400">
-                Classes are listed in order. Expand a row to see the dropdown and scrollable list of subject–teacher allocations for that level.
+                Classes are listed in order. Expand a row to see the dropdown and scrollable list of allocated subjects for that level.
             </p>
         </header>
 
@@ -92,12 +81,12 @@
                             </span>
                         </summary>
                         <div class="px-3 pb-3 pt-0 border-t border-gray-100 dark:border-gray-700">
-                            <label class="sr-only" for="alloc-select-{{ level.id }}">Browse allocations for {{ level.level_name }}</label>
+                            <label class="sr-only" for="alloc-select-{{ level.id }}">Browse subjects for {{ level.level_name }}</label>
                             <select id="alloc-select-{{ level.id }}" class="w-full mt-3 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm px-3 py-2 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
-                                <option value="">— Dropdown: subject &amp; teacher —</option>
+                                <option value="">— Dropdown: subjects —</option>
                                 {% for a in subs %}
-                                <option value="{{ a.assignment_id }}">
-                                    {{ a.subject_name }}{% if a.subject_code %} ({{ a.subject_code }}){% endif %} — {{ a.teacher_name }}{% if a.teacher_employee_id %} · {{ a.teacher_employee_id }}{% endif %}
+                                <option value="{{ a.subject_id }}">
+                                    {{ a.subject_name }}{% if a.subject_code %} ({{ a.subject_code }}){% endif %}
                                 </option>
                                 {% endfor %}
                             </select>
@@ -107,9 +96,6 @@
                                 <li class="flex flex-col sm:flex-row sm:items-baseline sm:gap-2 py-1.5 border-b border-gray-100 dark:border-gray-700/80 last:border-b-0">
                                     <span class="font-medium text-gray-900 dark:text-white">
                                         {{ a.subject_name }}{% if a.subject_code %} <span class="text-gray-500 dark:text-gray-400 font-normal text-xs">({{ a.subject_code }})</span>{% endif %}
-                                    </span>
-                                    <span class="text-gray-600 dark:text-gray-400 sm:ml-auto">
-                                        {{ a.teacher_name }}{% if a.teacher_employee_id %} <span class="text-xs text-gray-500">· {{ a.teacher_employee_id }}</span>{% endif %}
                                     </span>
                                 </li>
                                 {% endfor %}

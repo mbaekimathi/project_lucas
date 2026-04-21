@@ -3,34 +3,8 @@
 {% block title %}Academic Subject Registration - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<!-- Classes & Subjects Links -->
-<a href="{{ employee_dash_url('classes-subjects') }}" 
-   class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-book w-5"></i>
-    <span>Classes & Subjects</span>
-</a>
-
-<a href="{{ employee_dash_url('subject-class-allocation') }}" 
-   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-tasks w-5"></i>
-    <span>Subject & Class Allocation Panel</span>
-</a>
-
-<a href="{{ employee_dash_url('academic-subject-registration') }}" 
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-book-open w-5"></i>
-    <span>Academic Subject Registration</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-
-<a href="{{ employee_dash_url('exam-evaluation') }}" 
-   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam & Evaluation</span>
-</a>
-
 <a href="{{ employee_dash_url() }}" 
-   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+   class="sidebar-item">
     <i class="fas fa-arrow-left w-5"></i>
     <span>Back to Dashboard</span>
 </a>
@@ -105,14 +79,26 @@
 
     <!-- Register New Subject Form -->
     <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
-        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-            <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
-                <i class="fas fa-plus-circle text-white"></i>
-            </div>
-            <span x-text="editingSubject ? 'Edit Subject' : 'Register New Subject'"></span>
-        </h2>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
+                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
+                    <i class="fas fa-plus-circle text-white"></i>
+                </div>
+                <span x-text="editingSubject ? 'Edit Subject' : 'Register New Subject'"></span>
+            </h2>
+            <button type="button"
+                    x-show="!editingSubject"
+                    @click="showRegisterForm = !showRegisterForm"
+                    class="modern-btn px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg">
+                <i class="fas fa-plus mr-2"></i>
+                <span x-text="showRegisterForm ? 'Hide Register Form' : 'Register New Subject'"></span>
+            </button>
+        </div>
         
-        <form @submit.prevent="saveSubject()" class="space-y-5 sm:space-y-6">
+        <form x-show="showRegisterForm || editingSubject"
+              x-cloak
+              @submit.prevent="saveSubject()"
+              class="space-y-5 sm:space-y-6">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 <!-- Subject Name -->
                 <div>
@@ -139,6 +125,30 @@
                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary uppercase"
                            placeholder="E.G., MATH101"
                            style="text-transform: uppercase;">
+                </div>
+            </div>
+
+            <!-- Academic Levels (where this subject is taught) -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                    Academic Levels Taught <span class="text-red-500">*</span>
+                </label>
+                <div class="border-2 border-gray-300 dark:border-gray-600 rounded-xl p-3 bg-white dark:bg-gray-700 max-h-48 overflow-y-auto">
+                    <template x-if="activeAcademicLevels.length === 0">
+                        <p class="text-sm text-gray-500 dark:text-gray-400 py-2">No active academic levels available.</p>
+                    </template>
+                    <div class="space-y-2" x-show="activeAcademicLevels.length > 0">
+                        <template x-for="level in activeAcademicLevels" :key="level.id">
+                            <label class="flex items-center gap-3 py-1 cursor-pointer">
+                                <input type="checkbox"
+                                       :value="level.id"
+                                       @change="toggleLevel(level.id)"
+                                       :checked="formData.academic_level_ids.includes(level.id)"
+                                       class="w-4 h-4 text-brand-primary border-gray-300 rounded focus:ring-brand-primary">
+                                <span class="text-sm text-gray-900 dark:text-white" x-text="`${level.level_name} (${level.level_category || 'N/A'})`"></span>
+                            </label>
+                        </template>
+                    </div>
                 </div>
             </div>
             
@@ -214,6 +224,7 @@
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Name</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Subject Code</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden md:table-cell">Description</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold hidden lg:table-cell">Academic Levels</th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Status</th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
                         </tr>
@@ -224,6 +235,9 @@
                                 <td class="p-3 sm:p-4 text-sm font-semibold text-gray-900 dark:text-white" x-text="subject.subject_name"></td>
                                 <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white" x-text="subject.subject_code || '—'"></td>
                                 <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden md:table-cell" x-text="subject.description || '—'"></td>
+                                <td class="p-3 sm:p-4 text-sm text-gray-900 dark:text-white hidden lg:table-cell">
+                                    <span x-text="(subject.academic_levels || []).map(l => l.level_name).join(', ') || '—'"></span>
+                                </td>
                                 <td class="p-3 sm:p-4 text-center">
                                     <span class="px-3 py-1.5 rounded-full text-xs font-semibold"
                                           :class="subject.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'"
@@ -254,13 +268,16 @@
 function subjectRegistration() {
     return {
         subjects: {{ subjects|tojson|safe }},
+        activeAcademicLevels: {{ active_academic_levels|tojson|safe }},
         formData: {
             subject_id: null,
             subject_name: '',
             subject_code: '',
             description: '',
+            academic_level_ids: [],
             status: 'active'
         },
+        showRegisterForm: false,
         editingSubject: false,
         saving: false,
         
@@ -269,12 +286,17 @@ function subjectRegistration() {
                 alert('Subject name is required');
                 return;
             }
+            if (!this.formData.academic_level_ids.length) {
+                alert('Please select at least one academic level.');
+                return;
+            }
             
             // Ensure all fields are uppercase
             const subjectData = {
                 subject_name: this.formData.subject_name.trim().toUpperCase(),
                 subject_code: this.formData.subject_code ? this.formData.subject_code.trim().toUpperCase() : '',
                 description: this.formData.description ? this.formData.description.trim().toUpperCase() : '',
+                academic_level_ids: this.formData.academic_level_ids,
                 status: this.formData.status
             };
             
@@ -320,9 +342,11 @@ function subjectRegistration() {
                 subject_name: subject.subject_name,
                 subject_code: subject.subject_code || '',
                 description: subject.description || '',
+                academic_level_ids: (subject.academic_level_ids || []).map(id => Number(id)),
                 status: subject.status
             };
             this.editingSubject = true;
+            this.showRegisterForm = true;
             
             // Scroll to form
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -365,9 +389,20 @@ function subjectRegistration() {
                 subject_name: '',
                 subject_code: '',
                 description: '',
+                academic_level_ids: [],
                 status: 'active'
             };
             this.editingSubject = false;
+            this.showRegisterForm = false;
+        },
+
+        toggleLevel(levelId) {
+            const id = Number(levelId);
+            if (this.formData.academic_level_ids.includes(id)) {
+                this.formData.academic_level_ids = this.formData.academic_level_ids.filter(x => x !== id);
+            } else {
+                this.formData.academic_level_ids = [...this.formData.academic_level_ids, id];
+            }
         }
     }
 }

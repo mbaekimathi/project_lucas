@@ -7,14 +7,14 @@
 {% include "dashboards/_secretary_academic_nav_sidebar.html" %}
 {% else %}
 <div class="space-y-2">
+    <a href="{{ employee_dash_url() }}" class="w-full sidebar-item">
+        <i class="fas fa-arrow-left w-5"></i>
+        <span>Back to Dashboard</span>
+    </a>
     <a href="{{ url_for('reports') }}" class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-file-alt w-5"></i>
         <span class="font-semibold">Reports</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
-    </a>
-    <a href="{{ employee_dash_url() }}" class="w-full sidebar-item">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span>Back to Dashboard</span>
     </a>
 </div>
 {% endif %}

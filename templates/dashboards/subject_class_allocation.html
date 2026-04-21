@@ -4,6 +4,12 @@
 
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
+<a href="{{ employee_dash_url() }}" 
+   class="sidebar-item">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+
 <a href="{{ employee_dash_url('classes-subjects') }}" 
    class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
@@ -17,23 +23,6 @@
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
-<a href="{{ employee_dash_url('academic-subject-registration') }}" 
-   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-book-open w-5"></i>
-    <span>Academic Subject Registration</span>
-</a>
-
-<a href="{{ employee_dash_url('exam-evaluation') }}" 
-   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam & Evaluation</span>
-</a>
-
-<a href="{{ employee_dash_url() }}" 
-   class="sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 {% endblock %}
 
 {% block extra_head %}
@@ -103,13 +92,13 @@
         </div>
     </div>
 
-    <!-- Step 1: Select Academic Level and Teacher -->
+    <!-- Step 1: Select Academic Level -->
     <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
         <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
             <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
                 <i class="fas fa-user-check text-white"></i>
             </div>
-            Step 1: Select Academic Level and Teacher
+            Step 1: Select Academic Level
         </h2>
         
         <!-- Success Message -->
@@ -128,14 +117,14 @@
             <span class="text-red-800 dark:text-red-300 font-medium" x-text="errorMessage"></span>
         </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        <div class="grid grid-cols-1 gap-4 sm:gap-6">
             <!-- Academic Level -->
             <div>
                 <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                     Academic Level <span class="text-red-500">*</span>
                 </label>
                 <select x-model="formData.academic_level_id" 
-                        @change="loadAvailableSubjects()"
+                        @change="onAcademicLevelChange()"
                         required
                         class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
                     <option value="">Select Academic Level</option>
@@ -144,27 +133,11 @@
                     </template>
                 </select>
             </div>
-            
-            <!-- Teacher -->
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    Teacher <span class="text-red-500">*</span>
-                </label>
-                <select x-model="formData.teacher_id" 
-                        @change="loadAvailableSubjects()"
-                        required
-                        class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
-                    <option value="">Select Teacher</option>
-                    <template x-for="teacher in teachers" :key="teacher.id">
-                        <option :value="teacher.id" x-text="teacher.full_name + ' (' + teacher.employee_id + ')'"></option>
-                    </template>
-                </select>
-            </div>
         </div>
     </div>
 
     <!-- Step 2: Allocate Subjects -->
-    <div x-show="formData.academic_level_id && formData.teacher_id" 
+    <div x-show="formData.academic_level_id" 
          x-cloak
          class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
         <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
@@ -173,7 +146,7 @@
             </div>
             Step 2: Allocate Subjects
         </h2>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Select one or more subjects to allocate to this teacher for the selected academic level.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">All active subjects are listed below. For each subject, select one or more teachers to allocate.</p>
         
         <!-- Selected Teacher and Level Info -->
         <div class="mb-6 p-4 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 dark:from-brand-primary/20 dark:to-brand-secondary/20 rounded-xl border-2 border-brand-primary/20">
@@ -184,26 +157,51 @@
                     <span class="font-bold text-gray-900 dark:text-white ml-2" x-text="getSelectedLevelName()"></span>
                 </div>
                 <div class="flex items-center">
-                    <i class="fas fa-chalkboard-teacher text-brand-primary mr-2"></i>
-                    <span class="text-sm text-gray-600 dark:text-gray-400">Teacher:</span>
-                    <span class="font-bold text-gray-900 dark:text-white ml-2" x-text="getSelectedTeacherName()"></span>
+                    <i class="fas fa-book-open text-brand-primary mr-2"></i>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">Subjects:</span>
+                    <span class="font-bold text-gray-900 dark:text-white ml-2" x-text="availableSubjects.length"></span>
                 </div>
             </div>
         </div>
         
-        <!-- Subject Selection -->
-        <div class="mb-6">
-            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                Select Subject(s) <span class="text-red-500">*</span>
-            </label>
-            <select x-model="formData.subject_id" 
-                    required
-                    class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
-                <option value="">Select Subject</option>
-                <template x-for="subject in availableSubjects" :key="subject.id">
-                    <option :value="subject.id" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></option>
-                </template>
-            </select>
+        <div class="mb-6 space-y-4">
+            <template x-for="subject in availableSubjects" :key="'subject-alloc-' + subject.id">
+                <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 p-4 bg-white/70 dark:bg-gray-800/40">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+                        <div class="font-semibold text-gray-900 dark:text-white" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400">
+                            <span x-text="getSelectedTeacherCountForSubject(subject.id)"></span> teacher(s) selected
+                        </div>
+                    </div>
+                    <div class="relative"
+                         x-data="{ open: false }"
+                         @click.outside="open = false">
+                        <label class="block text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
+                            Select Teacher(s)
+                        </label>
+                        <button type="button"
+                                @click="open = !open"
+                                class="modern-input w-full px-3 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-left text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary flex items-center justify-between">
+                            <span class="truncate" x-text="getSelectedTeacherSummaryForSubject(subject.id)"></span>
+                            <i class="fas ml-2 text-gray-500 dark:text-gray-300" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                        </button>
+
+                        <div x-show="open"
+                             x-transition
+                             class="absolute z-30 mt-2 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl p-2 max-h-56 overflow-y-auto">
+                            <template x-for="teacher in teachers" :key="'teacher-opt-' + subject.id + '-' + teacher.id">
+                                <label class="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer">
+                                    <input type="checkbox"
+                                           class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                                           :checked="isTeacherSelectedForSubject(subject.id, teacher.id)"
+                                           @change="toggleTeacherForSubject(subject.id, teacher.id)">
+                                    <span class="text-sm text-gray-800 dark:text-gray-200" x-text="teacher.full_name + ' (' + teacher.employee_id + ')'"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </template>
             <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
                 <a href="#" class="text-brand-primary hover:text-brand-maroon-dark font-medium transition-colors" @click.prevent="showAddSubjectModal = true">
                     <i class="fas fa-plus mr-1"></i>Add New Subject
@@ -211,7 +209,7 @@
             </p>
         </div>
         
-        <!-- Allocate Button -->
+        <!-- Save Button -->
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
             <button type="button" 
                     @click="resetForm()"
@@ -220,12 +218,12 @@
                 <i class="fas fa-redo mr-2"></i>Reset
             </button>
             <button type="button" 
-                    @click="saveAllocation()"
+                    @click="saveLevelAllocations()"
                     :disabled="isSaveDisabled"
                     class="modern-btn px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center">
                 <i class="fas fa-save mr-2" x-show="!saving"></i>
                 <i class="fas fa-spinner fa-spin mr-2" x-show="saving"></i>
-                <span x-text="saving ? 'Allocating...' : 'Allocate Subject'"></span>
+                <span x-text="saving ? 'Saving...' : 'Save Allocations'"></span>
             </button>
         </div>
     </div>
@@ -309,20 +307,43 @@
                 Existing Allocations
             </h2>
             <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm">
-                <span x-text="allocations.length"></span> allocation(s)
+                <span x-text="filteredAllocations.length"></span> allocation(s)
             </span>
+        </div>
+
+        <div class="mb-5">
+            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Academic Level
+            </label>
+            <select x-model="existingAllocationsLevelId"
+                    class="modern-input w-full md:w-[28rem] px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                <option value="">Select Academic Level</option>
+                <template x-for="level in academicLevels" :key="'existing-level-' + level.id">
+                    <option :value="String(level.id)" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
+                </template>
+            </select>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Select one academic level to view all allocated subjects and teachers.
+            </p>
         </div>
         
         <!-- Empty State -->
-        <div x-show="allocations.length === 0" class="text-center py-12">
+        <div x-show="existingAllocationsLevelId && filteredAllocations.length === 0" class="text-center py-12">
             <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i class="fas fa-inbox text-gray-400 text-3xl"></i>
             </div>
-            <p class="text-gray-600 dark:text-gray-400 text-lg">No allocations found. Create your first allocation above.</p>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">No allocations found for the selected academic level.</p>
+        </div>
+
+        <div x-show="!existingAllocationsLevelId" class="text-center py-12">
+            <div class="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-filter text-gray-400 text-3xl"></i>
+            </div>
+            <p class="text-gray-600 dark:text-gray-400 text-lg">Select an academic level to view existing allocations.</p>
         </div>
         
         <!-- Allocations Table -->
-        <div x-show="allocations.length > 0" class="responsive-table">
+        <div x-show="existingAllocationsLevelId && filteredAllocations.length > 0" class="responsive-table">
             <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
                 <table class="w-full border-collapse">
                     <thead>
@@ -334,7 +355,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="allocation in allocations" :key="allocation.id">
+                        <template x-for="allocation in filteredAllocations" :key="allocation.id">
                             <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                                 <td class="p-3 sm:p-4">
                                     <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.level_name"></div>
@@ -370,7 +391,9 @@ function subjectAllocation() {
         subjects: {{ subjects|tojson|safe }},
         teachers: {{ teachers|tojson|safe }},
         allocations: {{ assignments|tojson|safe }},
+        existingAllocationsLevelId: '',
         availableSubjects: [],
+        selectedTeachersBySubject: {},
         formData: {
             academic_level_id: '',
             subject_id: '',
@@ -388,11 +411,18 @@ function subjectAllocation() {
         },
         
         get isFormValid() {
-            return this.formData.academic_level_id && this.formData.subject_id && this.formData.teacher_id;
+            return !!this.formData.academic_level_id;
         },
         
         get isSaveDisabled() {
             return this.saving || !this.isFormValid;
+        },
+
+        get filteredAllocations() {
+            if (!this.existingAllocationsLevelId) {
+                return [];
+            }
+            return this.allocations.filter(a => String(a.academic_level_id) === String(this.existingAllocationsLevelId));
         },
         
         getSelectedLevelName() {
@@ -400,56 +430,113 @@ function subjectAllocation() {
             return level ? level.level_name + ' (' + level.level_category + ')' : '';
         },
         
-        getSelectedTeacherName() {
-            const teacher = this.teachers.find(t => t.id == this.formData.teacher_id);
-            return teacher ? teacher.full_name + ' (' + teacher.employee_id + ')' : '';
-        },
-        
         loadAvailableSubjects() {
-            if (!this.formData.academic_level_id || !this.formData.teacher_id) {
+            if (!this.formData.academic_level_id) {
                 this.availableSubjects = [];
+                this.selectedTeachersBySubject = {};
                 return;
             }
-            
-            // Get already allocated subjects for this teacher and level
-            const allocatedSubjectIds = this.allocations
-                .filter(a => a.academic_level_id == this.formData.academic_level_id && a.teacher_id == this.formData.teacher_id)
-                .map(a => a.subject_id);
-            
-            // Filter out already allocated subjects
-            this.availableSubjects = this.subjects.filter(s => !allocatedSubjectIds.includes(s.id));
+
+            // Show all active subjects once an academic level is selected.
+            this.availableSubjects = [...this.subjects];
+            this.initializeSelectedTeachersBySubject();
+        },
+
+        onAcademicLevelChange() {
+            this.loadAvailableSubjects();
+        },
+
+        initializeSelectedTeachersBySubject() {
+            const levelId = String(this.formData.academic_level_id || '');
+            const map = {};
+            this.availableSubjects.forEach(subject => {
+                const subjectId = String(subject.id);
+                const current = this.allocations
+                    .filter(a => String(a.academic_level_id) === levelId && String(a.subject_id) === subjectId)
+                    .map(a => String(a.teacher_id));
+                map[subjectId] = [...new Set(current)];
+            });
+            this.selectedTeachersBySubject = map;
+        },
+
+        isTeacherSelectedForSubject(subjectId, teacherId) {
+            const key = String(subjectId);
+            const tid = String(teacherId);
+            return Array.isArray(this.selectedTeachersBySubject[key]) && this.selectedTeachersBySubject[key].includes(tid);
+        },
+
+        toggleTeacherForSubject(subjectId, teacherId) {
+            const key = String(subjectId);
+            const tid = String(teacherId);
+            if (!Array.isArray(this.selectedTeachersBySubject[key])) {
+                this.selectedTeachersBySubject[key] = [];
+            }
+            const arr = this.selectedTeachersBySubject[key];
+            const idx = arr.indexOf(tid);
+            if (idx >= 0) {
+                arr.splice(idx, 1);
+            } else {
+                arr.push(tid);
+            }
+        },
+
+        getSelectedTeacherValuesForSubject(subjectId) {
+            const key = String(subjectId);
+            return Array.isArray(this.selectedTeachersBySubject[key]) ? this.selectedTeachersBySubject[key] : [];
+        },
+
+        getSelectedTeacherSummaryForSubject(subjectId) {
+            const selectedIds = this.getSelectedTeacherValuesForSubject(subjectId);
+            if (!selectedIds.length) return 'Select teacher(s)';
+            const names = selectedIds.map(id => {
+                const teacher = this.teachers.find(t => String(t.id) === String(id));
+                return teacher ? teacher.full_name : null;
+            }).filter(Boolean);
+            if (!names.length) return 'Select teacher(s)';
+            if (names.length <= 2) return names.join(', ');
+            return `${names[0]}, ${names[1]} +${names.length - 2} more`;
+        },
+
+        setTeachersForSubjectFromSelect(subjectId, event) {
+            const key = String(subjectId);
+            const selected = Array.from(event.target.selectedOptions || []).map(o => String(o.value));
+            // De-duplicate defensively before save.
+            this.selectedTeachersBySubject[key] = [...new Set(selected)];
+        },
+
+        getSelectedTeacherCountForSubject(subjectId) {
+            const key = String(subjectId);
+            return Array.isArray(this.selectedTeachersBySubject[key]) ? this.selectedTeachersBySubject[key].length : 0;
         },
         
-        async saveAllocation() {
-            if (!this.formData.academic_level_id || !this.formData.subject_id || !this.formData.teacher_id) {
-                this.errorMessage = 'Please fill in all required fields: Academic Level, Teacher, and Subject';
+        async saveLevelAllocations() {
+            if (!this.formData.academic_level_id) {
+                this.errorMessage = 'Please select an academic level.';
                 setTimeout(() => { this.errorMessage = ''; }, 5000);
                 return;
             }
-            
-            const allocationData = {
-                academic_level_id: parseInt(this.formData.academic_level_id),
-                subject_id: parseInt(this.formData.subject_id),
-                teacher_id: parseInt(this.formData.teacher_id)
-            };
-            
-            if (isNaN(allocationData.academic_level_id) || isNaN(allocationData.subject_id) || isNaN(allocationData.teacher_id)) {
-                this.errorMessage = 'Invalid selection. Please select valid options for all fields.';
-                setTimeout(() => { this.errorMessage = ''; }, 5000);
-                return;
-            }
+
+            const payloadAllocations = {};
+            this.availableSubjects.forEach(subject => {
+                const sid = String(subject.id);
+                const teacherIds = Array.isArray(this.selectedTeachersBySubject[sid]) ? this.selectedTeachersBySubject[sid] : [];
+                payloadAllocations[sid] = teacherIds.map(id => parseInt(id)).filter(id => !isNaN(id));
+            });
             
             this.saving = true;
             this.errorMessage = '';
             this.successMessage = '';
             
             try {
-                const response = await fetch('{{ employee_dash_url('subject-class-allocation/save') }}', {
+                const response = await fetch('{{ employee_dash_url('subject-class-allocation/save-level-allocations') }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(allocationData)
+                    body: JSON.stringify({
+                        academic_level_id: parseInt(this.formData.academic_level_id),
+                        allocations: payloadAllocations
+                    })
                 });
                 
                 const result = await response.json();
@@ -457,8 +544,6 @@ function subjectAllocation() {
                 if (result.success) {
                     this.successMessage = result.message || 'Subject allocated successfully!';
                     this.errorMessage = '';
-                    // Reset subject selection but keep level and teacher
-                    this.formData.subject_id = '';
                     // Reload page after delay to refresh allocations
                     setTimeout(() => {
                         window.location.reload();
@@ -562,6 +647,7 @@ function subjectAllocation() {
                 teacher_id: ''
             };
             this.availableSubjects = [];
+            this.selectedTeachersBySubject = {};
             this.successMessage = '';
             this.errorMessage = '';
         },
@@ -569,6 +655,10 @@ function subjectAllocation() {
         init() {
             // Initialize available subjects on page load
             this.loadAvailableSubjects();
+            // Preselect first level if available for quick view
+            if (this.academicLevels.length > 0) {
+                this.existingAllocationsLevelId = String(this.academicLevels[0].id);
+            }
         }
     }
 }

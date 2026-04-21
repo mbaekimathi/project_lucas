@@ -4,6 +4,17 @@
 
 {% block sidebar_content %}
 <div class="space-y-1" x-data="{ currentHash: window.location.hash || '' }" @hashchange.window="currentHash = window.location.hash || ''">
+    <a href="{{ employee_dash_url() }}"
+        class="sidebar-item dashboard-utility-link sidebar-back-button sidebar-back-button-icon">
+        <i class="fas fa-arrow-left w-5 text-center" aria-hidden="true"></i>
+        <span class="sr-only">Back</span>
+    </a>
+    <a href="{{ dashboard_home_url() }}"
+        class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
+        <span>Dashboard</span>
+    </a>
+
     <div class="px-4 py-2">
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System Configuration</h3>
     </div>
@@ -122,6 +133,42 @@
                             Upload school logo (PNG, JPG, JPEG, GIF - Max 5MB)
                             {% endif %}
                         </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main campus / website hero image -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+                    <i class="fas fa-building text-green-600 mr-2"></i>
+                    Main campus image <span class="text-gray-400 text-xs font-normal">(Public website — home hero &amp; call-to-action)</span>
+                </label>
+                <div class="flex flex-col sm:flex-row sm:items-start gap-6">
+                    <div class="flex-shrink-0">
+                        {% if school_data and school_data.get('school_hero_image') %}
+                        <img src="{{ url_for('static', filename=school_data.school_hero_image) }}"
+                            alt="Campus preview"
+                            class="w-full max-w-xs h-40 sm:w-56 sm:h-36 object-cover rounded-lg border-2 border-gray-200 dark:border-gray-700 shadow-md">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Current image</p>
+                        {% else %}
+                        <div class="w-full max-w-xs h-40 sm:w-56 sm:h-36 bg-gray-100 dark:bg-gray-700 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                            <i class="fas fa-mountain-sun text-gray-400 text-3xl"></i>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No image yet — a default photo is used on the site</p>
+                        {% endif %}
+                    </div>
+                    <div class="flex-1 space-y-3">
+                        <input type="file" id="school_hero_image" name="school_hero_image" accept="image/*"
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Wide landscape photo of your school or campus (PNG, JPG, JPEG, GIF). Shown on the public home page instead of a dark stock image.
+                        </p>
+                        {% if school_data and school_data.get('school_hero_image') %}
+                        <label class="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                            <input type="checkbox" name="remove_school_hero_image" value="1" class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+                            Remove campus image and use default photos on the website
+                        </label>
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -447,7 +494,7 @@
         </div>
 
         <!-- Academic Level Registration Section -->
-        <div x-show="activeSubSection === 'academic-level'" x-cloak style="display: none;">
+        <div x-show="activeSubSection === 'academic-level'" x-cloak style="display: none;" x-data="{ showLevelForm: false }">
             <div
                 class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 mb-6 border border-blue-200 dark:border-blue-800">
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
@@ -458,8 +505,16 @@
                     Primary, Secondary, etc.)</p>
             </div>
 
-            <!-- Add New Academic Level Form -->
-            <div
+            <div class="mb-4 flex justify-end">
+                <button type="button" @click="showLevelForm = true; $nextTick(() => document.getElementById('level_category')?.focus())"
+                    class="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-plus mr-2"></i>
+                    Register Academic Level
+                </button>
+            </div>
+
+            <!-- Add New Academic Level Form (hidden by default) -->
+            <div x-show="showLevelForm" x-cloak
                 class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6 mb-6">
                 <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
                     <i class="fas fa-plus-circle text-green-600 mr-2"></i>
@@ -485,14 +540,23 @@
                             placeholder="E.G., PRIMARY, SECONDARY, PRE-PRIMARY" required
                             class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
                     </div>
+                    <div>
+                        <label for="level_code"
+                            class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                            Level Code <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="level_code" name="level_code"
+                            placeholder="E.G., PRI, SEC, PP" required
+                            class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                    </div>
                     <div class="md:col-span-2">
                         <label for="level_description"
                             class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                             Level Description
                         </label>
                         <textarea id="level_description" name="level_description" rows="3"
-                            placeholder="BRIEF DESCRIPTION OF THIS ACADEMIC LEVEL"
-                            class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"></textarea>
+                            placeholder="Brief description of this academic level"
+                            class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"></textarea>
                     </div>
                     <div class="md:col-span-2">
                         <label
@@ -516,7 +580,7 @@
                         </label>
                     </div>
                     <div class="md:col-span-2 flex justify-end space-x-3">
-                        <button type="button"
+                        <button type="button" @click="showLevelForm = false"
                             class="px-6 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
                             Cancel
                         </button>
@@ -554,6 +618,9 @@
                                     Level Name</th>
                                 <th
                                     class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                    Code</th>
+                                <th
+                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Description</th>
                                 <th
                                     class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
@@ -566,7 +633,14 @@
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {% if academic_levels and academic_levels|length > 0 %}
                             {% for level in academic_levels %}
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            {% if loop.changed(level.level_category) %}
+                            <tr class="bg-blue-50/80 dark:bg-blue-900/20">
+                                <td colspan="6" class="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                                    <i class="fas fa-layer-group mr-1.5"></i>{{ level.level_category or 'UNCATEGORIZED' }}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            <tr id="level-row-{{ level.id }}" data-level-id="{{ level.id }}" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm font-medium text-gray-900 dark:text-white">
                                         {{ level.level_category }}
@@ -575,6 +649,11 @@
                                 <td class="px-6 py-4 whitespace-nowrap">
                                     <div class="text-sm font-medium text-gray-900 dark:text-white">
                                         {{ level.level_name }}
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                        {{ level.level_code or 'N/A' }}
                                     </div>
                                 </td>
                                 <td class="px-6 py-4">
@@ -607,6 +686,7 @@
                                             title="Edit" data-level-id="{{ level.id }}"
                                             data-level-category="{{ level.level_category }}"
                                             data-level-name="{{ level.level_name }}"
+                                            data-level-code="{{ level.level_code or '' }}"
                                             data-level-description="{{ level.level_description or '' }}"
                                             data-level-status="{{ level.level_status }}">
                                             <i class="fas fa-edit"></i>
@@ -623,7 +703,7 @@
                             {% endfor %}
                             {% else %}
                             <tr>
-                                <td colspan="5" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                <td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                     <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                                     <p>No academic levels registered yet</p>
                                 </td>
@@ -682,6 +762,14 @@
                                 <input type="text" id="edit_level_name" name="level_name" required
                                     class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
                             </div>
+                            <div>
+                                <label for="edit_level_code"
+                                    class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                    Level Code <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="edit_level_code" name="level_code" required
+                                    class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                            </div>
                         </div>
 
                         <div>
@@ -690,7 +778,7 @@
                                 Level Description
                             </label>
                             <textarea id="edit_level_description" name="level_description" rows="3"
-                                class="academic-level-uppercase w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"></textarea>
+                                class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all resize-none"></textarea>
                         </div>
 
                         <div>
@@ -735,7 +823,7 @@
         </div>
 
         <!-- Academic Year Settings Section -->
-        <div x-show="activeSubSection === 'academic-year'" x-cloak style="display: none;">
+        <div x-show="activeSubSection === 'academic-year'" x-cloak style="display: none;" x-data="{ showYearForm: false }">
             <div
                 class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-6 mb-6 border border-green-200 dark:border-green-800">
                 <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
@@ -755,37 +843,16 @@
                 </div>
             </div>
 
-            <!-- Current Academic Year Card -->
-            {% if current_academic_year %}
-            <div
-                class="current-year-card bg-gradient-to-br from-green-500 via-green-600 to-emerald-600 rounded-2xl shadow-2xl p-6 sm:p-8 mb-6 text-white gradient-animated">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                            <i class="fas fa-star icon-animated text-yellow-300"></i>
-                            <p class="text-sm sm:text-base font-medium opacity-90">Current Academic Year</p>
-                        </div>
-                        <h4 class="text-2xl sm:text-3xl md:text-4xl font-bold mb-2">{{
-                            current_academic_year.year_name }}</h4>
-                        <p class="text-sm sm:text-base opacity-90 flex items-center gap-2">
-                            <i class="fas fa-calendar-day icon-pulse"></i>
-                            <span>
-                                {{ current_academic_year.start_date.strftime('%B %d, %Y') if
-                                current_academic_year.start_date else 'N/A' }} -
-                                {{ current_academic_year.end_date.strftime('%B %d, %Y') if
-                                current_academic_year.end_date else 'N/A' }}
-                            </span>
-                        </p>
-                    </div>
-                    <div class="bg-white/20 backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl">
-                        <i class="fas fa-calendar-alt text-4xl sm:text-5xl md:text-6xl icon-animated"></i>
-                    </div>
-                </div>
+            <div class="mb-4 flex justify-end">
+                <button type="button" @click="showYearForm = true; $nextTick(() => document.getElementById('year_name')?.focus())"
+                    class="inline-flex items-center px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors">
+                    <i class="fas fa-plus mr-2"></i>
+                    Create New Academic Year
+                </button>
             </div>
-            {% endif %}
 
-            <!-- Add New Academic Year Form -->
-            <div
+            <!-- Add New Academic Year Form (hidden by default) -->
+            <div x-show="showYearForm" x-cloak
                 class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6 modern-card">
                 <h4
                     class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-4 sm:mb-6 flex items-center">
@@ -837,7 +904,7 @@
                         </label>
                     </div>
                     <div class="md:col-span-2 flex justify-end space-x-3">
-                        <button type="button"
+                        <button type="button" @click="showYearForm = false"
                             class="px-6 py-2.5 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all">
                             Cancel
                         </button>
@@ -863,108 +930,71 @@
                     {% endif %}
                 </h4>
                 {% if academic_years and academic_years|length > 0 %}
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                    {% for year in academic_years %}
-                    <div
-                        class="modern-card border-2 {% if year.is_current %}border-green-500 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/30 dark:to-emerald-900/20{% elif year.status == 'active' %}border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/20{% else %}border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800{% endif %} rounded-xl p-4 sm:p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="flex flex-wrap items-center gap-2">
-                                {% if year.is_current %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-green-700 dark:text-green-300 bg-green-200 dark:bg-green-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-star icon-pulse text-xs"></i>
-                                    <span>CURRENT</span>
-                                </span>
-                                {% endif %}
-                                {% if year.status == 'active' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-200 dark:bg-blue-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-circle icon-pulse text-xs"></i>
-                                    <span>ACTIVE</span>
-                                </span>
-                                {% elif year.status == 'closed' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 px-2.5 py-1.5 rounded-full">
-                                    CLOSED
-                                </span>
-                                {% elif year.status == 'suspended' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-200 dark:bg-orange-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-pause icon-pulse text-xs"></i>
-                                    <span>SUSPENDED</span>
-                                </span>
-                                {% else %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2.5 py-1.5 rounded-full">
-                                    DRAFT
-                                </span>
-                                {% endif %}
-                                {% if year.is_locked %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-red-700 dark:text-red-300 bg-red-200 dark:bg-red-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-lock icon-pulse text-xs"></i>
-                                    <span>LOCKED</span>
-                                </span>
-                                {% endif %}
-                            </div>
-                            {% if year.is_current %}
-                            <i class="fas fa-check-circle text-green-600 text-xl icon-animated"></i>
-                            {% endif %}
-                        </div>
-                        <div class="mb-3">
-                            <h5
-                                class="font-bold text-gray-900 dark:text-white text-lg sm:text-xl mb-2 flex items-center gap-2">
-                                <i class="fas fa-calendar text-green-600 dark:text-green-400 icon-hover-effect"></i>
-                                <span>{{ year.year_name }}</span>
-                            </h5>
-                            <p class="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                                <i class="fas fa-clock text-xs"></i>
-                                <span>
-                                    {{ year.start_date.strftime('%b %d, %Y') if year.start_date else 'N/A' }} -
-                                    {{ year.end_date.strftime('%b %d, %Y') if year.end_date else 'N/A' }}
-                                </span>
-                            </p>
-                        </div>
-                        <div
-                            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <div class="flex items-center gap-2">
-                                <!-- Suspend/Unsuspend Toggle -->
-                                <button type="button"
-                                    class="action-btn toggle-suspend-year-btn {% if year.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2.5 rounded-xl touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="{% if year.status == 'suspended' %}Unsuspend Academic Year{% else %}Suspend Academic Year{% endif %}"
-                                    data-year-id="{{ year.id }}" data-year-status="{{ year.status }}">
-                                    <i
-                                        class="fas {% if year.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %} text-base sm:text-lg icon-rotate"></i>
-                                </button>
-                                <!-- Lock/Unlock Toggle -->
-                                <button type="button"
-                                    class="action-btn toggle-lock-year-btn {% if year.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2.5 rounded-xl touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="{% if year.is_locked %}Unlock Academic Year{% else %}Lock Academic Year{% endif %}"
-                                    data-year-id="{{ year.id }}"
-                                    data-year-locked="{{ 'true' if year.is_locked else 'false' }}">
-                                    <i
-                                        class="fas {% if year.is_locked %}fa-unlock{% else %}fa-lock{% endif %} text-base sm:text-lg icon-rotate"></i>
-                                </button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <button type="button"
-                                    class="action-btn edit-year-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="Edit" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}"
-                                    data-start-date="{{ year.start_date.strftime('%Y-%m-%d') if year.start_date else '' }}"
-                                    data-end-date="{{ year.end_date.strftime('%Y-%m-%d') if year.end_date else '' }}"
-                                    data-status="{{ year.status }}"
-                                    data-is-current="{{ 'true' if year.is_current else 'false' }}">
-                                    <i class="fas fa-edit text-base sm:text-lg"></i>
-                                </button>
-                                <button type="button"
-                                    class="action-btn delete-year-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="Delete" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}">
-                                    <i class="fas fa-trash text-base sm:text-lg"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Year</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {% for year in academic_years %}
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                                <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ year.year_name }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                    {{ year.start_date.strftime('%b %d, %Y') if year.start_date else 'N/A' }} - {{ year.end_date.strftime('%b %d, %Y') if year.end_date else 'N/A' }}
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex flex-wrap gap-1.5">
+                                        {% if year.is_current %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-green-200 text-green-700 dark:bg-green-800 dark:text-green-300">CURRENT</span>{% endif %}
+                                        <span class="text-[11px] font-bold px-2 py-1 rounded-full
+                                            {% if year.status == 'active' %}bg-blue-200 text-blue-700 dark:bg-blue-800 dark:text-blue-300
+                                            {% elif year.status == 'closed' %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300
+                                            {% elif year.status == 'suspended' %}bg-orange-200 text-orange-700 dark:bg-orange-800 dark:text-orange-300
+                                            {% else %}bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400{% endif %}">
+                                            {{ year.status|upper }}
+                                        </span>
+                                        {% if year.is_locked %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-red-200 text-red-700 dark:bg-red-800 dark:text-red-300">LOCKED</span>{% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button type="button"
+                                            class="action-btn toggle-suspend-year-btn {% if year.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2 rounded-lg"
+                                            title="{% if year.status == 'suspended' %}Unsuspend Academic Year{% else %}Suspend Academic Year{% endif %}"
+                                            data-year-id="{{ year.id }}" data-year-status="{{ year.status }}">
+                                            <i class="fas {% if year.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %}"></i>
+                                        </button>
+                                        <button type="button"
+                                            class="action-btn toggle-lock-year-btn {% if year.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg"
+                                            title="{% if year.is_locked %}Unlock Academic Year{% else %}Lock Academic Year{% endif %}"
+                                            data-year-id="{{ year.id }}"
+                                            data-year-locked="{{ 'true' if year.is_locked else 'false' }}">
+                                            <i class="fas {% if year.is_locked %}fa-unlock{% else %}fa-lock{% endif %}"></i>
+                                        </button>
+                                        <button type="button"
+                                            class="action-btn edit-year-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            title="Edit" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}"
+                                            data-start-date="{{ year.start_date.strftime('%Y-%m-%d') if year.start_date else '' }}"
+                                            data-end-date="{{ year.end_date.strftime('%Y-%m-%d') if year.end_date else '' }}"
+                                            data-status="{{ year.status }}"
+                                            data-is-current="{{ 'true' if year.is_current else 'false' }}">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button type="button"
+                                            class="action-btn delete-year-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            title="Delete" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
                 {% else %}
                 <div class="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -1095,7 +1125,7 @@
         </div>
 
         <!-- Term Settings Section -->
-        <div x-show="activeSubSection === 'term-settings'" x-cloak style="display: none;">
+        <div x-show="activeSubSection === 'term-settings'" x-cloak style="display: none;" x-data="{ showTermForm: false }">
             <div
                 class="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-2xl p-4 sm:p-6 mb-6 border border-purple-200 dark:border-purple-800 shadow-lg">
                 <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 sm:mb-3 flex items-center">
@@ -1115,8 +1145,16 @@
                 </div>
             </div>
 
+            <div class="mb-4 flex justify-end">
+                <button type="button" @click="showTermForm = true; $nextTick(() => document.getElementById('term_name')?.focus())"
+                    class="inline-flex items-center px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors">
+                    <i class="fas fa-plus mr-2"></i>
+                    Add New Term
+                </button>
+            </div>
+
             <!-- Add New Term Form -->
-            <div
+            <div x-show="showTermForm" x-cloak
                 class="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6 modern-card">
                 <h4
                     class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white mb-4 sm:mb-6 flex items-center">
@@ -1237,7 +1275,7 @@
                         </p>
                     </div>
                     <div class="md:col-span-2 flex flex-col sm:flex-row justify-end gap-3 sm:gap-4">
-                        <button type="button"
+                        <button type="button" @click="showTermForm = false"
                             class="px-4 sm:px-6 py-2.5 sm:py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all touch-manipulation">
                             Cancel
                         </button>
@@ -1265,140 +1303,43 @@
                     {% endif %}
                 </h4>
                 {% if terms and terms|length > 0 %}
-                <div class="space-y-3 sm:space-y-4">
-                    {% for term in terms %}
-                    <div
-                        class="modern-card border-2 {% if term.status == 'active' %}border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/20{% elif term.status == 'closed' %}border-gray-400 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-800/50{% elif term.status == 'suspended' %}border-orange-500 bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/20{% else %}border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800{% endif %} rounded-xl p-4 sm:p-5">
-                        <div
-                            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3">
-                            <div class="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                                <div
-                                    class="w-12 h-12 sm:w-14 sm:h-14 {% if term.status == 'active' %}bg-gradient-to-br from-purple-500 to-pink-500{% elif term.status == 'suspended' %}bg-gradient-to-br from-orange-500 to-amber-500{% else %}bg-gray-300 dark:bg-gray-600{% endif %} rounded-xl flex items-center justify-center {% if term.status == 'active' or term.status == 'suspended' %}text-white shadow-lg{% else %}text-gray-700 dark:text-gray-300{% endif %} font-bold text-lg sm:text-xl icon-bounce">
-                                    {{ loop.index }}
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <h5
-                                        class="font-bold text-gray-900 dark:text-white text-base sm:text-lg mb-1.5 flex items-center gap-2">
-                                        <i
-                                            class="fas fa-calendar-week text-purple-600 dark:text-purple-400 icon-hover-effect"></i>
-                                        <span class="truncate">{{ term.term_name }}</span>
-                                    </h5>
-                                    <p
-                                        class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-1.5 flex items-center gap-2">
-                                        <i class="fas fa-clock text-xs"></i>
-                                        <span class="truncate">
-                                            {{ term.start_date.strftime('%b %d, %Y') if term.start_date else 'N/A'
-                                            }} -
-                                            {{ term.end_date.strftime('%b %d, %Y') if term.end_date else 'N/A' }}
-                                        </span>
-                                    </p>
-                                    <p
-                                        class="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-1.5">
-                                        <i class="fas fa-graduation-cap text-xs"></i>
-                                        <span class="truncate">{{ term.academic_year_name or 'N/A' }}</span>
-                                        {% if term.academic_levels and term.academic_levels|length > 0 %}
-                                        <span class="hidden sm:inline">|</span>
-                                        <i class="fas fa-layer-group text-xs"></i>
-                                        <span class="truncate">
-                                            {% for level in term.academic_levels %}
-                                            {{ level.level_name }}{% if not loop.last %}, {% endif %}
-                                            {% endfor %}
-                                        </span>
-                                        {% endif %}
-                                    </p>
-                                </div>
-                            </div>
-                            <div class="flex flex-wrap items-center gap-2">
-                                {% if term.status == 'active' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-200 dark:bg-purple-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-circle icon-pulse text-xs"></i>
-                                    <span>ACTIVE</span>
-                                </span>
-                                {% elif term.status == 'closed' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-800 px-2.5 py-1.5 rounded-full">
-                                    CLOSED
-                                </span>
-                                {% elif term.status == 'suspended' %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-orange-700 dark:text-orange-300 bg-orange-200 dark:bg-orange-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-pause icon-pulse text-xs"></i>
-                                    <span>SUSPENDED</span>
-                                </span>
-                                {% else %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2.5 py-1.5 rounded-full">
-                                    DRAFT
-                                </span>
-                                {% endif %}
-                                {% if term.is_current %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-200 dark:bg-yellow-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-star icon-pulse text-xs"></i>
-                                    <span>CURRENT</span>
-                                </span>
-                                {% endif %}
-                                {% if term.is_locked %}
-                                <span
-                                    class="badge-modern text-xs font-bold text-red-700 dark:text-red-300 bg-red-200 dark:bg-red-800 px-2.5 py-1.5 rounded-full flex items-center gap-1">
-                                    <i class="fas fa-lock icon-pulse text-xs"></i>
-                                    <span>LOCKED</span>
-                                </span>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div
-                            class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                            <div class="flex items-center gap-2">
-                                <!-- Is Current Toggle -->
-                                <button type="button"
-                                    class="action-btn toggle-current-btn {% if term.is_current %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2.5 rounded-xl touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="{% if term.is_current %}Mark as Not Current{% else %}Mark as Current Term{% endif %}"
-                                    data-term-id="{{ term.id }}"
-                                    data-term-current="{{ 'true' if term.is_current else 'false' }}">
-                                    <i
-                                        class="fas fa-star text-base sm:text-lg {% if term.is_current %}icon-pulse{% endif %}"></i>
-                                </button>
-                                <!-- Suspend/Unsuspend Toggle -->
-                                <button type="button"
-                                    class="action-btn toggle-suspend-btn {% if term.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2.5 rounded-xl touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="{% if term.status == 'suspended' %}Unsuspend Term{% else %}Suspend Term{% endif %}"
-                                    data-term-id="{{ term.id }}" data-term-status="{{ term.status }}">
-                                    <i
-                                        class="fas {% if term.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %} text-base sm:text-lg icon-rotate"></i>
-                                </button>
-                                <!-- Lock/Unlock Toggle -->
-                                <button type="button"
-                                    class="action-btn toggle-lock-btn {% if term.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2.5 rounded-xl touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="{% if term.is_locked %}Unlock Term{% else %}Lock Term{% endif %}"
-                                    data-term-id="{{ term.id }}"
-                                    data-term-locked="{{ 'true' if term.is_locked else 'false' }}">
-                                    <i
-                                        class="fas {% if term.is_locked %}fa-unlock{% else %}fa-lock{% endif %} text-base sm:text-lg icon-rotate"></i>
-                                </button>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <button type="button"
-                                    class="action-btn edit-term-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-900/20 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="Edit" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}"
-                                    data-academic-year-id="{{ term.academic_year_id }}"
-                                    data-academic-level-ids="{{ term.academic_levels|map(attribute='id')|join(',') if term.academic_levels else '' }}"
-                                    data-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}"
-                                    data-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}"
-                                    data-status="{{ term.status }}"
-                                    data-is-current="{{ 'true' if term.is_current else 'false' }}">
-                                    <i class="fas fa-edit text-base sm:text-lg"></i>
-                                </button>
-                                <button type="button"
-                                    class="action-btn delete-term-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                                    title="Delete" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}">
-                                    <i class="fas fa-trash text-base sm:text-lg"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                        <thead class="bg-gray-50 dark:bg-gray-700">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Term</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                            {% for term in terms %}
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                                <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ term.term_name }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ term.academic_year_name or 'N/A' }}</td>
+                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ term.start_date.strftime('%b %d, %Y') if term.start_date else 'N/A' }} - {{ term.end_date.strftime('%b %d, %Y') if term.end_date else 'N/A' }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <span class="text-[11px] font-bold px-2 py-1 rounded-full {% if term.status == 'active' %}bg-purple-200 text-purple-700 dark:bg-purple-800 dark:text-purple-300{% elif term.status == 'closed' %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300{% elif term.status == 'suspended' %}bg-orange-200 text-orange-700 dark:bg-orange-800 dark:text-orange-300{% else %}bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ term.status|upper }}</span>
+                                        {% if term.is_current %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-yellow-200 text-yellow-700 dark:bg-yellow-800 dark:text-yellow-300">CURRENT</span>{% endif %}
+                                        {% if term.is_locked %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-red-200 text-red-700 dark:bg-red-800 dark:text-red-300">LOCKED</span>{% endif %}
+                                    </div>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <button type="button" class="action-btn toggle-current-btn {% if term.is_current %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg" title="{% if term.is_current %}Mark as Not Current{% else %}Mark as Current Term{% endif %}" data-term-id="{{ term.id }}" data-term-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-star {% if term.is_current %}icon-pulse{% endif %}"></i></button>
+                                        <button type="button" class="action-btn toggle-suspend-btn {% if term.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2 rounded-lg" title="{% if term.status == 'suspended' %}Unsuspend Term{% else %}Suspend Term{% endif %}" data-term-id="{{ term.id }}" data-term-status="{{ term.status }}"><i class="fas {% if term.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %}"></i></button>
+                                        <button type="button" class="action-btn toggle-lock-btn {% if term.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg" title="{% if term.is_locked %}Unlock Term{% else %}Lock Term{% endif %}" data-term-id="{{ term.id }}" data-term-locked="{{ 'true' if term.is_locked else 'false' }}"><i class="fas {% if term.is_locked %}fa-unlock{% else %}fa-lock{% endif %}"></i></button>
+                                        <button type="button" class="action-btn edit-term-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Edit" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}" data-academic-year-id="{{ term.academic_year_id }}" data-academic-level-ids="{{ term.academic_levels|map(attribute='id')|join(',') if term.academic_levels else '' }}" data-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}" data-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}" data-status="{{ term.status }}" data-is-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-edit"></i></button>
+                                        <button type="button" class="action-btn delete-term-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
                 {% else %}
                 <div class="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -2477,6 +2418,24 @@ Best regards,
     const _sysEmpPrefix = {{ employee_dash_url()|tojson }};
     // School Profile Form - Logo Preview and Case Conversion
     document.addEventListener('DOMContentLoaded', function () {
+        const params = new URLSearchParams(window.location.search);
+        const newLevelId = params.get('new_level_id');
+        if (newLevelId) {
+            if (window.location.hash !== '#academic-year') {
+                window.location.hash = 'academic-year';
+            }
+            setTimeout(() => {
+                const targetRow = document.getElementById(`level-row-${newLevelId}`) || document.querySelector(`tr[data-level-id="${newLevelId}"]`);
+                if (targetRow) {
+                    targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    targetRow.classList.add('ring-2', 'ring-green-500', 'bg-green-50');
+                    setTimeout(() => {
+                        targetRow.classList.remove('ring-2', 'ring-green-500', 'bg-green-50');
+                    }, 2600);
+                }
+            }, 500);
+        }
+
         // Logo preview on file selection
         const logoInput = document.getElementById('school_logo_input');
         const logoPreviewContainer = document.getElementById('logo-preview-container');
@@ -2713,6 +2672,7 @@ Best regards,
                 const levelId = this.getAttribute('data-level-id');
                 const levelCategory = this.getAttribute('data-level-category');
                 const levelName = this.getAttribute('data-level-name');
+                const levelCode = this.getAttribute('data-level-code');
                 const levelDescription = this.getAttribute('data-level-description');
                 const levelStatus = this.getAttribute('data-level-status');
 
@@ -2720,6 +2680,7 @@ Best regards,
                 document.getElementById('edit_level_id').value = levelId;
                 document.getElementById('edit_level_category').value = levelCategory;
                 document.getElementById('edit_level_name').value = levelName;
+                document.getElementById('edit_level_code').value = levelCode || '';
                 document.getElementById('edit_level_description').value = levelDescription || '';
 
                 // Set status toggle
@@ -2774,7 +2735,8 @@ Best regards,
                 const updateData = {
                     level_category: formData.get('level_category').trim().toUpperCase(),
                     level_name: formData.get('level_name').trim().toUpperCase(),
-                    level_description: formData.get('level_description').trim().toUpperCase(),
+                    level_code: formData.get('level_code').trim().toUpperCase(),
+                    level_description: formData.get('level_description').trim(),
                     level_status: formData.get('level_status_value')
                 };
 

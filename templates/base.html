@@ -258,12 +258,16 @@
             --brand-primary: {{ school_settings.primary_color|default('#800020') }};
             --brand-secondary: {{ school_settings.secondary_color|default('#A00030') }};
             --brand-accent: {{ school_settings.accent_color|default('#5C0014') }};
+            --app-header-offset: 4.5rem;
             --font-sans: '{{ school_settings.font_family|default("Inter") }}', system-ui, sans-serif;
             --role-primary: {% block role_primary %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
             --role-secondary: {% block role_secondary %}{{ school_settings.secondary_color|default('#A00030') }}{% endblock %};
             --role-accent: {% block role_accent %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
             --role-gradient-start: {% block role_gradient_start %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
             --role-gradient-end: {% block role_gradient_end %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
+        }
+        @media (min-width: 1024px) {
+            :root { --app-header-offset: 4.75rem; }
         }
         body { font-family: var(--font-sans); }
         
@@ -297,17 +301,17 @@
         /* App sidebar: drawer starts below fixed header on all breakpoints */
         @media (max-width: 1023px) {
             aside.app-sidebar {
-                height: calc(100vh - 4rem);
-                max-height: calc(100dvh - 4rem);
-                top: 4rem;
+                height: calc(100vh - var(--app-header-offset));
+                max-height: calc(100dvh - var(--app-header-offset));
+                top: var(--app-header-offset);
             }
         }
         
         @media (min-width: 1024px) {
             aside.app-sidebar {
-                height: calc(100vh - 4rem);
-                max-height: calc(100dvh - 4rem);
-                top: 4rem;
+                height: calc(100vh - var(--app-header-offset));
+                max-height: calc(100dvh - var(--app-header-offset));
+                top: var(--app-header-offset);
             }
         }
         
@@ -345,7 +349,7 @@
         
         /* Sidebar scrollable container */
         .sidebar-scrollable {
-            height: calc(100vh - 4rem - 4rem);
+            height: calc(100vh - var(--app-header-offset) - 4rem);
             overflow-y: auto;
             overflow-x: hidden;
                 -webkit-overflow-scrolling: touch;
@@ -353,7 +357,7 @@
         
         @media (max-width: 1023px) {
             .sidebar-scrollable {
-                height: calc(100vh - 4rem);
+                height: calc(100vh - var(--app-header-offset));
             }
         }
         
@@ -470,6 +474,44 @@
         .sidebar-item:hover i {
             color: inherit;
         }
+
+        /* Keep dashboard utility links visibly white across all sidebars */
+        .sidebar-item.dashboard-utility-link,
+        .sidebar-item.dashboard-utility-link i,
+        .sidebar-item.dashboard-utility-link span {
+            color: #ffffff !important;
+        }
+
+        .sidebar-item.sidebar-back-button-icon {
+            justify-content: center;
+            width: 44px;
+            min-width: 44px;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        /* Match portal header/footer chrome to sidebar theme */
+        header.app-chrome-header {
+            background: linear-gradient(to bottom, #0f172a, #111827, #020617) !important;
+            border-bottom-color: rgba(51, 65, 85, 0.9) !important;
+            box-shadow: 0 8px 28px -12px rgba(0, 0, 0, 0.55) !important;
+        }
+
+        .app-chrome-header .site-header__title,
+        .app-chrome-header .site-header__subtitle {
+            color: #e2e8f0 !important;
+        }
+
+        .app-chrome-header .site-header__icon-btn.app-chrome-btn {
+            color: #cbd5e1 !important;
+            background: rgba(15, 23, 42, 0.35) !important;
+            border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        }
+
+        .app-chrome-header .site-header__icon-btn.app-chrome-btn:hover {
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+        }
         
         /* Sidebar improvements */
         .sidebar-container {
@@ -559,27 +601,11 @@
     <header id="site-header"
             class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b{% if public_site_topnav %} site-header--marketing{% else %} app-chrome-header{% endif %}"
             :class="!publicTopNav ? '' : (publicHeaderGlass && !publicHeaderScrolled ? 'site-header--glass bg-transparent border-transparent shadow-none' : 'site-header--solid bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-gray-200 dark:border-gray-700 shadow-sm')">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8{% if public_site_topnav %} max-w-7xl{% endif %}">
-            <div class="flex items-center gap-2 sm:gap-4 h-16 md:h-[4.25rem] site-header__row">
+        <div class="{% if public_site_topnav %}container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8{% else %}w-full px-3 sm:px-4 lg:px-5{% endif %}">
+            <div class="flex items-center gap-2 sm:gap-4 h-[4.5rem] md:h-[4.75rem] site-header__row">
                 <!-- Left: Back + sidebar (not on public marketing pages with top nav) -->
-                <div class="flex items-center gap-2 shrink-0 min-w-0">
-                    {% if not public_site_topnav %}
-                    <button onclick="window.history.back(); return false;" 
-                            class="app-chrome-btn p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
-                            title="Go back">
-                        <i class="fas fa-arrow-left text-lg"></i>
-                    </button>
-                    <button type="button"
-                            @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen" 
-                            class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
-                            aria-controls="app-sidebar-nav"
-                            :aria-expanded="sidebarOpen">
-                        <i class="fas fa-bars text-lg" x-show="!sidebarOpen"></i>
-                        <i class="fas fa-times text-lg" x-show="sidebarOpen" x-cloak></i>
-                    </button>
-                    {% endif %}
-                    
-                    <a href="/" class="site-header__brand flex items-center space-x-2.5 sm:space-x-3 min-w-0 max-w-[min(100%,15rem)] sm:max-w-none group">
+                <div class="flex items-center gap-2 shrink-0 min-w-0 lg:w-72">
+                    <a href="/" class="site-header__brand {% if public_site_topnav %}flex items-center space-x-2.5 sm:space-x-3{% else %}flex flex-col items-start gap-1.5 ml-1{% endif %} min-w-0 max-w-[min(100%,18rem)] sm:max-w-none group">
                         <div class="site-header__brand-mark w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
                             {% if school_settings.school_logo %}
                             <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
@@ -590,7 +616,7 @@
                             {% endif %}
                         </div>
                         {# When logo is a full wordmark, do not repeat the school name beside it (avoids double “PROJECT LUCAS”). #}
-                        <div class="{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %} flex-col min-w-0 justify-center site-header__titles{% if school_settings.school_logo %} site-header__titles--logo-only{% endif %}">
+                        <div class="{% if public_site_topnav %}{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %}{% else %}flex{% endif %} flex-col min-w-0 justify-center site-header__titles{% if school_settings.school_logo %} site-header__titles--logo-only{% endif %}">
                             {% if not school_settings.school_logo %}
                             <div class="font-heading font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate site-header__title leading-tight">
                                 {{ school_settings.school_name or 'Modern School' }}
@@ -598,7 +624,7 @@
                             {% else %}
                             <span class="sr-only">{{ school_settings.school_name or 'Home' }}</span>
                             {% endif %}
-                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if school_settings.school_logo %} mt-0.5{% else %} hidden md:block{% endif %}">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if school_settings.school_logo %} mt-0.5{% elif public_site_topnav %} hidden md:block{% endif %}">
                                 {% block header_subtitle %}education management made easy{% endblock %}
                             </div>
                         </div>
@@ -616,6 +642,15 @@
 
                 <!-- Right: User Menu / Login -->
                 <div class="flex items-center space-x-2 sm:space-x-4 flex-shrink-0 ml-auto">
+                    {% if not public_site_topnav %}
+                    <div class="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700/70 bg-slate-900/40 text-slate-200">
+                        <i class="fas fa-calendar-alt text-xs text-slate-300"></i>
+                        <span id="header-live-date" class="text-xs font-medium whitespace-nowrap"></span>
+                        <span class="text-slate-500">|</span>
+                        <i class="fas fa-clock text-xs text-slate-300"></i>
+                        <span id="header-live-time" class="text-xs font-semibold whitespace-nowrap"></span>
+                    </div>
+                    {% endif %}
                     {% if public_site_topnav %}
                     <button type="button" @click="mobilePublicNavOpen = !mobilePublicNavOpen" class="site-header__icon-btn site-header__menu-btn md:hidden p-2.5 rounded-xl touch-manipulation text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent hover:border-gray-200 dark:hover:border-gray-600" :aria-expanded="mobilePublicNavOpen" aria-controls="public-site-nav-panel" aria-label="Toggle menu">
                         <i class="fas fa-bars text-xl" x-show="!mobilePublicNavOpen"></i>
@@ -818,16 +853,28 @@
             <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Navigate</p>
         </div>
 
-        {% if session.get('user_id') %}
-        <div class="app-sidebar__dashboard px-3 sm:px-4 pt-2 pb-3 lg:pt-1 shrink-0 border-b border-slate-700/50">
-            <a href="{{ dashboard_home_url() }}"
-               class="sidebar-item {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
-                <i class="fas fa-th-large" aria-hidden="true"></i>
-                <span>Dashboard</span>
-            </a>
+        {% if not public_site_topnav %}
+        <div x-show="sidebarOpen"
+             x-transition:enter="transition-opacity duration-150"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             class="px-3 sm:px-4 pb-2 flex items-center justify-between">
+            <button onclick="window.location.href='{{ employee_dash_url() }}'; return false;"
+                    class="app-chrome-btn p-2 text-slate-200 hover:bg-white/10 rounded-lg transition-colors touch-manipulation"
+                    title="Go back">
+                <i class="fas fa-arrow-left text-base"></i>
+            </button>
+            <button type="button"
+                    @click="sidebarOpen = false; if (isDesktop) userClosedSidebar = true"
+                    class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-100 hover:bg-white/10 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                    aria-controls="app-sidebar-nav"
+                    :aria-expanded="sidebarOpen"
+                    title="Close sidebar">
+                <i class="fas fa-times text-lg"></i>
+            </button>
         </div>
         {% endif %}
-                
+
         <nav id="app-sidebar-nav"
              class="sidebar-nav app-sidebar-nav custom-scrollbar flex-1 min-h-0 px-3 sm:px-4 py-3 lg:py-2 space-y-1 overflow-y-auto overflow-x-hidden"
              @touchmove.stop
@@ -902,10 +949,29 @@
     {% endif %}
 
         <!-- Main Content -->
-    <main class="pt-16 pb-20 transition-all duration-300 flex flex-col overflow-hidden relative z-10{% if public_site_topnav %} public-site-main{% endif %}"
+    <main class="pt-[4.5rem] md:pt-[4.75rem] pb-20 transition-all duration-300 flex flex-col overflow-hidden relative z-10{% if public_site_topnav %} public-site-main{% endif %}"
           :style="isDesktop && sidebarOpen && !publicTopNav ? 'margin-left: 18rem;' : 'margin-left: 0;'"
-          style="height: calc(100vh - 4rem);">
+          style="height: calc(100vh - var(--app-header-offset));">
         <div class="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar w-full min-w-0{% if public_site_topnav %} public-site-scroll{% endif %}">
+            {% if not public_site_topnav %}
+            <div x-show="!sidebarOpen" x-cloak class="px-4 sm:px-6 lg:px-8 pt-2 fixed z-40" style="top: var(--app-header-offset); left: 0;">
+                <div class="flex items-center justify-between w-28">
+                    <button onclick="window.location.href='{{ employee_dash_url() }}'; return false;"
+                            class="app-chrome-btn p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
+                            title="Go back">
+                        <i class="fas fa-arrow-left text-lg"></i>
+                    </button>
+                    <button type="button"
+                            @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen"
+                            class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            aria-controls="app-sidebar-nav"
+                            :aria-expanded="sidebarOpen">
+                        <i class="fas fa-bars text-lg" x-show="!sidebarOpen"></i>
+                        <i class="fas fa-times text-lg" x-show="sidebarOpen" x-cloak></i>
+                    </button>
+                </div>
+            </div>
+            {% endif %}
             {% block content_full_bleed %}{% endblock %}
             <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-full{% if public_site_topnav %} public-site-page py-8 sm:py-10 lg:py-12{% else %} py-6 sm:py-8{% endif %}">
                 {% block content %}{% endblock %}
@@ -963,7 +1029,7 @@
             </div>
         </div>
         {% else %}
-        <div class="app-chrome-footer__bar border-t border-slate-200/90 dark:border-slate-700/80 bg-gradient-to-b from-white to-slate-50/95 dark:from-slate-900 dark:to-slate-950 shadow-[0_-8px_32px_-12px_rgba(15,23,42,0.08)] dark:shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.35)]">
+        <div class="app-chrome-footer__bar border-t border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.45)]">
             <div class="app-chrome-footer__accent h-1 w-full bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-maroon-dark opacity-90" aria-hidden="true"></div>
             <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
                 <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
@@ -976,11 +1042,11 @@
                             {% endif %}
                         </span>
                         <div>
-                            <p class="font-heading font-semibold text-slate-800 dark:text-slate-100 text-sm sm:text-base">{{ school_settings.school_name or 'School' }}</p>
-                            <p class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">education management made easy</p>
+                            <p class="font-heading font-semibold text-slate-100 text-sm sm:text-base">{{ school_settings.school_name or 'School' }}</p>
+                            <p class="text-xs sm:text-sm text-slate-400 mt-0.5">education management made easy</p>
                         </div>
                     </div>
-                    <p class="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500 uppercase tracking-wider">powered by educentric</p>
+                    <p class="text-[11px] sm:text-xs text-slate-400 uppercase tracking-wider">powered by educentric</p>
                 </div>
             </div>
         </div>
@@ -1045,6 +1111,79 @@
     
     <!-- Calendar Script (if needed) -->
     <script>
+        // Normalize sidebar dashboard/back utility links across custom sidebars.
+        document.addEventListener('DOMContentLoaded', function() {
+            const mainNav = document.getElementById('app-sidebar-nav');
+            const dashboardHref = '{{ dashboard_home_url() }}';
+            const hideDashboardLinkOnThisPage = window.location.pathname === '/technician/role-switch';
+
+            document.querySelectorAll('a.sidebar-item').forEach(function(link) {
+                const label = (link.textContent || '').trim().toLowerCase();
+                if (label.includes('back to dashboard') || label.includes('dashboard link') || label === 'dashboard') {
+                    const labelSpan = link.querySelector('span');
+                    if (labelSpan) {
+                        labelSpan.textContent = 'Dashboard';
+                    }
+                    link.classList.add('dashboard-utility-link');
+
+                    const icon = link.querySelector('i');
+                    if (icon) {
+                        icon.className = 'fas fa-home w-5';
+                    }
+
+                }
+            });
+
+            if (!mainNav) {
+                return;
+            }
+
+            let dashboardLink = null;
+            mainNav.querySelectorAll('a.sidebar-item').forEach(function(link) {
+                const label = (link.textContent || '').trim().toLowerCase();
+                if (!dashboardLink && label === 'dashboard') {
+                    dashboardLink = link;
+                }
+            });
+
+            if (hideDashboardLinkOnThisPage) {
+                if (dashboardLink && dashboardLink.parentNode) {
+                    dashboardLink.parentNode.removeChild(dashboardLink);
+                }
+                return;
+            } else {
+                if (!dashboardLink) {
+                    dashboardLink = document.createElement('a');
+                    dashboardLink.href = dashboardHref;
+                    dashboardLink.className = 'sidebar-item dashboard-utility-link';
+                    dashboardLink.innerHTML = '<i class="fas fa-home w-5" aria-hidden="true"></i><span>Dashboard</span>';
+                } else {
+                    dashboardLink.href = dashboardHref;
+                    dashboardLink.classList.add('dashboard-utility-link');
+                }
+            }
+
+            const isTechnicianHomePage = window.location.pathname === '/technician';
+            const roleSwitchLink = mainNav.querySelector('a[href*="role-switch"]');
+            if (isTechnicianHomePage && roleSwitchLink) {
+                // On /technician only: keep Role Switch above Dashboard.
+                if (roleSwitchLink.nextElementSibling !== dashboardLink) {
+                    roleSwitchLink.insertAdjacentElement('afterend', dashboardLink);
+                }
+            } else {
+                const firstSidebarItem = mainNav.querySelector('a.sidebar-item');
+                if (firstSidebarItem) {
+                    if (firstSidebarItem !== dashboardLink) {
+                        mainNav.insertBefore(dashboardLink, firstSidebarItem);
+                    }
+                } else {
+                    mainNav.appendChild(dashboardLink);
+                }
+            }
+
+            // Back control is handled by dedicated top control row.
+        });
+
         // Update calendar if elements exist
         function updateCalendar() {
             const now = new Date();
@@ -1056,16 +1195,20 @@
             const calendarWeekday = document.getElementById('calendar-weekday');
             const calendarYear = document.getElementById('calendar-year');
             const mobileDate = document.getElementById('mobile-date');
+            const headerLiveDate = document.getElementById('header-live-date');
+            const headerLiveTime = document.getElementById('header-live-time');
             
             if (monthHeader) monthHeader.textContent = monthNames[now.getMonth()];
             if (calendarDay) calendarDay.textContent = String(now.getDate()).padStart(2, '0');
             if (calendarWeekday) calendarWeekday.textContent = dayNames[now.getDay()];
             if (calendarYear) calendarYear.textContent = now.getFullYear();
             if (mobileDate) mobileDate.textContent = monthNames[now.getMonth()].substring(0, 3) + ' ' + String(now.getDate()).padStart(2, '0');
+            if (headerLiveDate) headerLiveDate.textContent = `${dayNames[now.getDay()]}, ${monthNames[now.getMonth()].substring(0, 3)} ${String(now.getDate()).padStart(2, '0')} ${now.getFullYear()}`;
+            if (headerLiveTime) headerLiveTime.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
         }
         
         updateCalendar();
-        setInterval(updateCalendar, 60000); // Update every minute
+        setInterval(updateCalendar, 1000); // Live update every second
     </script>
 </body>
 </html>

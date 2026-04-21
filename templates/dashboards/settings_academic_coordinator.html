@@ -5,9 +5,30 @@
 {% block role_display %}Academic Schedule Management{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('academic-schedule-management') }}" class="sidebar-item">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>Academic Schedule Management</span>
+<a href="{{ employee_dash_url() }}"
+   class="sidebar-item">
+    <i class="fas fa-arrow-left w-5"></i>
+    <span>Back to Dashboard</span>
+</a>
+<a href="{{ employee_dash_url('settings/curriculum coordinator') }}"
+   class="sidebar-item {% if request.endpoint == 'settings' and request.view_args.get('role') == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-sliders-h w-5"></i>
+    <span>Curriculum settings</span>
+</a>
+<a href="{{ employee_dash_url('academic-subject-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book-open w-5"></i>
+    <span>Academic Subject Registration</span>
+</a>
+<a href="{{ employee_dash_url('exam-evaluation') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or '/exam-evaluation' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam Registration</span>
+</a>
+<a href="{{ employee_dash_url('grades-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-list-check w-5"></i>
+    <span>Grades Registration</span>
 </a>
 {% endblock %}
 
@@ -19,11 +40,25 @@
         <p class="text-gray-600 dark:text-gray-400">Configure academic schedule and time allocations</p>
     </div>
 
+    <div class="mb-6">
+        <button type="button"
+                @click="showTimetableConfiguration = !showTimetableConfiguration"
+                class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors shadow-md hover:shadow-lg">
+            <i class="fas fa-plus mr-2"></i>
+            <span x-text="showTimetableConfiguration ? 'Hide Timetable Configuration' : 'Register Timetable Configuration'"></span>
+        </button>
+    </div>
+
     <!-- Academic Schedule Settings -->
-    <div class="order-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
-        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Academic Schedule Configuration</h3>
+    <div x-show="showTimetableConfiguration"
+         x-cloak
+         class="order-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
+        <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">
+            <span x-show="editingLabel()" x-text="editingLabel()"></span>
+            <span x-show="!editingLabel()">Timetable Configuration</span>
+        </h3>
         
-        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" @submit.prevent="saveSettings()">
+        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
             <input type="hidden" name="profile_id" :value="profileId">
 
             <!-- Settings Profile -->
@@ -389,7 +424,7 @@
                         <div>
                             <div class="flex items-center gap-2">
                                 <p class="font-semibold text-gray-900 dark:text-white" x-text="profile.profile_name"></p>
-                                <span x-show="String(profile.id) === String(profileId)"
+                                <span x-show="Boolean(profile.is_active)"
                                       class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
                                     Active
                                 </span>
@@ -433,6 +468,7 @@ function academicCoordinatorSettings() {
             { value: 'Sunday', label: 'Sunday' }
         ],
         settingsProfiles: {% if settings_profiles %}{{ settings_profiles|tojson|safe }}{% else %}[]{% endif %},
+        showTimetableConfiguration: {% if settings and settings.id %}true{% else %}false{% endif %},
         profileId: {% if settings and settings.id %}{{ settings.id|tojson|safe }}{% else %}''{% endif %},
         selectedProfileSelector: {% if settings and settings.id %}String({{ settings.id|tojson|safe }}){% else %}''{% endif %},
         profileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
@@ -489,11 +525,17 @@ function academicCoordinatorSettings() {
             if (selected.length === 0) return 'No levels selected';
             return selected.join(', ');
         },
+        editingLabel() {
+            const name = (this.profileName || '').trim();
+            if (!name) return '';
+            return `Editing Timetable: ${name}`;
+        },
         loadProfile() {
             if (!this.selectedProfileSelector) {
                 this.createNewProfile();
                 return;
             }
+            this.showTimetableConfiguration = true;
             const targetUrl = `/settings/curriculum coordinator?profile_id=${encodeURIComponent(this.selectedProfileSelector)}`;
             window.location.href = targetUrl;
         },
@@ -501,6 +543,7 @@ function academicCoordinatorSettings() {
             this.profileId = '';
             this.selectedProfileSelector = '';
             this.profileName = '';
+            this.showTimetableConfiguration = true;
             this.resetSettings();
         },
         addClassTime() {
@@ -725,8 +768,8 @@ function academicCoordinatorSettings() {
                 this.calculateEndTime(index);
             });
             
-            // Form will submit normally
-            this.$el.submit();
+            // Submit the actual form element
+            this.$refs.settingsForm.submit();
         },
         resetSettings() {
             this.selectedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];

@@ -5,8 +5,8 @@
 {% block body_class %}public-site school-public{% endblock %}
 
 {% block content_full_bleed %}
-{% set hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
-
+{% set default_hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
+{% set hero_img = url_for('static', filename=school_settings.school_hero_image) if school_settings.get('school_hero_image') else default_hero_img %}
 <!-- Layout: school-site.css (.split-hero) uses CSS Grid — avoid flex utilities on the section -->
 <section class="split-hero split-hero--home split-hero--readable relative overflow-hidden" aria-label="Welcome">
     <div class="split-hero__panel">
@@ -38,13 +38,15 @@
         </div>
     </div>
     <div class="split-hero__visual">
-        <img src="{{ hero_img }}" alt="" class="split-hero__img absolute inset-0 h-full w-full object-cover object-center transition-transform duration-[2.2s] ease-out motion-safe:scale-105 hover:motion-safe:scale-100" width="1920" height="1080" loading="eager" decoding="async" fetchpriority="high">
+        <img src="{{ hero_img }}" alt="{{ school_settings.school_name or 'School' }} — campus" class="split-hero__img absolute inset-0 h-full w-full object-cover object-center transition-transform duration-[2.2s] ease-out motion-safe:scale-105 hover:motion-safe:scale-100" width="1920" height="1080" loading="eager" decoding="async" fetchpriority="high">
         <div class="split-hero__visual-scrim absolute inset-0 pointer-events-none md:hidden" aria-hidden="true"></div>
     </div>
 </section>
 {% endblock %}
 
 {% block content %}
+{% set default_hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
+{% set hero_img = url_for('static', filename=school_settings.school_hero_image) if school_settings.get('school_hero_image') else default_hero_img %}
 <div class="edu-strip edu-strip--modern border-y border-gray-200/60 dark:border-slate-700/60 py-4 md:py-5 reveal-item">
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 edu-strip__inner text-sm text-gray-700 dark:text-gray-300">
         <div class="edu-strip__item">
@@ -142,7 +144,7 @@
     <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
         <div class="edu-frame edu-frame--modern shadow-xl edu-frame--tilt">
             <div class="grid md:grid-cols-2 gap-0">
-                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center transition-transform duration-500 motion-safe:hover:scale-[1.02]" style="background-image: url('https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=800&q=80&auto=format&fit=crop');" role="img" aria-label="Library and reading"></div>
+                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center transition-transform duration-500 motion-safe:hover:scale-[1.02]" style="background-image: url('{{ hero_img }}');" role="img" aria-label="School campus"></div>
                 <div class="p-8 md:p-12 flex flex-col justify-center">
                     <p class="edu-eyebrow mb-2">Our promise</p>
                     <blockquote class="edu-quote text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
@@ -155,10 +157,9 @@
     </div>
 </section>
 
-{% set cta_education_img = 'https://images.unsplash.com/photo-1580582932707-520aed937d7a?w=1920&q=80&auto=format&fit=crop' %}
-<section class="edu-section edu-section--dark edu-cta-band py-16 md:py-24 text-center reveal-item relative overflow-hidden">
+<section class="edu-section edu-section--dark edu-cta-band py-16 md:py-24 text-center reveal-item relative overflow-hidden{% if school_settings.get('school_hero_image') %} edu-cta-band--school-photo{% endif %}">
     <div class="edu-cta-band__media" aria-hidden="true">
-        <img src="{{ cta_education_img }}" alt="" class="edu-cta-band__img" width="1920" height="800" loading="lazy" decoding="async">
+        <img src="{{ hero_img }}" alt="" class="edu-cta-band__img" width="1920" height="800" loading="lazy" decoding="async">
     </div>
     <div class="edu-cta-band__media-scrim" aria-hidden="true"></div>
     <div class="edu-cta-band__glow" aria-hidden="true"></div>

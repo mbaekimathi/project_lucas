@@ -4,6 +4,12 @@
 
 {% block sidebar_content %}
 <div class="space-y-2">
+    <a href="{{ employee_dash_url() }}" 
+       class="w-full sidebar-item">
+        <i class="fas fa-arrow-left w-5"></i>
+        <span>Back to Dashboard</span>
+    </a>
+
     <a href="{{ employee_dash_url('timetable-management') }}" 
        class="w-full sidebar-item sidebar-item-active">
         <i class="fas fa-calendar-alt w-5"></i>
@@ -14,7 +20,7 @@
     <a href="{{ employee_dash_url('timetable-management/register-timetable') }}" 
        class="w-full sidebar-item {% if request.path.endswith('/timetable-management/register-timetable') %}sidebar-item-active{% endif %}">
         <i class="fas fa-plus-circle w-5"></i>
-        <span>Register Timetable</span>
+        <span>Manual Timetable Allocation</span>
     </a>
     
     <a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" 
@@ -29,11 +35,6 @@
         <span>Timetable Analytics</span>
     </a>
     
-    <a href="{{ employee_dash_url() }}" 
-       class="w-full sidebar-item mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span>Back to Dashboard</span>
-    </a>
 </div>
 {% endblock %}
 
@@ -105,7 +106,7 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="timetablesApp()" x-init="loadAllTimetables()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
+<div x-data="timetablesApp()" x-init="initDefaults(); loadAllTimetables()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
     
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 no-print">
@@ -120,12 +121,23 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
+                <span class="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white no-print">
+                    <i class="fas fa-calendar-alt mr-1 text-brand-primary"></i>
+                    <strong>Year:</strong> {{ current_year_name or 'Not set' }}
+                </span>
+                <span class="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white no-print">
+                    <i class="fas fa-clock mr-1 text-brand-primary"></i>
+                    <strong>Term:</strong> {{ current_term_name or 'Not set' }}
+                </span>
                 <button @click="window.print()" class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200">
                     <i class="fas fa-print mr-1"></i>Print
                 </button>
-                <a href="{{ employee_dash_url('timetable-management/register-timetable') }}" class="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
-                    <i class="fas fa-plus mr-1"></i>Add Timetable
-                </a>
+                <button @click="autoGenerateAllLevels()"
+                        :disabled="generatingAll || !yearId || !termId"
+                        class="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed no-print">
+                    <i class="fas" :class="generatingAll ? 'fa-spinner fa-spin mr-1' : 'fa-magic mr-1'"></i>
+                    <span x-text="generatingAll ? 'Generating...' : 'Auto Generate All Levels'"></span>
+                </button>
             </div>
         </div>
     </div>
@@ -196,7 +208,7 @@
                                                     <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
                                                         <div>
                                                             <div class="teacher-name" x-text="entry.employee_id || entry.teacher_code || entry.teacher_name || '—'"></div>
-                                                            <div x-show="entry.subject_name" class="subject-name" x-text="entry.subject_name"></div>
+                                                            <div x-show="entry.subject_code" class="subject-name" x-text="entry.subject_code"></div>
                                                         </div>
                                                     </template>
                                                     <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>
@@ -230,6 +242,11 @@ function timetablesApp() {
         timetables: {},
         levelSettings: {},
         academicLevels: {{ academic_levels | tojson | safe if academic_levels else '[]' }},
+        academicYears: {{ academic_years | tojson | safe if academic_years else '[]' }},
+        terms: {{ terms | tojson | safe if terms else '[]' }},
+        yearId: {% if current_year_id %}{{ current_year_id }}{% else %}null{% endif %},
+        termId: {% if current_term_id %}{{ current_term_id }}{% else %}null{% endif %},
+        generatingAll: false,
         days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
         
@@ -240,7 +257,7 @@ function timetablesApp() {
             }
             return count;
         },
-        
+
         async loadAllTimetables() {
             this.loading = true;
             
@@ -249,7 +266,11 @@ function timetablesApp() {
                     const res = await fetch('{{ employee_dash_url('timetable-management/manage-timetable/get-timetable') }}', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ academic_level_id: level.id })
+                        body: JSON.stringify({
+                            academic_level_id: level.id,
+                            academic_year_id: this.yearId ? Number(this.yearId) : null,
+                            term_id: this.termId ? Number(this.termId) : null
+                        })
                     });
                     const result = await res.json();
                     return {
@@ -269,6 +290,69 @@ function timetablesApp() {
             });
             
             this.loading = false;
+        },
+
+        async autoGenerateAllLevels() {
+            if (!this.yearId || !this.termId) {
+                alert('Please select Academic Year and Term first.');
+                return;
+            }
+            if (!confirm('Auto-generate and allocate timetables for all active levels? This will replace existing timetable entries for the selected term/year.')) {
+                return;
+            }
+            this.generatingAll = true;
+            try {
+                const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/auto-generate') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_year_id: Number(this.yearId),
+                        term_id: Number(this.termId)
+                    })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    alert(result.message || 'Auto generation failed.');
+                    return;
+                }
+                await this.loadAllTimetables();
+                alert(result.message || 'Auto generation completed for all levels.');
+            } catch (e) {
+                alert('Error auto-generating timetable. Please try again.');
+            } finally {
+                this.generatingAll = false;
+            }
+        },
+
+        async resetLevelTimetable(levelId, levelName) {
+            if (!this.yearId || !this.termId) {
+                alert('Please select Academic Year and Term before resetting.');
+                return;
+            }
+            if (!confirm(`Reset timetable for ${levelName}? This will clear saved timetable entries for the selected year and term.`)) {
+                return;
+            }
+            try {
+                const res = await fetch('{{ employee_dash_url('timetable-management/reset') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        academic_level_id: levelId,
+                        academic_year_id: Number(this.yearId),
+                        term_id: Number(this.termId)
+                    })
+                });
+                const result = await res.json();
+                if (!result.success) {
+                    alert(result.message || 'Failed to reset timetable.');
+                    return;
+                }
+                this.timetables[levelId] = [];
+                await this.loadAllTimetables();
+                alert(result.message || 'Timetable reset successfully.');
+            } catch (e) {
+                alert('Error resetting timetable. Please try again.');
+            }
         },
         
         getTimeSlots(levelId) {
@@ -305,6 +389,10 @@ function timetablesApp() {
                 }
             }
             return start;
+        },
+
+        initDefaults() {
+            // Uses current year/term from backend settings context.
         }
     };
 }
