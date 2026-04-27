@@ -483,14 +483,6 @@
             color: #ffffff !important;
         }
 
-        .sidebar-item.sidebar-back-button-icon {
-            justify-content: center;
-            width: 44px;
-            min-width: 44px;
-            padding-left: 0.5rem;
-            padding-right: 0.5rem;
-        }
-
         /* Match portal header/footer chrome to sidebar theme */
         header.app-chrome-header {
             background: linear-gradient(to bottom, #0f172a, #111827, #020617) !important;
@@ -874,12 +866,7 @@
              x-transition:enter="transition-opacity duration-150"
              x-transition:enter-start="opacity-0"
              x-transition:enter-end="opacity-100"
-             class="px-3 sm:px-4 pb-2 flex items-center justify-between">
-            <button onclick="window.location.href='{{ employee_dash_url() }}'; return false;"
-                    class="app-chrome-btn p-2 text-slate-200 hover:bg-white/10 rounded-lg transition-colors touch-manipulation"
-                    title="Go back">
-                <i class="fas fa-arrow-left text-base"></i>
-            </button>
+             class="px-3 sm:px-4 pb-2 flex items-center justify-end">
             <button type="button"
                     @click="sidebarOpen = false; if (isDesktop) userClosedSidebar = true"
                     class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-100 hover:bg-white/10 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
@@ -980,12 +967,7 @@
              {% endif %}">
             {% if not public_site_topnav %}
             <div x-show="!sidebarOpen" x-cloak class="px-4 sm:px-6 lg:px-8 pt-2 fixed z-40" style="top: var(--app-header-offset); left: 0;">
-                <div class="flex items-center justify-between w-28">
-                    <button onclick="window.location.href='{{ employee_dash_url() }}'; return false;"
-                            class="app-chrome-btn p-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation"
-                            title="Go back">
-                        <i class="fas fa-arrow-left text-lg"></i>
-                    </button>
+                <div class="flex items-center">
                     <button type="button"
                             @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen"
                             class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"

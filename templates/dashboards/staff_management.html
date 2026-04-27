@@ -5,12 +5,6 @@
 {% block sidebar_content %}
 {% if filter_role == 'teachers' %}
 <!-- Teacher Management Links -->
-<a href="{{ employee_dash_url() }}" 
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
-
 <a href="{{ employee_dash_url('teacher-management') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-tie w-5"></i>

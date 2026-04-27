@@ -4,11 +4,6 @@
 
 {% block sidebar_content %}
 <div class="space-y-1" x-data="{ currentHash: window.location.hash || '' }" @hashchange.window="currentHash = window.location.hash || ''">
-    <a href="{{ employee_dash_url() }}"
-        class="sidebar-item dashboard-utility-link sidebar-back-button sidebar-back-button-icon">
-        <i class="fas fa-arrow-left w-5 text-center" aria-hidden="true"></i>
-        <span class="sr-only">Back</span>
-    </a>
     <a href="{{ dashboard_home_url() }}"
         class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
         <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
@@ -375,7 +370,8 @@
                         </p>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" name="maintenance_mode" class="sr-only peer" {% if general_data and
+                        <input type="hidden" name="maintenance_mode" value="0">
+                        <input type="checkbox" name="maintenance_mode" value="1" class="sr-only peer" {% if general_data and
                             general_data.maintenance_mode %}checked{% endif %}>
                         <div
                             class="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-red-300 dark:peer-focus:ring-red-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-red-600">
@@ -384,17 +380,19 @@
                 </div>
             </div>
 
-            <!-- Allow Registration -->
+            <!-- Allow Registration (public admission form) -->
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Allow Registration</h3>
+                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Allow registration</h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            Allow new users (parents/students) to register accounts.
+                            When on, the public <strong class="text-gray-700 dark:text-gray-300">Admission</strong> page accepts online applications.
+                            When off, visitors see a closed notice instead of the form.
                         </p>
                     </div>
                     <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" name="allow_registration" class="sr-only peer" {% if general_data and
+                        <input type="hidden" name="allow_registration" value="0">
+                        <input type="checkbox" name="allow_registration" value="1" class="sr-only peer" {% if general_data and
                             general_data.allow_registration %}checked{% endif %}>
                         <div
                             class="w-14 h-7 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 dark:peer-focus:ring-green-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-gray-600 peer-checked:bg-green-600">
@@ -1537,96 +1535,168 @@
 
     <!-- Theme / Colors -->
     <div x-show="activeSection === 'theme-colors'" x-cloak style="display: none;">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-            <i class="fas fa-palette text-green-600 mr-3"></i>
-            Theme / Colors
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-2">
+            <i class="fas fa-palette text-violet-600 dark:text-violet-400 shrink-0"></i>
+            <span>Theme &amp; colors</span>
         </h2>
-        <p class="text-gray-600 dark:text-gray-400 mb-6">Customize the system theme, colors, and visual appearance.
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-2 max-w-3xl leading-relaxed">
+            Curated <strong class="font-semibold text-gray-800 dark:text-gray-200">primary → secondary → deep accent</strong> triads for professional interfaces.
+            Primary drives CTAs and focus; secondary supports gradients and highlights; accent is the darker anchor for hovers and contrast.
+        </p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-6 max-w-3xl">
+            Inspired by common product-design systems (balanced saturation, WCAG-friendly pairs with neutrals). Tap a palette to load values, then fine-tune below or save.
         </p>
 
-        <form action="/system-settings/theme" method="POST" class="space-y-6">
-            <!-- Preset themes -->
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-                    <i class="fas fa-swatchbook mr-2"></i> Quick presets
-                </label>
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" onclick="applyPreset('#800020','#A00030','#5C0014')"
-                        class="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:scale-105"
-                        style="border-color:#800020;color:#800020;background:rgba(128,0,32,0.08)">Maroon</button>
-                    <button type="button" onclick="applyPreset('#1e3a5f','#2c5282','#0f2744')"
-                        class="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:scale-105"
-                        style="border-color:#1e3a5f;color:#1e3a5f;background:rgba(30,58,95,0.08)">Navy</button>
-                    <button type="button" onclick="applyPreset('#166534','#15803d','#14532d')"
-                        class="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:scale-105"
-                        style="border-color:#166534;color:#166534;background:rgba(22,101,52,0.08)">Forest</button>
-                    <button type="button" onclick="applyPreset('#1e40af','#2563eb','#1e3a8a')"
-                        class="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:scale-105"
-                        style="border-color:#1e40af;color:#1e40af;background:rgba(30,64,175,0.08)">Royal Blue</button>
-                    <button type="button" onclick="applyPreset('#0f766e','#0d9488','#115e59')"
-                        class="px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:scale-105"
-                        style="border-color:#0f766e;color:#0f766e;background:rgba(15,118,110,0.08)">Teal</button>
+        <form action="/system-settings/theme" method="POST" class="space-y-8">
+            <!-- Designer palette library -->
+            <div class="rounded-2xl border border-gray-200/80 dark:border-gray-600/80 bg-gradient-to-br from-slate-50 via-white to-violet-50/40 dark:from-gray-900 dark:via-gray-900 dark:to-violet-950/30 p-4 sm:p-6 shadow-sm">
+                <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+                    <div>
+                        <h3 class="text-sm font-bold uppercase tracking-[0.12em] text-violet-700 dark:text-violet-300">Palette library</h3>
+                        <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">Grouped by use case — pick one, then save theme.</p>
+                    </div>
+                    <span class="text-[10px] sm:text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">UI / UX reference tones</span>
+                </div>
+
+                <!-- Neutral & product -->
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 mt-1">Neutral &amp; product</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
+                    <button type="button" onclick="applyPreset('#0f172a','#334155','#020617', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#0f172a"></span><span style="background:#334155"></span><span style="background:#020617"></span></div>
+                        <span class="theme-palette-name">Ink &amp; slate</span>
+                        <span class="theme-palette-desc">Editorial SaaS and dashboards; pairs cleanly with white cards and subtle borders.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#18181b','#3f3f46','#09090b', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#18181b"></span><span style="background:#3f3f46"></span><span style="background:#09090b"></span></div>
+                        <span class="theme-palette-name">Graphite minimal</span>
+                        <span class="theme-palette-desc">Zinc-scale neutrals; strong for typography-first layouts and dense admin tools.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#0c4a6e','#0369a1','#082f49', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#0c4a6e"></span><span style="background:#0369a1"></span><span style="background:#082f49"></span></div>
+                        <span class="theme-palette-name">Trust blue</span>
+                        <span class="theme-palette-desc">Finance, education, and compliance UIs; reads as dependable without default “corporate blue” cliché.</span>
+                    </button>
+                </div>
+
+                <!-- Vibrant brand -->
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Vibrant brand</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
+                    <button type="button" onclick="applyPreset('#4f46e5','#6366f1','#312e81', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#4f46e5"></span><span style="background:#6366f1"></span><span style="background:#312e81"></span></div>
+                        <span class="theme-palette-name">Indigo product</span>
+                        <span class="theme-palette-desc">Modern product chrome; excellent for app shells, sidebars, and primary actions.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#6d28d9','#7c3aed','#4c1d95', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#6d28d9"></span><span style="background:#7c3aed"></span><span style="background:#4c1d95"></span></div>
+                        <span class="theme-palette-name">Violet studio</span>
+                        <span class="theme-palette-desc">Creative tools and learning platforms; feels premium next to dark mode grays.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#0d9488','#14b8a6','#0f766e', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#0d9488"></span><span style="background:#14b8a6"></span><span style="background:#0f766e"></span></div>
+                        <span class="theme-palette-name">Teal clarity</span>
+                        <span class="theme-palette-desc">Health, wellness, and clarity-focused flows; calmer than pure blue or green.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#047857','#059669','#064e3b', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#047857"></span><span style="background:#059669"></span><span style="background:#064e3b"></span></div>
+                        <span class="theme-palette-name">Emerald growth</span>
+                        <span class="theme-palette-desc">Positive, progress-oriented brands; works well with success states and checkmarks.</span>
+                    </button>
+                </div>
+
+                <!-- Institution & warmth -->
+                <p class="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Institution &amp; warmth</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-2">
+                    <button type="button" onclick="applyPreset('#800020','#A00030','#5C0014', this)" class="theme-palette-card text-left group ring-2 ring-transparent hover:ring-red-900/15">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#800020"></span><span style="background:#A00030"></span><span style="background:#5C0014"></span></div>
+                        <span class="theme-palette-name">Academic maroon</span>
+                        <span class="theme-palette-desc">Classic school and university identity; authoritative without neon saturation.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#7f1d1d','#991b1b','#450a0a', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#7f1d1d"></span><span style="background:#991b1b"></span><span style="background:#450a0a"></span></div>
+                        <span class="theme-palette-name">Deep crimson</span>
+                        <span class="theme-palette-desc">Refined red family; use with generous white space and restrained secondary UI.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#9a3412','#ea580c','#7c2d12', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#9a3412"></span><span style="background:#ea580c"></span><span style="background:#7c2d12"></span></div>
+                        <span class="theme-palette-name">Copper energy</span>
+                        <span class="theme-palette-desc">Warm CTAs and highlights; pairs with sand neutrals for editorial / community sites.</span>
+                    </button>
+                    <button type="button" onclick="applyPreset('#be123c','#e11d48','#881337', this)" class="theme-palette-card text-left group">
+                        <div class="theme-palette-strip" aria-hidden="true"><span style="background:#be123c"></span><span style="background:#e11d48"></span><span style="background:#881337"></span></div>
+                        <span class="theme-palette-name">Rose campaign</span>
+                        <span class="theme-palette-desc">Bold campaigns and admissions marketing; keep body text neutral for balance.</span>
+                    </button>
                 </div>
             </div>
+
             <script>
-            function applyPreset(primary, secondary, accent) {
-                document.getElementById('primary_color').value = primary;
-                document.getElementById('secondary_color').value = secondary;
-                document.getElementById('accent_color').value = accent;
-                document.getElementById('primary_hex').textContent = primary;
-                document.getElementById('secondary_hex').textContent = secondary;
-                document.getElementById('accent_hex').textContent = accent;
+            function applyPreset(primary, secondary, accent, btn) {
+                var p = document.getElementById('primary_color');
+                var s = document.getElementById('secondary_color');
+                var a = document.getElementById('accent_color');
+                if (p) p.value = primary;
+                if (s) s.value = secondary;
+                if (a) a.value = accent;
+                var ph = document.getElementById('primary_hex');
+                var sh = document.getElementById('secondary_hex');
+                var ah = document.getElementById('accent_hex');
+                if (ph) ph.textContent = primary;
+                if (sh) sh.textContent = secondary;
+                if (ah) ah.textContent = accent;
+                document.querySelectorAll('.theme-palette-card').forEach(function (el) { el.classList.remove('theme-palette-card--active'); });
+                if (btn) btn.classList.add('theme-palette-card--active');
             }
             </script>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                 <!-- Primary Color -->
                 <div
-                    class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                    class="bg-white dark:bg-gray-800 p-5 sm:p-6 rounded-2xl shadow-md border border-gray-200 dark:border-gray-700 ring-1 ring-gray-100/80 dark:ring-gray-700/50">
                     <label for="primary_color"
-                        class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Primary Color
+                        class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                        Primary
                     </label>
-                    <div class="flex items-center space-x-3">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">CTAs, links, key focus rings</p>
+                    <div class="flex flex-wrap items-center gap-3">
                         <input type="color" id="primary_color" name="primary_color"
                             value="{{ theme_settings.primary_color or '#800020' }}"
-                            class="h-10 w-20 p-1 border border-gray-300 rounded cursor-pointer"
+                            class="theme-color-input h-12 w-28 sm:h-14 sm:w-32 p-1 border-2 border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer shadow-inner bg-gray-50 dark:bg-gray-900/50"
                             oninput="document.getElementById('primary_hex').textContent=this.value">
-                        <span id="primary_hex" class="text-gray-500 text-sm font-mono">{{ theme_settings.primary_color or '#800020' }}</span>
+                        <code id="primary_hex" class="text-gray-700 dark:text-gray-300 text-sm font-mono tracking-wide px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600">{{ theme_settings.primary_color or '#800020' }}</code>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Main brand color (buttons, active states)</p>
                 </div>
 
                 <!-- Secondary Color -->
                 <div
-                    class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
+                    class="bg-white dark:bg-gray-800 p-5 sm:p-6 rounded-2xl shadow-md border border-gray-200 dark:border-gray-700 ring-1 ring-gray-100/80 dark:ring-gray-700/50">
                     <label for="secondary_color"
-                        class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Secondary Color
+                        class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                        Secondary
                     </label>
-                    <div class="flex items-center space-x-3">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Gradients, badges, secondary buttons</p>
+                    <div class="flex flex-wrap items-center gap-3">
                         <input type="color" id="secondary_color" name="secondary_color"
                             value="{{ theme_settings.secondary_color or '#A00030' }}"
-                            class="h-10 w-20 p-1 border border-gray-300 rounded cursor-pointer"
+                            class="theme-color-input h-12 w-28 sm:h-14 sm:w-32 p-1 border-2 border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer shadow-inner bg-gray-50 dark:bg-gray-900/50"
                             oninput="document.getElementById('secondary_hex').textContent=this.value">
-                        <span id="secondary_hex" class="text-gray-500 text-sm font-mono">{{ theme_settings.secondary_color or '#A00030' }}</span>
+                        <code id="secondary_hex" class="text-gray-700 dark:text-gray-300 text-sm font-mono tracking-wide px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600">{{ theme_settings.secondary_color or '#A00030' }}</code>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Secondary brand color (gradients, accents)</p>
                 </div>
 
                 <!-- Accent Color -->
                 <div
-                    class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-                    <label for="accent_color" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Accent Color
+                    class="bg-white dark:bg-gray-800 p-5 sm:p-6 rounded-2xl shadow-md border border-gray-200 dark:border-gray-700 ring-1 ring-gray-100/80 dark:ring-gray-700/50">
+                    <label for="accent_color" class="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                        Accent (deep)
                     </label>
-                    <div class="flex items-center space-x-3">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Hover, pressed, and high-contrast fills</p>
+                    <div class="flex flex-wrap items-center gap-3">
                         <input type="color" id="accent_color" name="accent_color"
                             value="{{ theme_settings.accent_color or '#5C0014' }}"
-                            class="h-10 w-20 p-1 border border-gray-300 rounded cursor-pointer"
+                            class="theme-color-input h-12 w-28 sm:h-14 sm:w-32 p-1 border-2 border-gray-200 dark:border-gray-600 rounded-xl cursor-pointer shadow-inner bg-gray-50 dark:bg-gray-900/50"
                             oninput="document.getElementById('accent_hex').textContent=this.value">
-                        <span id="accent_hex" class="text-gray-500 text-sm font-mono">{{ theme_settings.accent_color or '#5C0014' }}</span>
+                        <code id="accent_hex" class="text-gray-700 dark:text-gray-300 text-sm font-mono tracking-wide px-2 py-1 rounded-lg bg-gray-100 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600">{{ theme_settings.accent_color or '#5C0014' }}</code>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Darker variant for hover states</p>
                 </div>
             </div>
 

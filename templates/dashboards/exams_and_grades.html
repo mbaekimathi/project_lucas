@@ -3,11 +3,6 @@
 {% block title %}Exams and Grades - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url() }}" 
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 <a href="{{ employee_dash_url('exams-and-grades') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-clipboard-check w-5"></i>

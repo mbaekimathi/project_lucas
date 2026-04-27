@@ -3,11 +3,6 @@
 {% block title %}Exam & Evaluation - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url() }}"
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 <a href="{{ employee_dash_url('grades-registration') }}"
    class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
     <i class="fas fa-list-check w-5"></i>

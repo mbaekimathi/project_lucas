@@ -5,11 +5,6 @@
 {% block role_display %}Academic Schedule Management{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url() }}"
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 <a href="{{ employee_dash_url('settings/curriculum coordinator') }}"
    class="sidebar-item {% if request.endpoint == 'settings' and request.view_args.get('role') == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
     <i class="fas fa-sliders-h w-5"></i>

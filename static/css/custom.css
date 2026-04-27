@@ -2173,3 +2173,216 @@ aside.sidebar-position {
     }
 }
 
+/* System Settings — Theme & Colors: designer palette cards */
+.theme-palette-card {
+    display: block;
+    width: 100%;
+    padding: 1rem 1.1rem 1.05rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.theme-palette-card:hover {
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(139, 92, 246, 0.08);
+    transform: translateY(-1px);
+}
+
+.dark .theme-palette-card {
+    border-color: rgba(71, 85, 105, 0.55);
+    background: linear-gradient(165deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.92) 100%);
+}
+
+.dark .theme-palette-card:hover {
+    border-color: rgba(167, 139, 250, 0.4);
+    box-shadow: 0 8px 28px -10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(167, 139, 250, 0.12);
+}
+
+.theme-palette-card--active {
+    border-color: rgba(16, 185, 129, 0.65) !important;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2), 0 8px 24px -8px rgba(15, 23, 42, 0.1) !important;
+}
+
+.dark .theme-palette-card--active {
+    border-color: rgba(52, 211, 153, 0.55) !important;
+    box-shadow: 0 0 0 2px rgba(52, 211, 153, 0.18), 0 8px 28px -10px rgba(0, 0, 0, 0.4) !important;
+}
+
+.theme-palette-strip {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0.65rem;
+}
+
+.theme-palette-strip span {
+    flex: 1;
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.theme-palette-name {
+    display: block;
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+}
+
+.dark .theme-palette-name {
+    color: #f1f5f9;
+}
+
+.theme-palette-desc {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 0.7rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+
+.dark .theme-palette-desc {
+    color: #94a3b8;
+}
+
+input.theme-color-input {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+input.theme-color-input::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+input.theme-color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 0.5rem;
+}
+
+/* —— Admission page: closed state (animated padlock) —— */
+.admission-closed-card {
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.98) 0%, rgba(241, 245, 249, 0.99) 55%, rgba(248, 250, 252, 1) 100%);
+}
+
+.dark .admission-closed-card {
+    background: linear-gradient(160deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
+}
+
+.admission-closed-card__glow {
+    position: absolute;
+    inset: -35% -20% -25%;
+    background: radial-gradient(ellipse 55% 45% at 50% 35%,
+            color-mix(in srgb, var(--brand-primary, #800020) 32%, transparent) 0%,
+            transparent 68%);
+    opacity: 0.4;
+    animation: admission-glow-pulse 4.5s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes admission-glow-pulse {
+
+    0%,
+    100% {
+        opacity: 0.28;
+        transform: scale(1) translateY(0);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(1.06) translateY(-2%);
+    }
+}
+
+.admission-padlock-wrap {
+    width: 118px;
+    max-width: 100%;
+    filter: drop-shadow(0 14px 28px rgba(15, 23, 42, 0.18));
+}
+
+.dark .admission-padlock-wrap {
+    filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.45));
+}
+
+.admission-padlock {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.admission-padlock__shackle {
+    transform-origin: 60px 58px;
+    animation: admission-shackle 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.admission-padlock__body {
+    transform-origin: 60px 100px;
+    animation: admission-lock-body 2.6s ease-in-out infinite;
+}
+
+.admission-padlock__hole,
+.admission-padlock__slot {
+    animation: admission-keyhole-shimmer 2.6s ease-in-out infinite;
+}
+
+@keyframes admission-shackle {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    25% {
+        transform: translateY(-5px) rotate(-3deg);
+    }
+
+    45% {
+        transform: translateY(0) rotate(0.5deg);
+    }
+
+    60% {
+        transform: translateY(-2px) rotate(0deg);
+    }
+}
+
+@keyframes admission-lock-body {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-5px);
+    }
+}
+
+@keyframes admission-keyhole-shimmer {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.72;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .admission-closed-card__glow,
+    .admission-padlock__shackle,
+    .admission-padlock__body,
+    .admission-padlock__hole,
+    .admission-padlock__slot {
+        animation: none !important;
+    }
+}
+

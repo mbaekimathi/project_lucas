@@ -32,11 +32,6 @@
     <span>Attendance</span>
 </a>
 {% elif is_teacher_view|default(false) %}
-<a href="{{ employee_dash_url() }}"
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 <a href="{{ url_for('teacher_my_classes') }}"
    class="sidebar-item">
     <i class="fas fa-calendar-alt w-5"></i>

@@ -318,6 +318,10 @@ def _default_school_data():
         'secondary_color': '#A00030',
         'accent_color': '#5C0014',
         'font_family': 'Inter',
+        'maintenance_mode': False,
+        'allow_registration': True,
+        'default_language': 'en',
+        'timezone': 'Africa/Nairobi',
     }
 
 
@@ -359,6 +363,12 @@ def get_school_settings():
                             'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
                             'accent_color': (result.get('accent_color') or '#5C0014').strip(),
                             'font_family': (result.get('font_family') or 'Inter').strip(),
+                            'maintenance_mode': bool(result.get('maintenance_mode')),
+                            'allow_registration': bool(result.get('allow_registration'))
+                            if result.get('allow_registration') is not None
+                            else True,
+                            'default_language': (result.get('default_language') or 'en').strip()[:10],
+                            'timezone': (result.get('timezone') or 'Africa/Nairobi').strip()[:64],
                         }
                     else:
                         school_data = {
@@ -377,6 +387,10 @@ def get_school_settings():
                             'secondary_color': '#A00030',
                             'accent_color': '#5C0014',
                             'font_family': 'Inter',
+                            'maintenance_mode': False,
+                            'allow_registration': True,
+                            'default_language': 'en',
+                            'timezone': 'Africa/Nairobi',
                         }
     except Exception:
         pass
@@ -620,6 +634,85 @@ def generate_student_id(connection):
     except Exception as e:
         print(f"Error generating student ID: {e}")
         return f"STU{int(datetime.now().timestamp()) % 100000:05d}"
+
+
+def ensure_school_general_settings_columns(cursor):
+    """Add maintenance_mode, allow_registration, default_language, timezone to school_settings."""
+    cols = [
+        ('maintenance_mode', "TINYINT(1) NOT NULL DEFAULT 0", 'font_family'),
+        ('allow_registration', "TINYINT(1) NOT NULL DEFAULT 1", 'maintenance_mode'),
+        ('default_language', "VARCHAR(10) NOT NULL DEFAULT 'en'", 'allow_registration'),
+        ('timezone', "VARCHAR(64) NOT NULL DEFAULT 'Africa/Nairobi'", 'default_language'),
+    ]
+    for col_name, col_def, after_col in cols:
+        try:
+            cursor.execute("SHOW COLUMNS FROM school_settings LIKE %s", (col_name,))
+            if cursor.fetchone():
+                continue
+            cursor.execute(
+                f"ALTER TABLE school_settings ADD COLUMN {col_name} {col_def} AFTER {after_col}"
+            )
+        except Exception as e:
+            print(f"ensure_school_general_settings_columns ({col_name}): {e}")
+
+
+def ensure_student_marks_foreign_keys(cursor):
+    """
+    Add InnoDB foreign keys to student_marks if possible.
+
+    Inline FKs on CREATE TABLE often fail with errno 150 on shared hosting when parent
+    tables are not InnoDB or when VARCHAR charset/collation does not match exactly.
+    Creating the table first (indexes + unique only) then ALTER ... ADD CONSTRAINT
+    avoids blocking init_db; constraints are applied when the server allows them.
+    """
+    cursor.execute("SHOW TABLES LIKE 'student_marks'")
+    if not cursor.fetchone():
+        return
+    alters = [
+        (
+            "fk_student_marks_student",
+            """
+            ALTER TABLE student_marks
+            ADD CONSTRAINT fk_student_marks_student
+            FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE
+            """,
+        ),
+        (
+            "fk_student_marks_subject",
+            """
+            ALTER TABLE student_marks
+            ADD CONSTRAINT fk_student_marks_subject
+            FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+            """,
+        ),
+        (
+            "fk_student_marks_exam",
+            """
+            ALTER TABLE student_marks
+            ADD CONSTRAINT fk_student_marks_exam
+            FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE
+            """,
+        ),
+    ]
+    for constraint_name, sql in alters:
+        try:
+            cursor.execute(
+                """
+                SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = 'student_marks'
+                  AND CONSTRAINT_NAME = %s
+                LIMIT 1
+                """,
+                (constraint_name,),
+            )
+            if cursor.fetchone():
+                continue
+            cursor.execute(sql)
+            print(f"OK: Added constraint {constraint_name} on student_marks")
+        except Exception as e:
+            print(f"Migration note (student_marks {constraint_name}): {e}")
+
 
 def init_db():
     """Initialize database and tables - creates database if missing, then creates tables"""
@@ -1807,7 +1900,15 @@ def init_db():
                 print(f"Migration note for students.status ENUM: {e}")
                 pass
             
-            # Create student_marks table
+            # Normalize engines for FK parents (errno 150 if parents are not InnoDB)
+            for _tbl in ("students", "subjects", "exams"):
+                try:
+                    cursor.execute(f"ALTER TABLE `{_tbl}` ENGINE=InnoDB")
+                except Exception as e:
+                    print(f"Migration note ({_tbl} ENGINE=InnoDB): {e}")
+
+            # student_marks: create without inline FKs — avoids errno 150 when charset/engine
+            # on parent columns does not match; constraints added in ensure_student_marks_foreign_keys.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS student_marks (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1817,20 +1918,32 @@ def init_db():
                     marks DECIMAL(10, 2),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (student_id) REFERENCES students(student_id) ON DELETE CASCADE,
-                    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
-                    FOREIGN KEY (exam_id) REFERENCES exams(id) ON DELETE CASCADE,
                     UNIQUE KEY unique_student_subject_exam (student_id, subject_id, exam_id),
                     INDEX idx_student_id (student_id),
                     INDEX idx_subject_id (subject_id),
                     INDEX idx_exam_id (exam_id)
-                )
+                ) ENGINE=InnoDB
             """)
+
+            try:
+                cursor.execute("ALTER TABLE student_marks ENGINE=InnoDB")
+            except Exception as e:
+                print(f"Migration note (student_marks ENGINE=InnoDB): {e}")
+
+            try:
+                ensure_student_marks_foreign_keys(cursor)
+            except Exception as e:
+                print(f"Migration note (ensure_student_marks_foreign_keys): {e}")
             
             try:
                 ensure_users_portal_login_schema(cursor)
             except Exception as e:
                 print(f"Migration note for users portal login columns: {e}")
+            
+            try:
+                ensure_school_general_settings_columns(cursor)
+            except Exception as e:
+                print(f"Migration note for school_settings general columns: {e}")
             
             connection.commit()
             
@@ -3101,7 +3214,14 @@ def normalize_text(value, uppercase=True, allow_empty=False):
 
 @app.route('/admission', methods=['GET', 'POST'])
 def admission():
+    _portal = get_school_settings()
+    admission_open = bool(_portal.get('allow_registration', True))
+
     if request.method == 'POST':
+        if not admission_open:
+            flash('Online admission is temporarily closed. Please contact the school office.', 'error')
+            return redirect(url_for('admission'))
+
         # Get form data directly from students table column names
         # All text fields to UPPERCASE except email (lowercase)
         # Normalize spacing: multiple spaces become single space
@@ -3236,7 +3356,11 @@ def admission():
         finally:
             connection.close()
     
-    return render_template('admission_form.html', academic_levels=academic_levels)
+    return render_template(
+        'admission_form.html',
+        academic_levels=academic_levels,
+        admission_open=admission_open,
+    )
 
 @app.route('/register-employee', methods=['GET', 'POST'])
 def register_employee():
@@ -13834,6 +13958,14 @@ def system_settings():
         else:
             term['days_remaining'] = None
     
+    _cfg = get_school_settings()
+    general_data = {
+        'maintenance_mode': bool(_cfg.get('maintenance_mode')),
+        'allow_registration': bool(_cfg.get('allow_registration', True)),
+        'default_language': _cfg.get('default_language') or 'en',
+        'timezone': _cfg.get('timezone') or 'Africa/Nairobi',
+    }
+
     return render_template('dashboards/system_settings.html', 
                          school_data=school_data, 
                          academic_levels=academic_levels,
@@ -13843,7 +13975,8 @@ def system_settings():
                          today=today,
                          is_accountant=is_accountant,
                          theme_settings=theme_settings,
-                         login_settings=login_settings)
+                         login_settings=login_settings,
+                         general_data=general_data)
 
 @app.route('/dashboard/employee/academic-settings')
 @app.route('/dashboard/employee/academic-schedule-management')
@@ -23397,6 +23530,67 @@ def update_school_profile():
         flash('Database connection error. Please try again later.', 'error')
     
     return redirect(url_for('system_settings'))
+
+
+@app.route('/system-settings/general', methods=['POST'])
+@login_required
+def update_general_settings():
+    """Persist maintenance mode, admission registration gate, language, and timezone."""
+    user_role = session.get('role', '').lower()
+    if user_role != 'technician':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('system_settings'))
+
+    maintenance_mode = 1 if '1' in request.form.getlist('maintenance_mode') else 0
+    allow_registration = 1 if '1' in request.form.getlist('allow_registration') else 0
+    default_language = (request.form.get('default_language') or 'en').strip().lower()[:10]
+    timezone_val = (request.form.get('timezone') or 'Africa/Nairobi').strip()[:64]
+
+    if default_language not in ('en', 'es', 'fr', 'sw'):
+        default_language = 'en'
+    allowed_tz = frozenset({
+        'UTC', 'Africa/Nairobi', 'Europe/London', 'America/New_York', 'Asia/Dubai',
+    })
+    if timezone_val not in allowed_tz:
+        timezone_val = 'Africa/Nairobi'
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_school_general_settings_columns(cursor)
+                cursor.execute("SELECT id FROM school_settings ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                if not row:
+                    flash('School settings row is missing. Save school profile first.', 'error')
+                    return redirect(url_for('system_settings') + '#general-settings')
+                school_id = row['id'] if isinstance(row, dict) else row[0]
+                cursor.execute(
+                    """
+                    UPDATE school_settings
+                    SET maintenance_mode = %s, allow_registration = %s,
+                        default_language = %s, timezone = %s
+                    WHERE id = %s
+                    """,
+                    (maintenance_mode, allow_registration, default_language, timezone_val, school_id),
+                )
+                connection.commit()
+                invalidate_school_settings_cache()
+                flash('General settings saved successfully.', 'success')
+        except Exception as e:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            print(f"update_general_settings: {e}")
+            flash('Could not save general settings. If columns are missing, restart the app once to run migrations.', 'error')
+        finally:
+            connection.close()
+    else:
+        flash('Database connection error. Please try again later.', 'error')
+
+    return redirect(url_for('system_settings') + '#general-settings')
+
 
 # Theme / Colors Update Route
 @app.route('/system-settings/theme', methods=['POST'])

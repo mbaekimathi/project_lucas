@@ -20,15 +20,20 @@
                     <span>Student admission</span>
                 </div>
                 <h1 class="text-2xl sm:text-3xl md:text-4xl font-heading font-bold mb-3 sm:mb-4 leading-tight tracking-tight">
-                    Join our community
+                    {% if admission_open %}Join our community{% else %}Admission is closed{% endif %}
                 </h1>
                 <p class="text-sm sm:text-base md:text-lg text-white/90 max-w-2xl mx-auto leading-relaxed">
+                    {% if admission_open %}
                     Start your journey with <strong class="text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — complete the form below to begin.
+                    {% else %}
+                    Online applications are not being accepted right now. Please contact the school office for next steps.
+                    {% endif %}
                 </p>
             </div>
         </div>
 
         <div class="pb-4 md:pb-8">
+            {% if admission_open %}
             <!-- Info Notice -->
             <div class="mb-6 sm:mb-8 modern-card p-4 sm:p-5 border-l-4 border-blue-500">
                 <div class="flex items-start">
@@ -328,10 +333,50 @@
                     </div>
                 </form>
             </div>
+            {% else %}
+            <!-- Registration closed: animated padlock (no form) -->
+            <div class="admission-closed-card modern-card rounded-2xl overflow-hidden border border-slate-200/80 dark:border-slate-700/80 shadow-xl">
+                <div class="admission-closed-card__glow" aria-hidden="true"></div>
+                <div class="relative z-10 px-6 py-14 sm:py-16 md:py-20 text-center">
+                    <div class="admission-padlock-wrap mx-auto mb-8" aria-hidden="true">
+                        <svg class="admission-padlock" viewBox="0 0 120 140" role="img" aria-label="Locked">
+                            <defs>
+                                <linearGradient id="admission-lock-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stop-color="var(--brand-primary, #800020)" />
+                                    <stop offset="100%" stop-color="var(--brand-secondary, #A00030)" />
+                                </linearGradient>
+                            </defs>
+                            <path class="admission-padlock__shackle" fill="none" stroke="url(#admission-lock-grad)" stroke-width="8" stroke-linecap="round"
+                                d="M28 58 V44 C28 22 42 10 60 10 S92 22 92 44 V58" />
+                            <rect class="admission-padlock__body" x="22" y="56" width="76" height="72" rx="14" fill="url(#admission-lock-grad)" />
+                            <circle class="admission-padlock__hole" cx="60" cy="92" r="10" fill="rgba(255,255,255,0.25)" />
+                            <rect class="admission-padlock__slot" x="54" y="86" width="12" height="18" rx="2" fill="rgba(15,23,42,0.35)" />
+                        </svg>
+                    </div>
+                    <h2 class="text-xl sm:text-2xl font-heading font-bold text-slate-900 dark:text-white mb-3">
+                        Online admission is closed
+                    </h2>
+                    <p class="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed mb-8">
+                        <strong class="font-semibold text-slate-800 dark:text-slate-100">{{ school_settings.school_name or 'Our school' }}</strong> is not accepting new applications through this portal at the moment.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
+                        <a href="{{ url_for('contact') }}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-95 transition-all">
+                            <i class="fas fa-envelope" aria-hidden="true"></i>
+                            Contact the school
+                        </a>
+                        <a href="{{ url_for('home') }}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border-2 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all">
+                            <i class="fas fa-home" aria-hidden="true"></i>
+                            Back to home
+                        </a>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
 </section>
 
+{% if admission_open %}
 <script>
 function toggleSponsorFields(category) {
     const sponsorFields = document.getElementById('sponsor_fields');
@@ -354,4 +399,5 @@ function toggleSponsorFields(category) {
     }
 }
 </script>
+{% endif %}
 {% endblock %}

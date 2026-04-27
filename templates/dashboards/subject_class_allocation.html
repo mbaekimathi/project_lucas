@@ -4,11 +4,6 @@
 
 {% block sidebar_content %}
 <!-- Classes & Subjects Links -->
-<a href="{{ employee_dash_url() }}" 
-   class="sidebar-item">
-    <i class="fas fa-arrow-left w-5"></i>
-    <span>Back to Dashboard</span>
-</a>
 
 <a href="{{ employee_dash_url('classes-subjects') }}" 
    class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
