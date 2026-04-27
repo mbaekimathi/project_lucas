@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Schedule a visit — {{ school_settings.school_name or 'Our school' }}{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
+{% block content %}
+<div class="edu-section edu-section--tint py-12 md:py-16">
+    <div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-2 gap-10 items-start">
+            <div>
+                <p class="edu-eyebrow">Campus visit</p>
+                <h1 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-2">See {{ school_settings.school_name or 'our school' }} in person</h1>
+                <p class="mt-5 text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Request a guided tour with our admissions team. We will show you classrooms, shared facilities, and answer questions about programmes and enrolment.
+                </p>
+                <div class="mt-8 relative h-56 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
+                    <img src="https://images.unsplash.com/photo-1553877522-43269d4ea984?w=1200&q=80&auto=format&fit=crop" alt="School reception" class="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" width="1200" height="800">
+                    <div class="absolute inset-0 school-page-photo__scrim--soft" aria-hidden="true"></div>
+                </div>
+            </div>
+            <div class="edu-card p-8 md:p-10">
+                <h2 class="text-xl font-bold text-slate-900 dark:text-white">Request a visit</h2>
+                <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">We typically reply within one school day.</p>
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="mt-4 rounded-xl border px-4 py-3 text-sm {% if category == 'error' %}border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200{% else %}border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-100{% endif %}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                <form method="POST" action="{{ url_for('demo') }}" class="mt-6 grid sm:grid-cols-2 gap-4">
+                    <div class="sm:col-span-2">
+                        <label for="demo-name" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Your full name</label>
+                        <input id="demo-name" name="name" required placeholder="Parent or guardian name" class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="demo-school" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Programme / year group of interest</label>
+                        <input id="demo-school" name="school" required placeholder="e.g. Grade 4, PP2, or programme name" class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="demo-email" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Email</label>
+                        <input id="demo-email" type="email" name="email" required placeholder="you@example.com" class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary">
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="demo-phone" class="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Phone</label>
+                        <input id="demo-phone" name="phone" required placeholder="+254…" class="w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/40 focus:border-brand-primary">
+                    </div>
+                    <button type="submit" class="sm:col-span-2 inline-flex items-center justify-center gap-2 rounded-full px-5 py-3.5 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                        <i class="fas fa-paper-plane" aria-hidden="true"></i> Submit request
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

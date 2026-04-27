@@ -11,7 +11,7 @@ import secrets
 import copy
 import time
 from functools import wraps
-from dotenv import load_dotenv
+from env_loader import load_project_env
 try:
     from dateutil.relativedelta import relativedelta
 except ImportError:
@@ -38,8 +38,8 @@ try:
 except ImportError:
     EXCEL_AVAILABLE = False
 
-# Load environment variables from .env file
-load_dotenv()
+# Load .env (hosted) then .env.local (local dev overrides) — see env.local.example
+load_project_env()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
@@ -2937,48 +2937,37 @@ This is an automated message. Please do not reply to this email.
 # Routes
 @app.route('/')
 def home():
-    # Fetch active academic levels for admission form
-    academic_levels = []
-    connection = get_db_connection()
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, level_category, level_name, level_description 
-                    FROM academic_levels 
-                    WHERE level_status = 'active'
-                    ORDER BY level_name ASC
-                """)
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        academic_levels.append({
-                            'id': row.get('id'),
-                            'level_category': row.get('level_category', ''),
-                            'level_name': row.get('level_name', ''),
-                            'level_description': row.get('level_description', '')
-                        })
-        except Exception as e:
-            print(f"Error fetching academic levels for home: {e}")
-        finally:
-            connection.close()
-    
-    return render_template('home.html', academic_levels=academic_levels)
+    return render_template('home.html')
 
 
 @app.route('/search')
 def public_site_search():
-    """Public marketing site search: redirects to Google (with site: filter when not on localhost)."""
-    from urllib.parse import quote_plus
-
-    q = request.args.get('q', '').strip()
-    if not q:
+    query = (request.args.get('q') or '').strip().lower()
+    if not query:
         return redirect(url_for('home'))
-    host = request.host.split(':')[0]
-    if host in ('127.0.0.1', 'localhost'):
-        return redirect(f'https://www.google.com/search?q={quote_plus(q)}')
-    return redirect('https://www.google.com/search?q=' + quote_plus(f'site:{host} {q}'))
+
+    searchable_routes = {
+        'home': url_for('home'),
+        'features': url_for('features'),
+        'programs': url_for('features'),
+        'solutions': url_for('solutions'),
+        'community': url_for('solutions'),
+        'pricing': url_for('pricing'),
+        'fees': url_for('pricing'),
+        'demo': url_for('demo'),
+        'visit': url_for('demo'),
+        'tour': url_for('demo'),
+        'about': url_for('about'),
+        'contact': url_for('contact'),
+        'faq': url_for('faq'),
+        'admission': url_for('admission'),
+        'admissions': url_for('admission'),
+        'apply': url_for('admission'),
+    }
+    for key, path in searchable_routes.items():
+        if query in key:
+            return redirect(path)
+    return redirect(url_for('home'))
 
 
 @app.route('/about')
@@ -2987,108 +2976,67 @@ def about():
 
 @app.route('/programs')
 def programs():
-    return render_template('programs.html')
+    return redirect(url_for('features'))
+
+
+@app.route('/features')
+def features():
+    return render_template('features.html')
+
+
+@app.route('/solutions')
+def solutions():
+    return render_template('solutions.html')
+
+
+@app.route('/pricing')
+def pricing():
+    return render_template('pricing.html')
+
+
+@app.route('/demo', methods=['GET', 'POST'])
+def demo():
+    if request.method == 'POST':
+        demo_name = (request.form.get('name') or '').strip()
+        school_name = (request.form.get('school') or '').strip()
+        email = (request.form.get('email') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
+        if not all([demo_name, school_name, email, phone]):
+            flash('Please fill in all fields so we can schedule your visit.', 'error')
+            return redirect(url_for('demo'))
+        flash('Thank you — your visit request was received. The office will contact you shortly.', 'success')
+        return redirect(url_for('demo'))
+    return render_template('demo.html')
+
+
+@app.route('/faq')
+def faq():
+    return render_template('faq.html')
 
 @app.route('/news')
 def news():
-    connection = get_db_connection()
-    news_items = []
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT * FROM news ORDER BY date DESC, created_at DESC LIMIT 6")
-                news_items = cursor.fetchall()
-        except Exception as e:
-            print(f"Error fetching news: {e}")
-        finally:
-            connection.close()
-    return render_template('news.html', news_items=news_items)
+    return redirect(url_for('login'))
 
 @app.route('/gallery')
 def gallery():
-    connection = get_db_connection()
-    gallery_items = []
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT * FROM gallery ORDER BY created_at DESC LIMIT 12")
-                gallery_items = cursor.fetchall()
-        except Exception as e:
-            print(f"Error fetching gallery: {e}")
-        finally:
-            connection.close()
-    return render_template('gallery.html', gallery_items=gallery_items)
+    return redirect(url_for('login'))
 
 @app.route('/team')
 def team():
-    # Team data - 5 key members
-    team_members = [
-        {
-            'name': 'Dr. Sarah Wanjala',
-            'position': 'Executive Director',
-            'email': 'sarah.wanjala@modernschool.com',
-            'phone': '+254 700 111 111',
-            'bio': 'With over 25 years of experience in education and non-profit management, Dr. Wanjala leads our organization with strategic vision and unwavering commitment to educational excellence.',
-            'details': 'Dr. Wanjala holds a Ph.D. in Educational Leadership and has been instrumental in establishing Modern School as a leading NGO-sponsored educational institution. She has spearheaded numerous initiatives that have transformed the lives of thousands of students.',
-            'image': 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=800&h=1000&fit=crop',
-            'qualifications': 'Ph.D. Educational Leadership, M.Ed. Curriculum Development'
-        },
-        {
-            'name': 'Mr. James Ochieng',
-            'position': 'Program Manager',
-            'email': 'james.ochieng@modernschool.com',
-            'phone': '+254 700 111 112',
-            'bio': 'An experienced program manager specializing in educational program development, implementation, and evaluation with a focus on community impact.',
-            'details': 'Mr. Ochieng has managed over 50 educational programs across Kenya, ensuring effective delivery and measurable outcomes. He is passionate about creating sustainable educational solutions for underserved communities.',
-            'image': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=1000&fit=crop',
-            'qualifications': 'M.A. Program Management, B.Ed. Educational Administration'
-        },
-        {
-            'name': 'Ms. Mary Kamau',
-            'position': 'Finance Manager',
-            'email': 'mary.kamau@modernschool.com',
-            'phone': '+254 700 111 113',
-            'bio': 'A certified public accountant with extensive experience in non-profit financial management, ensuring transparency and accountability in all financial operations.',
-            'details': 'Ms. Kamau brings over 15 years of financial management experience to Modern School. She ensures strict compliance with financial regulations and maintains the highest standards of fiscal responsibility.',
-            'image': 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=800&h=1000&fit=crop',
-            'qualifications': 'CPA (K), M.Sc. Finance, B.Com Accounting'
-        },
-        {
-            'name': 'Mr. Peter Mwangi',
-            'position': 'Project Officer',
-            'email': 'peter.mwangi@modernschool.com',
-            'phone': '+254 700 111 114',
-            'bio': 'Dedicated project officer with expertise in coordinating educational projects, managing resources, and ensuring timely delivery of program objectives.',
-            'details': 'Mr. Mwangi has successfully coordinated numerous educational projects, from infrastructure development to scholarship programs. His attention to detail and organizational skills ensure project success.',
-            'image': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800&h=1000&fit=crop',
-            'qualifications': 'M.A. Project Management, B.A. Social Work'
-        },
-        {
-            'name': 'Ms. Grace Wanjiku',
-            'position': 'Administrative Officer',
-            'email': 'grace.wanjiku@modernschool.com',
-            'phone': '+254 700 111 115',
-            'bio': 'Experienced administrative professional ensuring smooth day-to-day operations, efficient resource management, and excellent stakeholder relations.',
-            'details': 'Ms. Wanjiku is the backbone of our administrative operations, managing everything from human resources to facility coordination. Her organizational skills and dedication keep our institution running smoothly.',
-            'image': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&h=1000&fit=crop',
-            'qualifications': 'M.A. Public Administration, B.A. Business Administration'
-        }
-    ]
-    return render_template('team.html', team_members=team_members)
+    return redirect(url_for('login'))
 
 @app.route('/contact', methods=['GET', 'POST'])
 def contact():
     if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email')
-        phone = request.form.get('phone')
-        subject = request.form.get('subject')
-        message = request.form.get('message')
-        
-        # Here you would typically save to database or send email
-        flash('Thank you for your message! We will get back to you soon.', 'success')
+        name = (request.form.get('name') or '').strip()
+        email = (request.form.get('email') or '').strip()
+        subject = (request.form.get('subject') or '').strip()
+        message = (request.form.get('message') or '').strip()
+        if not all([name, email, subject, message]):
+            flash('Please complete all required contact fields.', 'error')
+            return redirect(url_for('contact'))
+        flash('Thanks for contacting us. We will respond soon.', 'success')
         return redirect(url_for('contact'))
-    
     return render_template('contact.html')
 
 def normalize_text(value, uppercase=True, allow_empty=False):
@@ -5340,10 +5288,13 @@ def finance_overview():
             }
         )
 
+    class_fee_summaries = _finance_overview_class_summaries(student_fee_analytics.get('student_rows') or [])
+
     return render_template(
         'dashboards/finance_overview.html',
         student_fee_analytics=student_fee_analytics,
         class_filter_options=class_filter_options,
+        class_fee_summaries=class_fee_summaries,
         role=user_role,
         is_secretary_finance=is_secretary,
     )
@@ -11561,7 +11512,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
     academic_year_id = req_args.get('academic_year_id', type=int)
-    default_filter_type = 'day' if is_teacher else 'month'
+    default_filter_type = 'day'
     filter_type = (req_args.get('filter_type') or default_filter_type).strip().lower()
     if filter_type not in ('month', 'day', 'period'):
         filter_type = default_filter_type
@@ -11569,7 +11520,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
     selected_day = (req_args.get('day') or '').strip()
     selected_period_start = (req_args.get('period_start') or '').strip()
     selected_period_end = (req_args.get('period_end') or '').strip()
-    if is_teacher and filter_type == 'day' and not selected_day:
+    if filter_type == 'day' and not selected_day:
         selected_day = datetime.now().date().strftime('%Y-%m-%d')
     academic_years = []
     terms = []
@@ -11589,7 +11540,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                         'year_name': r.get('year_name') if isinstance(r, dict) else r[1],
                         'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False)})
                 cursor.execute("""
-                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name, t.is_current
                     FROM terms t
                     LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
                     ORDER BY t.academic_year_id DESC, t.id DESC
@@ -11598,7 +11549,19 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                     terms.append({'id': r.get('id') if isinstance(r, dict) else r[0],
                         'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
                         'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
-                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')})
+                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                        'is_current': r.get('is_current') if isinstance(r, dict) else (r[4] if len(r) > 4 else False)})
+
+                if not academic_year_id and academic_years:
+                    current_year = next((y for y in academic_years if y.get('is_current')), None)
+                    academic_year_id = (current_year or academic_years[0]).get('id')
+
+                if academic_year_id:
+                    terms = [t for t in terms if t.get('academic_year_id') == academic_year_id]
+
+                if not term_id and terms:
+                    current_term = next((t for t in terms if t.get('is_current')), None)
+                    term_id = (current_term or terms[0]).get('id')
 
                 level_id_by_name = {}
                 level_name_by_id = {}
@@ -11697,16 +11660,22 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                                 range_start = first_day
                                 range_end = last_day
 
-                            if range_start < start:
-                                range_start = start
-                            if range_end > end:
-                                range_end = end
+                            # Do not clamp single-day range to term bounds: if "today" (or chosen day)
+                            # falls outside the term, clamping would make range_start > range_end and
+                            # the register would show no columns/students.
+                            if filter_type != 'day':
+                                if range_start < start:
+                                    range_start = start
+                                if range_end > end:
+                                    range_end = end
 
                             selected_week_days = []
                             cur_date = range_start
                             while cur_date <= range_end:
                                 weekday_name = cur_date.strftime('%A')
-                                if weekday_name in allowed_weekdays:
+                                # In single-day mode, always show the selected day so the register is visible.
+                                include_day = (filter_type == 'day') or (weekday_name in allowed_weekdays)
+                                if include_day:
                                     selected_week_days.append({
                                         'date': cur_date,
                                         'date_str': cur_date.strftime('%Y-%m-%d'),
@@ -12048,11 +12017,18 @@ def student_attendance():
     teacher_id = session.get('user_id') if is_teacher else None
 
     # Build visible classes first (teacher sees only assigned classes)
-    students_by_level = _get_students_by_level()
+    students_by_level_all = _get_students_by_level()
     if is_teacher and teacher_id:
         teacher_levels = _get_teacher_level_ids(teacher_id)
         # Strictly show only teacher-assigned levels (empty list if none assigned)
-        students_by_level = [lg for lg in students_by_level if lg['level_name'] in teacher_levels]
+        students_by_level_all = [lg for lg in students_by_level_all if lg['level_name'] in teacher_levels]
+
+    class_level_options = [str((lg.get('level_name') or '')).strip() for lg in students_by_level_all if str((lg.get('level_name') or '')).strip()]
+    selected_class_level = (request.values.get('class_level') or '').strip()
+    if selected_class_level:
+        students_by_level = [lg for lg in students_by_level_all if str((lg.get('level_name') or '')).strip() == selected_class_level]
+    else:
+        students_by_level = students_by_level_all
 
     if request.method == 'POST':
         term_id = request.form.get('term_id', type=int)
@@ -12136,10 +12112,18 @@ def student_attendance():
             params['period_start'] = request.form.get('period_start')
         if request.form.get('period_end'):
             params['period_end'] = request.form.get('period_end')
+        if request.form.get('class_level'):
+            params['class_level'] = request.form.get('class_level')
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
     ctx = _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, request.args)
-    return render_template('dashboards/student_attendance.html', **ctx, is_teacher_view=is_teacher)
+    return render_template(
+        'dashboards/student_attendance.html',
+        **ctx,
+        is_teacher_view=is_teacher,
+        class_level_options=class_level_options,
+        selected_class_level=selected_class_level
+    )
 
 
 def _parent_dashboard_auth():
@@ -20230,6 +20214,47 @@ def _finance_overview_student_fee_bundle(cursor):
     return out
 
 
+def _finance_overview_class_summaries(student_rows):
+    """Roll up student fee rows by current_grade / class_name for overview summary table."""
+    from collections import defaultdict
+
+    agg = defaultdict(
+        lambda: {
+            'student_count': 0,
+            'sum_total_amount': 0.0,
+            'sum_paid_amount': 0.0,
+            'total_outstanding': 0.0,
+        }
+    )
+    for r in student_rows or []:
+        cn = (r.get('class_name') or '').strip() or 'Unassigned'
+        if cn == '—':
+            cn = 'Unassigned'
+        agg[cn]['student_count'] += 1
+        ta = r.get('total_amount')
+        if ta is not None:
+            try:
+                agg[cn]['sum_total_amount'] += float(ta)
+            except (TypeError, ValueError):
+                pass
+        pa = r.get('paid_amount')
+        if pa is not None:
+            try:
+                agg[cn]['sum_paid_amount'] += float(pa)
+            except (TypeError, ValueError):
+                pass
+        bal = r.get('balance')
+        if bal is not None and float(bal) > 0:
+            try:
+                agg[cn]['total_outstanding'] += float(bal)
+            except (TypeError, ValueError):
+                pass
+    out = []
+    for class_name in sorted(agg.keys(), key=lambda x: str(x).lower()):
+        out.append({'class_name': class_name, **agg[class_name]})
+    return out
+
+
 def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None):
     """Exam aggregates for one class (same logic as exam reports)."""
     level_name = lev['level_name']
@@ -20379,6 +20404,8 @@ def _coerce_academic_report_filters(f):
             out[dk] = None
         else:
             out[dk] = str(dv).strip() or None
+    tv = (f.get('timetable_view') or '').strip().lower()
+    out['timetable_view'] = tv if tv in ('student', 'teacher') else 'student'
     return out
 
 
@@ -20451,18 +20478,17 @@ def _build_timetable_grid(rows, teacher_mode=False):
         if not d or t is None or t == '' or d not in cells or t not in cells[d]:
             continue
         if teacher_mode:
+            code = (r.get('subject_code') or '').strip()
             cells[d][t].append({
-                'primary': r.get('level_name') or '—',
-                'secondary': '',
-                'badge': '',
+                'primary': r.get('teacher_name') or '—',
+                'secondary': ' · '.join(x for x in (r.get('level_name'), r.get('subject_name')) if x),
+                'badge': code,
             })
         else:
             code = (r.get('subject_code') or '').strip()
             cells[d][t].append({
                 'primary': r.get('subject_name') or '—',
-                'secondary': ' · '.join(
-                    x for x in (r.get('level_name'), r.get('teacher_name')) if x
-                ),
+                'secondary': ' · '.join(x for x in (r.get('level_name'), r.get('teacher_name')) if x),
                 'badge': code,
             })
     return {'days': days, 'slots': slots_sorted, 'cells': cells}
@@ -20577,7 +20603,8 @@ def _preview_display_context(report_type, bundle):
     }
     if report_type in ('timetable_subject', 'timetable_teacher'):
         ctx['layout'] = 'timetable'
-        ctx['timetable'] = _build_timetable_grid(rows, report_type == 'timetable_teacher')
+        timetable_view = 'teacher' if report_type == 'timetable_teacher' else ((meta.get('timetable_view') or 'student').lower())
+        ctx['timetable'] = _build_timetable_grid(rows, timetable_view == 'teacher')
     elif report_type == 'timetable_exam':
         ctx['layout'] = 'exam_timetable'
         ctx['exam_schedule'] = _build_exam_schedule_by_date(rows)
@@ -20587,12 +20614,20 @@ def _preview_display_context(report_type, bundle):
     elif report_type == 'attendance_individual':
         ctx['layout'] = 'attendance_register'
         ctx['attendance_register'] = _build_attendance_by_student(rows)
-    elif report_type in ('exam_class_performance', 'exam_subject_performance'):
-        ctx['layout'] = 'exam_performance'
-    elif report_type == 'exam_individual':
+    elif report_type in ('exam_class_performance', 'exam_subject_performance', 'exam_teacher_performance'):
+        ctx['layout'] = 'exam_performance' if report_type != 'exam_teacher_performance' else 'exam_teacher'
+    elif report_type in ('exam_individual', 'exam_individual_performance'):
         ctx['layout'] = 'exam_marks'
         ctx['exam_by_student'] = _build_exam_marks_by_student(rows)
-    elif report_type in ('class_list_attendance', 'class_list_exam'):
+    elif report_type == 'exam_all_students_performance':
+        ctx['layout'] = 'plain'
+    elif report_type == 'class_list_attendance':
+        if meta.get('class_sections'):
+            ctx['layout'] = 'class_list_grouped'
+            ctx['class_sections'] = meta['class_sections']
+        else:
+            ctx['layout'] = 'plain'
+    elif report_type == 'class_list_exam':
         if meta.get('class_sections'):
             ctx['layout'] = 'class_list_grouped'
             ctx['class_sections'] = meta['class_sections']
@@ -20622,12 +20657,13 @@ def _build_academic_report_payload(cursor, report_type, f):
     tid = f.get('term_id')
     lid = f.get('level_id')
     teacher_id = f.get('teacher_id')
+    timetable_view = (f.get('timetable_view') or 'student').lower()
     student_id = _str_opt(f.get('student_id'))
     date_from = _str_opt(f.get('date_from'))
     date_to = _str_opt(f.get('date_to'))
 
     # Only auto-fill dates from term for attendance reports (optional dates elsewhere)
-    if report_type in ('attendance_class', 'attendance_individual') and tid and (not date_from or not date_to):
+    if report_type in ('attendance_class', 'attendance_individual', 'class_list_attendance') and tid and (not date_from or not date_to):
         df, dt = _term_date_bounds(cursor, tid)
         if df and dt:
             if hasattr(df, 'strftime'):
@@ -20639,10 +20675,44 @@ def _build_academic_report_payload(cursor, report_type, f):
 
     meta = {}
 
-    if report_type in ('class_list_attendance', 'class_list_exam'):
-        title = 'Class list — attendance' if report_type == 'class_list_attendance' else 'Class list — exam entry'
-        cols = ['student_id', 'full_name', 'gender', 'current_grade', 'status']
-        q = "SELECT student_id, full_name, gender, current_grade, status FROM students WHERE status = 'active'"
+    def _lookup_name(query, value):
+        if value is None:
+            return None
+        try:
+            cursor.execute(query, (value,))
+            rr = cursor.fetchone()
+            if not rr:
+                return None
+            return rr.get('name') if isinstance(rr, dict) else rr[0]
+        except Exception:
+            return None
+
+    year_name = _lookup_name("SELECT year_name AS name FROM academic_years WHERE id = %s", ay)
+    term_name = _lookup_name("SELECT term_name AS name FROM terms WHERE id = %s", tid)
+    level_name = _lookup_name("SELECT level_name AS name FROM academic_levels WHERE id = %s", lid)
+    teacher_name = _lookup_name("SELECT full_name AS name FROM employees WHERE id = %s", teacher_id)
+    meta['applied_filters'] = {
+        'report_type': report_type,
+        'academic_year': year_name or ('All years' if not ay else f"Year ID {ay}"),
+        'term': term_name or ('Any term' if not tid else f"Term ID {tid}"),
+        'class_level': level_name or ('All classes' if not lid else f"Level ID {lid}"),
+        'teacher': teacher_name or ('Not selected' if not teacher_id else f"Teacher ID {teacher_id}"),
+        'student_id': student_id or 'All students',
+        'date_from': date_from or 'Auto / not set',
+        'date_to': date_to or 'Auto / not set',
+        'timetable_view': 'Teacher view' if timetable_view == 'teacher' else 'Student view',
+        'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    }
+    meta['timetable_view'] = timetable_view
+
+    if report_type == 'class_list_exam':
+        title = 'Class list — exam entry'
+        cols = ['student_id', 'full_name']
+        q = """
+            SELECT student_id, full_name, current_grade
+            FROM students
+            WHERE LOWER(COALESCE(status, '')) = 'in session'
+        """
         params = []
         if lid:
             q += " AND current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
@@ -20655,14 +20725,39 @@ def _build_academic_report_payload(cursor, report_type, f):
             rows.append({
                 'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
                 'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
-                'gender': r.get('gender') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
-                'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
-                'status': r.get('status') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+                'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
             })
         meta['class_sections'] = _group_class_list_rows(rows)
         if not lid:
             meta['all_classes'] = True
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'class_list_attendance':
+        cols = ['student_id', 'full_name']
+        q = """
+            SELECT s.student_id, s.full_name, s.current_grade
+            FROM students s
+            WHERE LOWER(COALESCE(s.status, '')) = 'in session'
+        """
+        params = []
+        if lid:
+            q += " AND s.current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
+            params.append(lid)
+        if student_id:
+            q += " AND s.student_id = %s"
+            params.append(student_id)
+        q += " ORDER BY s.full_name, s.student_id LIMIT 5000"
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
+                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
+                'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
+            })
+        meta['class_sections'] = _group_class_list_rows(rows)
+        meta['row_limit'] = 5000
+        return {'title': 'Class list — attendance', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'timetable_subject':
         if not tid:
@@ -20670,7 +20765,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'title': 'Subject timetable',
                 'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code'],
                 'rows': [],
-                'meta': {'hint': 'Select a term in Global filters to load timetable rows.'},
+                'meta': {**meta, 'hint': 'Select a term in Global filters to load timetable rows.'},
             }
         cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code']
         q = """
@@ -20679,8 +20774,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             FROM timetables t
             JOIN academic_levels al ON t.academic_level_id = al.id
             JOIN employees e ON t.teacher_id = e.id
-            LEFT JOIN teacher_subject_assignments tsa ON tsa.academic_level_id = t.academic_level_id AND tsa.teacher_id = t.teacher_id
-            LEFT JOIN subjects sub ON sub.id = tsa.subject_id
+            LEFT JOIN subjects sub ON sub.id = t.subject_id
             WHERE t.term_id = %s
         """
         params = [tid]
@@ -20692,7 +20786,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             params.append(lid)
         q += """
             ORDER BY FIELD(t.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
-                     t.time_slot, al.level_name
+                     t.time_slot, al.level_name, e.full_name
         """
         cursor.execute(q, params)
         rows = []
@@ -20750,9 +20844,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'title': 'Teacher timetable',
                 'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name'],
                 'rows': [],
-                'meta': {
-                    'hint': 'Select both a term and a teacher in Global filters for this report.',
-                },
+                'meta': {**meta, 'hint': 'Select both a term and a teacher in Global filters for this report.'},
             }
         cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name']
         cursor.execute("""
@@ -20773,6 +20865,111 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
             })
         return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'exam_all_students_performance':
+        if not lid:
+            return {
+                'title': 'All students — exam performance',
+                'columns': ['student_id', 'full_name', 'level_name', 'mark_entries', 'average_mark', 'highest_mark', 'lowest_mark'],
+                'rows': [],
+                'meta': {**meta, 'hint': 'Select a class/level to show performance for every student in that class.'},
+            }
+        cols = ['student_id', 'full_name', 'level_name', 'mark_entries', 'average_mark', 'highest_mark', 'lowest_mark']
+        q = """
+            SELECT st.student_id, st.full_name, al.level_name,
+                   COUNT(sm.id) AS mark_entries,
+                   ROUND(AVG(CAST(sm.marks AS DECIMAL(10,2))), 2) AS average_mark,
+                   ROUND(MAX(CAST(sm.marks AS DECIMAL(10,2))), 2) AS highest_mark,
+                   ROUND(MIN(CAST(sm.marks AS DECIMAL(10,2))), 2) AS lowest_mark
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN academic_levels al ON e.academic_level_id = al.id
+            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            WHERE e.academic_level_id = %s
+        """
+        params = [lid]
+        if tid:
+            q += " AND e.term_id = %s"
+            params.append(tid)
+        if ay:
+            q += " AND e.academic_year_id = %s"
+            params.append(ay)
+        q += """
+            GROUP BY st.student_id, st.full_name, al.level_name
+            HAVING COUNT(sm.id) > 0
+            ORDER BY al.level_name, st.full_name
+        """
+        cursor.execute(q, params)
+        rows = []
+        for r in cursor.fetchall() or []:
+            rows.append({
+                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
+                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
+                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
+                'mark_entries': int(r.get('mark_entries') or 0) if isinstance(r, dict) else int(r[3] or 0),
+                'average_mark': r.get('average_mark') if isinstance(r, dict) else r[4],
+                'highest_mark': r.get('highest_mark') if isinstance(r, dict) else r[5],
+                'lowest_mark': r.get('lowest_mark') if isinstance(r, dict) else r[6],
+            })
+        return {'title': 'All students — exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
+
+    if report_type == 'exam_teacher_performance':
+        if not lid:
+            return {
+                'title': 'Teacher — exam performance',
+                'columns': ['teacher_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate'],
+                'rows': [],
+                'meta': {**meta, 'hint': 'Select a class/level to aggregate marks by teacher (supervisor or subject teacher).' },
+            }
+        cols = ['teacher_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
+        q = """
+            SELECT COALESCE(sup.full_name, tch.full_name, 'Unassigned') AS teacher_name,
+                   COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   sm.marks
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN academic_levels al ON e.academic_level_id = al.id
+            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
+            LEFT JOIN employees sup ON e.supervisor_id = sup.id
+            LEFT JOIN (
+                SELECT academic_level_id, subject_id, MIN(teacher_id) AS teacher_id
+                FROM teacher_subject_assignments
+                GROUP BY academic_level_id, subject_id
+            ) tsa ON tsa.academic_level_id = e.academic_level_id AND tsa.subject_id = e.subject_id
+            LEFT JOIN employees tch ON tsa.teacher_id = tch.id
+            WHERE e.academic_level_id = %s
+        """
+        params = [lid]
+        if tid:
+            q += " AND e.term_id = %s"
+            params.append(tid)
+        if ay:
+            q += " AND e.academic_year_id = %s"
+            params.append(ay)
+        cursor.execute(q, params)
+        grp = defaultdict(list)
+        for r in cursor.fetchall() or []:
+            tn = r.get('teacher_name') if isinstance(r, dict) else r[0]
+            sn = r.get('subject_name') if isinstance(r, dict) else r[1]
+            mv = _float_marks(r.get('marks') if isinstance(r, dict) else r[2])
+            if mv is None:
+                continue
+            grp[(tn or 'Unassigned', sn or 'N/A')].append(mv)
+        rows = []
+        for (tn, sn) in sorted(grp.keys(), key=lambda x: (x[0].lower(), x[1].lower())):
+            marks = grp[(tn, sn)]
+            pc = sum(1 for x in marks if x >= 50)
+            rows.append({
+                'teacher_name': tn,
+                'subject_name': sn,
+                'mean': round(sum(marks) / len(marks), 2),
+                'min': round(min(marks), 2),
+                'max': round(max(marks), 2),
+                'count': len(marks),
+                'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+            })
+        return {'title': 'Teacher — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type in ('exam_class_performance', 'exam_subject_performance'):
         q = """
@@ -20823,6 +21020,13 @@ def _build_academic_report_payload(cursor, report_type, f):
                 })
             return {'title': 'Exam performance — by class & subject', 'columns': cols, 'rows': rows, 'meta': meta}
 
+        if not lid:
+            return {
+                'title': 'Subject — exam performance',
+                'columns': ['subject_name', 'mean', 'min', 'max', 'count', 'pass_rate'],
+                'rows': [],
+                'meta': {**meta, 'hint': 'Select a class/level for subject performance in that class.'},
+            }
         cols = ['subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
         rows = []
         for sn in sorted(grp_subj.keys()):
@@ -20836,9 +21040,24 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'count': len(marks),
                 'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
             })
-        return {'title': 'Exam performance — by subject (all selected classes)', 'columns': cols, 'rows': rows, 'meta': meta}
+        return {'title': 'Subject — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
-    if report_type == 'exam_individual':
+    if report_type in ('exam_individual', 'exam_individual_performance'):
+        if report_type == 'exam_individual_performance':
+            if not lid:
+                return {
+                    'title': 'Individual student — exam performance',
+                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks'],
+                    'rows': [],
+                    'meta': {**meta, 'hint': 'Select a class/level, then enter the student ID for this report.'},
+                }
+            if not student_id:
+                return {
+                    'title': 'Individual student — exam performance',
+                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks'],
+                    'rows': [],
+                    'meta': {**meta, 'hint': 'Enter a student ID to load marks for that learner in the selected class.'},
+                }
         cols = ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks']
         q = """
             SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
@@ -20878,7 +21097,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'marks': r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         meta['row_limit'] = 3000
-        return {'title': 'Individual exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
+        title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
+        return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'attendance_class':
         cols = ['level_name', 'records', 'present_count', 'absent_count', 'unique_students', 'unique_days']
@@ -20887,7 +21107,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'title': 'Attendance summary by class',
                 'columns': cols,
                 'rows': [],
-                'meta': {'hint': 'Select a term (dates default to the term) or set Date from / Date to.'},
+                'meta': {**meta, 'hint': 'Select a term (dates default to the term) or set Date from / Date to.'},
             }
         aq = None
         ap = None
@@ -20944,7 +21164,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'title': 'Individual attendance',
                 'columns': cols,
                 'rows': [],
-                'meta': {'hint': 'Select a term or set Date from / Date to.'},
+                'meta': {**meta, 'hint': 'Select a term or set Date from / Date to.'},
             }
         q = """
             SELECT s.student_id, s.full_name, al.level_name, sar.attendance_date, sar.present
@@ -24062,6 +24282,59 @@ def delete_term(term_id):
         print(f"Error deleting term: {e}")
         connection.rollback()
         return jsonify({'success': False, 'message': 'An error occurred while deleting the term.'}), 500
+    finally:
+        connection.close()
+
+# Term Suspend/Unsuspend Route
+@app.route('/system-settings/term/<int:term_id>/toggle-current', methods=['POST'])
+@login_required
+def toggle_term_current(term_id):
+    """Toggle term current status and enforce a single current term."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    # Allow technicians and accountants
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+
+    if not (is_technician or is_accountant):
+        return jsonify({'success': False, 'message': 'Permission denied.'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT is_current FROM terms WHERE id = %s", (term_id,))
+            term_result = cursor.fetchone()
+            if not term_result:
+                return jsonify({'success': False, 'message': 'Term not found.'}), 404
+
+            is_current = term_result.get('is_current') if isinstance(term_result, dict) else term_result[0]
+
+            if is_current:
+                # Allow unmarking the currently active term.
+                cursor.execute("UPDATE terms SET is_current = FALSE WHERE id = %s", (term_id,))
+                message = 'Term unmarked as current successfully!'
+                new_current = False
+            else:
+                # Ensure only one term is current at a time.
+                cursor.execute("UPDATE terms SET is_current = FALSE WHERE is_current = TRUE")
+                cursor.execute("UPDATE terms SET is_current = TRUE WHERE id = %s", (term_id,))
+                message = 'Term marked as current successfully!'
+                new_current = True
+
+            connection.commit()
+            return jsonify({
+                'success': True,
+                'message': message,
+                'is_current': new_current
+            })
+    except Exception as e:
+        print(f"Error toggling term current: {e}")
+        connection.rollback()
+        return jsonify({'success': False, 'message': 'An error occurred while updating term current status.'}), 500
     finally:
         connection.close()
 

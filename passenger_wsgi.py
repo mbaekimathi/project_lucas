@@ -10,12 +10,7 @@ project_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_dir)
 os.chdir(project_dir)
 
-# Load .env from project directory (important when cPanel cwd differs)
-try:
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(project_dir, '.env'))
-except ImportError:
-    pass
+# .env is loaded in app.py via env_loader (same project_dir as this file)
 
 print("=" * 60)
 print("Passenger WSGI: Starting application load...")

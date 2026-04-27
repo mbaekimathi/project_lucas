@@ -1,117 +1,43 @@
 {% extends "base.html" %}
-
-{% block title %}About Us - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
-{% block body_class %}public-site school-public{% endblock %}
-
+{% block title %}About — {{ school_settings.school_name or 'Our school' }}{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
 {% block content %}
-{% set hero_img = 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1920&q=80&auto=format&fit=crop' %}
-
-<section class="edu-hero edu-hero--page edu-hero--cinematic">
-    <div class="edu-hero__media" style="background-image: url('{{ hero_img }}');" role="img" aria-label="Library and learning"></div>
-    <div class="edu-hero__mesh" aria-hidden="true"></div>
-    <div class="edu-hero__pattern" aria-hidden="true"></div>
-    <div class="edu-hero__content">
-        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
-            <div class="max-w-3xl">
-                <p class="edu-eyebrow text-white/90 mb-3">About us</p>
-                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-white mb-4">
-                    The story of {{ school_settings.school_name or 'our school' }}
-                </h1>
-                <p class="text-lg text-white/90 leading-relaxed">
-                    Rooted in {{ school_settings.project_name or 'educational excellence' }} — we grow learners who think clearly, act ethically, and lead with heart.</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="edu-section edu-section--tint edu-section--mesh py-16 md:py-24">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+<div class="edu-section edu-section--tint py-12 md:py-16">
+    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
             <div>
-                <p class="edu-eyebrow mb-2">Mission</p>
-                <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white mb-6">Education that transforms</h2>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed mb-4 text-lg">
-                    At <strong class="text-brand-primary">{{ school_settings.school_name or 'Modern School' }}</strong>, we nurture critical thinking, creativity, and character — so every student can thrive in a complex world.
+                <p class="edu-eyebrow">About {{ school_settings.school_name or 'us' }}</p>
+                <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-slate-900 dark:text-white mt-2">Excellence, character, and community — the heart of {{ school_settings.school_name or 'our school' }}.</h1>
+                <p class="mt-6 text-slate-600 dark:text-slate-300 leading-relaxed">
+                    {{ school_settings.school_name or 'Our school' }} exists to develop capable, ethical young people. Through the Competency Based Curriculum and rich co-curricular offerings, we help students discover their strengths and serve others with purpose.
                 </p>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
-                    We combine high expectations with genuine care: clear communication with families, transparent processes, and a commitment to community impact.
-                </p>
+                <div class="mt-8 flex flex-wrap gap-3">
+                    <a href="{{ url_for('admission') }}" class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                        <i class="fas fa-file-signature" aria-hidden="true"></i> Admissions
+                    </a>
+                    <a href="{{ url_for('contact') }}" class="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-600 px-5 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-white/80 dark:hover:bg-slate-800/80 transition-colors">
+                        <i class="fas fa-envelope" aria-hidden="true"></i> Contact
+                    </a>
+                </div>
             </div>
-            <div class="edu-frame shadow-2xl">
-                <div class="aspect-[4/3] bg-cover bg-center" style="background-image: url('https://images.unsplash.com/photo-1498243691581-b145c3f54a5a?w=900&q=80&auto=format&fit=crop');" role="img" aria-label="Students learning"></div>
+            <div class="relative aspect-[4/3] rounded-2xl overflow-hidden shadow-xl border border-slate-200/80 dark:border-slate-700">
+                <img src="https://images.unsplash.com/photo-1497633762265-9d179a990aa6?w=1400&q=80&auto=format&fit=crop" alt="Students learning together" class="absolute inset-0 h-full w-full object-cover" loading="lazy" decoding="async" width="1400" height="1050">
+                <div class="absolute inset-0 school-page-photo__scrim--tr" aria-hidden="true"></div>
             </div>
         </div>
-    </div>
-</section>
 
-<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-        <div class="text-center max-w-2xl mx-auto mb-12">
-            <p class="edu-eyebrow mb-2">Values</p>
-            <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">What guides us every day</h2>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {% set items = [
-                ('fa-star', 'Excellence', 'High standards in teaching, learning, and conduct.'),
-                ('fa-shield-alt', 'Transparency', 'Open communication and accountable leadership.'),
-                ('fa-heart', 'Trust', 'Relationships built on integrity and respect.'),
-                ('fa-users', 'Community', 'Partnership with families and local stakeholders.')
+        <div class="mt-16 grid sm:grid-cols-3 gap-6">
+            {% for title, desc in [
+                ('Our mission', 'To provide an outstanding, inclusive education that prepares every learner for higher study, work, and citizenship.'),
+                ('Our values', 'Integrity, respect, perseverance, and joy in learning — modeled by staff and celebrated in students.'),
+                ('Our promise', 'Small enough to know each child; ambitious enough to open doors to top secondary pathways and beyond.')
             ] %}
-            {% for icon, title, desc in items %}
-            <article class="edu-card p-8">
-                <div class="edu-icon-tile mb-5"><i class="fas {{ icon }}"></i></div>
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ title }}</h3>
-                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ desc }}</p>
+            <article class="edu-card p-6">
+                <h2 class="font-heading font-bold text-lg text-slate-900 dark:text-white">{{ title }}</h2>
+                <p class="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ desc }}</p>
             </article>
             {% endfor %}
         </div>
-    </div>
-</section>
-
-<section class="section-bg-maroon py-16 md:py-20 relative">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 max-w-3xl mx-auto">
-        <h2 class="edu-display text-3xl md:text-4xl text-center text-gray-900 dark:text-white mb-12">Milestones</h2>
-        <div class="space-y-8">
-            {% set sn = school_settings.school_name or 'Modern School' %}
-            <div class="flex gap-4 md:gap-6">
-                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2010</div>
-                <div class="edu-card edu-card--glass p-6 flex-1">
-                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Foundation</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ sn }} was founded with a vision for student-centered learning and community partnership.</p>
-                </div>
-            </div>
-            <div class="flex gap-4 md:gap-6">
-                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2015</div>
-                <div class="edu-card edu-card--glass p-6 flex-1">
-                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Growth</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Expanded facilities, labs, and programs — with transparent reporting to families.</p>
-                </div>
-            </div>
-            <div class="flex gap-4 md:gap-6">
-                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">2020</div>
-                <div class="edu-card edu-card--glass p-6 flex-1">
-                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Digital learning</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Robust online and blended learning without losing our values.</p>
-                </div>
-            </div>
-            <div class="flex gap-4 md:gap-6">
-                <div class="flex-shrink-0 w-16 h-16 rounded-xl bg-gradient-to-br from-brand-primary to-brand-maroon-dark text-white font-bold flex items-center justify-center text-sm shadow-lg">Now</div>
-                <div class="edu-card edu-card--glass p-6 flex-1">
-                    <h3 class="font-bold text-gray-900 dark:text-white mb-1">Forward</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">We continue to innovate — with learners at the center of every decision.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<div class="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-end">
-        <a href="/programs" class="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-90 transition-opacity shadow-md">
-            <span>Next</span>
-            <i class="fas fa-arrow-right text-sm"></i>
-        </a>
     </div>
 </div>
 {% endblock %}

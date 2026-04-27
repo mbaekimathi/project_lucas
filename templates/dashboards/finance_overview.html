@@ -39,28 +39,62 @@
             Finance Overview
         </h1>
         <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-            All in-session students with fee totals aligned to the <strong>current academic year and term</strong> (same logic as Student fees): total due, paid/credited, and balance. Payroll and other ledgers are available under <a href="{{ employee_dash_url('staff-and-salaries') }}" class="text-brand-primary font-medium hover:underline">Staff and Salaries</a>.
+            Choose an <strong>account view</strong> below (same idea as Academic reports). Data uses the <strong>current academic year and term</strong> and the same rules as <a href="{{ employee_dash_url('student-fees') }}" class="text-brand-primary font-medium hover:underline">Student fees</a>. Payroll is under <a href="{{ employee_dash_url('staff-and-salaries') }}" class="text-brand-primary font-medium hover:underline">Staff and Salaries</a>.
         </p>
     </div>
 
     {% set fa = student_fee_analytics|default({}) %}
     {% set rows = fa.student_rows|default([]) %}
+    {% set summaries = class_fee_summaries|default([]) %}
 
-    <!-- Summary -->
+    <!-- 1) What to view -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Account view</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label for="fo-view-mode" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">What do you want to view?</label>
+                <select id="fo-view-mode" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
+                    <option value="">— Select —</option>
+                    <option value="all">All student fee accounts</option>
+                    <option value="by_class">Student fees — one class only</option>
+                    <option value="class_summary">Summary by class (totals per level)</option>
+                </select>
+            </div>
+            <div id="fo-one-class-wrap" class="hidden">
+                <label for="fo-one-class" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Class / level</label>
+                <select id="fo-one-class" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
+                    <option value="">Select class…</option>
+                    {% for lv in class_filter_options|default([]) %}
+                    <option value="{{ lv|e }}">{{ lv }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <p id="fo-view-hint" class="mt-3 text-xs text-gray-500 dark:text-gray-400 border-l-4 border-brand-primary/40 pl-3"></p>
+    </div>
+
+    <div id="fo-empty-state" class="no-print rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 p-10 text-center text-gray-600 dark:text-gray-400">
+        <i class="fas fa-hand-pointer text-3xl mb-3 text-gray-400 dark:text-gray-500"></i>
+        <p class="font-medium text-gray-800 dark:text-gray-200">Nothing selected yet</p>
+        <p class="text-sm mt-1 max-w-md mx-auto">Pick an account view above. The dashboard will load student fee figures or class roll-ups here.</p>
+    </div>
+
+    <div id="fo-workspace" class="hidden">
+    <!-- Summary (global — same totals for all modes; by-class re-labels in script if needed) -->
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Students (in session)</span>
+                <span id="fo-card-students-label" class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Students (in session)</span>
                 <i class="fas fa-user-graduate text-blue-500"></i>
             </div>
-            <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ rows|length }}</p>
+            <p id="fo-card-students-count" class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ rows|length }}</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total billed (sum)</span>
                 <i class="fas fa-file-invoice-dollar text-purple-500"></i>
             </div>
-            <p class="text-xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(fa.sum_total_amount|default(0)|float) }}</p>
+            <p id="fo-card-billed" class="text-xl font-bold text-gray-900 dark:text-white">KES {{ "{:,.2f}".format(fa.sum_total_amount|default(0)|float) }}</p>
             <p class="text-xs text-gray-500 mt-1">Where a fee structure applies</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
@@ -68,23 +102,23 @@
                 <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total paid / credited</span>
                 <i class="fas fa-check-circle text-green-500"></i>
             </div>
-            <p class="text-xl font-bold text-green-700 dark:text-green-400">KES {{ "{:,.2f}".format(fa.sum_paid_amount|default(0)|float) }}</p>
+            <p id="fo-card-paid" class="text-xl font-bold text-green-700 dark:text-green-400">KES {{ "{:,.2f}".format(fa.sum_paid_amount|default(0)|float) }}</p>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5">
             <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Total outstanding</span>
                 <i class="fas fa-exclamation-circle text-amber-500"></i>
             </div>
-            <p class="text-xl font-bold text-amber-700 dark:text-amber-400">KES {{ "{:,.2f}".format(fa.total_outstanding|default(0)|float) }}</p>
+            <p id="fo-card-outstanding" class="text-xl font-bold text-amber-700 dark:text-amber-400">KES {{ "{:,.2f}".format(fa.total_outstanding|default(0)|float) }}</p>
             <p class="text-xs text-gray-500 mt-1">Sum of positive balances</p>
         </div>
     </div>
 
-    <!-- Student fee analytics -->
-    <section class="mb-6">
+    <!-- Student fee analytics (all or one class) -->
+    <section id="fo-section-student-table" class="mb-6 hidden">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
             <i class="fas fa-chart-pie text-brand-primary"></i>
-            Student fee analytics
+            <span id="fo-section-student-title">Student fee accounts</span>
         </h2>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
             <strong>Class</strong> is the student’s current grade. <strong>Total amount</strong> includes prior-term arrears rolled in; <strong>Paid amount</strong> includes payments on the current structure plus carry-forward credits from overpayments.
@@ -101,7 +135,7 @@
                                class="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary" />
                     </div>
                 </div>
-                <div class="w-full sm:w-[14rem]">
+                <div class="w-full sm:w-[14rem]" id="fo-level-wrap">
                     <label for="fo-level" class="block text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide mb-1.5">Academic level</label>
                     <select id="fo-level" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
                         <option value="">All levels</option>
@@ -151,7 +185,9 @@
                             data-idx="{{ loop.index0 }}"
                             data-class="{{ s.class_name|e }}"
                             data-search="{{ ((s.full_name ~ ' ' ~ s.student_id)|lower)|e }}"
-                            data-balance="{% if s.balance is none %}{% else %}{{ s.balance }}{% endif %}">
+                            data-balance="{% if s.balance is none %}{% else %}{{ s.balance }}{% endif %}"
+                            data-total="{% if s.total_amount is none %}{% else %}{{ s.total_amount }}{% endif %}"
+                            data-paid="{% if s.paid_amount is none %}{% else %}{{ s.paid_amount }}{% endif %}">
                             <td class="py-3 px-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{ s.class_name }}</td>
                             <td class="py-3 px-3">
                                 <div class="font-medium text-gray-900 dark:text-white">{{ s.full_name }}</div>
@@ -198,19 +234,86 @@
             Record payments and manage structures in <a href="{{ employee_dash_url('student-fees') }}" class="text-brand-primary font-medium hover:underline">Student fees</a>.
         </p>
     </section>
+
+    <!-- Summary by class -->
+    <section id="fo-section-class-summary" class="mb-6 hidden">
+        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <i class="fas fa-layer-group text-brand-primary"></i>
+            Fee accounts — summary by class
+        </h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Totals are rolled up from the same student fee rows (current year/term rules).</p>
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+                <table class="w-full min-w-[720px] text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-900/80 text-gray-600 dark:text-gray-300 uppercase text-xs font-semibold">
+                        <tr>
+                            <th class="text-left py-3 px-3">Class</th>
+                            <th class="text-right py-3 px-3">Students</th>
+                            <th class="text-right py-3 px-3">Total billed</th>
+                            <th class="text-right py-3 px-3">Total paid</th>
+                            <th class="text-right py-3 px-3">Outstanding</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for c in summaries %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                            <td class="py-3 px-3 font-medium text-gray-900 dark:text-white">{{ c.class_name }}</td>
+                            <td class="text-right py-3 px-3 tabular-nums">{{ c.student_count }}</td>
+                            <td class="text-right py-3 px-3 tabular-nums text-gray-800 dark:text-gray-200">KES {{ "{:,.2f}".format(c.sum_total_amount|float) }}</td>
+                            <td class="text-right py-3 px-3 tabular-nums text-green-700 dark:text-green-400">KES {{ "{:,.2f}".format(c.sum_paid_amount|float) }}</td>
+                            <td class="text-right py-3 px-3 tabular-nums font-semibold text-amber-700 dark:text-amber-400">KES {{ "{:,.2f}".format(c.total_outstanding|float) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="py-10 px-4 text-center text-gray-500 dark:text-gray-400">No class-level data to summarise.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    </div>
 </div>
-{% if rows %}
+
 <script>
 (function () {
+  var modeEl = document.getElementById('fo-view-mode');
+  var oneClassWrap = document.getElementById('fo-one-class-wrap');
+  var oneClassEl = document.getElementById('fo-one-class');
+  var viewHint = document.getElementById('fo-view-hint');
+  var emptyState = document.getElementById('fo-empty-state');
+  var workspace = document.getElementById('fo-workspace');
+  var sectionStudent = document.getElementById('fo-section-student-table');
+  var sectionSummary = document.getElementById('fo-section-class-summary');
+  var levelWrap = document.getElementById('fo-level-wrap');
   var tbody = document.getElementById('fo-student-tbody');
   var searchEl = document.getElementById('fo-search');
   var levelEl = document.getElementById('fo-level');
   var balanceEl = document.getElementById('fo-balance');
   var sortEl = document.getElementById('fo-sort');
   var hintEl = document.getElementById('fo-filter-hint');
-  if (!tbody || !searchEl || !levelEl || !balanceEl || !sortEl) return;
+  var titleStudent = document.getElementById('fo-section-student-title');
+  var cardCount = document.getElementById('fo-card-students-count');
+  var cardBilled = document.getElementById('fo-card-billed');
+  var cardPaid = document.getElementById('fo-card-paid');
+  var cardOut = document.getElementById('fo-card-outstanding');
+  var cardStudentsLabel = document.getElementById('fo-card-students-label');
+
+  var HINTS = {
+    '': 'Pick a view to load fee account data.',
+    all: 'School-wide list: every in-session student with fee totals. Use filters to narrow the table.',
+    by_class: 'Shows fee accounts for one class. Select the class, then use search/balance filters as needed.',
+    class_summary: 'One row per class: student count, billed, paid, and outstanding totals.'
+  };
+
+  function fmtKes(n) {
+    if (n === null || n === undefined || isNaN(n)) return 'KES 0.00';
+    return 'KES ' + Number(n).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
 
   function allRows() {
+    if (!tbody) return [];
     return Array.prototype.slice.call(tbody.querySelectorAll('tr[data-fo-row]'));
   }
 
@@ -221,15 +324,40 @@
     return isNaN(n) ? null : n;
   }
 
+  function parseNumAttr(tr, name) {
+    var raw = tr.getAttribute(name);
+    if (raw === null || raw === '') return null;
+    var n = parseFloat(raw, 10);
+    return isNaN(n) ? null : n;
+  }
+
+  function recomputeSummaryForVisible(rows) {
+    var n = 0, st = 0, sp = 0, so = 0;
+    rows.forEach(function (tr) {
+      if (tr.classList.contains('hidden')) return;
+      n += 1;
+      var t = parseNumAttr(tr, 'data-total');
+      var p = parseNumAttr(tr, 'data-paid');
+      var b = parseBalance(tr);
+      if (t !== null) st += t;
+      if (p !== null) sp += p;
+      if (b !== null && b > 0) so += b;
+    });
+    if (cardCount) cardCount.textContent = String(n);
+    if (cardBilled) cardBilled.textContent = fmtKes(st);
+    if (cardPaid) cardPaid.textContent = fmtKes(sp);
+    if (cardOut) cardOut.textContent = fmtKes(so);
+  }
+
   function matchesFilters(tr) {
-    var q = (searchEl.value || '').trim().toLowerCase();
+    var q = ((searchEl && searchEl.value) || '').trim().toLowerCase();
     if (q) {
       var hay = (tr.getAttribute('data-search') || '').toLowerCase();
       if (hay.indexOf(q) === -1) return false;
     }
-    var level = levelEl.value || '';
+    var level = (levelEl ? levelEl.value : '') || '';
     if (level && (tr.getAttribute('data-class') || '') !== level) return false;
-    var mode = balanceEl.value || 'all';
+    var mode = (balanceEl ? balanceEl.value : '') || 'all';
     var b = parseBalance(tr);
     if (mode === 'outstanding') {
       if (b === null || b <= 0) return false;
@@ -249,10 +377,11 @@
   }
 
   function refresh() {
+    if (!tbody || !modeEl || modeEl.value === 'class_summary') return;
     var rows = allRows();
     var total = rows.length;
     var matched = rows.filter(matchesFilters);
-    var sortMode = sortEl.value || 'original';
+    var sortMode = (sortEl ? sortEl.value : '') || 'original';
     if (sortMode === 'balance-asc') {
       matched.sort(compareBalanceAsc);
     } else if (sortMode === 'balance-desc') {
@@ -271,20 +400,75 @@
         ? 'Showing all ' + total + ' student(s).'
         : 'Showing ' + matched.length + ' of ' + total + ' student(s).';
     }
+    recomputeSummaryForVisible(rows);
   }
+
+  function applyViewMode() {
+    var mode = modeEl.value || '';
+    if (viewHint) viewHint.textContent = HINTS[mode] || HINTS[''];
+
+    if (!mode) {
+      emptyState.classList.remove('hidden');
+      workspace.classList.add('hidden');
+      return;
+    }
+    emptyState.classList.add('hidden');
+    workspace.classList.remove('hidden');
+
+    if (mode === 'class_summary') {
+      oneClassWrap.classList.add('hidden');
+      sectionStudent.classList.add('hidden');
+      sectionSummary.classList.remove('hidden');
+      if (cardStudentsLabel) cardStudentsLabel.textContent = 'Students (in session)';
+      if (cardCount) cardCount.textContent = '{{ rows|length }}';
+      if (cardBilled) cardBilled.textContent = 'KES {{ "{:,.2f}".format(fa.sum_total_amount|default(0)|float) }}';
+      if (cardPaid) cardPaid.textContent = 'KES {{ "{:,.2f}".format(fa.sum_paid_amount|default(0)|float) }}';
+      if (cardOut) cardOut.textContent = 'KES {{ "{:,.2f}".format(fa.total_outstanding|default(0)|float) }}';
+      return;
+    }
+
+    sectionSummary.classList.add('hidden');
+    sectionStudent.classList.remove('hidden');
+
+    if (mode === 'by_class') {
+      oneClassWrap.classList.remove('hidden');
+      if (levelWrap) levelWrap.classList.add('hidden');
+      var cls = oneClassEl.value || '';
+      if (levelEl) {
+        levelEl.value = cls;
+      }
+      if (titleStudent) titleStudent.textContent = cls ? ('Student fee accounts — ' + cls) : 'Student fee accounts — pick a class';
+      if (!cls) {
+        allRows().forEach(function (tr) { tr.classList.add('hidden'); });
+        if (hintEl) hintEl.textContent = 'Select a class above to load that class’s fee accounts.';
+        if (cardCount) cardCount.textContent = '0';
+        if (cardBilled) cardBilled.textContent = 'KES 0.00';
+        if (cardPaid) cardPaid.textContent = 'KES 0.00';
+        if (cardOut) cardOut.textContent = 'KES 0.00';
+        return;
+      }
+    } else {
+      oneClassWrap.classList.add('hidden');
+      if (levelWrap) levelWrap.classList.remove('hidden');
+      if (levelEl) levelEl.value = '';
+      if (titleStudent) titleStudent.textContent = 'Student fee accounts';
+    }
+
+    refresh();
+  }
+
+  if (modeEl) modeEl.addEventListener('change', applyViewMode);
+  if (oneClassEl) oneClassEl.addEventListener('change', applyViewMode);
 
   var t;
   function debouncedRefresh() {
     clearTimeout(t);
     t = setTimeout(refresh, 120);
   }
-
-  searchEl.addEventListener('input', debouncedRefresh);
-  levelEl.addEventListener('change', refresh);
-  balanceEl.addEventListener('change', refresh);
-  sortEl.addEventListener('change', refresh);
-  refresh();
+  if (searchEl) searchEl.addEventListener('input', debouncedRefresh);
+  if (levelEl) levelEl.addEventListener('change', refresh);
+  if (balanceEl) balanceEl.addEventListener('change', refresh);
+  if (sortEl) sortEl.addEventListener('change', refresh);
 })();
 </script>
-{% endif %}
 {% endblock %}

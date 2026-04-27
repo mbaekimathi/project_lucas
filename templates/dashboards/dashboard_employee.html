@@ -13,6 +13,18 @@
 </a>
 {% endif %}
 
+<div class="mb-3 pb-3 border-b border-slate-700/60">
+    <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400 px-2 mb-2">Core Navigation</p>
+    <a href="{{ dashboard_home_url() }}" class="sidebar-item"><i class="fas fa-gauge w-5"></i><span>Dashboard</span></a>
+    <a href="{{ employee_dash_url('student-management') }}" class="sidebar-item"><i class="fas fa-user-graduate w-5"></i><span>Students</span></a>
+    <a href="{{ employee_dash_url('staff-management') }}" class="sidebar-item"><i class="fas fa-chalkboard-user w-5"></i><span>Teachers</span></a>
+    <a href="{{ employee_dash_url('exams-assessments') }}" class="sidebar-item"><i class="fas fa-list-check w-5"></i><span>CBC Assessment</span></a>
+    <a href="{{ employee_dash_url('reports') }}" class="sidebar-item"><i class="fas fa-file-lines w-5"></i><span>Reports</span></a>
+    <a href="{{ employee_dash_url('finance-overview') }}" class="sidebar-item"><i class="fas fa-coins w-5"></i><span>Finance</span></a>
+    <a href="{{ employee_dash_url('communication') }}" class="sidebar-item"><i class="fas fa-comments w-5"></i><span>Communication</span></a>
+    <a href="{{ sidebar_settings_url() }}" class="sidebar-item"><i class="fas fa-gear w-5"></i><span>Settings</span></a>
+</div>
+
 {% if current_role == 'super admin' %}
     <!-- Super Admin Links -->
     <a href="{{ employee_dash_url('users-roles') }}" 
@@ -485,14 +497,88 @@
 {% endblock %}
 
 {% block content %}
-<!-- Empty dashboard - content will be added later -->
-<div class="flex items-center justify-center min-h-[60vh]">
-    <div class="text-center">
-        <div class="w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 shadow-xl">
-            <i class="fas fa-briefcase text-white text-4xl"></i>
+<div class="cbc-saas">
+    <div class="cbc-card p-4 md:p-5 mb-5 flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div class="relative w-full md:max-w-md">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            <input type="text" placeholder="Search students, reports, fees..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200">
         </div>
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">Welcome to Your Dashboard</h2>
-        <p class="text-gray-600 dark:text-gray-400">Content will be added here soon</p>
+        <div class="flex items-center gap-3">
+            <button class="w-10 h-10 rounded-xl border border-gray-200"><i class="far fa-bell"></i></button>
+            <button class="w-10 h-10 rounded-xl border border-gray-200"><i class="far fa-user"></i></button>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-4 mb-5">
+        <article class="cbc-card p-5"><p class="cbc-muted text-sm">Total Students</p><p class="text-2xl font-bold text-[#111827]">1,248</p></article>
+        <article class="cbc-card p-5"><p class="cbc-muted text-sm">Fees Collected</p><p class="text-2xl font-bold text-[#111827]">KES 3.4M</p></article>
+        <article class="cbc-card p-5"><p class="cbc-muted text-sm">Attendance Today</p><p class="text-2xl font-bold text-[#111827]">96.4%</p></article>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-4 mb-5">
+        <section class="cbc-card p-5 lg:col-span-2">
+            <h3 class="font-semibold text-[#111827] mb-3">Performance trends</h3>
+            <div class="h-44 cbc-skeleton"></div>
+        </section>
+        <section class="cbc-card p-5">
+            <h3 class="font-semibold text-[#111827] mb-3">Recent activity</h3>
+            <ul class="text-sm text-[#6B7280] space-y-2">
+                <li>Grade 4 Science assessment uploaded</li>
+                <li>Parent feedback submitted</li>
+                <li>Weekly attendance report generated</li>
+            </ul>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4 mb-5">
+        <section class="cbc-card p-5">
+            <h3 class="font-semibold text-[#111827] mb-3">Competency Display</h3>
+            <div class="flex flex-wrap gap-2">
+                <span class="cbc-badge cbc-badge-ee">EE</span>
+                <span class="cbc-badge cbc-badge-me">ME</span>
+                <span class="cbc-badge cbc-badge-ae">AE</span>
+                <span class="cbc-badge cbc-badge-be">BE</span>
+            </div>
+        </section>
+        <section class="cbc-card p-5">
+            <h3 class="font-semibold text-[#111827] mb-3">Assessment Input</h3>
+            <div class="grid sm:grid-cols-2 gap-3">
+                <input placeholder="Learner Name" class="px-3 py-2.5 rounded-xl border border-gray-200">
+                <select class="px-3 py-2.5 rounded-xl border border-gray-200">
+                    <option>EE</option><option>ME</option><option>AE</option><option>BE</option>
+                </select>
+            </div>
+        </section>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4 mb-5">
+        <section class="cbc-card p-5">
+            <h3 class="font-semibold text-[#111827] mb-3">Report Card Preview</h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead><tr class="text-left text-[#6B7280]"><th>Strand</th><th>Level</th></tr></thead>
+                    <tbody>
+                        <tr><td>Mathematics</td><td><span class="cbc-badge cbc-badge-me">ME</span></td></tr>
+                        <tr><td>English</td><td><span class="cbc-badge cbc-badge-ee">EE</span></td></tr>
+                        <tr><td>Science</td><td><span class="cbc-badge cbc-badge-ae">AE</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-3 text-sm cbc-muted">Teacher Comment: Good progress in practical activities and collaboration.</p>
+        </section>
+        <section class="cbc-card p-5">
+            <h3 class="font-semibold text-[#111827] mb-3">Student Profile</h3>
+            <div class="flex gap-2 text-sm mb-3">
+                <span class="cbc-badge cbc-badge-me">Overview</span>
+                <span class="cbc-badge cbc-badge-ee">Performance</span>
+                <span class="cbc-badge cbc-badge-ae">Portfolio</span>
+                <span class="cbc-badge cbc-badge-be">Attendance</span>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div class="cbc-card p-3"><p class="text-xs cbc-muted">Portfolio Artifact</p><p class="font-medium">Plant Growth Journal.pdf</p></div>
+                <div class="cbc-card p-3"><p class="text-xs cbc-muted">Portfolio Artifact</p><p class="font-medium">Creative Poster.jpg</p></div>
+            </div>
+        </section>
     </div>
 </div>
 {% endblock %}

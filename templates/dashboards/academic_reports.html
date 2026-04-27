@@ -73,6 +73,14 @@
         </div>
 
         <div id="ar-extra-filters" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden">
+            <div id="ar-wrap-timetable-view" class="hidden">
+                <label for="gf-timetable-view" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Timetable view</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Choose how timetable entries are displayed</p>
+                <select id="gf-timetable-view" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="student">Student view (subject + teacher by class/time)</option>
+                    <option value="teacher">Teacher view (teacher + class by time)</option>
+                </select>
+            </div>
             <div id="ar-wrap-teacher" class="hidden">
                 <label for="gf-teacher" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Teacher</label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Needed for teacher timetable only</p>
@@ -149,11 +157,12 @@
     },
     exams: {
       label: 'Exams',
-      hint: 'Uses year and class filters. Individual report can filter by student ID.',
+      hint: 'Select a class/level (required for most exam reports). Academic year and term narrow results.',
       reports: [
-        { id: 'exam_class_performance', label: 'Class & subject performance', desc: 'Means and pass rates by class and subject.' },
-        { id: 'exam_subject_performance', label: 'Subject performance (summary)', desc: 'Overall subject statistics for filtered exams.' },
-        { id: 'exam_individual', label: 'Individual performance', desc: 'Marks per student (can be large).' },
+        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: average and range across recorded marks.' },
+        { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s marks in the selected class — enter Student ID.' },
+        { id: 'exam_subject_performance', label: 'Subject performance', desc: 'Mean, range, pass rate per subject in the selected class.' },
+        { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher (exam supervisor or subject teacher): stats per subject in the class.' },
       ],
     },
     attendance: {
@@ -174,6 +183,7 @@
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
   const wrapDates = document.getElementById('ar-wrap-dates');
+  const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
 
   function currentReportId() {
     return (reportEl.value || '').trim();
@@ -205,11 +215,13 @@
   function updateExtraFilters() {
     const rid = currentReportId();
     const needTeacher = rid === 'timetable_teacher';
-    const needStudent = rid === 'exam_individual' || rid === 'attendance_individual';
+    const needTimetableView = rid === 'timetable_subject';
+    const needStudent = rid === 'exam_individual_performance' || rid === 'exam_individual' || rid === 'attendance_individual';
     const needDates = rid === 'attendance_class' || rid === 'attendance_individual';
 
-    const anyExtra = needTeacher || needStudent || needDates;
+    const anyExtra = needTeacher || needTimetableView || needStudent || needDates;
     extraWrap.classList.toggle('hidden', !anyExtra);
+    wrapTimetableView.classList.toggle('hidden', !needTimetableView);
     wrapTeacher.classList.toggle('hidden', !needTeacher);
     wrapStudent.classList.toggle('hidden', !needStudent);
     wrapDates.classList.toggle('hidden', !needDates);
@@ -243,10 +255,12 @@
       level_id: li,
     };
     const needsTeacher = reportType === 'timetable_teacher';
-    const needsStudent = reportType === 'exam_individual' || reportType === 'attendance_individual';
+    const needsTimetableView = reportType === 'timetable_subject';
+    const needsStudent = reportType === 'exam_individual_performance' || reportType === 'exam_individual' || reportType === 'attendance_individual';
     const needsDates = reportType === 'attendance_class' || reportType === 'attendance_individual';
     const out = Object.assign({}, base);
     out.teacher_id = needsTeacher && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
+    out.timetable_view = needsTimetableView ? (val('gf-timetable-view') || 'student') : null;
     if (needsStudent) {
       const s = val('gf-student');
       out.student_id = (s && String(s).trim()) ? String(s).trim() : null;

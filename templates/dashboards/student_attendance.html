@@ -194,6 +194,16 @@
                 {% endfor %}
             </select>
         </div>
+        <div class="flex-1 min-w-[180px]">
+            <label for="class_level" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Class</label>
+            <select name="class_level" id="class_level"
+                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                <option value="">All classes</option>
+                {% for class_name in class_level_options|default([], true) %}
+                <option value="{{ class_name }}" {% if selected_class_level == class_name %}selected{% endif %}>{{ class_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
         <div class="flex-1 min-w-[150px]">
             <label for="filter_type" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Filter</label>
             <select name="filter_type" id="filter_type"
@@ -263,6 +273,7 @@
         <input type="hidden" name="day" value="{{ selected_day }}">
         <input type="hidden" name="period_start" value="{{ selected_period_start }}">
         <input type="hidden" name="period_end" value="{{ selected_period_end }}">
+        <input type="hidden" name="class_level" value="{{ selected_class_level }}">
         <input type="hidden" name="week_dates" value="{{ selected_week_days|map(attribute='date_str')|join(',') }}">
         <input type="hidden" name="student_ids" value="{{ attendance_student_ids_csv|default('', true) }}">
         <div id="save-status" class="mb-4 text-sm hidden"></div>

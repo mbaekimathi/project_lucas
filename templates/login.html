@@ -1,205 +1,95 @@
 {% extends "base.html" %}
-
-{% block title %}Login - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
-{% block body_class %}public-site school-public login-route{% endblock %}
-
-{% block header_subtitle %}{% endblock %}
-
+{% block title %}Login — {{ school_settings.school_name or 'School portal' }}{% endblock %}
+{% block body_class %}public-site cbc-saas cbc-saas--premium login-page-public{% endblock %}
 {% block content %}
-<section class="login-page relative -mx-4 sm:-mx-6 lg:-mx-8 overflow-hidden">
-    <div class="login-page__ambient" aria-hidden="true"></div>
+<div class="cbc-premium-page py-10 md:py-14">
+    <div class="cbc-premium-login-shell">
+        <aside class="cbc-premium-login-aside">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Secure portal</p>
+            <h1 class="mt-4 text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">Welcome back to {{ school_settings.school_name or 'your school' }}</h1>
+            <p class="mt-4 text-white/75 text-sm leading-relaxed max-w-sm">Secure sign-in for staff and families — progress, fees, and school updates in one place.</p>
+            <div class="mt-8 flex flex-wrap gap-2">
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white/90"><i class="fas fa-shield-alt" aria-hidden="true"></i> Encrypted</span>
+                <span class="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white/90"><i class="fas fa-user-shield" aria-hidden="true"></i> RBAC</span>
+            </div>
+        </aside>
+        <div class="cbc-premium-surface p-8 md:p-10">
+            <h2 class="text-2xl font-extrabold text-white tracking-tight">Account login</h2>
+            <p class="mt-1 text-sm text-white/55">Use your school-issued credentials.</p>
 
-    <div class="login-page__shell relative z-10 max-w-6xl xl:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 md:py-14 lg:py-16 lg:min-h-[min(100vh,52rem)] lg:flex lg:items-stretch">
-        <!-- Brand column -->
-        <div class="login-page__showcase mb-10 lg:mb-0 lg:w-[46%] xl:w-[42%] lg:min-h-[28rem] flex flex-col justify-between rounded-3xl p-8 sm:p-10 lg:p-12 text-white shadow-2xl shadow-black/20 border border-white/10">
-            <div class="login-page__showcase-mesh" aria-hidden="true"></div>
-            <div class="relative z-10 flex flex-col items-center lg:items-start text-center lg:text-left">
-                <div class="login-page__logo-ring mb-8">
-                    {% if school_settings.school_logo %}
-                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
-                         alt=""
-                         class="login-page__logo-img"
-                         width="200"
-                         height="80"
-                         loading="eager"
-                         decoding="async">
-                    {% else %}
-                    <div class="login-page__logo-fallback">
-                        <i class="fas fa-graduation-cap text-4xl sm:text-5xl text-white/95" aria-hidden="true"></i>
-                    </div>
-                    {% endif %}
-                </div>
-                <p class="login-page__eyebrow text-[0.65rem] sm:text-xs font-semibold uppercase tracking-[0.2em] text-white/70 mb-3">Secure portal</p>
-                <h1 class="text-2xl sm:text-3xl lg:text-[1.75rem] xl:text-4xl font-bold tracking-tight leading-tight mb-3">
-                    {{ school_settings.school_name or 'Welcome' }}
-                </h1>
-                {% if school_settings.project_name %}
-                <p class="text-white/80 text-sm sm:text-base max-w-sm lg:max-w-none leading-relaxed font-medium">
-                    {{ school_settings.project_name }}
-                </p>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mt-5 rounded-xl border px-4 py-3 text-sm {% if category == 'error' %}border-red-500/40 bg-red-500/10 text-red-100{% elif category == 'success' %}border-emerald-500/40 bg-emerald-500/10 text-emerald-100{% else %}border-white/15 bg-white/5 text-white/85{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
                 {% endif %}
-                <p class="mt-6 text-sm text-white/55 max-w-md hidden sm:block leading-relaxed">
-                    Sign in with your role and credentials. Your connection is protected for a safe, private session.
-                </p>
-            </div>
-            <div class="relative z-10 mt-10 lg:mt-8 flex flex-wrap gap-3 justify-center lg:justify-start">
-                <span class="login-page__pill"><i class="fas fa-shield-alt mr-2 opacity-80" aria-hidden="true"></i> Encrypted</span>
-                <span class="login-page__pill"><i class="fas fa-user-lock mr-2 opacity-80" aria-hidden="true"></i> Role-based</span>
-            </div>
-        </div>
+            {% endwith %}
 
-        <!-- Form column -->
-        <div class="login-page__form-col lg:flex-1 lg:pl-8 xl:pl-12 lg:flex lg:items-center">
-            <div class="login-page__card w-full max-w-md mx-auto lg:mx-0 lg:max-w-none">
-                <div class="rounded-2xl border border-gray-200/90 dark:border-slate-600/80 bg-white/98 dark:bg-slate-900/95 backdrop-blur-xl shadow-xl shadow-gray-900/5 dark:shadow-black/30 px-7 py-9 sm:px-9 sm:py-10">
-                    <div class="mb-7">
-                        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight">Sign in</h2>
-                        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1.5">Use your school account details below.</p>
-                    </div>
-
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="mb-6 p-4 rounded-xl text-sm {% if category == 'error' %}bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200{% elif category == 'success' %}bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200{% else %}bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-200{% endif %}"
-                                     {% if category == 'error' %}role="alert" aria-live="assertive"{% else %}role="status" aria-live="polite"{% endif %}>
-                                    <div class="flex items-start gap-2">
-                                        <i class="fas {% if category == 'error' %}fa-exclamation-circle{% elif category == 'success' %}fa-check-circle{% else %}fa-info-circle{% endif %} mt-0.5 shrink-0" aria-hidden="true"></i>
-                                        <span>{{ message }}</span>
-                                    </div>
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
-                    <form method="POST" action="/login" class="space-y-5">
-                        <div>
-                            <label for="role" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Login as <span class="text-red-500">*</span></label>
-                            <select id="role" name="role" required
-                                    class="auth-input login-page__select w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50/80 dark:bg-slate-800/80 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary transition-shadow"
-                                    onchange="toggleLoginFields()">
-                                <option value="">Select your role</option>
-                                <option value="employee" {% if default_role == 'employee' %}selected{% endif %}>Employee</option>
-                                <option value="parent" {% if default_role == 'parent' %}selected{% endif %}>Parent</option>
-                                <option value="student" {% if default_role == 'student' %}selected{% endif %}>Student</option>
-                            </select>
-                        </div>
-
-                        <div id="employee_id_field" class="hidden">
-                            <label for="employee_id" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Employee ID <span class="text-red-500">*</span></label>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Six-digit employee ID</p>
-                            <input type="text" id="employee_id" name="employee_id"
-                                   pattern="[0-9]{6}" maxlength="6" minlength="6"
-                                   class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
-                                   placeholder="000000" inputmode="numeric" autocomplete="username">
-                        </div>
-
-                        <div id="admission_number_field" class="hidden">
-                            <label for="admission_number" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Admission number <span class="text-red-500">*</span></label>
-                            <input type="text" id="admission_number" name="admission_number"
-                                   class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
-                                   placeholder="Your admission number" autocomplete="username">
-                        </div>
-
-                        <div>
-                            <label for="password" class="block text-sm font-semibold mb-2 text-gray-800 dark:text-gray-200">Password <span class="text-red-500">*</span></label>
-                            <div class="relative">
-                                <input type="password" id="password" name="password" required
-                                       class="auth-input w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-900 dark:text-white pr-12 focus:ring-2 focus:ring-brand-primary"
-                                       placeholder="••••••••" autocomplete="current-password">
-                                <button type="button" onclick="togglePassword()" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700" aria-label="Show password">
-                                    <i class="fas fa-eye" id="password_toggle_icon"></i>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div id="login_remember_forgot_row" class="hidden" aria-hidden="true">
-                            <div class="flex items-center justify-between gap-3 flex-wrap pt-1">
-                                <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-600 dark:text-gray-400">
-                                    <input type="checkbox" name="remember_me" class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary">
-                                    Remember me
-                                </label>
-                                <a href="{{ url_for('retrieve_password') }}" class="text-sm font-semibold text-brand-primary hover:text-brand-secondary">Forgot password?</a>
-                            </div>
-                        </div>
-
-                        <button type="submit" class="login-page__submit w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-white transition-all hover:-translate-y-0.5">
-                            <i class="fas fa-sign-in-alt" aria-hidden="true"></i>
-                            Sign in
-                        </button>
-                    </form>
-
-                    <div class="mt-8 pt-8 border-t border-gray-200 dark:border-slate-700">
-                        <p class="text-center text-xs font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-4">New to the portal?</p>
-                        <div class="grid gap-3 sm:grid-cols-2">
-                            <a href="{{ url_for('register_employee') }}" class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-secondary transition-colors">
-                                <i class="fas fa-user-plus" aria-hidden="true"></i> Staff signup
-                            </a>
-                            <a href="{{ url_for('admission') }}" class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-slate-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary dark:hover:border-brand-secondary transition-colors">
-                                <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
-                            </a>
-                        </div>
-                    </div>
+            <form method="POST" action="/login" class="cbc-premium-form mt-6 space-y-4">
+                <input type="hidden" id="role" name="role" value="employee">
+                <div>
+                    <label for="role_view">Login as</label>
+                    <select id="role_view" onchange="syncRole()">
+                        <option value="admin">Admin</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="parent">Parent</option>
+                    </select>
                 </div>
+                <div id="employee_id_field">
+                    <label for="employee_id">Staff ID</label>
+                    <input type="text" id="employee_id" name="employee_id" pattern="[0-9]{6}" maxlength="6" minlength="6" placeholder="000000" inputmode="numeric" autocomplete="username">
+                </div>
+                <div id="admission_field" class="hidden">
+                    <label for="admission_number">Admission number</label>
+                    <input type="text" id="admission_number" name="admission_number" placeholder="Learner admission number" autocomplete="username">
+                </div>
+                <div>
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password">
+                </div>
+                <div id="login_remember_forgot_row" class="flex flex-wrap items-center justify-between gap-3 text-sm">
+                    <label class="inline-flex items-center gap-2 text-white/60 cursor-pointer">
+                        <input type="checkbox" name="remember_me" class="rounded border-white/30 bg-white/5">
+                        Remember me
+                    </label>
+                    <a href="{{ url_for('retrieve_password') }}" class="font-semibold text-sky-300 hover:text-sky-200">Forgot password?</a>
+                </div>
+                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> Sign in</button>
+            </form>
+
+            <div class="mt-8 grid gap-3 border-t border-white/10 pt-8 sm:grid-cols-2">
+                <a href="{{ url_for('register_employee') }}" class="cbc-cta-ghost text-sm py-3"><i class="fas fa-user-plus" aria-hidden="true"></i> Staff signup</a>
+                <a href="{{ url_for('admission') }}" class="cbc-cta-ghost text-sm py-3"><i class="fas fa-user-graduate" aria-hidden="true"></i> Admission</a>
             </div>
         </div>
     </div>
-</section>
-
+</div>
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const role = document.getElementById('role').value;
-    if (role) toggleLoginFields();
-});
-
-function toggleLoginFields() {
-    const role = document.getElementById('role').value;
+function syncRole() {
+    const roleView = document.getElementById('role_view').value;
+    const role = document.getElementById('role');
     const employeeField = document.getElementById('employee_id_field');
-    const admissionField = document.getElementById('admission_number_field');
-    const rememberForgotRow = document.getElementById('login_remember_forgot_row');
+    const admissionField = document.getElementById('admission_field');
     const employeeInput = document.getElementById('employee_id');
     const admissionInput = document.getElementById('admission_number');
-
-    const hasRole = role === 'employee' || role === 'parent' || role === 'student';
-    if (rememberForgotRow) {
-        rememberForgotRow.classList.toggle('hidden', !hasRole);
-        rememberForgotRow.setAttribute('aria-hidden', hasRole ? 'false' : 'true');
-    }
-
-    if (role === 'employee') {
-        employeeField.classList.remove('hidden');
-        admissionField.classList.add('hidden');
-        employeeInput.required = true;
-        admissionInput.required = false;
-        admissionInput.value = '';
-    } else if (role === 'parent' || role === 'student') {
+    if (roleView === 'parent') {
+        role.value = 'parent';
         employeeField.classList.add('hidden');
         admissionField.classList.remove('hidden');
+        employeeInput.value = '';
         employeeInput.required = false;
         admissionInput.required = true;
-        employeeInput.value = '';
     } else {
-        employeeField.classList.add('hidden');
+        role.value = 'employee';
+        employeeField.classList.remove('hidden');
         admissionField.classList.add('hidden');
-        employeeInput.required = false;
-        admissionInput.required = false;
-        employeeInput.value = '';
         admissionInput.value = '';
+        admissionInput.required = false;
+        employeeInput.required = true;
     }
 }
-
-function togglePassword() {
-    const passwordInput = document.getElementById('password');
-    const toggleIcon = document.getElementById('password_toggle_icon');
-    if (passwordInput.type === 'password') {
-        passwordInput.type = 'text';
-        toggleIcon.classList.remove('fa-eye');
-        toggleIcon.classList.add('fa-eye-slash');
-    } else {
-        passwordInput.type = 'password';
-        toggleIcon.classList.remove('fa-eye-slash');
-        toggleIcon.classList.add('fa-eye');
-    }
-}
+document.addEventListener('DOMContentLoaded', syncRole);
 </script>
 {% endblock %}

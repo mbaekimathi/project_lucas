@@ -45,14 +45,16 @@
     linear-gradient(to top, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.2) 45%, transparent 100%);
 }
 
+/* Dark mode: keep the photo readable — previous stack was almost opaque */
 .dark .edu-hero__mesh {
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, var(--brand-primary, #800020) 75%, #020617) 0%,
-      color-mix(in srgb, var(--brand-accent, #5c0014) 60%, #0f172a) 100%
+      color-mix(in srgb, var(--brand-primary, #800020) 72%, transparent) 0%,
+      color-mix(in srgb, var(--brand-primary, #800020) 38%, transparent) 46%,
+      color-mix(in srgb, var(--brand-accent, #5c0014) 52%, transparent) 100%
     ),
-    linear-gradient(to top, rgba(2, 6, 23, 0.92) 0%, rgba(15, 23, 42, 0.35) 50%, transparent 100%);
+    linear-gradient(to top, rgba(2, 6, 23, 0.62) 0%, rgba(15, 23, 42, 0.22) 52%, transparent 100%);
 }
 
 .edu-hero__pattern {
@@ -1637,4 +1639,155 @@ main.public-site-main {
   .login-page__submit:hover {
     transform: none;
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Institution public site — light campus chrome (body.school-public)         */
+/* -------------------------------------------------------------------------- */
+body.public-site.school-public {
+  color: #0f172a;
+}
+
+body.public-site.school-public .public-site-main,
+body.public-site.school-public .public-site-scroll--document {
+  background: #f1f5f9;
+}
+
+.dark body.public-site.school-public .public-site-main,
+.dark body.public-site.school-public .public-site-scroll--document {
+  background: #0f172a;
+}
+
+/* Photo blocks: scrims (Tailwind gradients were too heavy in dark mode — photo vanished) */
+.public-site.school-public .school-page-photo__scrim {
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(15, 23, 42, 0.9) 0%,
+    rgba(15, 23, 42, 0.42) 48%,
+    transparent 100%
+  );
+}
+
+.dark .public-site.school-public .school-page-photo__scrim {
+  background: linear-gradient(
+    to top,
+    rgba(2, 6, 23, 0.52) 0%,
+    rgba(15, 23, 42, 0.16) 55%,
+    transparent 100%
+  );
+}
+
+.public-site.school-public .school-page-photo__scrim--soft {
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    rgba(15, 23, 42, 0.78) 0%,
+    rgba(15, 23, 42, 0.2) 50%,
+    transparent 100%
+  );
+}
+
+.dark .public-site.school-public .school-page-photo__scrim--soft {
+  background: linear-gradient(
+    to top,
+    rgba(2, 6, 23, 0.38) 0%,
+    rgba(15, 23, 42, 0.1) 55%,
+    transparent 100%
+  );
+}
+
+.public-site.school-public .school-page-photo__scrim--tr {
+  pointer-events: none;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--brand-primary, #800020) 40%, transparent) 0%,
+    transparent 48%,
+    color-mix(in srgb, var(--brand-secondary, #a00030) 28%, transparent) 100%
+  );
+}
+
+.dark .public-site.school-public .school-page-photo__scrim--tr {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--brand-primary, #800020) 26%, transparent) 0%,
+    transparent 52%,
+    color-mix(in srgb, var(--brand-secondary, #a00030) 16%, transparent) 100%
+  );
+}
+
+.public-site.school-public .school-features-hero__scrim {
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    rgba(15, 23, 42, 0.92) 0%,
+    rgba(15, 23, 42, 0.72) 42%,
+    rgba(15, 23, 42, 0.32) 100%
+  );
+}
+
+.dark .public-site.school-public .school-features-hero__scrim {
+  background: linear-gradient(
+    to right,
+    rgba(2, 6, 23, 0.72) 0%,
+    rgba(15, 23, 42, 0.38) 52%,
+    rgba(15, 23, 42, 0.1) 100%
+  );
+}
+
+.dark .public-site.school-public .edu-logo-ring img {
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.55));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public-site forms: stronger dark-mode contrast/readability                 */
+/* -------------------------------------------------------------------------- */
+.dark body.public-site.school-public form label {
+  color: #e2e8f0;
+}
+
+.dark body.public-site.school-public form input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.dark body.public-site.school-public form select,
+.dark body.public-site.school-public form textarea {
+  background: rgba(15, 23, 42, 0.88) !important;
+  color: #f8fafc !important;
+  border-color: rgba(148, 163, 184, 0.55) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dark body.public-site.school-public form input:not([type='checkbox']):not([type='radio']):not([type='file'])::placeholder,
+.dark body.public-site.school-public form textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+.dark body.public-site.school-public form input:not([type='checkbox']):not([type='radio']):not([type='file']):focus,
+.dark body.public-site.school-public form select:focus,
+.dark body.public-site.school-public form textarea:focus {
+  border-color: color-mix(in srgb, var(--brand-primary, #800020) 62%, #ffffff) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--brand-primary, #800020) 26%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+  outline: none;
+}
+
+.dark body.public-site.school-public form select option {
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.dark body.public-site.school-public .auth-card,
+.dark body.public-site.school-public .cbc-premium-surface {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+#site-header.site-header--marketing.site-header--solid .site-header__product-tag {
+  border-color: color-mix(in srgb, var(--brand-primary, #800020) 22%, #e2e8f0);
+  background: color-mix(in srgb, var(--brand-primary, #800020) 6%, #fff);
+  color: color-mix(in srgb, var(--brand-primary, #800020) 88%, #475569);
+}
+
+.dark #site-header.site-header--marketing.site-header--solid .site-header__product-tag {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(30, 41, 59, 0.75);
+  color: rgba(241, 245, 249, 0.92);
 }

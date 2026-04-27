@@ -6,6 +6,12 @@ import pymysql
 import os
 from werkzeug.security import generate_password_hash
 
+try:
+    from env_loader import load_project_env
+    load_project_env(os.path.dirname(os.path.abspath(__file__)))
+except ImportError:
+    pass
+
 # Function to detect if running on hosted server
 def is_hosted():
     """Check if the application is running on the hosted server"""

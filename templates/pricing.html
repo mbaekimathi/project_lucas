@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Fees &amp; information — {{ school_settings.school_name or 'Our school' }}{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
+{% block content %}
+<div class="edu-section edu-section--tint py-12 md:py-16">
+    <div class="container mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 text-center">
+        <p class="edu-eyebrow">Transparency</p>
+        <h1 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-2">Fees tailored to your child’s programme</h1>
+        <p class="mt-5 text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl mx-auto">
+            {{ school_settings.school_name or 'Our school' }} publishes fee schedules per term and level. Bursary and instalment conversations happen in confidence with the bursar’s office — every family deserves clarity.
+        </p>
+    </div>
+
+    <div class="container mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 mt-12 grid md:grid-cols-3 gap-6">
+        {% for num, title, detail in [
+            ('1', 'Request a schedule', 'Email or call the office — we send the current tariff sheet for your child’s year group.'),
+            ('2', 'Meet admissions', 'We confirm placement, optional transport or meals, and any sibling discounts that apply.'),
+            ('3', 'Enrol with confidence', 'Invoices and receipts are tracked in our parent portal for easy reference.')
+        ] %}
+        <article class="edu-card p-6 text-left">
+            <p class="text-xs font-bold uppercase tracking-wide text-brand-primary">Step {{ num }}</p>
+            <h2 class="mt-2 font-heading font-bold text-lg text-slate-900 dark:text-white">{{ title }}</h2>
+            <p class="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ detail }}</p>
+        </article>
+        {% endfor %}
+    </div>
+
+    <div class="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-14 edu-card p-10 text-center">
+        <h2 class="edu-display text-2xl text-slate-900 dark:text-white">Talk to the bursar</h2>
+        <p class="mt-3 text-slate-600 dark:text-slate-300">We will walk you through deposits, payment plans, and what is included in tuition.</p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+            <a href="{{ url_for('contact') }}" class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                <i class="fas fa-envelope" aria-hidden="true"></i> Contact the office
+            </a>
+            <a href="{{ url_for('admission') }}" class="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-600 px-5 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                Start an application
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

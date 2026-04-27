@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}FAQ — {{ school_settings.school_name or 'Our school' }}{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
+{% block content %}
+<div class="edu-section edu-section--tint py-12 md:py-16">
+    <div class="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+        <p class="edu-eyebrow">Families ask</p>
+        <h1 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-2">Frequently asked questions</h1>
+        <p class="mt-4 text-slate-600 dark:text-slate-300 leading-relaxed">
+            Quick answers about admissions, daily life, and how we partner with you at {{ school_settings.school_name or 'our school' }}.
+        </p>
+    </div>
+    <div class="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-10 space-y-4">
+        {% for q, a in [
+            ('How do I apply for a place?', 'Complete the online admission form. Our team reviews each application and contacts you with next steps or an invitation to interview.'),
+            ('What curriculum do you follow?', 'We implement Kenya’s Competency Based Curriculum (CBC), with enrichment in arts, sport, and leadership.'),
+            ('How will I know how my child is progressing?', 'Teachers share formative feedback through the term, formal reports, and parent conferences. Guardians with portal access can also view updates online.'),
+            ('Do you offer transport or meals?', 'Options vary by campus and intake year. Admissions can confirm what is available for your child’s cohort.'),
+            ('How do you support wellbeing and safety?', 'We train staff in safeguarding, run tutor and counselling pathways, and maintain clear behaviour expectations rooted in respect.')
+        ] %}
+        <article class="edu-card p-6">
+            <h2 class="font-heading font-bold text-lg text-slate-900 dark:text-white">{{ q }}</h2>
+            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ a }}</p>
+        </article>
+        {% endfor %}
+    </div>
+    <div class="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 mt-12 text-center">
+        <a href="{{ url_for('contact') }}" class="inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:underline">
+            <i class="fas fa-envelope" aria-hidden="true"></i> Still have a question? Message the office
+        </a>
+    </div>
+</div>
+{% endblock %}

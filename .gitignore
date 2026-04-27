@@ -29,6 +29,7 @@ instance/
 
 # Environment variables
 .env
+.env.local
 .venv
 
 # IDE

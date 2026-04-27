@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Programs &amp; learning — {{ school_settings.school_name or 'Our school' }}{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
+{% block content %}
+<div class="edu-section edu-section--tint py-12 md:py-16">
+    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="relative overflow-hidden rounded-2xl border border-slate-200/90 dark:border-slate-700 min-h-[200px] md:min-h-[260px] shadow-lg">
+            <img src="https://images.unsplash.com/photo-1580582932707-520aed937b7b?w=1800&q=80&auto=format&fit=crop" alt="" class="absolute inset-0 h-full w-full object-cover opacity-95" loading="lazy" decoding="async" width="1800" height="1000">
+            <div class="absolute inset-0 school-features-hero__scrim" aria-hidden="true"></div>
+            <div class="relative z-10 p-8 md:p-12 max-w-2xl">
+                <p class="text-white/75 text-xs font-semibold uppercase tracking-widest">Learning at {{ school_settings.school_name or 'our school' }}</p>
+                <h1 class="edu-display text-3xl sm:text-4xl text-white mt-2">Programs that challenge and inspire</h1>
+                <p class="mt-4 text-white/85 leading-relaxed">From early years through upper primary, we align teaching with CBC strands while nurturing creativity, collaboration, and critical thinking.</p>
+            </div>
+        </div>
+
+        <div class="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% set pillars = [
+                ('fa-book-open', 'Literacy & languages', 'Strong foundations in English, Kiswahili, and additional languages with rich libraries and reading culture.'),
+                ('fa-flask', 'STEM & digital skills', 'Hands-on science, mathematics, and technology projects that connect to real-world problem solving.'),
+                ('fa-palette', 'Arts & culture', 'Music, visual art, drama, and heritage studies that build confidence and cultural pride.'),
+                ('fa-person-running', 'Sport & wellbeing', 'Physical education, teams, and wellness habits that teach discipline and teamwork.'),
+                ('fa-hands-holding-heart', 'Pastoral care', 'Tutor groups, counselling access, and values education so every child feels known and supported.'),
+                ('fa-chart-line', 'Progress & reporting', 'Regular feedback for families through reports, conferences, and our secure online portal.')
+            ] %}
+            {% for icon, name, blurb in pillars %}
+            <article class="edu-card p-6">
+                <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow">
+                    <i class="fas {{ icon }}" aria-hidden="true"></i>
+                </div>
+                <h2 class="mt-4 font-heading font-bold text-lg text-slate-900 dark:text-white">{{ name }}</h2>
+                <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ blurb }}</p>
+            </article>
+            {% endfor %}
+        </div>
+
+        {% if academic_levels %}
+        <div class="mt-14">
+            <h2 class="edu-display text-2xl sm:text-3xl text-slate-900 dark:text-white">Levels offered</h2>
+            <p class="mt-2 text-slate-600 dark:text-slate-300 max-w-2xl">These are the active pathways in our register today. Availability may vary by term — admissions will confirm placement.</p>
+            <ul class="mt-6 grid sm:grid-cols-2 gap-4">
+                {% for level in academic_levels %}
+                <li class="edu-card p-5 flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary"><i class="fas fa-check" aria-hidden="true"></i></span>
+                    <div>
+                        <span class="font-semibold text-slate-900 dark:text-white">{{ level.level_name }}</span>
+                        {% if level.level_description %}<p class="text-sm text-slate-600 dark:text-slate-300 mt-1">{{ level.level_description }}</p>{% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="mt-14 max-w-3xl mx-auto text-center edu-card p-10">
+            <h2 class="edu-display text-2xl text-slate-900 dark:text-white">Plan a visit</h2>
+            <p class="mt-3 text-slate-600 dark:text-slate-300">Walk the campus, meet teachers, and see how {{ school_settings.school_name or 'we' }} supports your child’s goals.</p>
+            <div class="mt-6 flex flex-wrap justify-center gap-3">
+                <a href="{{ url_for('demo') }}" class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                    <i class="fas fa-calendar-check" aria-hidden="true"></i> Schedule a tour
+                </a>
+                <a href="{{ url_for('admission') }}" class="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-600 px-5 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                    Apply online
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

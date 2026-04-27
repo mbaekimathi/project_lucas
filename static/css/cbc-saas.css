@@ -1,0 +1,1095 @@
+/* -------------------------------------------------------------------------- */
+/* CBC SaaS — base tokens (light sections / dashboard widgets)              */
+/* -------------------------------------------------------------------------- */
+.cbc-saas {
+  --cbc-primary: #2563eb;
+  --cbc-secondary: #7c3aed;
+  --cbc-bg: #f9fafb;
+  --cbc-surface: #ffffff;
+  --cbc-text: #111827;
+  --cbc-text-muted: #6b7280;
+  --cbc-success: #10b981;
+  --cbc-warning: #f59e0b;
+  --cbc-danger: #ef4444;
+  --cbc-info: #3b82f6;
+}
+
+.cbc-saas.public-site-main,
+.cbc-saas .cbc-page-bg {
+  background: var(--cbc-bg);
+}
+
+.cbc-saas .cbc-btn-primary {
+  background: var(--cbc-primary);
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.85rem 1.2rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.cbc-saas .cbc-btn-primary:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.22);
+}
+
+.cbc-saas .cbc-btn-secondary {
+  background: var(--cbc-secondary);
+  color: #fff;
+  border-radius: 14px;
+  padding: 0.85rem 1.2rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cbc-saas .cbc-btn-secondary:hover {
+  filter: brightness(1.06);
+}
+
+.cbc-saas .cbc-card {
+  background: var(--cbc-surface);
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+}
+
+.cbc-saas .cbc-badge {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.4rem 0.7rem;
+  font-weight: 600;
+}
+
+.cbc-saas .cbc-badge-ee { background: #dcfce7; color: #065f46; }
+.cbc-saas .cbc-badge-me { background: #dbeafe; color: #1d4ed8; }
+.cbc-saas .cbc-badge-ae { background: #fef3c7; color: #92400e; }
+.cbc-saas .cbc-badge-be { background: #fee2e2; color: #991b1b; }
+
+.cbc-saas .cbc-muted {
+  color: var(--cbc-text-muted);
+}
+
+.cbc-saas .cbc-skeleton {
+  border-radius: 10px;
+  background: linear-gradient(90deg, #eef2ff 25%, #f8fafc 50%, #eef2ff 75%);
+  background-size: 200% 100%;
+  animation: cbc-shimmer 1.6s infinite linear;
+}
+
+@keyframes cbc-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Premium marketing theme (Eduma-inspired: dark, glass, bold CTAs)         */
+/* Activate with: body.public-site.cbc-saas.cbc-saas--premium               */
+/* -------------------------------------------------------------------------- */
+.cbc-saas--premium {
+  --cbc-premium-bg: #050505;
+  --cbc-premium-panel: #0b0b0c;
+  --cbc-premium-elev: #111113;
+  --cbc-premium-red: #ef233c;
+  --cbc-premium-red-hover: #ff3b52;
+  --cbc-premium-muted: rgba(255, 255, 255, 0.62);
+  --cbc-premium-border: rgba(255, 255, 255, 0.1);
+  --cbc-premium-glow1: rgba(124, 58, 237, 0.45);
+  --cbc-premium-glow2: rgba(245, 158, 11, 0.35);
+}
+
+body.public-site.cbc-saas--premium {
+  background-color: var(--cbc-premium-bg) !important;
+}
+
+body.public-site.cbc-saas--premium .public-site-main,
+body.public-site.cbc-saas--premium .public-site-scroll {
+  background: radial-gradient(1200px 600px at 15% -10%, rgba(37, 99, 235, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 90% 10%, var(--cbc-premium-glow1), transparent 50%),
+    radial-gradient(700px 400px at 70% 90%, var(--cbc-premium-glow2), transparent 45%),
+    var(--cbc-premium-bg) !important;
+}
+
+body.public-site.cbc-saas--premium .public-site-page {
+  padding-top: 0 !important;
+}
+
+/* Marketing header — dark glass bar */
+body.public-site.cbc-saas--premium #site-header.site-header--marketing {
+  background: rgba(5, 5, 5, 0.72) !important;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom-color: var(--cbc-premium-border) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__title,
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__subtitle {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link:not(.is-active) {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link:not(.is-active):hover {
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link.is-active {
+  color: #fff !important;
+  background: rgba(239, 35, 60, 0.18) !important;
+  border-color: rgba(239, 35, 60, 0.35) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header .site-header__icon-btn {
+  color: rgba(255, 255, 255, 0.78) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: var(--cbc-premium-border) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header .site-header__login {
+  background: var(--cbc-premium-red) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 10px 30px rgba(239, 35, 60, 0.35);
+}
+
+body.public-site.cbc-saas--premium #site-header .site-header__login:hover {
+  background: var(--cbc-premium-red-hover) !important;
+}
+
+body.public-site.cbc-saas--premium .public-site-nav-panel {
+  background: rgba(8, 8, 10, 0.97) !important;
+  border-color: var(--cbc-premium-border) !important;
+}
+
+body.public-site.cbc-saas--premium .public-site-nav-panel__link {
+  color: rgba(255, 255, 255, 0.9) !important;
+  border-color: var(--cbc-premium-border) !important;
+}
+
+/* Premium page shell */
+.cbc-premium-page {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cbc-premium-h1 {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+  color: #fff;
+  font-size: clamp(2.25rem, 4vw + 1rem, 3.75rem);
+}
+
+.cbc-premium-lead {
+  color: var(--cbc-premium-muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+  max-width: 36rem;
+}
+
+.cbc-premium-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(90deg, #7c3aed, #f59e0b);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
+}
+
+.cbc-cta-red {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.95rem 1.5rem;
+  border-radius: 14px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #fff;
+  background: var(--cbc-premium-red);
+  box-shadow: 0 14px 36px rgba(239, 35, 60, 0.38);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.cbc-cta-red:hover {
+  background: var(--cbc-premium-red-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 18px 44px rgba(239, 35, 60, 0.45);
+}
+
+.cbc-cta-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.95rem 1.35rem;
+  border-radius: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--cbc-premium-border);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.cbc-cta-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Full-bleed hero */
+.cbc-premium-hero {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  padding: clamp(3rem, 6vw, 5.5rem) 0 clamp(3.5rem, 7vw, 6rem);
+}
+
+.cbc-premium-hero__bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  transform: none;
+  filter: saturate(1.05) contrast(1.05);
+}
+
+.cbc-premium-hero__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, rgba(5, 5, 5, 0.94) 0%, rgba(5, 5, 5, 0.82) 42%, rgba(5, 5, 5, 0.55) 100%);
+}
+
+.cbc-premium-hero__mesh {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(600px 280px at 20% 0%, rgba(37, 99, 235, 0.35), transparent 60%),
+    radial-gradient(500px 260px at 80% 20%, rgba(124, 58, 237, 0.28), transparent 55%);
+  pointer-events: none;
+}
+
+.cbc-premium-hero__grid {
+  position: relative;
+  z-index: 2;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .cbc-premium-hero__grid {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: 3rem;
+  }
+}
+
+/* Glass feature stack (right column) */
+.cbc-glass-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.cbc-glass-card {
+  position: relative;
+  padding: 1.1rem 1.15rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cbc-glass-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+.cbc-glass-card__icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.cbc-glass-card__title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.cbc-glass-card__text {
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+/* Social proof row */
+.cbc-avatar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+
+.cbc-avatar-stack {
+  display: flex;
+  align-items: center;
+}
+
+.cbc-avatar-stack img {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  border: 2px solid rgba(5, 5, 5, 0.85);
+  object-fit: cover;
+  margin-left: -0.65rem;
+}
+
+.cbc-avatar-stack img:first-child {
+  margin-left: 0;
+}
+
+.cbc-stars {
+  color: #fbbf24;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+}
+
+.cbc-stat-inline {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.cbc-stat-inline strong {
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Floating rail (desktop) */
+.cbc-floating-rail {
+  position: fixed;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 45;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cbc-floating-rail a {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  padding: 0.85rem 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-radius: 10px 0 0 10px;
+  color: #111;
+  background: #fff;
+  box-shadow: -6px 8px 24px rgba(0, 0, 0, 0.35);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.cbc-floating-rail a:last-child {
+  background: var(--cbc-premium-red);
+  color: #fff;
+}
+
+.cbc-floating-rail a:hover {
+  filter: brightness(1.05);
+}
+
+/* Section cards below hero */
+.cbc-premium-section {
+  padding: clamp(3rem, 5vw, 5rem) 0;
+}
+
+.cbc-premium-surface {
+  background: linear-gradient(180deg, rgba(17, 17, 19, 0.95), rgba(8, 8, 10, 0.98));
+  border: 1px solid var(--cbc-premium-border);
+  border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.cbc-premium-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--cbc-premium-border);
+  border-radius: 18px;
+  padding: 1.35rem 1.4rem;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cbc-premium-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+  transform: translateY(-2px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.cbc-premium-card h3 {
+  font-weight: 700;
+  color: #fff;
+  font-size: 1.05rem;
+}
+
+.cbc-premium-card p {
+  margin-top: 0.45rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.58);
+  line-height: 1.55;
+}
+
+.cbc-premium-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cbc-premium-h2 {
+  font-size: clamp(1.65rem, 2vw + 1rem, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+/* Dashboard preview strip with image */
+.cbc-premium-media-strip {
+  position: relative;
+  border-radius: 22px;
+  overflow: hidden;
+  min-height: 14rem;
+  border: 1px solid var(--cbc-premium-border);
+}
+
+.cbc-premium-media-strip__img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.35;
+}
+
+.cbc-premium-media-strip__shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(5, 5, 5, 0.92), rgba(5, 5, 5, 0.55));
+}
+
+.cbc-premium-media-strip__body {
+  position: relative;
+  z-index: 2;
+  padding: 1.75rem;
+}
+
+/* Dark skeleton */
+.cbc-saas--premium .cbc-skeleton {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.1) 50%, rgba(255, 255, 255, 0.04) 75%);
+  background-size: 200% 100%;
+}
+
+/* Competency pills on dark */
+.cbc-saas--premium .cbc-badge-ee {
+  background: linear-gradient(90deg, #059669, #34d399);
+  color: #fff;
+}
+.cbc-saas--premium .cbc-badge-me {
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  color: #fff;
+}
+.cbc-saas--premium .cbc-badge-ae {
+  background: linear-gradient(90deg, #d97706, #fbbf24);
+  color: #1f2937;
+}
+.cbc-saas--premium .cbc-badge-be {
+  background: linear-gradient(90deg, #b91c1c, #f87171);
+  color: #fff;
+}
+
+/* Login — premium form */
+.cbc-premium-form label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.72);
+  margin-bottom: 0.35rem;
+}
+
+.cbc-premium-form input,
+.cbc-premium-form select,
+.cbc-premium-form textarea {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--cbc-premium-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.95rem;
+}
+
+.cbc-premium-form input::placeholder,
+.cbc-premium-form textarea::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cbc-premium-form input:focus,
+.cbc-premium-form select:focus,
+.cbc-premium-form textarea:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.55);
+  outline-offset: 2px;
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
+.dark .cbc-premium-form label {
+  color: rgba(241, 245, 249, 0.9);
+}
+
+.dark .cbc-premium-form input,
+.dark .cbc-premium-form select,
+.dark .cbc-premium-form textarea {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(148, 163, 184, 0.52);
+  color: #f8fafc;
+}
+
+.dark .cbc-premium-form input::placeholder,
+.dark .cbc-premium-form textarea::placeholder {
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.dark .cbc-premium-form input:focus,
+.dark .cbc-premium-form select:focus,
+.dark .cbc-premium-form textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--cbc-premium-red, #ef233c) 45%, #ffffff);
+  border-color: color-mix(in srgb, var(--cbc-premium-red, #ef233c) 60%, #ffffff);
+}
+
+.cbc-premium-login-shell {
+  max-width: 56rem;
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .cbc-premium-login-shell {
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+  }
+}
+
+.cbc-premium-login-aside {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 2rem;
+  min-height: 18rem;
+  border: 1px solid var(--cbc-premium-border);
+  background: linear-gradient(145deg, rgba(37, 99, 235, 0.35), rgba(124, 58, 237, 0.45)),
+    url('https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1600&q=80&auto=format&fit=crop') center/cover no-repeat;
+}
+
+.cbc-premium-login-aside::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 5, 5, 0.2), rgba(5, 5, 5, 0.82));
+}
+
+.cbc-premium-login-aside > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Marketing header — layout + “Book demo” (all public top-nav pages)        */
+/* -------------------------------------------------------------------------- */
+#site-header .site-header__nav-shell {
+  max-width: min(100%, 52rem);
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+#site-header .site-header__nav--marketing {
+  overflow: visible;
+}
+
+body.public-site:not(.cbc-saas--premium) #site-header.site-header--marketing .site-header__nav-shell {
+  background: rgba(15, 23, 42, 0.04);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  /* Rounded container (not a strict pill) so wrapped nav rows do not clip awkwardly */
+  border-radius: 1.25rem;
+  padding: 0.2rem 0.3rem;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__nav-shell,
+body.public-site.cbc-saas--premium #site-header.site-header--marketing.site-header--glass .site-header__nav-shell {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.25rem;
+  padding: 0.2rem 0.35rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+#site-header .site-header__demo-cta {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+#site-header .site-header__demo-cta:hover {
+  background: #fff;
+  color: #0f172a;
+}
+
+body.public-site.cbc-saas--premium #site-header .site-header__demo-cta {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+body.public-site.cbc-saas--premium #site-header .site-header__demo-cta:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+body.public-site.cbc-saas--premium #site-header.site-header--marketing.site-header--glass {
+  background: rgba(5, 5, 5, 0.55) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.public-site-nav-panel__cta {
+  background: linear-gradient(90deg, #ef233c, #dc2626);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.public-site-nav-panel__cta:hover {
+  filter: brightness(1.06);
+}
+
+body.public-site.cbc-saas--premium .public-site-nav-panel__cta {
+  box-shadow: 0 12px 32px rgba(239, 35, 60, 0.35);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Marketing footer — multi-column grid                                       */
+/* -------------------------------------------------------------------------- */
+footer.public-site-footer--marketing .public-site-footer__col--brand .public-site-footer__brand {
+  justify-content: flex-start;
+}
+
+footer.public-site-footer--marketing .public-site-footer__grid {
+  display: grid;
+  gap: 2rem 1.5rem;
+}
+
+@media (min-width: 640px) {
+  footer.public-site-footer--marketing .public-site-footer__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  footer.public-site-footer--marketing .public-site-footer__grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 2rem 2.5rem;
+  }
+}
+
+footer.public-site-footer--marketing .public-site-footer__heading {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.42);
+  margin: 0 0 0.85rem;
+}
+
+footer.public-site-footer--marketing .public-site-footer__heading--spaced {
+  margin-top: 1.35rem;
+}
+
+footer.public-site-footer--marketing .public-site-footer__tagline {
+  margin: 0.85rem 0 0;
+  max-width: 22rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+footer.public-site-footer--marketing .public-site-footer__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+footer.public-site-footer--marketing .public-site-footer__list li {
+  margin: 0.35rem 0;
+}
+
+footer.public-site-footer--marketing .public-site-footer__list a {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+footer.public-site-footer--marketing .public-site-footer__list a:hover {
+  color: #fff;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-list li {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-list a {
+  color: rgba(255, 255, 255, 0.82);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  transition: color 0.15s ease;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-list a:hover {
+  color: #fff;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-list i {
+  margin-top: 0.15rem;
+  opacity: 0.55;
+  width: 1rem;
+  text-align: center;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-static {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+footer.public-site-footer--marketing .public-site-footer__contact-static i {
+  margin-top: 0.15rem;
+  opacity: 0.5;
+}
+
+footer.public-site-footer--marketing .public-site-footer__portal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.1rem;
+  padding: 0.65rem 1rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  background: rgba(37, 99, 235, 0.35);
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+footer.public-site-footer--marketing .public-site-footer__portal-btn:hover {
+  background: rgba(37, 99, 235, 0.5);
+  border-color: rgba(147, 197, 253, 0.45);
+}
+
+footer.public-site-footer--marketing .public-site-footer__hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+footer.public-site-footer--marketing .public-site-footer__social--inline {
+  margin-top: 1rem;
+  justify-content: flex-start;
+}
+
+footer.public-site-footer--marketing .public-site-footer__social--inline .public-site-footer__social-link {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+footer.public-site-footer--marketing .public-site-footer__grid--premium .public-site-footer__col--brand {
+  padding-bottom: 0.5rem;
+}
+
+@media (min-width: 1024px) {
+  footer.public-site-footer--marketing .public-site-footer__grid--premium {
+    padding-bottom: 0.25rem;
+  }
+}
+
+footer.public-site-footer--marketing .public-site-footer__bar {
+  background: linear-gradient(180deg, #0c0c0e 0%, #080809 100%);
+}
+
+footer.public-site-footer--marketing .public-site-footer__search-input {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+footer.public-site-footer--marketing .public-site-footer__search-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+footer.public-site-footer--marketing .public-site-footer__search-btn:hover {
+  background: rgba(239, 35, 60, 0.25);
+  border-color: rgba(239, 35, 60, 0.45);
+  color: #fff;
+}
+
+footer.public-site-footer--marketing .public-site-footer__sub {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Marketing layout — document scroll (no inner scroll trap)                  */
+/* -------------------------------------------------------------------------- */
+body.public-site-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  max-width: 100%;
+}
+
+main.public-site-main--document {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: visible;
+  height: auto !important;
+  min-height: calc(100dvh - var(--app-header-offset, 4.5rem));
+}
+
+.public-site-scroll--document {
+  flex: none;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  background-attachment: scroll !important;
+}
+
+@supports (padding: max(0px)) {
+  main.public-site-main--document {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Header: tighter on narrow phones; avoid 100vw (scrollbar / rounding causes horizontal scroll) */
+@media (max-width: 639px) {
+  #site-header .site-header__row {
+    gap: 0.35rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  #site-header .site-header__nav-shell {
+    max-width: min(100%, 42rem);
+  }
+}
+
+footer.public-site-footer--marketing a,
+footer.public-site-footer--marketing .public-site-footer__contact-static {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Login (and premium auth shell): respect light/dark — premium CSS used       */
+/* !important on body/main/header so it always looked “dark only”.           */
+/* -------------------------------------------------------------------------- */
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium {
+  background-color: #f1f5f9 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .public-site-main,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .public-site-scroll,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .public-site-scroll--document {
+  background: #f1f5f9 !important;
+  background-image: none !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing {
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-color: color-mix(in srgb, var(--brand-primary, #800020) 12%, #e2e8f0) !important;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 8px 32px -16px rgba(15, 23, 42, 0.12) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__title,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing .site-header__subtitle {
+  color: #334155 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link:not(.is-active) {
+  color: #475569 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link:not(.is-active):hover {
+  color: var(--brand-primary, #800020) !important;
+  background: color-mix(in srgb, var(--brand-primary, #800020) 8%, #f8fafc) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing .public-nav-link.is-active {
+  color: var(--brand-primary, #800020) !important;
+  background: color-mix(in srgb, var(--brand-primary, #800020) 12%, #fff) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header .site-header__nav-shell,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header.site-header--marketing.site-header--glass .site-header__nav-shell {
+  background: rgba(15, 23, 42, 0.04) !important;
+  border: 1px solid rgba(15, 23, 42, 0.06) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header .site-header__icon-btn {
+  color: #475569 !important;
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header .site-header__icon-btn:hover {
+  background: #f1f5f9 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header .site-header__demo-cta {
+  color: #0f172a !important;
+  background: #fff !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #site-header .site-header__product-tag {
+  border-color: color-mix(in srgb, var(--brand-primary, #800020) 22%, #e2e8f0) !important;
+  background: color-mix(in srgb, var(--brand-primary, #800020) 6%, #fff) !important;
+  color: color-mix(in srgb, var(--brand-primary, #800020) 88%, #475569) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface {
+  background: linear-gradient(180deg, #ffffff, #f8fafc) !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08) !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form label {
+  color: #475569 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form input,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form select,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form textarea {
+  background: #fff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form input::placeholder,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-login-aside::after {
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.28), rgba(15, 23, 42, 0.82));
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #login_remember_forgot_row label {
+  color: #64748b !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #login_remember_forgot_row a {
+  color: #0369a1 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium #login_remember_forgot_row input[type='checkbox'] {
+  border-color: #cbd5e1 !important;
+  background: #fff !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface > h2 {
+  color: #0f172a !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface > p {
+  color: #64748b !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface .border-t {
+  border-color: #e2e8f0 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface .cbc-cta-ghost {
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+  background: #f8fafc !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-surface .cbc-cta-ghost:hover {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}

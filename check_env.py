@@ -7,19 +7,24 @@ Usage: python check_env.py
 import os
 from pathlib import Path
 
-# Load .env if present
-env_path = Path(__file__).parent / '.env'
-if env_path.exists():
-    try:
-        from dotenv import load_dotenv
-        load_dotenv(env_path)
-        print(f"Loaded .env from {env_path}")
-    except ImportError:
-        print("Note: python-dotenv not installed. Using system environment only.")
-else:
-    print(f"WARNING: .env not found at {env_path}")
-    print("  Create a .env file in the project root with your configuration.")
-    print("  Then edit .env with your values\n")
+# Load .env and optional .env.local (see env.local.example, env.hosted.example)
+env_root = Path(__file__).parent
+try:
+    from env_loader import load_project_env
+    load_project_env(str(env_root))
+    _env = env_root / ".env"
+    _local = env_root / ".env.local"
+    if _env.is_file() or _local.is_file():
+        if _local.is_file():
+            print(f"Loaded .env and .env.local from {env_root}")
+        else:
+            print(f"Loaded .env from {env_root}")
+    else:
+        print(f"WARNING: No .env or .env.local at {env_root}")
+        print("  Production: copy env.hosted.example to .env")
+        print("  Local dev:   copy env.local.example to .env.local\n")
+except ImportError:
+    print("Note: python-dotenv not installed. Using system environment only.")
 
 def is_hosted():
     """Check if the application will use hosted (production) settings."""

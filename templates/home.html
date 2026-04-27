@@ -1,208 +1,186 @@
 {% extends "base.html" %}
+{% block title %}{{ school_settings.school_name or 'Our school' }} — Home{% endblock %}
+{% block body_class %}public-site cbc-saas school-public{% endblock %}
+{% block header_subtitle %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endblock %}
 
-{% block title %}Home - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block content_full_bleed %}{% endblock %}
 
-{% block body_class %}public-site school-public{% endblock %}
-
-{% block content_full_bleed %}
-{% set default_hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
-{% set hero_img = url_for('static', filename=school_settings.school_hero_image) if school_settings.get('school_hero_image') else default_hero_img %}
-<!-- Layout: school-site.css (.split-hero) uses CSS Grid — avoid flex utilities on the section -->
-<section class="split-hero split-hero--home split-hero--readable relative overflow-hidden" aria-label="Welcome">
-    <div class="split-hero__panel">
-        <div class="split-hero__panel-inner">
-            {% if school_settings.school_logo %}
-            <div class="split-hero__logo mb-8 lg:mb-10">
-                <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="split-hero__logo-img max-h-14 sm:max-h-16 w-auto object-contain">
-            </div>
-            {% endif %}
-            <p class="split-hero__eyebrow split-hero__eyebrow--readable mb-6">{{ school_settings.project_name or 'Excellence in education' }}</p>
-            <h1 class="split-hero__headline split-hero__headline--readable text-3xl sm:text-4xl lg:text-[2.35rem] xl:text-5xl font-bold leading-[1.08] tracking-tight mb-6">
-                Changing futures — <span class="text-brand-primary dark:text-rose-200">one learner at a time.</span>
-            </h1>
-            <p class="split-hero__lede split-hero__lede--readable text-base sm:text-lg leading-relaxed mb-10">
-                At <strong class="text-slate-900 dark:text-white font-semibold">{{ school_settings.school_name or 'our school' }}</strong> — rigorous learning, character, and community so every child can thrive.
-            </p>
-            <div class="flex flex-col sm:flex-row flex-wrap gap-4">
-                <a href="/admission" class="split-hero__btn split-hero__btn--solid">
-                    <i class="fas fa-file-signature"></i> Apply for admission
-                </a>
-                <a href="/about" class="split-hero__btn split-hero__btn--soft">
-                    <i class="fas fa-book-open"></i> Our story
-                </a>
-            </div>
-        </div>
-        <div class="split-hero__meta split-hero__meta--readable mt-12 lg:mt-10 flex flex-wrap gap-3 text-xs sm:text-sm">
-            <span class="split-hero__chip"><i class="fas fa-graduation-cap text-brand-primary" aria-hidden="true"></i> Academic excellence</span>
-            <span class="split-hero__chip"><i class="fas fa-users text-brand-primary" aria-hidden="true"></i> Community</span>
-        </div>
-    </div>
-    <div class="split-hero__visual">
-        <img src="{{ hero_img }}" alt="{{ school_settings.school_name or 'School' }} — campus" class="split-hero__img absolute inset-0 h-full w-full object-cover object-center transition-transform duration-[2.2s] ease-out motion-safe:scale-105 hover:motion-safe:scale-100" width="1920" height="1080" loading="eager" decoding="async" fetchpriority="high">
-        <div class="split-hero__visual-scrim absolute inset-0 pointer-events-none md:hidden" aria-hidden="true"></div>
-    </div>
-</section>
-{% endblock %}
+{% if school_settings.school_hero_image %}
+{% set welcome_img = url_for('static', filename=school_settings.school_hero_image) %}
+{% set welcome_img_is_logo = false %}
+{% elif school_settings.school_logo %}
+{% set welcome_img = url_for('static', filename=school_settings.school_logo) %}
+{% set welcome_img_is_logo = true %}
+{% else %}
+{% set welcome_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&q=85&auto=format&fit=crop' %}
+{% set welcome_img_is_logo = false %}
+{% endif %}
 
 {% block content %}
-{% set default_hero_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1920&q=80&auto=format&fit=crop' %}
-{% set hero_img = url_for('static', filename=school_settings.school_hero_image) if school_settings.get('school_hero_image') else default_hero_img %}
-<div class="edu-strip edu-strip--modern border-y border-gray-200/60 dark:border-slate-700/60 py-4 md:py-5 reveal-item">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 edu-strip__inner text-sm text-gray-700 dark:text-gray-300">
-        <div class="edu-strip__item">
-            <i class="fas fa-map-marker-alt text-brand-primary" aria-hidden="true"></i>
-            {% if school_settings.school_location %}
-            <span class="max-w-md">{{ school_settings.school_location|replace('\n', ' · ')|e }}</span>
-            {% else %}
-            <span class="font-medium">Visit us — we’d love to show you around</span>
-            {% endif %}
-        </div>
-        {% if school_settings.school_phone %}
-        <a href="tel:{{ school_settings.school_phone|replace(' ', '') }}" class="edu-strip__item edu-strip__link font-semibold text-brand-primary hover:text-brand-secondary transition-colors">
-            <i class="fas fa-phone" aria-hidden="true"></i> {{ school_settings.school_phone }}
-        </a>
-        {% endif %}
-    </div>
-</div>
-
-<section class="edu-section edu-section--tint edu-section--mesh py-16 md:py-24">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="max-w-2xl mx-auto text-center mb-12 md:mb-16 reveal-item">
-            <p class="edu-eyebrow mb-2">What we stand for</p>
-            <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Built for learners who lead</h2>
-            <p class="edu-divider max-w-xs mx-auto my-6"></p>
-            <p class="text-gray-600 dark:text-gray-400 text-lg">Transparent, trusted, and focused on every student — aligned with <strong class="text-brand-primary">{{ school_settings.school_name or 'our school' }}</strong> mission.</p>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 max-w-6xl mx-auto edu-pillars">
-            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
-                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-book-reader"></i></div>
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Rigorous academics</h3>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Curriculum that challenges and supports — literacy, numeracy, and critical thinking at the core.</p>
-            </article>
-            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
-                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-hands-helping"></i></div>
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Whole-child support</h3>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Pastoral care, clubs, and leadership opportunities that build character and confidence.</p>
-            </article>
-            <article class="edu-card edu-card--modern edu-card--lift p-8 md:p-10 text-center reveal-item">
-                <div class="edu-icon-tile mx-auto mb-6"><i class="fas fa-globe-americas"></i></div>
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-3">Future-ready</h3>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">Digital fluency, creativity, and collaboration — skills for university and beyond.</p>
-            </article>
-        </div>
-    </div>
-</section>
-
-{% if academic_levels and academic_levels|length > 0 %}
-<section class="py-16 md:py-20 bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 reveal-item">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10 max-w-6xl mx-auto">
-            <div>
-                <p class="edu-eyebrow mb-2">From your system</p>
-                <h2 class="edu-display text-3xl md:text-4xl text-gray-900 dark:text-white">Academic levels we offer</h2>
-                <p class="text-gray-600 dark:text-gray-400 mt-2 max-w-xl">Programs configured in your school settings — shown here automatically.</p>
+<div class="edu-section edu-section--tint pb-16 md:pb-20">
+    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-14 md:pt-20">
+        <div class="edu-card overflow-hidden p-7 md:p-10 mb-10 md:mb-12">
+            <div class="grid gap-10 lg:grid-cols-2 lg:gap-12 items-center">
+                <div class="min-w-0">
+                    <p class="edu-eyebrow">Welcome to</p>
+                    <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-slate-900 dark:text-white mt-2">{{ school_settings.school_name or 'Our school' }}</h1>
+                    <p class="mt-4 text-slate-600 dark:text-slate-300 leading-relaxed">
+                        We are proud to offer a supportive, {{ school_settings.project_name or 'CBC' }}-aligned environment where every learner is known, challenged, and celebrated.
+                    </p>
+                    <div class="mt-6 flex flex-wrap items-center gap-3">
+                        <a href="{{ url_for('admission') }}" class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                            <i class="fas fa-file-signature" aria-hidden="true"></i> Apply for admission
+                        </a>
+                        <a href="{{ url_for('contact') }}" class="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-600 px-5 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-white/80 dark:hover:bg-slate-800/80 transition-colors">
+                            <i class="fas fa-envelope" aria-hidden="true"></i> Contact the office
+                        </a>
+                    </div>
+                </div>
+                <div class="relative min-h-[220px] sm:min-h-[260px] lg:min-h-[300px] rounded-xl overflow-hidden border border-slate-200/90 dark:border-slate-600/80 bg-slate-100 dark:bg-slate-800/60 shadow-inner">
+                    <img src="{{ welcome_img }}"
+                         alt="{% if welcome_img_is_logo %}{{ school_settings.school_name or 'School' }} logo{% else %}Campus and learning at {{ school_settings.school_name or 'our school' }}{% endif %}"
+                         class="absolute inset-0 w-full h-full {{ 'object-contain p-6 sm:p-8' if welcome_img_is_logo else 'object-cover' }}"
+                         width="1200"
+                         height="800"
+                         loading="eager"
+                         decoding="async">
+                </div>
             </div>
-            <a href="/programs" class="inline-flex items-center gap-2 font-semibold text-brand-primary hover:underline shrink-0 group">
-                View all programs <i class="fas fa-arrow-right text-sm transition-transform group-hover:translate-x-1"></i>
-            </a>
         </div>
-        <div class="flex flex-wrap justify-center gap-3 max-w-4xl mx-auto">
-            {% for level in academic_levels %}
-            <span class="edu-level-chip transition-transform hover:-translate-y-0.5" title="{{ level.level_description or '' }}">{{ level.level_name }}</span>
+        <div class="max-w-3xl mx-auto text-center pt-2">
+            <p class="edu-eyebrow">Why families choose us</p>
+            <h2 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-3">Excellence, character, and community</h2>
+            <p class="mt-4 text-slate-600 dark:text-slate-300 leading-relaxed">
+                {{ school_settings.school_name or 'Our school' }} combines rigorous academics with pastoral care. Teachers partner with parents so students grow in confidence, curiosity, and compassion.
+            </p>
+        </div>
+        <div class="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for title, body, icon in [
+                ('Holistic growth', 'Academics, arts, sport, and service learning woven into everyday school life.', 'fa-seedling'),
+                ('CBC-ready pathways', 'Competency-based progression with clear feedback for learners and guardians.', 'fa-book-open'),
+                ('Partnership with home', 'Open communication, transparent reporting, and invitations to celebrate milestones.', 'fa-handshake')
+            ] %}
+            <article class="edu-card edu-card--lift p-6 md:p-7">
+                <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
+                    <i class="fas {{ icon }} text-lg" aria-hidden="true"></i>
+                </div>
+                <h3 class="mt-5 font-heading font-bold text-lg text-slate-900 dark:text-white">{{ title }}</h3>
+                <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ body }}</p>
+            </article>
             {% endfor %}
         </div>
     </div>
-</section>
-{% endif %}
+</div>
 
-<section class="section-bg-maroon edu-stats-section py-16 md:py-20 relative reveal-item overflow-hidden">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div class="max-w-5xl mx-auto">
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5 text-center edu-stats-grid">
-                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
-                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="500">500+</div>
-                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Learners</div>
-                </div>
-                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
-                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="50">50+</div>
-                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Educators</div>
-                </div>
-                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
-                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="20">20+</div>
-                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Programs</div>
-                </div>
-                <div class="edu-card edu-card--stat edu-card--glass edu-card--lift p-6 md:p-8">
-                    <div class="text-3xl md:text-4xl font-bold text-brand-primary dark:text-slate-200 mb-1" data-counter="95">95%</div>
-                    <div class="text-sm font-medium text-gray-600 dark:text-gray-400">Success focus</div>
-                </div>
+{% if academic_levels %}
+<div class="edu-section pb-16 md:pb-20">
+    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
+            <div>
+                <p class="edu-eyebrow">Our programmes</p>
+                <h2 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-2">Levels we offer</h2>
+                <p class="mt-2 text-slate-600 dark:text-slate-300 max-w-xl">Active pathways at {{ school_settings.school_name or 'our school' }} — speak to admissions about placement and transitions.</p>
             </div>
-        </div>
-    </div>
-</section>
-
-<section class="py-16 md:py-24 bg-white dark:bg-slate-900 reveal-item">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
-        <div class="edu-frame edu-frame--modern shadow-xl edu-frame--tilt">
-            <div class="grid md:grid-cols-2 gap-0">
-                <div class="min-h-[240px] md:min-h-[320px] bg-cover bg-center transition-transform duration-500 motion-safe:hover:scale-[1.02]" style="background-image: url('{{ hero_img }}');" role="img" aria-label="School campus"></div>
-                <div class="p-8 md:p-12 flex flex-col justify-center">
-                    <p class="edu-eyebrow mb-2">Our promise</p>
-                    <blockquote class="edu-quote text-lg md:text-xl text-gray-700 dark:text-gray-300 leading-relaxed mb-6">
-                        Every student deserves teaching that respects their potential — and a community that believes in their future.
-                    </blockquote>
-                    <p class="text-sm text-gray-500 dark:text-gray-500">— Leadership, {{ school_settings.school_name or 'Modern School' }}</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="edu-section edu-section--dark edu-cta-band py-16 md:py-24 text-center reveal-item relative overflow-hidden{% if school_settings.get('school_hero_image') %} edu-cta-band--school-photo{% endif %}">
-    <div class="edu-cta-band__media" aria-hidden="true">
-        <img src="{{ hero_img }}" alt="" class="edu-cta-band__img" width="1920" height="800" loading="lazy" decoding="async">
-    </div>
-    <div class="edu-cta-band__media-scrim" aria-hidden="true"></div>
-    <div class="edu-cta-band__glow" aria-hidden="true"></div>
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-3xl relative z-10">
-        <h2 class="edu-display text-3xl md:text-4xl text-white mb-4 tracking-tight">Take the next step</h2>
-        <p class="text-white/85 text-lg mb-10 max-w-xl mx-auto leading-relaxed">Admissions, tours, and questions — we’re here to help.</p>
-        <div class="flex flex-col sm:flex-row gap-4 justify-center items-stretch sm:items-center">
-            <a href="/admission" class="edu-cta-btn edu-cta-btn--solid inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-semibold">
-                <i class="fas fa-pen-nib"></i> Start application
-            </a>
-            <a href="/contact" class="edu-cta-btn edu-cta-btn--outline inline-flex items-center justify-center gap-2 px-8 py-4 rounded-2xl font-semibold">
-                <i class="fas fa-envelope"></i> Contact the office
+            <a href="{{ url_for('admission') }}" class="inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity shrink-0">
+                <i class="fas fa-arrow-right" aria-hidden="true"></i> Start an application
             </a>
         </div>
-    </div>
-</section>
-
-<div class="edu-next-bar bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border-t border-gray-200/80 dark:border-slate-800">
-    <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-5 md:py-6 flex flex-wrap items-center justify-between gap-4">
-        <p class="text-sm text-gray-500 dark:text-gray-400">Explore our story and community.</p>
-        <a href="/about" class="edu-next-bar__btn inline-flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white shadow-lg transition-all">
-            <span>Continue to About</span>
-            <i class="fas fa-arrow-right text-sm"></i>
-        </a>
+        <div class="home-levels space-y-8 md:space-y-10">
+            {% for cat, grouped_levels in academic_levels|groupby('level_category') %}
+            {% set ns = namespace(icon='fa-layer-group') %}
+            {% set c = (cat or '')|lower %}
+            {% if 'early' in c or 'nursery' in c or 'pre-primary' in c or 'pre primary' in c or 'pp1' in c or 'pp2' in c or 'ecd' in c or 'creche' in c or 'daycare' in c or 'playgroup' in c %}
+                {% set ns.icon = 'fa-shapes' %}
+            {% elif 'lower' in c and 'prim' in c %}
+                {% set ns.icon = 'fa-book-open' %}
+            {% elif 'upper' in c and 'prim' in c %}
+                {% set ns.icon = 'fa-book' %}
+            {% elif 'junior' in c or 'jss' in c or ('lower' in c and 'secondary' in c) or 'middle' in c %}
+                {% set ns.icon = 'fa-flask' %}
+            {% elif 'senior' in c or 'sss' in c or 'sss' in c or ('upper' in c and 'secondary' in c) or 'a-level' in c or 'alevel' in c or 'high school' in c %}
+                {% set ns.icon = 'fa-graduation-cap' %}
+            {% elif 'primary' in c %}
+                {% set ns.icon = 'fa-book-open' %}
+            {% elif 'secondary' in c or 'high' in c %}
+                {% set ns.icon = 'fa-school' %}
+            {% elif 'college' in c or 'university' in c or 'tertiary' in c %}
+                {% set ns.icon = 'fa-building-columns' %}
+            {% elif 'technical' in c or 'tvet' in c or 'vocational' in c %}
+                {% set ns.icon = 'fa-gears' %}
+            {% elif 'special' in c or 'inclusive' in c or 'sne' in c %}
+                {% set ns.icon = 'fa-hands-holding-heart' %}
+            {% endif %}
+            <section class="home-levels__category edu-card overflow-hidden border border-slate-200/80 dark:border-slate-600/60 shadow-lg">
+                <header class="home-levels__category-head flex flex-col sm:flex-row sm:items-center gap-5 p-6 md:p-8 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900/90 dark:via-slate-900/70 dark:to-slate-900/90 border-b border-slate-200/90 dark:border-slate-600/50">
+                    <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-4 ring-brand-primary/15 dark:ring-white/10" aria-hidden="true">
+                        <i class="fas {{ ns.icon }} text-2xl"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="edu-eyebrow">Category</p>
+                        <h3 class="edu-display text-2xl sm:text-3xl text-slate-900 dark:text-white mt-1 tracking-tight">{{ (cat or 'General programmes')|trim }}</h3>
+                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ grouped_levels|length }} level{% if grouped_levels|length != 1 %}s{% endif %} in this pathway</p>
+                    </div>
+                </header>
+                <div class="p-6 md:p-8 bg-slate-50/80 dark:bg-slate-950/35">
+                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {% for level in grouped_levels %}
+                        <article class="rounded-xl border border-slate-200/90 dark:border-slate-600/70 bg-white dark:bg-slate-900/80 p-5 shadow-sm hover:shadow-md hover:border-brand-primary/35 dark:hover:border-brand-secondary/40 transition-shadow">
+                            <div class="flex items-start gap-3">
+                                <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 dark:text-brand-secondary">
+                                    <i class="fas fa-bookmark text-sm" aria-hidden="true"></i>
+                                </span>
+                                <div class="min-w-0">
+                                    <h4 class="font-heading font-bold text-base text-slate-900 dark:text-white leading-snug">{{ level.level_name }}</h4>
+                                    {% if level.level_description %}
+                                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ level.level_description }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
     </div>
 </div>
-{% endblock %}
+{% endif %}
 
-{% block extra_scripts %}
-<script>
-(function () {
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  var items = document.querySelectorAll('.reveal-item');
-  if (!items.length || !('IntersectionObserver' in window)) return;
-  var io = new IntersectionObserver(function (entries) {
-    entries.forEach(function (e) {
-      if (e.isIntersecting) {
-        e.target.classList.add('reveal-item--visible');
-        io.unobserve(e.target);
-      }
-    });
-  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 });
-  items.forEach(function (el) { io.observe(el); });
-})();
-</script>
+<div class="edu-section edu-section--dark py-14 md:py-16">
+    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+                <p class="text-white/70 text-xs font-semibold uppercase tracking-widest">Visit &amp; connect</p>
+                <h2 class="edu-display text-3xl sm:text-4xl text-white mt-3">See {{ school_settings.school_name or 'our school' }} in action</h2>
+                <p class="mt-4 text-white/85 leading-relaxed">
+                    Book a tour, meet our leadership team, or ask about enrolment for the coming term. We would love to show you how our students learn and lead.
+                </p>
+                <div class="mt-8 flex flex-wrap gap-3">
+                    <a href="{{ url_for('demo') }}" class="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-brand-primary shadow-lg hover:bg-slate-50 transition-colors">
+                        <i class="fas fa-calendar-check" aria-hidden="true"></i> Schedule a visit
+                    </a>
+                    <a href="{{ url_for('features') }}" class="inline-flex items-center gap-2 rounded-full border-2 border-white/70 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10 transition-colors">
+                        Explore programs
+                    </a>
+                </div>
+            </div>
+            <div class="edu-card edu-card--glass p-8 text-slate-800 dark:text-slate-100">
+                <h3 class="font-heading font-bold text-lg text-slate-900 dark:text-white">Office hours</h3>
+                <ul class="mt-4 space-y-3 text-sm">
+                    <li class="flex gap-3"><i class="fas fa-location-dot text-brand-primary mt-0.5" aria-hidden="true"></i><span>{% if school_settings.school_location %}{{ school_settings.school_location|replace('\n', ' · ') }}{% else %}Reach us through the contact page for directions.{% endif %}</span></li>
+                    {% if school_settings.school_phone %}
+                    <li class="flex gap-3"><i class="fas fa-phone text-brand-primary mt-0.5" aria-hidden="true"></i><a class="font-medium hover:underline" href="tel:{{ school_settings.school_phone|replace(' ', '') }}">{{ school_settings.school_phone }}</a></li>
+                    {% endif %}
+                    {% if school_settings.school_email %}
+                    <li class="flex gap-3"><i class="fas fa-envelope text-brand-primary mt-0.5" aria-hidden="true"></i><a class="font-medium hover:underline" href="mailto:{{ school_settings.school_email }}">{{ school_settings.school_email }}</a></li>
+                    {% endif %}
+                </ul>
+                <a href="{{ url_for('login') }}" class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
+                    <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Parent / staff portal
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

@@ -16,10 +16,10 @@ from datetime import datetime
 # Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Load .env before importing app
+# Load .env + optional .env.local before importing app
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from env_loader import load_project_env
+    load_project_env(os.path.dirname(os.path.abspath(__file__)))
 except ImportError:
     pass
 
