@@ -81,8 +81,11 @@ def create_tables():
                     full_name VARCHAR(255) NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
+                    login_code VARCHAR(6) NULL COMMENT 'Six-digit portal sign-in',
+                    student_id VARCHAR(20) NULL COMMENT 'Links student users to students.student_id',
                     role ENUM('parent', 'student', 'employee') NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_users_login_code (login_code)
                 )
             """)
             print("Users table created.")
@@ -231,35 +234,48 @@ def create_sample_users():
                     'full_name': 'John Parent',
                     'email': 'parent@example.com',
                     'password': 'password123',
-                    'role': 'parent'
+                    'role': 'parent',
+                    'login_code': '100001',
+                    'student_id': None,
                 },
                 {
                     'full_name': 'Sarah Student',
                     'email': 'student@example.com',
                     'password': 'password123',
-                    'role': 'student'
+                    'role': 'student',
+                    'login_code': '200002',
+                    'student_id': None,
                 },
                 {
                     'full_name': 'Admin Employee',
                     'email': 'employee@example.com',
                     'password': 'password123',
-                    'role': 'employee'
-                }
+                    'role': 'employee',
+                    'login_code': None,
+                    'student_id': None,
+                },
             ]
             
             for user in users:
                 password_hash = generate_password_hash(user['password'])
                 cursor.execute("""
-                    INSERT INTO users (full_name, email, password_hash, role)
-                    VALUES (%s, %s, %s, %s)
-                """, (user['full_name'], user['email'], password_hash, user['role']))
+                    INSERT INTO users (full_name, email, password_hash, login_code, student_id, role)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user['full_name'],
+                    user['email'],
+                    password_hash,
+                    user.get('login_code'),
+                    user.get('student_id'),
+                    user['role'],
+                ))
             
             connection.commit()
             print("Sample users created successfully!")
-            print("\nLogin credentials:")
-            print("Parent: parent@example.com / password123")
-            print("Student: student@example.com / password123")
-            print("Employee: employee@example.com / password123")
+            print("\nLogin credentials (portal uses six-digit code + password):")
+            print("Parent: code 100001 / password123 (email parent@example.com for password reset)")
+            print("Student: code 200002 / password123")
+            print("Employee row in users is sample only; staff use employees table + six-digit employee ID.")
             return True
     except Exception as e:
         print(f"Error creating sample users: {e}")

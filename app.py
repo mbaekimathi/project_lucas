@@ -644,8 +644,11 @@ def init_db():
                     full_name VARCHAR(255) NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
+                    login_code VARCHAR(6) NULL COMMENT 'Six-digit portal sign-in',
+                    student_id VARCHAR(20) NULL COMMENT 'Links student users to students.student_id',
                     role ENUM('parent', 'student', 'employee') NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_users_login_code (login_code)
                 )
             """)
             
@@ -1824,6 +1827,11 @@ def init_db():
                 )
             """)
             
+            try:
+                ensure_users_portal_login_schema(cursor)
+            except Exception as e:
+                print(f"Migration note for users portal login columns: {e}")
+            
             connection.commit()
             
             # Verify tables were created
@@ -2261,6 +2269,37 @@ This is an automated message. Please do not reply to this email.
 
 def normalize_login_email(email):
     return (email or '').strip().lower()
+
+
+def ensure_users_portal_login_schema(cursor):
+    """Add login_code / student_id on users for parent & student six-digit portal sign-in."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'login_code'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN login_code VARCHAR(6) NULL DEFAULT NULL "
+                "COMMENT 'Six-digit portal sign-in' AFTER password_hash"
+            )
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema login_code: {e}")
+    try:
+        cursor.execute("SHOW COLUMNS FROM users LIKE 'student_id'")
+        if not cursor.fetchone():
+            cursor.execute(
+                "ALTER TABLE users ADD COLUMN student_id VARCHAR(20) NULL DEFAULT NULL "
+                "COMMENT 'Links student users to students.student_id' AFTER login_code"
+            )
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema student_id: {e}")
+    try:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.statistics "
+            "WHERE table_schema = DATABASE() AND table_name = 'users' AND index_name = 'uk_users_login_code'"
+        )
+        if not cursor.fetchone():
+            cursor.execute("CREATE UNIQUE INDEX uk_users_login_code ON users (login_code)")
+    except Exception as e:
+        print(f"ensure_users_portal_login_schema index: {e}")
 
 
 def lookup_account_for_password_reset(email):
@@ -3350,77 +3389,69 @@ def login():
     if request.method == 'POST':
         role = request.form.get('role', '').strip()
         password = request.form.get('password', '').strip()
-        admission_number = request.form.get('admission_number', '').strip()
-        employee_id = request.form.get('employee_id', '').strip() or request.form.get('employee_id_fallback', '').strip()
+        code = (
+            request.form.get('login_code', '').strip()
+            or request.form.get('employee_id', '').strip()
+            or request.form.get('admission_number', '').strip()
+        )
 
         def redirect_login_error():
             """Return to login page so flash messages are visible (not lost on home redirect)."""
             if role in ('employee', 'parent', 'student'):
                 return redirect(url_for('login', role=role))
             return redirect(url_for('login'))
-        
-        print(f"DEBUG: Login attempt - Role: {role}, Employee ID: {employee_id}, Has Password: {bool(password)}")  # Debug
-        print(f"DEBUG: Form data - {dict(request.form)}")  # Debug
-        
+
         if not role or not password:
             flash('Please fill in all required fields.', 'error')
             return redirect_login_error()
-        
-        # Validate role-specific fields
-        if role in ['parent', 'student']:
-            if not admission_number:
-                flash('Please enter student admission number.', 'error')
-                return redirect_login_error()
-            identifier = admission_number
-        elif role == 'employee':
-            if not employee_id:
-                flash('Please enter employee identification code.', 'error')
-                return redirect_login_error()
-            # Validate 6-digit code
-            if not employee_id.isdigit() or len(employee_id) != 6:
-                flash('Employee code must be exactly 6 digits.', 'error')
-                return redirect_login_error()
-            identifier = employee_id
-        else:
+
+        if role not in ('employee', 'parent', 'student'):
             flash('Invalid role selected.', 'error')
             return redirect_login_error()
-        
+
+        if not code:
+            flash('Please enter your six-digit code.', 'error')
+            return redirect_login_error()
+        if not code.isdigit() or len(code) != 6:
+            flash('Your sign-in code must be exactly 6 digits.', 'error')
+            return redirect_login_error()
+
         connection = get_db_connection()
         if connection:
             try:
                 with connection.cursor() as cursor:
+                    ensure_users_portal_login_schema(cursor)
+                    connection.commit()
                     if role == 'employee':
-                        # Look up employee by employee_id
-                        print(f"DEBUG: Looking for employee with ID: {identifier}")  # Debug
                         cursor.execute(
                             "SELECT * FROM employees WHERE employee_id = %s",
-                            (identifier,)
+                            (code,),
                         )
                         employee = cursor.fetchone()
-                        
-                        print(f"DEBUG: Employee found: {employee is not None}")  # Debug
-                        
+
                         if employee:
-                            print(f"DEBUG: Checking password...")  # Debug
-                            # Check password
                             if check_password_hash(employee['password_hash'], password):
-                                print(f"DEBUG: Password correct!")  # Debug
-                                # Check employee status
                                 status = employee['status']
-                                print(f"DEBUG: Employee status: {status}")  # Debug
-                                
+
                                 if status == 'pending approval':
-                                    # Redirect to terms and conditions page
-                                    flash('Your account is pending approval. Please review the terms and conditions.', 'info')
+                                    flash(
+                                        'Your account is pending approval. Please review the terms and conditions.',
+                                        'info',
+                                    )
                                     return redirect(url_for('terms_and_conditions'))
-                                elif status in ['suspended', 'fired']:
-                                    flash('Your account has been suspended. Please contact the relevant authorities for assistance.', 'error')
+                                if status in ['suspended', 'fired']:
+                                    flash(
+                                        'Your account has been suspended. Please contact the relevant authorities for assistance.',
+                                        'error',
+                                    )
                                     return redirect_login_error()
-                                elif status == 'retired':
-                                    flash('Thank you for your service! Your account has been retired.', 'info')
+                                if status == 'retired':
+                                    flash(
+                                        'Thank you for your service! Your account has been retired.',
+                                        'info',
+                                    )
                                     return redirect_login_error()
-                                elif status == 'active':
-                                    # Set session and redirect to role dashboard
+                                if status == 'active':
                                     session['user_id'] = employee['id']
                                     session['email'] = employee['email']
                                     session['full_name'] = employee['full_name']
@@ -3429,32 +3460,37 @@ def login():
                                     session['profile_picture'] = employee.get('profile_picture')
                                     flash(f'Welcome back, {employee["full_name"]}!', 'success')
                                     return redirect(employee_dashboard_path())
-                                else:
-                                    flash('Your account status is invalid. Please contact support.', 'error')
-                                    return redirect_login_error()
-                            else:
-                                print(f"DEBUG: Password incorrect!")  # Debug
-                                flash(
-                                    'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
-                                    'error',
-                                )
-                        else:
-                            print(f"DEBUG: Employee not found!")  # Debug
+                                flash('Your account status is invalid. Please contact support.', 'error')
+                                return redirect_login_error()
                             flash(
-                                'No employee account matches this ID. Check your six-digit employee code and try again.',
+                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
                                 'error',
                             )
-                    else:  # parent or student
-                        # Look up by admission number (you may need to add this field to users table)
+                        else:
+                            flash(
+                                'No employee account matches this code. Check your six-digit employee code and try again.',
+                                'error',
+                            )
+                    else:
                         cursor.execute(
-                            "SELECT * FROM users WHERE email LIKE %s AND role = %s",
-                            (f'%{identifier}%', role)
+                            """
+                            SELECT * FROM users WHERE role = %s AND (
+                                (login_code IS NOT NULL AND login_code = %s)
+                                OR (student_id IS NOT NULL AND (
+                                    student_id = %s
+                                    OR (CHAR_LENGTH(student_id) >= 6 AND RIGHT(student_id, 6) = %s)
+                                ))
+                            )
+                            LIMIT 1
+                            """,
+                            (role, code, code, code),
                         )
                         user = cursor.fetchone()
 
                         if not user:
                             flash(
-                                'No account found with this admission number for the selected role. Check the number and try again.',
+                                'No account matches this six-digit code for the role you selected. '
+                                'If you were given a portal code, use that; students may also try the last six characters of their student ID.',
                                 'error',
                             )
                         elif not check_password_hash(user['password_hash'], password):
@@ -3480,15 +3516,17 @@ def login():
                 if connection:
                     try:
                         connection.close()
-                    except:
-                        pass  # Connection might already be closed
+                    except Exception:
+                        pass
         else:
             flash('Database connection error. Please try again later.', 'error')
 
         return redirect_login_error()
-    
-    # GET request - render login page
+
+    # GET request — optional ?role=employee|parent|student
     role = request.args.get('role', '')
+    if role not in ('employee', 'parent', 'student'):
+        role = ''
     return render_template('login.html', default_role=role)
 
 

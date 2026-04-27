@@ -606,6 +606,45 @@ body.public-site.cbc-saas--premium .public-site-nav-panel__link {
   border-color: color-mix(in srgb, var(--cbc-premium-red, #ef233c) 60%, #ffffff);
 }
 
+.cbc-premium-form .cbc-password-field__wrap {
+  position: relative;
+}
+
+.cbc-premium-form .cbc-password-field__input {
+  padding-right: 3rem;
+}
+
+.cbc-premium-form .cbc-password-field__toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.25rem;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+}
+
+.cbc-premium-form .cbc-password-field__toggle:hover {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark .cbc-premium-form .cbc-password-field__toggle {
+  color: rgba(148, 163, 184, 0.95);
+}
+
+.dark .cbc-premium-form .cbc-password-field__toggle:hover {
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .cbc-premium-login-shell {
   max-width: 56rem;
   margin: 0 auto;
@@ -1052,6 +1091,15 @@ html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premiu
 html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form input::placeholder,
 html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form textarea::placeholder {
   color: #94a3b8 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form .cbc-password-field__toggle {
+  color: #64748b !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-form .cbc-password-field__toggle:hover {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.06) !important;
 }
 
 html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premium-login-aside::after {
