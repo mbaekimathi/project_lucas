@@ -11,6 +11,7 @@ import secrets
 import copy
 import time
 from functools import wraps
+from urllib.parse import quote, urlencode
 from env_loader import load_project_env
 try:
     from dateutil.relativedelta import relativedelta
@@ -99,9 +100,20 @@ def session_employee_role_slug() -> str:
 def employee_dashboard_path(subpath: str = '') -> str:
     """Build /<role-slug>/[subpath] (public URLs; middleware maps to /dashboard/employee/...)."""
     subpath = (subpath or '').strip('/')
-    slug = session_employee_role_slug()
+    slug = session_employee_role_slug() if has_request_context() else 'employee'
+    tail = '/'.join(quote(seg, safe='') for seg in subpath.split('/') if seg)
     base = f'/{slug}'
-    return base + ('/' + subpath if subpath else '')
+    return base + ('/' + tail if tail else '')
+
+
+def employee_staff_settings_url(settings_role: str, **query) -> str:
+    """Prefixed staff settings URL: /<session-slug>/settings/<encoded role>[?query]."""
+    r = (settings_role or 'employee').strip()
+    base = employee_dashboard_path(f'settings/{r}')
+    filtered = {k: v for k, v in query.items() if v is not None and str(v) != ''}
+    if filtered:
+        return base + '?' + urlencode(filtered)
+    return base
 
 
 def parent_dashboard_path(subpath: str = '') -> str:
@@ -166,12 +178,12 @@ def sidebar_settings_url():
     if eff == 'super admin':
         return employee_dashboard_path('system-settings')
     if eff == 'head of institution':
-        return url_for('settings', role='head of institution')
+        return employee_staff_settings_url('head of institution')
     if eff == 'deputy head of institution':
-        return url_for('settings', role='deputy head of institution')
+        return employee_staff_settings_url('deputy head of institution')
     if eff == 'curriculum coordinator':
-        return url_for('settings', role='curriculum coordinator')
-    return url_for('settings', role='employee')
+        return employee_staff_settings_url('curriculum coordinator')
+    return employee_staff_settings_url('employee')
 
 
 # First path segment → internal dashboard (must not collide with other top-level routes)
@@ -13185,15 +13197,15 @@ def update_password(role):
         
         if not all([current_password, new_password, confirm_password]):
             flash('Please fill in all password fields.', 'error')
-            return redirect(url_for('settings', role=role))
+            return redirect(employee_staff_settings_url(role))
         
         if new_password != confirm_password:
             flash('New passwords do not match.', 'error')
-            return redirect(url_for('settings', role=role))
+            return redirect(employee_staff_settings_url(role))
         
         if len(new_password) < 6:
             flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('settings', role=role))
+            return redirect(employee_staff_settings_url(role))
         
         connection = get_db_connection()
         if connection:
@@ -13224,7 +13236,7 @@ def update_password(role):
         else:
             flash('Database connection error. Please try again later.', 'error')
         
-        return redirect(url_for('settings', role=role))
+        return redirect(employee_staff_settings_url(role))
     
     elif role == 'employee':
         employee_settings_roles = [r for r in EMPLOYEE_SUB_ROLES if r not in ('head of institution', 'deputy head of institution', 'super admin')]
@@ -13238,15 +13250,15 @@ def update_password(role):
         
         if not all([current_password, new_password, confirm_password]):
             flash('Please fill in all password fields.', 'error')
-            return redirect(url_for('settings', role='employee'))
+            return redirect(employee_staff_settings_url('employee'))
         
         if new_password != confirm_password:
             flash('New passwords do not match.', 'error')
-            return redirect(url_for('settings', role='employee'))
+            return redirect(employee_staff_settings_url('employee'))
         
         if len(new_password) < 6:
             flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('settings', role='employee'))
+            return redirect(employee_staff_settings_url('employee'))
         
         connection = get_db_connection()
         if connection:
@@ -13277,8 +13289,61 @@ def update_password(role):
         else:
             flash('Database connection error. Please try again later.', 'error')
         
-        return redirect(url_for('settings', role='employee'))
+        return redirect(employee_staff_settings_url('employee'))
     
+    elif role == 'curriculum coordinator':
+        schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
+        if user_role not in schedule_management_roles:
+            flash('You do not have permission to perform this action.', 'error')
+            return redirect(url_for('home'))
+
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        if not all([current_password, new_password, confirm_password]):
+            flash('Please fill in all password fields.', 'error')
+            return redirect(employee_staff_settings_url('curriculum coordinator'))
+
+        if new_password != confirm_password:
+            flash('New passwords do not match.', 'error')
+            return redirect(employee_staff_settings_url('curriculum coordinator'))
+
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return redirect(employee_staff_settings_url('curriculum coordinator'))
+
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    employee_id = session.get('employee_id') or session.get('user_id')
+                    cursor.execute("SELECT password_hash FROM employees WHERE id = %s OR employee_id = %s",
+                                   (employee_id, employee_id))
+                    employee = cursor.fetchone()
+
+                    if employee and check_password_hash(employee['password_hash'], current_password):
+                        new_password_hash = generate_password_hash(new_password)
+                        cursor.execute("""
+                            UPDATE employees
+                            SET password_hash = %s
+                            WHERE id = %s OR employee_id = %s
+                        """, (new_password_hash, employee_id, employee_id))
+                        connection.commit()
+                        flash('Password updated successfully!', 'success')
+                    else:
+                        flash('Current password is incorrect.', 'error')
+            except Exception as e:
+                print(f"Error updating password: {e}")
+                connection.rollback()
+                flash('An error occurred while updating your password. Please try again.', 'error')
+            finally:
+                connection.close()
+        else:
+            flash('Database connection error. Please try again later.', 'error')
+
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
+
     elif role in ['student', 'parent']:
         if user_role != role:
             flash('You do not have permission to perform this action.', 'error')
@@ -13298,7 +13363,9 @@ def update_notifications(role):
     """Update notification preferences"""
     # This is a placeholder - notification preferences can be stored in a separate table or user preferences
     flash('Notification preferences saved successfully!', 'success')
-    return redirect(url_for('settings', role=role))
+    if role in ('parent', 'student'):
+        return redirect(url_for('settings', role=role))
+    return redirect(employee_staff_settings_url(role))
 
 @app.route('/settings/<role>/preferences', methods=['POST'])
 @login_required
@@ -13306,7 +13373,9 @@ def update_preferences(role):
     """Update account preferences"""
     # This is a placeholder - preferences can be stored in a separate table or user preferences
     flash('Preferences saved successfully!', 'success')
-    return redirect(url_for('settings', role=role))
+    if role in ('parent', 'student'):
+        return redirect(url_for('settings', role=role))
+    return redirect(employee_staff_settings_url(role))
 
 # Academic Coordinator Settings Save Route
 @app.route('/settings/curriculum coordinator/save', methods=['POST'])
@@ -13334,16 +13403,16 @@ def save_academic_coordinator_settings():
 
     if not profile_name:
         flash('Please provide a profile name.', 'error')
-        return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
 
     if not selected_levels:
         flash('Please select at least one academic level.', 'error')
-        return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
     
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
-        return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
     
     try:
         with connection.cursor() as cursor:
@@ -13387,8 +13456,8 @@ def save_academic_coordinator_settings():
         return redirect(url_for('academic_settings', tab='academic-schedule-management'))
 
     if str(saved_profile_id).isdigit():
-        return redirect(url_for('settings', role='curriculum coordinator', profile_id=saved_profile_id))
-    return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=saved_profile_id))
+    return redirect(employee_staff_settings_url('curriculum coordinator'))
 
 @app.route('/settings/curriculum coordinator/delete/<int:profile_id>', methods=['POST'])
 @login_required
@@ -13405,7 +13474,7 @@ def delete_academic_coordinator_settings(profile_id):
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
-        return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
 
     next_profile_id = None
     try:
@@ -13418,7 +13487,7 @@ def delete_academic_coordinator_settings(profile_id):
                 flash('Cannot delete the only remaining schedule profile.', 'error')
                 if return_to == 'academic-settings':
                     return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=profile_id))
-                return redirect(url_for('settings', role='curriculum coordinator', profile_id=profile_id))
+                return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=profile_id))
 
             cursor.execute("DELETE FROM academic_coordinator_settings WHERE id = %s", (profile_id,))
 
@@ -13426,7 +13495,7 @@ def delete_academic_coordinator_settings(profile_id):
                 flash('Schedule profile not found.', 'error')
                 if return_to == 'academic-settings':
                     return redirect(url_for('academic_settings', tab='academic-schedule-management'))
-                return redirect(url_for('settings', role='curriculum coordinator'))
+                return redirect(employee_staff_settings_url('curriculum coordinator'))
 
             cursor.execute("""
                 SELECT id
@@ -13455,8 +13524,8 @@ def delete_academic_coordinator_settings(profile_id):
         return redirect(url_for('academic_settings', tab='academic-schedule-management'))
 
     if next_profile_id:
-        return redirect(url_for('settings', role='curriculum coordinator', profile_id=next_profile_id))
-    return redirect(url_for('settings', role='curriculum coordinator'))
+        return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=next_profile_id))
+    return redirect(employee_staff_settings_url('curriculum coordinator'))
 
 # Role Switching Route (for technicians)
 @app.route('/switch-role/<path:target_role>')

@@ -2,7 +2,7 @@
     <div class="order-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Academic Schedule Configuration</h3>
 
-        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
+        <form method="POST" action="{{ employee_dash_url('settings/curriculum coordinator/save') }}" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
             <input type="hidden" name="profile_id" :value="profileId">
             <input type="hidden" name="return_to" value="academic-settings">
 
@@ -129,12 +129,12 @@
                             </p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <a :href="'{{ employee_dash_url('academic-settings?tab=academic-schedule-management&profile_id=') }}' + encodeURIComponent(profile.id)"
+                            <a :href="'{{ employee_dash_url('academic-settings') }}?tab=academic-schedule-management&profile_id=' + encodeURIComponent(profile.id)"
                                class="px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
                                 <i class="fas fa-pen mr-1"></i>Edit
                             </a>
                             <form method="POST"
-                                  :action="'/settings/curriculum coordinator/delete/' + profile.id"
+                                  :action="settingsCoordinatorBase + '/delete/' + profile.id"
                                   @submit="if(!confirm('Delete this saved schedule profile?')) $event.preventDefault();">
                                 <input type="hidden" name="return_to" value="academic-settings">
                                 <button type="submit"
@@ -166,6 +166,7 @@ function academicCoordinatorSettings() {
         activities: {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %},
         classTimeCounter: {% if settings and settings.class_times %}{{ settings.class_times|length }}{% else %}0{% endif %},
         activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
+        settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum coordinator')|tojson }},
         getProfileLevelsLabel(profile){
             if (!profile || !Array.isArray(profile.applicable_levels)) return 'No levels selected';
             const selected = this.availableLevels

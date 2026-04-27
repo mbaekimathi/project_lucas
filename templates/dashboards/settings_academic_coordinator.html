@@ -53,7 +53,7 @@
             <span x-show="!editingLabel()">Timetable Configuration</span>
         </h3>
         
-        <form method="POST" action="/settings/curriculum coordinator/save" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
+        <form method="POST" action="{{ employee_dash_url('settings/curriculum coordinator/save') }}" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
             <input type="hidden" name="profile_id" :value="profileId">
 
             <!-- Settings Profile -->
@@ -430,12 +430,12 @@
                             </p>
                         </div>
                         <div class="flex items-center gap-2">
-                            <a :href="'/settings/curriculum coordinator?profile_id=' + encodeURIComponent(profile.id)"
+                            <a :href="settingsCoordinatorBase + '?profile_id=' + encodeURIComponent(profile.id)"
                                class="px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
                                 <i class="fas fa-pen mr-1"></i>Edit
                             </a>
                             <form method="POST"
-                                  :action="'/settings/curriculum coordinator/delete/' + profile.id"
+                                  :action="settingsCoordinatorBase + '/delete/' + profile.id"
                                   @submit="if(!confirm('Delete this saved schedule profile?')) $event.preventDefault();">
                                 <button type="submit"
                                         class="px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
@@ -500,6 +500,7 @@ function academicCoordinatorSettings() {
             return activities;
         })(),
         activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
+        settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum coordinator')|tojson }},
         getSelectedDaysLabel() {
             if (this.selectedDays.length === 0) return 'No days selected';
             return this.selectedDays.join(', ');
@@ -531,7 +532,7 @@ function academicCoordinatorSettings() {
                 return;
             }
             this.showTimetableConfiguration = true;
-            const targetUrl = `/settings/curriculum coordinator?profile_id=${encodeURIComponent(this.selectedProfileSelector)}`;
+            const targetUrl = `${this.settingsCoordinatorBase}?profile_id=${encodeURIComponent(this.selectedProfileSelector)}`;
             window.location.href = targetUrl;
         },
         createNewProfile() {
