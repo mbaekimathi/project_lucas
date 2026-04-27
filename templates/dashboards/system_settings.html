@@ -79,7 +79,7 @@
 {% endblock %}
 
 {% block content %}
-<div id="settings-content" class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 min-h-[400px]"
+<div id="settings-content" class="settings-page-root bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 min-h-[240px] sm:min-h-[400px] w-full max-w-6xl mx-auto min-w-0 box-border"
     x-data="{ activeSection: window.location.hash ? window.location.hash.substring(1) : '' }"
     @hashchange.window="activeSection = window.location.hash ? window.location.hash.substring(1) : ''">
     <div x-show="!activeSection" class="text-center py-16">
@@ -107,8 +107,8 @@
                     <i class="fas fa-image text-green-600 mr-2"></i>
                     School Logo <span class="text-gray-400 text-xs font-normal">(Optional)</span>
                 </label>
-                <div class="flex items-start space-x-6">
-                    <div class="flex-shrink-0" id="logo-preview-container">
+                <div class="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+                    <div class="flex-shrink-0 mx-auto sm:mx-0 text-center sm:text-left" id="logo-preview-container">
                         {% if school_data and school_data.get('school_logo') %}
                         <img id="current-logo" src="{{ url_for('static', filename=school_data.school_logo) }}"
                             alt="School Logo"
@@ -462,32 +462,32 @@
     <!-- Academic Year & Terms -->
     <div x-show="activeSection === 'academic-year'" x-cloak style="display: none;"
         x-data="{ activeSubSection: 'academic-level' }">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-            <i class="fas fa-calendar-alt text-green-600 mr-3"></i>
-            Academic Year & Terms
+        <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3 sm:mb-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <i class="fas fa-calendar-alt text-green-600 shrink-0"></i>
+            <span class="break-words">Academic Year & Terms</span>
         </h2>
-        <p class="text-gray-600 dark:text-gray-400 mb-6">Configure academic levels, years, and terms for your
+        <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-4 sm:mb-6 max-w-prose">Configure academic levels, years, and terms for your
             institution.</p>
 
-        <!-- Sub-section Navigation Tabs -->
-        <div class="mb-6 border-b border-gray-200 dark:border-gray-700">
-            <nav class="flex space-x-1" aria-label="Tabs">
-                <button @click="activeSubSection = 'academic-level'"
+        <!-- Sub-section Navigation Tabs (scroll on narrow screens) -->
+        <div class="mb-4 sm:mb-6 border-b border-gray-200 dark:border-gray-700 -mx-1 px-1 sm:mx-0 sm:px-0">
+            <nav class="settings-subtabs-nav flex overflow-x-auto overscroll-x-contain gap-1 pb-px [-webkit-overflow-scrolling:touch]" aria-label="Academic settings tabs">
+                <button type="button" @click="activeSubSection = 'academic-level'"
                     :class="activeSubSection === 'academic-level' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                    class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm transition-all duration-200 flex items-center space-x-2">
-                    <i class="fas fa-layer-group"></i>
+                    class="settings-subtab shrink-0 whitespace-nowrap py-3 px-3 sm:py-4 sm:px-5 border-b-2 font-medium text-xs sm:text-sm transition-all duration-200 inline-flex items-center gap-2">
+                    <i class="fas fa-layer-group shrink-0" aria-hidden="true"></i>
                     <span>Academic Levels</span>
                 </button>
-                <button @click="activeSubSection = 'academic-year'"
+                <button type="button" @click="activeSubSection = 'academic-year'"
                     :class="activeSubSection === 'academic-year' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                    class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm transition-all duration-200 flex items-center space-x-2">
-                    <i class="fas fa-calendar-check"></i>
+                    class="settings-subtab shrink-0 whitespace-nowrap py-3 px-3 sm:py-4 sm:px-5 border-b-2 font-medium text-xs sm:text-sm transition-all duration-200 inline-flex items-center gap-2">
+                    <i class="fas fa-calendar-check shrink-0" aria-hidden="true"></i>
                     <span>Academic Years</span>
                 </button>
-                <button @click="activeSubSection = 'term-settings'"
+                <button type="button" @click="activeSubSection = 'term-settings'"
                     :class="activeSubSection === 'term-settings' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                    class="whitespace-nowrap py-4 px-6 border-b-2 font-medium text-sm transition-all duration-200 flex items-center space-x-2">
-                    <i class="fas fa-calendar-week"></i>
+                    class="settings-subtab shrink-0 whitespace-nowrap py-3 px-3 sm:py-4 sm:px-5 border-b-2 font-medium text-xs sm:text-sm transition-all duration-200 inline-flex items-center gap-2">
+                    <i class="fas fa-calendar-week shrink-0" aria-hidden="true"></i>
                     <span>Term Settings</span>
                 </button>
             </nav>
@@ -505,9 +505,9 @@
                     Primary, Secondary, etc.)</p>
             </div>
 
-            <div class="mb-4 flex justify-end">
+            <div class="mb-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button type="button" @click="showLevelForm = true; $nextTick(() => document.getElementById('level_category')?.focus())"
-                    class="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors">
+                    class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm sm:text-base font-semibold hover:bg-blue-700 transition-colors touch-manipulation">
                     <i class="fas fa-plus mr-2"></i>
                     Register Academic Level
                 </button>
@@ -594,39 +594,39 @@
             </div>
 
             <!-- Academic Levels List -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
-                <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center justify-between">
-                    <span class="flex items-center">
-                        <i class="fas fa-list text-blue-600 mr-2"></i>
-                        Registered Academic Levels
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
+                <h4 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span class="flex items-center min-w-0">
+                        <i class="fas fa-list text-blue-600 mr-2 shrink-0"></i>
+                        <span class="truncate">Registered Academic Levels</span>
                     </span>
                     {% if academic_levels and academic_levels|length > 0 %}
-                    <span class="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    <span class="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400 shrink-0">
                         ({{ academic_levels|length }} level{{ 's' if academic_levels|length != 1 else '' }})
                     </span>
                     {% endif %}
                 </h4>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <div class="overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0 rounded-lg border border-gray-100 dark:border-gray-700/80 sm:border-0 max-w-full">
+                    <table class="w-full max-w-full table-fixed border-collapse divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                         <thead class="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="w-[18%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Level Category</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="w-[18%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Level Name</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="w-[10%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Code</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="min-w-0 w-[26%] px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Description</th>
-                                <th
-                                    class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="w-[16%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Status</th>
-                                <th
-                                    class="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                <th scope="col"
+                                    class="w-[12%] min-w-[7.5rem] px-2 sm:px-3 py-2.5 sm:py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
                                     Actions</th>
                             </tr>
                         </thead>
@@ -635,35 +635,35 @@
                             {% for level in academic_levels %}
                             {% if loop.changed(level.level_category) %}
                             <tr class="bg-blue-50/80 dark:bg-blue-900/20">
-                                <td colspan="6" class="px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+                                <td colspan="6" class="px-3 sm:px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
                                     <i class="fas fa-layer-group mr-1.5"></i>{{ level.level_category or 'UNCATEGORIZED' }}
                                 </td>
                             </tr>
                             {% endif %}
                             <tr id="level-row-{{ level.id }}" data-level-id="{{ level.id }}" class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                <td class="min-w-0 px-3 sm:px-4 py-3 align-top">
+                                    <div class="text-sm font-medium text-gray-900 dark:text-white truncate" title="{{ level.level_category }}">
                                         {{ level.level_category }}
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm font-medium text-gray-900 dark:text-white">
+                                <td class="min-w-0 px-3 sm:px-4 py-3 align-top">
+                                    <div class="text-sm font-medium text-gray-900 dark:text-white truncate" title="{{ level.level_name }}">
                                         {{ level.level_name }}
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
-                                    <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                <td class="min-w-0 px-3 sm:px-4 py-3 align-top">
+                                    <div class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate whitespace-nowrap">
                                         {{ level.level_code or 'N/A' }}
                                     </div>
                                 </td>
-                                <td class="px-6 py-4">
-                                    <div class="text-sm text-gray-500 dark:text-gray-400 max-w-xs truncate"
-                                        title="{{ level.level_description }}">
+                                <td class="min-w-0 px-3 sm:px-4 py-3 align-top">
+                                    <div class="text-sm text-gray-500 dark:text-gray-400 truncate"
+                                        title="{{ level.level_description or 'N/A' }}">
                                         {{ level.level_description or 'N/A' }}
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-center">
-                                    <div class="flex items-center justify-center space-x-2">
+                                <td class="min-w-0 px-2 sm:px-4 py-3 align-middle whitespace-nowrap text-center">
+                                    <div class="flex items-center justify-center gap-2">
                                         <span id="status-label-{{ level.id }}"
                                             class="text-xs font-medium {% if level.level_status == 'active' %}text-green-600 dark:text-green-400{% else %}text-gray-500 dark:text-gray-400{% endif %}">
                                             {% if level.level_status == 'active' %}Active{% else %}Inactive{% endif
@@ -679,10 +679,10 @@
                                         </label>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    <div class="flex items-center justify-end space-x-2">
+                                <td class="min-w-[7.5rem] px-2 sm:px-4 py-3 align-middle whitespace-nowrap text-right text-sm font-medium">
+                                    <div class="flex items-center justify-end gap-1 flex-nowrap">
                                         <button type="button"
-                                            class="edit-level-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            class="edit-level-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 touch-manipulation min-w-[40px] min-h-[40px] inline-flex items-center justify-center"
                                             title="Edit" data-level-id="{{ level.id }}"
                                             data-level-category="{{ level.level_category }}"
                                             data-level-name="{{ level.level_name }}"
@@ -692,7 +692,7 @@
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button type="button"
-                                            class="delete-level-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            class="delete-level-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation min-w-[40px] min-h-[40px] inline-flex items-center justify-center"
                                             title="Delete" data-level-id="{{ level.id }}"
                                             data-level-name="{{ level.level_name }}">
                                             <i class="fas fa-trash"></i>
@@ -703,7 +703,7 @@
                             {% endfor %}
                             {% else %}
                             <tr>
-                                <td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                <td colspan="6" class="px-3 sm:px-6 py-8 text-center text-gray-500 dark:text-gray-400">
                                     <i class="fas fa-inbox text-4xl mb-3 opacity-50"></i>
                                     <p>No academic levels registered yet</p>
                                 </td>
@@ -843,9 +843,9 @@
                 </div>
             </div>
 
-            <div class="mb-4 flex justify-end">
+            <div class="mb-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button type="button" @click="showYearForm = true; $nextTick(() => document.getElementById('year_name')?.focus())"
-                    class="inline-flex items-center px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors">
+                    class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2.5 rounded-lg bg-green-600 text-white text-sm sm:text-base font-semibold hover:bg-green-700 transition-colors touch-manipulation">
                     <i class="fas fa-plus mr-2"></i>
                     Create New Academic Year
                 </button>
@@ -919,10 +919,10 @@
             </div>
 
             <!-- Academic Years List -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-6">
-                <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-                    <i class="fas fa-list text-green-600 mr-2"></i>
-                    All Academic Years
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-3 sm:p-6">
+                <h4 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex flex-wrap items-center gap-2">
+                    <i class="fas fa-list text-green-600 shrink-0"></i>
+                    <span class="break-words">All Academic Years</span>
                     {% if academic_years and academic_years|length > 0 %}
                     <span class="text-sm font-normal text-gray-500 dark:text-gray-400 ml-2">
                         ({{ academic_years|length }} year{{ 's' if academic_years|length != 1 else '' }})
@@ -930,24 +930,24 @@
                     {% endif %}
                 </h4>
                 {% if academic_years and academic_years|length > 0 %}
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <div class="overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0 rounded-lg border border-gray-100 dark:border-gray-700/80 sm:border-0 max-w-full">
+                    <table class="w-full max-w-full table-fixed border-collapse divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                         <thead class="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Year</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th scope="col" class="w-[16%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Year</th>
+                                <th scope="col" class="min-w-0 w-[32%] px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
+                                <th scope="col" class="w-[32%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <th scope="col" class="w-[20%] min-w-[10.5rem] px-2 sm:px-3 py-2.5 sm:py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {% for year in academic_years %}
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                                <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ year.year_name }}</td>
-                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
-                                    {{ year.start_date.strftime('%b %d, %Y') if year.start_date else 'N/A' }} - {{ year.end_date.strftime('%b %d, %Y') if year.end_date else 'N/A' }}
+                                <td class="min-w-0 px-3 sm:px-4 py-3 font-semibold text-gray-900 dark:text-white truncate" title="{{ year.year_name }}">{{ year.year_name }}</td>
+                                <td class="min-w-0 px-3 sm:px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                                    <span class="line-clamp-2 sm:line-clamp-none">{{ year.start_date.strftime('%b %d, %Y') if year.start_date else 'N/A' }} – {{ year.end_date.strftime('%b %d, %Y') if year.end_date else 'N/A' }}</span>
                                 </td>
-                                <td class="px-4 py-3">
+                                <td class="min-w-0 px-3 sm:px-4 py-3">
                                     <div class="flex flex-wrap gap-1.5">
                                         {% if year.is_current %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-green-200 text-green-700 dark:bg-green-800 dark:text-green-300">CURRENT</span>{% endif %}
                                         <span class="text-[11px] font-bold px-2 py-1 rounded-full
@@ -960,23 +960,23 @@
                                         {% if year.is_locked %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-red-200 text-red-700 dark:bg-red-800 dark:text-red-300">LOCKED</span>{% endif %}
                                     </div>
                                 </td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center justify-end gap-2">
+                                <td class="min-w-[10.5rem] px-1 sm:px-3 py-3 align-middle">
+                                    <div class="flex items-center justify-end gap-0.5 flex-nowrap">
                                         <button type="button"
-                                            class="action-btn toggle-suspend-year-btn {% if year.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2 rounded-lg"
+                                            class="action-btn toggle-suspend-year-btn touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px] inline-flex items-center justify-center {% if year.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-1.5 sm:p-2 rounded-lg"
                                             title="{% if year.status == 'suspended' %}Unsuspend Academic Year{% else %}Suspend Academic Year{% endif %}"
                                             data-year-id="{{ year.id }}" data-year-status="{{ year.status }}">
                                             <i class="fas {% if year.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %}"></i>
                                         </button>
                                         <button type="button"
-                                            class="action-btn toggle-lock-year-btn {% if year.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg"
+                                            class="action-btn toggle-lock-year-btn touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px] inline-flex items-center justify-center {% if year.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-1.5 sm:p-2 rounded-lg"
                                             title="{% if year.is_locked %}Unlock Academic Year{% else %}Lock Academic Year{% endif %}"
                                             data-year-id="{{ year.id }}"
                                             data-year-locked="{{ 'true' if year.is_locked else 'false' }}">
                                             <i class="fas {% if year.is_locked %}fa-unlock{% else %}fa-lock{% endif %}"></i>
                                         </button>
                                         <button type="button"
-                                            class="action-btn edit-year-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                            class="action-btn edit-year-btn touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px] inline-flex items-center justify-center text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-1.5 sm:p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20"
                                             title="Edit" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}"
                                             data-start-date="{{ year.start_date.strftime('%Y-%m-%d') if year.start_date else '' }}"
                                             data-end-date="{{ year.end_date.strftime('%Y-%m-%d') if year.end_date else '' }}"
@@ -985,7 +985,7 @@
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button type="button"
-                                            class="action-btn delete-year-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                                            class="action-btn delete-year-btn touch-manipulation min-w-[36px] min-h-[36px] sm:min-w-[40px] sm:min-h-[40px] inline-flex items-center justify-center text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-1.5 sm:p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
                                             title="Delete" data-year-id="{{ year.id }}" data-year-name="{{ year.year_name }}">
                                             <i class="fas fa-trash"></i>
                                         </button>
@@ -1012,19 +1012,19 @@
                     <!-- Modal Header -->
                     <div
                         class="bg-gradient-to-r from-green-500 to-emerald-600 p-4 sm:p-5 md:p-6 rounded-t-xl sm:rounded-t-2xl">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex items-center gap-3 min-w-0 pr-2">
                                 <div
                                     class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center">
                                     <i class="fas fa-edit text-white text-lg sm:text-xl icon-animated"></i>
                                 </div>
-                                <div>
-                                    <h3 class="text-lg sm:text-xl font-bold text-white">Edit Academic Year</h3>
+                                <div class="min-w-0">
+                                    <h3 class="text-lg sm:text-xl font-bold text-white break-words">Edit Academic Year</h3>
                                     <p class="text-xs sm:text-sm text-green-100">Update academic year details</p>
                                 </div>
                             </div>
                             <button type="button" id="closeEditYearModalBtn"
-                                class="close-edit-year-modal text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                class="close-edit-year-modal self-end sm:self-auto text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                                 title="Close">
                                 <i class="fas fa-times text-xl"></i>
                             </button>
@@ -1145,9 +1145,9 @@
                 </div>
             </div>
 
-            <div class="mb-4 flex justify-end">
+            <div class="mb-4 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button type="button" @click="showTermForm = true; $nextTick(() => document.getElementById('term_name')?.focus())"
-                    class="inline-flex items-center px-4 py-2 rounded-lg bg-purple-600 text-white font-semibold hover:bg-purple-700 transition-colors">
+                    class="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2.5 rounded-lg bg-purple-600 text-white text-sm sm:text-base font-semibold hover:bg-purple-700 transition-colors touch-manipulation">
                     <i class="fas fa-plus mr-2"></i>
                     Add New Term
                 </button>
@@ -1234,8 +1234,8 @@
                     </div>
                     <div>
                         <label
-                            class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border-2 border-gray-200 dark:border-gray-600">
-                            <div class="flex items-center space-x-3">
+                            class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border-2 border-gray-200 dark:border-gray-600">
+                            <div class="flex flex-col sm:flex-row sm:items-center sm:gap-3 min-w-0">
                                 <span class="text-sm font-semibold text-gray-700 dark:text-gray-300">
                                     <i class="fas fa-star text-yellow-600 mr-2"></i>
                                     Is Current Term
@@ -1243,7 +1243,7 @@
                                 <span class="text-xs text-gray-500 dark:text-gray-400">(Only one can be
                                     current)</span>
                             </div>
-                            <label class="relative inline-flex items-center cursor-pointer">
+                            <label class="relative inline-flex items-center cursor-pointer shrink-0 self-start sm:self-auto">
                                 <input type="checkbox" id="is_current" name="is_current" value="true"
                                     class="sr-only peer">
                                 <div
@@ -1303,37 +1303,37 @@
                     {% endif %}
                 </h4>
                 {% if terms and terms|length > 0 %}
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <div class="overflow-x-auto -mx-1 px-1 sm:mx-0 sm:px-0 rounded-lg border border-gray-100 dark:border-gray-700/80 sm:border-0 max-w-full">
+                    <table class="w-full max-w-full table-fixed border-collapse divide-y divide-gray-200 dark:divide-gray-700 text-sm">
                         <thead class="bg-gray-50 dark:bg-gray-700">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Term</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
-                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                <th scope="col" class="w-[14%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Term</th>
+                                <th scope="col" class="w-[18%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
+                                <th scope="col" class="min-w-0 w-[28%] px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Dates</th>
+                                <th scope="col" class="w-[22%] min-w-0 px-3 sm:px-4 py-2.5 sm:py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                                <th scope="col" class="w-[18%] min-w-[11rem] px-1 sm:px-3 py-2.5 sm:py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                             {% for term in terms %}
                             <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
-                                <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ term.term_name }}</td>
-                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ term.academic_year_name or 'N/A' }}</td>
-                                <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{{ term.start_date.strftime('%b %d, %Y') if term.start_date else 'N/A' }} - {{ term.end_date.strftime('%b %d, %Y') if term.end_date else 'N/A' }}</td>
-                                <td class="px-4 py-3">
+                                <td class="min-w-0 px-3 sm:px-4 py-3 font-semibold text-gray-900 dark:text-white truncate" title="{{ term.term_name }}">{{ term.term_name }}</td>
+                                <td class="min-w-0 px-3 sm:px-4 py-3 text-sm text-gray-600 dark:text-gray-300 truncate" title="{{ term.academic_year_name or 'N/A' }}">{{ term.academic_year_name or 'N/A' }}</td>
+                                <td class="min-w-0 px-3 sm:px-4 py-3 text-sm text-gray-600 dark:text-gray-300"><span class="line-clamp-2">{{ term.start_date.strftime('%b %d, %Y') if term.start_date else 'N/A' }} – {{ term.end_date.strftime('%b %d, %Y') if term.end_date else 'N/A' }}</span></td>
+                                <td class="min-w-0 px-3 sm:px-4 py-3">
                                     <div class="flex flex-wrap gap-1.5">
                                         <span class="text-[11px] font-bold px-2 py-1 rounded-full {% if term.status == 'active' %}bg-purple-200 text-purple-700 dark:bg-purple-800 dark:text-purple-300{% elif term.status == 'closed' %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300{% elif term.status == 'suspended' %}bg-orange-200 text-orange-700 dark:bg-orange-800 dark:text-orange-300{% else %}bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ term.status|upper }}</span>
                                         {% if term.is_current %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-yellow-200 text-yellow-700 dark:bg-yellow-800 dark:text-yellow-300">CURRENT</span>{% endif %}
                                         {% if term.is_locked %}<span class="text-[11px] font-bold px-2 py-1 rounded-full bg-red-200 text-red-700 dark:bg-red-800 dark:text-red-300">LOCKED</span>{% endif %}
                                     </div>
                                 </td>
-                                <td class="px-4 py-3">
-                                    <div class="flex items-center justify-end gap-2">
-                                        <button type="button" class="action-btn toggle-current-btn {% if term.is_current %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg" title="{% if term.is_current %}Mark as Not Current{% else %}Mark as Current Term{% endif %}" data-term-id="{{ term.id }}" data-term-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-star {% if term.is_current %}icon-pulse{% endif %}"></i></button>
-                                        <button type="button" class="action-btn toggle-suspend-btn {% if term.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-2 rounded-lg" title="{% if term.status == 'suspended' %}Unsuspend Term{% else %}Suspend Term{% endif %}" data-term-id="{{ term.id }}" data-term-status="{{ term.status }}"><i class="fas {% if term.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %}"></i></button>
-                                        <button type="button" class="action-btn toggle-lock-btn {% if term.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-2 rounded-lg" title="{% if term.is_locked %}Unlock Term{% else %}Lock Term{% endif %}" data-term-id="{{ term.id }}" data-term-locked="{{ 'true' if term.is_locked else 'false' }}"><i class="fas {% if term.is_locked %}fa-unlock{% else %}fa-lock{% endif %}"></i></button>
-                                        <button type="button" class="action-btn edit-term-btn text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Edit" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}" data-academic-year-id="{{ term.academic_year_id }}" data-academic-level-ids="{{ term.academic_levels|map(attribute='id')|join(',') if term.academic_levels else '' }}" data-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}" data-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}" data-status="{{ term.status }}" data-is-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-edit"></i></button>
-                                        <button type="button" class="action-btn delete-term-btn text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}"><i class="fas fa-trash"></i></button>
+                                <td class="min-w-[11rem] px-1 sm:px-3 py-3 align-middle">
+                                    <div class="flex items-center justify-end gap-0.5 flex-nowrap">
+                                        <button type="button" class="action-btn toggle-current-btn touch-manipulation min-w-[32px] min-h-[32px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center {% if term.is_current %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-1.5 sm:p-2 rounded-lg" title="{% if term.is_current %}Mark as Not Current{% else %}Mark as Current Term{% endif %}" data-term-id="{{ term.id }}" data-term-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-star {% if term.is_current %}icon-pulse{% endif %}"></i></button>
+                                        <button type="button" class="action-btn toggle-suspend-btn touch-manipulation min-w-[32px] min-h-[32px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center {% if term.status == 'suspended' %}text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 bg-green-50 dark:bg-green-900/20{% else %}text-orange-600 hover:text-orange-900 dark:text-orange-400 dark:hover:text-orange-300 bg-orange-50 dark:bg-orange-900/20{% endif %} p-1.5 sm:p-2 rounded-lg" title="{% if term.status == 'suspended' %}Unsuspend Term{% else %}Suspend Term{% endif %}" data-term-id="{{ term.id }}" data-term-status="{{ term.status }}"><i class="fas {% if term.status == 'suspended' %}fa-play{% else %}fa-pause{% endif %}"></i></button>
+                                        <button type="button" class="action-btn toggle-lock-btn touch-manipulation min-w-[32px] min-h-[32px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center {% if term.is_locked %}text-yellow-600 hover:text-yellow-900 dark:text-yellow-400 dark:hover:text-yellow-300 bg-yellow-50 dark:bg-yellow-900/20{% else %}text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-300 bg-gray-50 dark:bg-gray-900/20{% endif %} p-1.5 sm:p-2 rounded-lg" title="{% if term.is_locked %}Unlock Term{% else %}Lock Term{% endif %}" data-term-id="{{ term.id }}" data-term-locked="{{ 'true' if term.is_locked else 'false' }}"><i class="fas {% if term.is_locked %}fa-unlock{% else %}fa-lock{% endif %}"></i></button>
+                                        <button type="button" class="action-btn edit-term-btn touch-manipulation min-w-[32px] min-h-[32px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 p-1.5 sm:p-2 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Edit" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}" data-academic-year-id="{{ term.academic_year_id }}" data-academic-level-ids="{{ term.academic_levels|map(attribute='id')|join(',') if term.academic_levels else '' }}" data-start-date="{{ term.start_date.strftime('%Y-%m-%d') if term.start_date else '' }}" data-end-date="{{ term.end_date.strftime('%Y-%m-%d') if term.end_date else '' }}" data-status="{{ term.status }}" data-is-current="{{ 'true' if term.is_current else 'false' }}"><i class="fas fa-edit"></i></button>
+                                        <button type="button" class="action-btn delete-term-btn touch-manipulation min-w-[32px] min-h-[32px] sm:min-w-[36px] sm:min-h-[36px] inline-flex items-center justify-center text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 p-1.5 sm:p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20" title="Delete" data-term-id="{{ term.id }}" data-term-name="{{ term.term_name }}"><i class="fas fa-trash"></i></button>
                                     </div>
                                 </td>
                             </tr>
@@ -1357,19 +1357,19 @@
                     <!-- Modal Header -->
                     <div
                         class="bg-gradient-to-r from-purple-500 to-pink-600 p-4 sm:p-5 md:p-6 rounded-t-xl sm:rounded-t-2xl">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center space-x-3">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div class="flex items-center gap-3 min-w-0 pr-2">
                                 <div
-                                    class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center">
+                                    class="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center shrink-0">
                                     <i class="fas fa-edit text-white text-lg sm:text-xl icon-animated"></i>
                                 </div>
-                                <div>
-                                    <h3 class="text-lg sm:text-xl font-bold text-white">Edit Term</h3>
+                                <div class="min-w-0">
+                                    <h3 class="text-lg sm:text-xl font-bold text-white break-words">Edit Term</h3>
                                     <p class="text-xs sm:text-sm text-purple-100">Update term details</p>
                                 </div>
                             </div>
                             <button type="button" id="closeEditTermModalBtn"
-                                class="close-edit-term-modal text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                class="close-edit-term-modal self-end sm:self-auto text-white hover:text-red-200 transition-all transform hover:rotate-90 hover:scale-110 duration-300 p-1.5 sm:p-2 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                                 title="Close">
                                 <i class="fas fa-times text-xl"></i>
                             </button>
