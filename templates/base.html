@@ -958,7 +958,7 @@
             {% else %}
             flex flex-col overflow-hidden pb-20 min-h-0 flex-1
             {% endif %}"
-          :style="publicTopNav ? '' : ((isDesktop && sidebarOpen ? 'margin-left: 18rem;' : 'margin-left: 0;') + ' height: calc(100vh - var(--app-header-offset));')">
+          :style="publicTopNav ? '' : ((isDesktop && sidebarOpen ? 'margin-left: 18rem; width: calc(100% - 18rem);' : 'margin-left: 0; width: 100%;') + ' height: calc(100vh - var(--app-header-offset));')">
         <div class="w-full min-w-0
              {% if public_site_topnav %}
              public-site-scroll public-site-scroll--document
