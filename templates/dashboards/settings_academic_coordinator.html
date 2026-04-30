@@ -48,95 +48,122 @@
         </div>
 
         <div x-show="settingsProfiles.length > 0">
-            <div class="flex flex-col md:flex-row md:items-end gap-3">
-                <div class="flex-1">
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Select Saved Profile</label>
-                    <select x-model="previewProfileId"
-                            class="w-full md:w-[28rem] px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                        <template x-for="profile in settingsProfiles" :key="'preview-profile-' + profile.id">
-                            <option :value="String(profile.id)" x-text="profile.profile_name"></option>
-                        </template>
-                    </select>
-                </div>
-                <div>
-                    <button type="button"
-                            @click="toggleEditSelectedProfile()"
-                            :disabled="!getPreviewProfile()"
-                            class="mr-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i class="fas fa-pen mr-2"></i>Edit
-                    </button>
-                    <button type="button"
-                            @click="openRegisterProfileModal()"
-                            class="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors shadow-sm">
-                        <i class="fas fa-plus mr-2"></i>Register New Profile
-                    </button>
-                </div>
+            <div class="flex justify-end mb-4">
+                <button type="button"
+                        @click="openRegisterProfileModal()"
+                        class="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors shadow-sm">
+                    <i class="fas fa-plus mr-2"></i>Register New Profile
+                </button>
             </div>
+            <div class="space-y-5">
+                <template x-for="profile in settingsProfiles" :key="'preview-list-profile-' + profile.id">
+                    <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/30">
+                        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                            <div>
+                                <p class="font-semibold text-gray-900 dark:text-white" x-text="profile.profile_name || 'Unnamed profile'"></p>
+                                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    Study days:
+                                    <span x-text="profile.study_days && profile.study_days.length ? profile.study_days.join(', ') : 'Not set'"></span>
+                                </p>
+                                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    Class duration:
+                                    <span x-text="(profile.class_duration || 60) + ' min'"></span>
+                                </p>
+                                <p class="text-xs mt-2">
+                                    <span class="px-2 py-0.5 rounded-full font-semibold"
+                                          :class="profile.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
+                                          x-text="profile.is_active ? 'Active' : 'Inactive'"></span>
+                                </p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button"
+                                        @click="toggleProfileStatus(profile)"
+                                        :disabled="isTogglingProfileStatus(profile)"
+                                        class="relative inline-flex h-7 w-14 items-center rounded-full transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 dark:focus:ring-offset-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                                        :class="profile.is_active ? 'bg-green-600' : 'bg-gray-400 dark:bg-gray-600'"
+                                        :title="profile.is_active ? 'Set timetable preview inactive' : 'Set timetable preview active'"
+                                        :aria-label="profile.is_active ? 'Set inactive' : 'Set active'">
+                                    <span class="sr-only" x-text="profile.is_active ? 'Set inactive' : 'Set active'"></span>
+                                    <span class="absolute left-1 text-[9px] font-bold text-white/90" x-show="!profile.is_active">OFF</span>
+                                    <span class="absolute right-1 text-[9px] font-bold text-white/90" x-show="profile.is_active">ON</span>
+                                    <span class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
+                                          :class="profile.is_active ? 'translate-x-8' : 'translate-x-1'"></span>
+                                </button>
+                                <button type="button"
+                                        @click="toggleProfilePreview(profile)"
+                                        class="px-3 py-2.5 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors shadow-sm"
+                                        :title="isProfilePreviewVisible(profile) ? 'Hide Sample Timetable Layout' : 'View Sample Timetable Layout'">
+                                    <i class="fas" :class="isProfilePreviewVisible(profile) ? 'fa-eye-slash' : 'fa-eye'"></i>
+                                </button>
+                                <button type="button"
+                                        @click="openProfileForEdit(profile)"
+                                        class="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors shadow-sm">
+                                    <i class="fas fa-pen mr-2"></i>Edit
+                                </button>
+                                <form method="POST" :action="`${settingsCoordinatorBase}/delete/${encodeURIComponent(profile.id)}`" @submit.prevent="deleteProfile(profile, $event)">
+                                    <button type="submit"
+                                            class="px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors shadow-sm">
+                                        <i class="fas fa-trash mr-2"></i>Delete
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
 
-            <div x-show="getPreviewProfile()" class="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/30">
-                <p class="font-semibold text-gray-900 dark:text-white" x-text="getPreviewProfile() ? getPreviewProfile().profile_name : ''"></p>
-                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Study days:
-                    <span x-text="getPreviewProfile() && getPreviewProfile().study_days && getPreviewProfile().study_days.length ? getPreviewProfile().study_days.join(', ') : 'Not set'"></span>
-                </p>
-                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                    Class duration:
-                    <span x-text="getPreviewProfile() ? ((getPreviewProfile().class_duration || 60) + ' min') : '60 min'"></span>
-                </p>
-
-                <div class="mt-4">
-                    <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Sample Timetable Layout</h4>
-                    <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-                        <table class="w-full min-w-[760px] text-sm">
-                            <thead class="bg-gray-100 dark:bg-gray-700/70">
-                                <tr>
-                                    <th class="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200 min-w-[130px]">Day</th>
-                                    <template x-for="slot in getPreviewRows()" :key="'slot-head-' + slot.key">
-                                        <th class="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-200 min-w-[120px]">
-                                            <div class="leading-tight">
-                                                <div x-text="slot.start"></div>
-                                                <div class="text-xs text-gray-500 dark:text-gray-400" x-text="slot.end"></div>
-                                            </div>
-                                        </th>
-                                    </template>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <template x-for="day in getPreviewDays()" :key="'day-row-' + day">
-                                    <tr class="border-t border-gray-100 dark:border-gray-700">
-                                        <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium" x-text="day"></td>
-                                        <template x-for="slot in getPreviewRows()" :key="'cell-' + day + '-' + slot.key">
-                                            <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
-                                                <template x-if="slot.type === 'Activity'">
-                                                    <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                        <div class="mt-4" x-show="isProfilePreviewVisible(profile)">
+                            <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Sample Timetable Layout</h4>
+                            <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                                <table class="w-full min-w-[760px] text-sm">
+                                    <thead class="bg-gray-100 dark:bg-gray-700/70">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200 min-w-[130px]">Day</th>
+                                            <template x-for="slot in getPreviewRowsFor(profile)" :key="'slot-head-' + profile.id + '-' + slot.key">
+                                                <th class="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-200 min-w-[120px]">
+                                                    <div class="leading-tight">
+                                                        <div x-text="slot.start"></div>
+                                                        <div class="text-xs text-gray-500 dark:text-gray-400" x-text="slot.end"></div>
+                                                    </div>
+                                                </th>
+                                            </template>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="day in getPreviewDaysFor(profile)" :key="'day-row-' + profile.id + '-' + day">
+                                            <tr class="border-t border-gray-100 dark:border-gray-700">
+                                                <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium" x-text="day"></td>
+                                                <template x-for="slot in getPreviewRowsFor(profile)" :key="'cell-' + profile.id + '-' + day + '-' + slot.key">
+                                                    <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
+                                                        <template x-if="slot.type === 'Activity'">
+                                                            <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                                                        </template>
+                                                        <template x-if="slot.type !== 'Activity'">
+                                                            <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
+                                                        </template>
+                                                    </td>
                                                 </template>
-                                                <template x-if="slot.type !== 'Activity'">
-                                                    <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
-                                                </template>
-                                            </td>
+                                            </tr>
                                         </template>
-                                    </tr>
-                                </template>
-                                <tr x-show="getPreviewDays().length === 0 && getPreviewRows().length > 0" class="border-t border-gray-100 dark:border-gray-700">
-                                    <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium">No days</td>
-                                    <template x-for="slot in getPreviewRows()" :key="'no-day-cell-' + slot.key">
-                                        <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
-                                            <template x-if="slot.type === 'Activity'">
-                                                <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                                        <tr x-show="getPreviewDaysFor(profile).length === 0 && getPreviewRowsFor(profile).length > 0" class="border-t border-gray-100 dark:border-gray-700">
+                                            <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium">No days</td>
+                                            <template x-for="slot in getPreviewRowsFor(profile)" :key="'no-day-cell-' + profile.id + '-' + slot.key">
+                                                <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
+                                                    <template x-if="slot.type === 'Activity'">
+                                                        <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                                                    </template>
+                                                    <template x-if="slot.type !== 'Activity'">
+                                                        <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
+                                                    </template>
+                                                </td>
                                             </template>
-                                            <template x-if="slot.type !== 'Activity'">
-                                                <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
-                                            </template>
-                                        </td>
-                                    </tr>
-                                </template>
-                                <tr x-show="getPreviewRows().length === 0">
-                                    <td :colspan="(getPreviewRows().length || 1) + 1" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">No timetable slots configured in this profile yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                        </tr>
+                                        <tr x-show="getPreviewRowsFor(profile).length === 0">
+                                            <td :colspan="(getPreviewRowsFor(profile).length || 1) + 1" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">No timetable slots configured in this profile yet.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                </template>
             </div>
         </div>
     </div>
@@ -266,7 +293,7 @@
             <input type="hidden" name="profile_id" :value="profileId">
 
             <!-- Settings Profile -->
-            <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+            <div x-show="!isEditingExistingProfile()" class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -679,6 +706,8 @@ function academicCoordinatorSettings() {
         })(),
         activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
         settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum-coordinator')|tojson }},
+        expandedPreviewProfileIds: [],
+        togglingStatusProfileIds: [],
         getSelectedDaysLabel() {
             if (this.selectedDays.length === 0) return 'No days selected';
             return this.selectedDays.join(', ');
@@ -728,6 +757,10 @@ function academicCoordinatorSettings() {
         },
         getPreviewRows() {
             const profile = this.getPreviewProfile();
+            if (!profile) return [];
+            return this.getPreviewRowsFor(profile);
+        },
+        getPreviewRowsFor(profile) {
             if (!profile) return [];
             const rows = [];
             const classTimes = Array.isArray(profile.class_times) ? profile.class_times : [];
@@ -791,21 +824,76 @@ function academicCoordinatorSettings() {
         toggleEditSelectedProfile() {
             const profile = this.getPreviewProfile();
             if (!profile) return;
-
+            this.openProfileForEdit(profile);
+        },
+        openProfileForEdit(profile) {
+            if (!profile) return;
             const sameProfileOpen = this.showTimetableConfiguration && String(this.profileId || '') === String(profile.id || '');
             if (sameProfileOpen) {
                 this.showTimetableConfiguration = false;
                 return;
             }
-
             this.applyProfileToForm(profile);
             this.showTimetableConfiguration = true;
             this.$nextTick(() => {
                 window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
             });
         },
+        isProfilePreviewVisible(profile) {
+            if (!profile || !profile.id) return false;
+            return this.expandedPreviewProfileIds.includes(String(profile.id));
+        },
+        toggleProfilePreview(profile) {
+            if (!profile || !profile.id) return;
+            const profileId = String(profile.id);
+            if (this.expandedPreviewProfileIds.includes(profileId)) {
+                this.expandedPreviewProfileIds = this.expandedPreviewProfileIds.filter(id => id !== profileId);
+                return;
+            }
+            this.expandedPreviewProfileIds.push(profileId);
+        },
+        deleteProfile(profile, event) {
+            if (!profile || !profile.id || !event || !event.target) return;
+            const name = profile.profile_name || `Profile ${profile.id}`;
+            if (!confirm(`Delete "${name}" timetable preview? This action cannot be undone.`)) return;
+            event.target.submit();
+        },
+        isTogglingProfileStatus(profile) {
+            if (!profile || !profile.id) return false;
+            return this.togglingStatusProfileIds.includes(String(profile.id));
+        },
+        async toggleProfileStatus(profile) {
+            if (!profile || !profile.id) return;
+            const profileId = String(profile.id);
+            if (this.togglingStatusProfileIds.includes(profileId)) return;
+
+            this.togglingStatusProfileIds.push(profileId);
+            const nextState = profile.is_active ? '0' : '1';
+            try {
+                const response = await fetch(`${this.settingsCoordinatorBase}/status/${encodeURIComponent(profileId)}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: `is_active=${encodeURIComponent(nextState)}`
+                });
+                const payload = await response.json();
+                if (!response.ok || !payload || payload.success !== true) {
+                    throw new Error((payload && payload.message) ? payload.message : 'Failed to update status');
+                }
+                profile.is_active = Boolean(payload.is_active);
+            } catch (error) {
+                alert((error && error.message) ? error.message : 'Error updating schedule profile status. Please try again.');
+            } finally {
+                this.togglingStatusProfileIds = this.togglingStatusProfileIds.filter(id => id !== profileId);
+            }
+        },
         getPreviewDays() {
             const profile = this.getPreviewProfile();
+            return this.getPreviewDaysFor(profile);
+        },
+        getPreviewDaysFor(profile) {
             const fallback = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
             if (!profile || !Array.isArray(profile.study_days) || !profile.study_days.length) return fallback;
             return profile.study_days;
@@ -814,6 +902,9 @@ function academicCoordinatorSettings() {
             const name = (this.profileName || '').trim();
             if (!name) return '';
             return `Editing Timetable: ${name}`;
+        },
+        isEditingExistingProfile() {
+            return Boolean(String(this.profileId || '').trim());
         },
         loadProfile() {
             if (!this.selectedProfileSelector) {
@@ -1172,6 +1263,10 @@ function academicCoordinatorSettings() {
                 { id: 'activity_3', name: 'Prep', start_time: '14:00', duration: 20, end_time: '14:20' }
             ];
             this.activityCounter = 3;
+        },
+        init() {
+            // Keep previews collapsed by default; user can open via eye icon.
+            this.expandedPreviewProfileIds = [];
         }
     }
 }

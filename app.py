@@ -1163,7 +1163,7 @@ def init_db():
             except Exception as e:
                 print(f"Note: profile_name column may already exist: {e}")
 
-            # Add is_active flag if it doesn't exist (exactly one profile should be active at a time)
+            # Add is_active flag if it doesn't exist
             try:
                 cursor.execute("ALTER TABLE academic_coordinator_settings ADD COLUMN is_active TINYINT(1) DEFAULT 0 AFTER profile_name")
             except Exception as e:
@@ -1190,7 +1190,8 @@ def init_db():
                     VALUES ('Default Profile', 1, 'Monday,Tuesday,Wednesday,Thursday,Friday', '[]', %s, 60, %s)
                 """, (default_class_times, default_activities))
             else:
-                # Normalize active profile state: ensure exactly one active profile.
+                # Normalize active profile state: ensure at least one active profile.
+                # Multiple active profiles are allowed.
                 cursor.execute("SELECT id FROM academic_coordinator_settings WHERE is_active = 1 ORDER BY updated_at DESC, id DESC")
                 active_rows = cursor.fetchall() or []
                 if len(active_rows) == 0:
@@ -1207,9 +1208,6 @@ def init_db():
                             ) THEN 1 ELSE 0
                         END
                     """)
-                elif len(active_rows) > 1:
-                    keep_id = active_rows[0].get('id') if isinstance(active_rows[0], dict) else active_rows[0][0]
-                    cursor.execute("UPDATE academic_coordinator_settings SET is_active = 0 WHERE id <> %s", (keep_id,))
             
             # Create academic_levels table (must be before timetables, terms, fee_structures)
             cursor.execute("""
@@ -13785,7 +13783,6 @@ def save_academic_coordinator_settings():
                     cursor.execute("""
                         UPDATE academic_coordinator_settings 
                         SET profile_name = %s,
-                            is_active = 1,
                             study_days = %s, 
                             applicable_levels = %s,
                             class_time_allocation = %s, 
@@ -13838,6 +13835,65 @@ def save_academic_coordinator_settings():
     if str(saved_profile_id).isdigit():
         return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=saved_profile_id))
     return redirect(employee_staff_settings_url('curriculum coordinator'))
+
+@app.route('/settings/curriculum-coordinator/status/<int:profile_id>', methods=['POST'])
+@app.route('/settings/curriculum coordinator/status/<int:profile_id>', methods=['POST'])
+@login_required
+def toggle_academic_coordinator_profile_status(profile_id):
+    """Toggle active status for a saved academic coordinator settings profile"""
+    user_role = session.get('role', '').lower()
+    return_to = request.form.get('return_to', '').strip().lower()
+    wants_json = request.headers.get('X-Requested-With', '').lower() == 'xmlhttprequest'
+    is_active_raw = str(request.form.get('is_active', '0')).strip().lower()
+    is_active = 1 if is_active_raw in ('1', 'true', 'yes', 'on') else 0
+    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
+
+    if user_role not in schedule_management_roles:
+        message = 'You do not have permission to perform this action.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 403
+        flash(message, 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        message = 'Database connection error.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 500
+        flash(message, 'error')
+        return redirect(employee_staff_settings_url('curriculum coordinator'))
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT id FROM academic_coordinator_settings WHERE id = %s LIMIT 1", (profile_id,))
+            row = cursor.fetchone()
+            if not row:
+                message = 'Schedule profile not found.'
+                if wants_json:
+                    return jsonify({'success': False, 'message': message}), 404
+                flash(message, 'error')
+            else:
+                cursor.execute(
+                    "UPDATE academic_coordinator_settings SET is_active = %s WHERE id = %s",
+                    (is_active, profile_id)
+                )
+                connection.commit()
+                if wants_json:
+                    return jsonify({'success': True, 'is_active': bool(is_active), 'profile_id': profile_id}), 200
+                flash('Schedule profile status updated.', 'success')
+    except Exception as e:
+        print(f"Error updating academic coordinator profile status: {e}")
+        connection.rollback()
+        message = 'Error updating schedule profile status. Please try again.'
+        if wants_json:
+            return jsonify({'success': False, 'message': message}), 500
+        flash(message, 'error')
+    finally:
+        connection.close()
+
+    if return_to == 'academic-settings':
+        return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=profile_id))
+    return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=profile_id))
 
 @app.route('/settings/curriculum-coordinator/delete/<int:profile_id>', methods=['POST'])
 @app.route('/settings/curriculum coordinator/delete/<int:profile_id>', methods=['POST'])
