@@ -190,22 +190,6 @@
 
                 <div class="mt-4">
                     <div class="flex items-center justify-between mb-2">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Class Time Slots</label>
-                        <button type="button" @click="addClassTime()" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs">Add Slot</button>
-                    </div>
-                    <div class="space-y-2">
-                        <template x-for="(classTime, index) in classTimes" :key="'reg-class-' + classTime.id">
-                            <div class="grid grid-cols-3 gap-2">
-                                <input type="time" x-model="classTime.start_time" @change="validateAndCalculateClassTime(index)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
-                                <input type="text" x-model="classTime.end_time" readonly class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm">
-                                <button type="button" @click="removeClassTime(index)" class="px-3 py-2 bg-red-600 text-white rounded-lg text-xs">Remove</button>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-
-                <div class="mt-4">
-                    <div class="flex items-center justify-between mb-2">
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Activities (Short Breaks, Long Breaks, Preps) *</label>
                         <button type="button" @click="addActivity()" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs">Add Activity</button>
                     </div>
@@ -222,6 +206,21 @@
                                 <input type="time" x-model="activity.start_time" @change="calculateEndTime(index)" class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
                                 <input type="number" min="5" step="5" x-model="activity.duration" @change="calculateEndTime(index)" class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
                                 <input type="text" x-model="activity.end_time" readonly class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm">
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Class Time Slots</label>
+                        <button type="button" @click="addClassTime()" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs">Add Slot</button>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(classTime, index) in classTimes" :key="'reg-class-' + classTime.id">
+                            <div class="grid grid-cols-3 gap-2">
+                                <input type="time" x-model="classTime.start_time" @change="validateAndCalculateClassTime(index)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                                <input type="text" x-model="classTime.end_time" readonly class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm">
+                                <button type="button" @click="removeClassTime(index)" class="px-3 py-2 bg-red-600 text-white rounded-lg text-xs">Remove</button>
                             </div>
                         </template>
                     </div>
@@ -381,85 +380,6 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter the duration in minutes (minimum 1 minute)</p>
             </div>
 
-            <!-- Class Time Slots Configuration -->
-            <div>
-                <div class="flex items-center justify-between mb-3">
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        Class Time Slots <span class="text-red-500">*</span>
-                    </label>
-                    <button type="button" 
-                            @click="addClassTime()"
-                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
-                        <i class="fas fa-plus mr-2"></i>Add Class Time
-                    </button>
-                </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Configure multiple class time slots. End times are automatically calculated. Overlapping times are not allowed.</p>
-                
-                <!-- Overlap Warning -->
-                <div x-show="hasOverlaps" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <div class="flex items-center">
-                        <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
-                        <p class="text-sm text-red-700 dark:text-red-300 font-medium">Warning: Some class time slots overlap. Please adjust the times to avoid conflicts.</p>
-                    </div>
-                </div>
-                
-                <!-- Class Times List -->
-                <div class="space-y-4" x-show="classTimes.length > 0">
-                    <template x-for="(classTime, index) in classTimes" :key="classTime.id">
-                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
-                             :class="{'border-red-400 dark:border-red-600': isOverlapping(index)}">
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <!-- Start Time -->
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        Start Time <span class="text-red-500">*</span>
-                                    </label>
-                                    <input type="time" 
-                                           x-model="classTime.start_time"
-                                           @change="validateAndCalculateClassTime(index)"
-                                           :class="isOverlapping(index) ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
-                                           class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                                    <p x-show="isOverlapping(index)" class="text-xs text-red-600 dark:text-red-400 mt-1">
-                                        <i class="fas fa-exclamation-circle mr-1"></i>
-                                        <span x-show="isOverlappingWithClass(index)">Overlaps with another class slot</span>
-                                        <span x-show="isOverlappingWithActivity(index)">Overlaps with an activity</span>
-                                    </p>
-                                </div>
-                                
-                                <!-- End Time (Auto-calculated) -->
-                                <div>
-                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                        End Time (Auto-calculated)
-                                    </label>
-                                    <input type="text" 
-                                           x-model="classTime.end_time"
-                                           readonly
-                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm cursor-not-allowed">
-                                </div>
-                                
-                                <!-- Remove Button -->
-                                <div class="flex items-end">
-                                    <button type="button" 
-                                            @click="removeClassTime(index)"
-                                            class="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                                        <i class="fas fa-trash mr-1"></i>Remove
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-                
-                <!-- Empty State -->
-                <div x-show="classTimes.length === 0" class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                    <i class="fas fa-clock text-4xl text-gray-400 dark:text-gray-500 mb-2"></i>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">No class time slots configured. Click "Add Class Time" to get started.</p>
-                </div>
-                
-                <!-- Hidden input for form submission -->
-                <input type="hidden" name="class_times_json" :value="JSON.stringify(classTimes)">
-            </div>
-
             <!-- Activities Configuration -->
             <div>
                 <div class="flex items-center justify-between mb-3">
@@ -567,6 +487,85 @@
                 
                 <!-- Hidden input for form submission -->
                 <input type="hidden" name="activities_json" :value="JSON.stringify(activities)">
+            </div>
+
+            <!-- Class Time Slots Configuration -->
+            <div>
+                <div class="flex items-center justify-between mb-3">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Class Time Slots <span class="text-red-500">*</span>
+                    </label>
+                    <button type="button" 
+                            @click="addClassTime()"
+                            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
+                        <i class="fas fa-plus mr-2"></i>Add Class Time
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Configure multiple class time slots. End times are automatically calculated. Overlapping times are not allowed.</p>
+                
+                <!-- Overlap Warning -->
+                <div x-show="hasOverlaps" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 mr-2"></i>
+                        <p class="text-sm text-red-700 dark:text-red-300 font-medium">Warning: Some class time slots overlap. Please adjust the times to avoid conflicts.</p>
+                    </div>
+                </div>
+                
+                <!-- Class Times List -->
+                <div class="space-y-4" x-show="classTimes.length > 0">
+                    <template x-for="(classTime, index) in classTimes" :key="classTime.id">
+                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600"
+                             :class="{'border-red-400 dark:border-red-600': isOverlapping(index)}">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <!-- Start Time -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        Start Time <span class="text-red-500">*</span>
+                                    </label>
+                                    <input type="time" 
+                                           x-model="classTime.start_time"
+                                           @change="validateAndCalculateClassTime(index)"
+                                           :class="isOverlapping(index) ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'"
+                                           class="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    <p x-show="isOverlapping(index)" class="text-xs text-red-600 dark:text-red-400 mt-1">
+                                        <i class="fas fa-exclamation-circle mr-1"></i>
+                                        <span x-show="isOverlappingWithClass(index)">Overlaps with another class slot</span>
+                                        <span x-show="isOverlappingWithActivity(index)">Overlaps with an activity</span>
+                                    </p>
+                                </div>
+                                
+                                <!-- End Time (Auto-calculated) -->
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                        End Time (Auto-calculated)
+                                    </label>
+                                    <input type="text" 
+                                           x-model="classTime.end_time"
+                                           readonly
+                                           class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm cursor-not-allowed">
+                                </div>
+                                
+                                <!-- Remove Button -->
+                                <div class="flex items-end">
+                                    <button type="button" 
+                                            @click="removeClassTime(index)"
+                                            class="w-full px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+                                        <i class="fas fa-trash mr-1"></i>Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                
+                <!-- Empty State -->
+                <div x-show="classTimes.length === 0" class="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                    <i class="fas fa-clock text-4xl text-gray-400 dark:text-gray-500 mb-2"></i>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">No class time slots configured. Click "Add Class Time" to get started.</p>
+                </div>
+                
+                <!-- Hidden input for form submission -->
+                <input type="hidden" name="class_times_json" :value="JSON.stringify(classTimes)">
             </div>
 
             <!-- Summary Card -->
@@ -858,6 +857,7 @@ function academicCoordinatorSettings() {
                     suggestedStartTime = lastTime.end_time;
                 }
             }
+            suggestedStartTime = this.findNextStartAvoidingActivities(suggestedStartTime, -1);
             
             const newClassTime = {
                 id: 'class_time_' + (++this.classTimeCounter),
@@ -888,9 +888,63 @@ function academicCoordinatorSettings() {
             const endHours = String(endDate.getHours()).padStart(2, '0');
             const endMinutes = String(endDate.getMinutes()).padStart(2, '0');
             classTime.end_time = `${endHours}:${endMinutes}`;
-            
-            // Check for collisions after calculating end time
-            // This will trigger the visual feedback
+
+            // Hard-enforce: class slots cannot occupy activity time ranges.
+            if (this.isOverlappingWithActivity(index)) {
+                const adjustedStart = this.findNextStartAvoidingActivities(classTime.start_time, index);
+                if (adjustedStart && adjustedStart !== classTime.start_time) {
+                    classTime.start_time = adjustedStart;
+                    const [adjHours, adjMinutes] = adjustedStart.split(':').map(Number);
+                    const adjStartDate = new Date();
+                    adjStartDate.setHours(adjHours, adjMinutes, 0, 0);
+                    const adjEndDate = new Date(adjStartDate.getTime() + (this.classDuration * 60000));
+                    classTime.end_time = `${String(adjEndDate.getHours()).padStart(2, '0')}:${String(adjEndDate.getMinutes()).padStart(2, '0')}`;
+                }
+            }
+        },
+        toMinutes(hhmm) {
+            if (!hhmm || String(hhmm).indexOf(':') < 0) return null;
+            const [h, m] = String(hhmm).split(':').map(Number);
+            if (Number.isNaN(h) || Number.isNaN(m)) return null;
+            return (h * 60) + m;
+        },
+        toHHMM(totalMinutes) {
+            const normalized = Math.max(0, Math.min(23 * 60 + 59, Number(totalMinutes) || 0));
+            const h = Math.floor(normalized / 60);
+            const m = normalized % 60;
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        },
+        rangesOverlap(aStart, aEnd, bStart, bEnd) {
+            return aStart < bEnd && aEnd > bStart;
+        },
+        findNextStartAvoidingActivities(proposedStart, classIndex) {
+            const duration = Number(this.classDuration || 0);
+            let startMin = this.toMinutes(proposedStart);
+            if (!duration || startMin === null) return proposedStart;
+
+            // Move the proposed class start forward until it no longer overlaps an activity.
+            // Keep this bounded to avoid infinite loops.
+            for (let i = 0; i < 300; i++) {
+                const endMin = startMin + duration;
+                let blockingActivity = null;
+
+                for (let j = 0; j < this.activities.length; j++) {
+                    const activity = this.activities[j];
+                    const aStart = this.toMinutes(activity.start_time);
+                    const aEnd = this.toMinutes(activity.end_time);
+                    if (aStart === null || aEnd === null) continue;
+                    if (this.rangesOverlap(startMin, endMin, aStart, aEnd)) {
+                        blockingActivity = { start: aStart, end: aEnd };
+                        break;
+                    }
+                }
+
+                if (!blockingActivity) {
+                    return this.toHHMM(startMin);
+                }
+                startMin = blockingActivity.end;
+            }
+            return this.toHHMM(startMin);
         },
         recalculateAllClassEndTimes() {
             this.classTimes.forEach((classTime, index) => {

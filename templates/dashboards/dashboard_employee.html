@@ -69,6 +69,11 @@
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
+    <a href="/technician/system-settings#academic-year"
+       class="sidebar-item">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Academic Year Settings</span>
+    </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bell w-5"></i>
@@ -198,6 +203,11 @@
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
+    <a href="/technician/system-settings#academic-year"
+       class="sidebar-item">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Academic Year Settings</span>
+    </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bell w-5"></i>
@@ -319,6 +329,11 @@
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
     </a>
+    <a href="/technician/system-settings#academic-year"
+       class="sidebar-item">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Academic Year Settings</span>
+    </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bell w-5"></i>
@@ -346,6 +361,11 @@
        class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
+    </a>
+    <a href="/technician/system-settings#academic-year"
+       class="sidebar-item">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Academic Year Settings</span>
     </a>
 {% elif current_role == 'librarian' %}
     <!-- Librarian Links -->
