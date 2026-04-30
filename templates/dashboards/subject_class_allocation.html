@@ -461,6 +461,7 @@ function subjectAllocation() {
     return {
         academicLevels: {{ academic_levels|tojson|safe }},
         subjects: {{ subjects|tojson|safe }},
+        subjectsByLevel: {{ subjects_by_level|default({})|tojson|safe }},
         teachers: {{ teachers|tojson|safe }},
         allocations: {{ assignments|tojson|safe }},
         existingAllocationsLevelId: '',
@@ -517,8 +518,9 @@ function subjectAllocation() {
                 return;
             }
 
-            // Show all active subjects once an academic level is selected.
-            this.availableSubjects = [...this.subjects];
+            const levelId = String(this.formData.academic_level_id);
+            const registered = this.subjectsByLevel[levelId];
+            this.availableSubjects = Array.isArray(registered) ? [...registered] : [];
             this.initializeSelectedTeachersBySubject();
         },
 

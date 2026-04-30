@@ -78,7 +78,29 @@
         </p>
     </div>
 
-    <!-- 1) What to view -->
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Academic performance reports</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3" id="ar-exam-quick-links">
+            <button type="button" data-report-type="exam_all_students_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">All students performance</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class-wide performance summary</div>
+            </button>
+            <button type="button" data-report-type="exam_individual_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">Individual student performance</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">One learner's report by student ID</div>
+            </button>
+            <button type="button" data-report-type="exam_subject_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">Subject performance</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Performance grouped by subject</div>
+            </button>
+            <button type="button" data-report-type="exam_teacher_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
+                <div class="text-sm font-semibold text-gray-900 dark:text-white">Teacher performance</div>
+                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Performance grouped by teacher</div>
+            </button>
+        </div>
+    </div>
+
+    <!-- 1) Report to view -->
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">What do you want to view?</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -86,9 +108,7 @@
                 <label for="ar-section" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Section</label>
                 <select id="ar-section" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
                     <option value="class_list">Class lists</option>
-                    <option value="timetable">Timetables</option>
                     <option value="exams">Exams</option>
-                    <option value="attendance">Attendance</option>
                 </select>
             </div>
             <div>
@@ -156,6 +176,11 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For individual reports only</p>
                 <input type="text" id="gf-student" placeholder="e.g. STU001" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             </div>
+            <div id="ar-wrap-register-date" class="hidden">
+                <label for="gf-register-date" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Attendance date</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Used for attendance register generation</p>
+                <input type="date" id="gf-register-date" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+            </div>
             <div id="ar-wrap-dates" class="hidden sm:col-span-2 lg:col-span-1">
                 <label class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Date range</label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For attendance summaries</p>
@@ -216,37 +241,20 @@
   const CATALOG = {
     class_list: {
       label: 'Class lists',
-      hint: 'Uses academic year and class. Term is optional.',
+      hint: 'Attendance register supports a specific date and attendance slots.',
       reports: [
-        { id: 'class_list_attendance', label: 'Attendance register', desc: 'Class roster for taking attendance.' },
-        { id: 'class_list_exam', label: 'Exam entry list', desc: 'Same style list, labelled for exam use.' },
-      ],
-    },
-    timetable: {
-      label: 'Timetables',
-      hint: 'Subject timetable needs a term. Teacher timetable needs term + teacher.',
-      reports: [
-        { id: 'timetable_subject', label: 'Subject / class timetable', desc: 'Periods by day with level, teacher, and subject.' },
-        { id: 'timetable_exam', label: 'Exam timetable', desc: 'Scheduled exams by date and level.' },
-        { id: 'timetable_teacher', label: 'Teacher timetable', desc: 'One teacher’s periods across the week.' },
+        { id: 'class_list_attendance', label: 'Attendance register', desc: 'Class attendance register with Morning, Afternoon, and Evening check slots.' },
+        { id: 'class_list_exam', label: 'Exam entry list', desc: 'Class list prepared for exam entry.' },
       ],
     },
     exams: {
       label: 'Exams',
-      hint: 'Select a class/level (required for most exam reports). Academic year and term narrow results.',
+      hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
       reports: [
         { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: average and range across recorded marks.' },
         { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s marks in the selected class — enter Student ID.' },
         { id: 'exam_subject_performance', label: 'Subject performance', desc: 'Mean, range, pass rate per subject in the selected class.' },
         { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher (exam supervisor or subject teacher): stats per subject in the class.' },
-      ],
-    },
-    attendance: {
-      label: 'Attendance',
-      hint: 'Pick a term (dates often follow the term) or set a date range. Class summary uses dates; individual can use student ID.',
-      reports: [
-        { id: 'attendance_class', label: 'Class attendance summary', desc: 'Present / absent totals by class for the period.' },
-        { id: 'attendance_individual', label: 'Individual attendance', desc: 'Daily rows; optional student filter.' },
       ],
     },
   };
@@ -258,10 +266,12 @@
   const extraWrap = document.getElementById('ar-extra-filters');
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
+  const wrapRegisterDate = document.getElementById('ar-wrap-register-date');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
+  const quickReportButtons = Array.from(document.querySelectorAll('#ar-exam-quick-links [data-report-type]'));
 
   function setGeneratedNow() {
     if (!generatedAtEl) return;
@@ -276,7 +286,7 @@
   function fillReportOptions(sectionKey) {
     const cat = CATALOG[sectionKey];
     reportEl.innerHTML = '';
-    cat.reports.forEach(function(r, i) {
+    (cat.reports || []).forEach(function(r) {
       const opt = document.createElement('option');
       opt.value = r.id;
       opt.textContent = r.label;
@@ -286,6 +296,7 @@
     updateReportDescription();
     updateExtraFilters();
     loadDetails();
+    syncQuickButtons();
   }
 
   function updateReportDescription() {
@@ -297,18 +308,29 @@
     hintEl.textContent = cat ? cat.hint : '';
   }
 
+  function syncQuickButtons() {
+    const rid = currentReportId();
+    quickReportButtons.forEach(function(btn) {
+      const selected = btn.getAttribute('data-report-type') === rid;
+      btn.classList.toggle('border-brand-primary', selected);
+      btn.classList.toggle('bg-brand-primary/10', selected);
+    });
+  }
+
   function updateExtraFilters() {
     const rid = currentReportId();
-    const needTeacher = rid === 'timetable_teacher';
-    const needTimetableView = rid === 'timetable_subject';
-    const needStudent = rid === 'exam_individual_performance' || rid === 'exam_individual' || rid === 'attendance_individual';
-    const needDates = rid === 'attendance_class' || rid === 'attendance_individual';
+    const needTeacher = false;
+    const needTimetableView = false;
+    const needStudent = rid === 'exam_individual_performance' || rid === 'exam_individual';
+    const needRegisterDate = rid === 'class_list_attendance';
+    const needDates = false;
 
-    const anyExtra = needTeacher || needTimetableView || needStudent || needDates;
+    const anyExtra = needTeacher || needTimetableView || needStudent || needRegisterDate || needDates;
     extraWrap.classList.toggle('hidden', !anyExtra);
     wrapTimetableView.classList.toggle('hidden', !needTimetableView);
     wrapTeacher.classList.toggle('hidden', !needTeacher);
     wrapStudent.classList.toggle('hidden', !needStudent);
+    wrapRegisterDate.classList.toggle('hidden', !needRegisterDate);
     wrapDates.classList.toggle('hidden', !needDates);
   }
 
@@ -319,7 +341,24 @@
   reportEl.addEventListener('change', function() {
     updateReportDescription();
     updateExtraFilters();
+    syncQuickButtons();
     loadDetails();
+  });
+
+  quickReportButtons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const targetReport = btn.getAttribute('data-report-type');
+      if (!targetReport) return;
+      if (sectionEl.value !== 'exams') {
+        sectionEl.value = 'exams';
+        fillReportOptions('exams');
+      }
+      reportEl.value = targetReport;
+      updateReportDescription();
+      updateExtraFilters();
+      syncQuickButtons();
+      loadDetails();
+    });
   });
 
   fillReportOptions(sectionEl.value);
@@ -344,7 +383,11 @@
     } else {
       out.student_id = null;
     }
-    if (reportType === 'attendance_class' || reportType === 'attendance_individual') {
+    if (reportType === 'class_list_attendance') {
+      const registerDate = val('gf-register-date');
+      out.date_from = registerDate || null;
+      out.date_to = registerDate || null;
+    } else if (reportType === 'attendance_class' || reportType === 'attendance_individual') {
       out.date_from = val('gf-dfrom') || null;
       out.date_to = val('gf-dto') || null;
     } else {
@@ -461,6 +504,79 @@
       return '<tr>' + cells + '</tr>';
     }).join('');
     return '<div class="overflow-x-auto"><table class="w-full text-sm min-w-[720px]"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderAttendanceRegister(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No students found for this class and filters.</p>';
+    }
+    const registerDate = (document.getElementById('gf-register-date') || {}).value
+      || ((bundle.meta || {}).applied_filters || {}).date_from
+      || '';
+    const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
+    const header = '' +
+      '<div class="mb-3">' +
+        '<p class="text-sm font-semibold text-gray-900 dark:text-white">Attendance register</p>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Date: ' + escapeHtml(registerDate || 'Not set') + '</p>' +
+      '</div>';
+    const tableHead = '' +
+      '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">#</th>' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student ID</th>' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student Name</th>' +
+        (hasClass ? '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Class</th>' : '') +
+        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Morning</th>' +
+        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Afternoon</th>' +
+        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Evening</th>' +
+      '</tr></thead>';
+    const box = '<span class="inline-block w-4 h-4 border border-gray-500 dark:border-gray-300 rounded-sm"></span>';
+    const body = rows.map(function(row, idx) {
+      return '<tr>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + (idx + 1) + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.student_id || '') + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + escapeHtml(row.full_name || '') + '</td>' +
+        (hasClass ? '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
+      '</tr>';
+    }).join('');
+    return header + '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700"><table class="w-full min-w-[760px] border-collapse">' + tableHead + '<tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderExamEntryRegister(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No students found for this class and filters.</p>';
+    }
+    const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
+    const header = '' +
+      '<div class="mb-3">' +
+        '<p class="text-sm font-semibold text-gray-900 dark:text-white">Exam entry list</p>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Two mark columns are provided for manual entry.</p>' +
+      '</div>';
+    const tableHead = '' +
+      '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">#</th>' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student ID</th>' +
+        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student Name</th>' +
+        (hasClass ? '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Class</th>' : '') +
+        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Mark 1</th>' +
+        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Mark 2</th>' +
+      '</tr></thead>';
+    const markBox = '<span class="inline-block w-20 h-6 border border-gray-500 dark:border-gray-300 rounded-sm bg-white dark:bg-gray-800"></span>';
+    const body = rows.map(function(row, idx) {
+      return '<tr>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + (idx + 1) + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.student_id || '') + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + escapeHtml(row.full_name || '') + '</td>' +
+        (hasClass ? '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + markBox + '</td>' +
+        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + markBox + '</td>' +
+      '</tr>';
+    }).join('');
+    return header + '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700"><table class="w-full min-w-[760px] border-collapse">' + tableHead + '<tbody>' + body + '</tbody></table></div>';
   }
 
   function renderExamTimetable(bundle) {
@@ -848,7 +964,7 @@
 
   async function loadDetails() {
     const reportType = currentReportId();
-    const selected = (CATALOG[sectionEl.value].reports || []).find(function(r) { return r.id === reportType; });
+    const selected = ((CATALOG[sectionEl.value] || {}).reports || []).find(function(r) { return r.id === reportType; });
     if (!reportType || !detailsListEl) return;
     detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>';
     try {
@@ -874,11 +990,15 @@
           '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(selected ? selected.label : (bundle.title || reportType)) + '</p>' +
           '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' + escapeHtml(selected ? selected.desc : '') + '</p>' +
         '</div>' +
-        (reportType === 'timetable_exam'
+        (reportType === 'class_list_attendance'
+          ? renderAttendanceRegister(bundle)
+          : (reportType === 'class_list_exam'
+              ? renderExamEntryRegister(bundle)
+          : (reportType === 'timetable_exam'
           ? renderExamTimetable(bundle)
           : (reportType === 'timetable_subject'
               ? renderSubjectClassTimetable(bundle)
-              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))));
+              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))))));
       setGeneratedNow();
     } catch (e) {
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
@@ -901,7 +1021,7 @@
     }
     loadDetails();
   });
-  ['gf-year', 'gf-level', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto'].forEach(function(id) {
+  ['gf-year', 'gf-level', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', loadDetails);
   });
@@ -934,6 +1054,10 @@
       }
       window.location.href = buildExportUrl(reportType, fmt);
     });
+  }
+  const registerDateEl = document.getElementById('gf-register-date');
+  if (registerDateEl && !registerDateEl.value) {
+    registerDateEl.value = new Date().toISOString().slice(0, 10);
   }
   loadDetails();
 })();

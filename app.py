@@ -14666,6 +14666,7 @@ def subject_class_allocation():
     connection = get_db_connection()
     academic_levels = []
     subjects = []
+    subjects_by_level = {}
     active_academic_levels = []
     teachers = []
     assignments = []
@@ -14712,6 +14713,30 @@ def subject_class_allocation():
                 except Exception as e:
                     print(f"Note: subjects table may not exist yet: {e}")
                     subjects = []
+
+                # Map registered subjects per academic level (source of truth for class registration)
+                try:
+                    cursor.execute("""
+                        SELECT sal.academic_level_id, s.id AS subject_id, s.subject_name, s.subject_code, s.description, s.status
+                        FROM subject_academic_levels sal
+                        INNER JOIN subjects s ON sal.subject_id = s.id
+                        WHERE COALESCE(s.status, 'active') = 'active'
+                        ORDER BY sal.academic_level_id, s.subject_name ASC
+                    """)
+                    for row in cursor.fetchall() or []:
+                        level_id = str(row.get('academic_level_id') if isinstance(row, dict) else row[0])
+                        if level_id not in subjects_by_level:
+                            subjects_by_level[level_id] = []
+                        subjects_by_level[level_id].append({
+                            'id': row.get('subject_id') if isinstance(row, dict) else row[1],
+                            'subject_name': row.get('subject_name', '') if isinstance(row, dict) else row[2],
+                            'subject_code': row.get('subject_code', '') if isinstance(row, dict) else row[3],
+                            'description': row.get('description', '') if isinstance(row, dict) else row[4],
+                            'status': row.get('status', 'active') if isinstance(row, dict) else (row[5] if len(row) > 5 else 'active')
+                        })
+                except Exception as e:
+                    print(f"Note: subject_academic_levels map unavailable: {e}")
+                    subjects_by_level = {}
                 
                 # Get teachers
                 cursor.execute("""
@@ -14771,6 +14796,7 @@ def subject_class_allocation():
                          role=user_role,
                          academic_levels=academic_levels,
                          subjects=subjects,
+                         subjects_by_level=subjects_by_level,
                          teachers=teachers,
                          assignments=assignments)
 
