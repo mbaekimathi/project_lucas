@@ -70,6 +70,16 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     .sticky-col-2 { left: 32px; }
     .mark-input { width: 56px; height: 36px; font-size: 16px; }
 }
+
+.filter-label {
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6b7280;
+}
+.dark .filter-label { color: #9ca3af; }
 </style>
 {% endblock %}
 
@@ -83,29 +93,45 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <h1 class="text-lg font-bold text-gray-900 dark:text-white">{{ academic_level.level_name }}</h1>
                 <p class="text-sm text-gray-500">{{ students|length }} students · {{ subjects|length }} subjects</p>
             </div>
-            <div class="flex items-center gap-3">
-                <select x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
-                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                    <option value="">Academic Year</option>
-                    <template x-for="year in academicYears" :key="year.id">
-                        <option :value="String(year.id)" x-text="year.year_name"></option>
-                    </template>
-                </select>
-                <select x-model="selectedTermId" @change="onTermChange()"
-                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                    <option value="">Term</option>
-                    <template x-for="term in filteredTerms" :key="term.id">
-                        <option :value="String(term.id)" x-text="term.term_name"></option>
-                    </template>
-                </select>
-                <select x-model="selectedExam" @change="onExamSelected()"
-                        class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                    <option value="">Choose Exam</option>
-                    <template x-for="exam in filteredExams" :key="exam.id">
-                        <option :value="String(exam.id)" x-text="exam.exam_name"></option>
-                    </template>
-                </select>
-                <a href="{{ employee_dash_url('exams-assessments') }}" class="px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
+            <div class="flex flex-wrap items-end gap-2 sm:gap-3">
+                <div>
+                    <label class="filter-label mb-1 block">Academic Year</label>
+                    <select x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
+                            class="min-w-[170px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                        <option value="" disabled>Select year</option>
+                        <template x-for="year in academicYears" :key="year.id">
+                            <option :value="String(year.id)" x-text="year.year_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="filter-label mb-1 block">Term</label>
+                    <select x-model="selectedTermId" @change="onTermChange()"
+                            :disabled="!filteredTerms.length"
+                            class="min-w-[140px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed">
+                        <option value="" disabled x-text="filteredTerms.length ? 'Select term' : 'No terms'"></option>
+                        <template x-for="term in filteredTerms" :key="term.id">
+                            <option :value="String(term.id)" x-text="term.term_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="filter-label mb-1 block">Exam</label>
+                    <select x-model="selectedExam" @change="onExamSelected()"
+                            :disabled="!filteredExams.length"
+                            class="min-w-[170px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed">
+                        <option value="" disabled x-text="filteredExams.length ? 'Select exam' : 'No exams'"></option>
+                        <template x-for="exam in filteredExams" :key="exam.id">
+                            <option :value="String(exam.id)" x-text="exam.exam_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <button type="button"
+                        @click="resetToCurrent()"
+                        class="px-3 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40">
+                    Current
+                </button>
+                <a href="{{ employee_dash_url('exams-assessments') }}" class="px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white">
                     ← Back
                 </a>
             </div>
@@ -125,7 +151,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
         <!-- Table Card -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <div class="overflow-x-auto" style="max-height: calc(100vh - 180px);">
+            <div class="overflow-x-auto">
                 <table class="w-full text-sm border-collapse">
                     <thead class="bg-gray-100 dark:bg-gray-700">
                         <tr>
@@ -140,6 +166,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         {% for student in students %}
+                        {% set student_row_idx = loop.index0 %}
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-gray-500 dark:text-gray-400 font-medium">{{ loop.index }}</td>
                             <td class="sticky-col sticky-col-2 px-3 py-2">
@@ -151,9 +178,15 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <input type="text"
                                        inputmode="numeric"
                                        maxlength="3"
+                                       data-row-index="{{ student_row_idx }}"
+                                       data-col-index="{{ loop.index0 }}"
                                        :value="getMark('{{ student.student_id }}', {{ subject.id }})"
                                        @blur="saveMark('{{ student.student_id }}', {{ subject.id }}, $event.target.value)"
-                                       @keydown.enter="$event.target.blur()"
+                                       @keydown.enter="handleEnterKey($event)"
+                                       @keydown.up.prevent="handleArrowKey($event)"
+                                       @keydown.down.prevent="handleArrowKey($event)"
+                                       @keydown.left.prevent="handleArrowKey($event)"
+                                       @keydown.right.prevent="handleArrowKey($event)"
                                        @keypress="$event.charCode >= 48 && $event.charCode <= 57 || $event.preventDefault()"
                                        :disabled="!selectedExam || examIsLocked"
                                        :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
@@ -214,9 +247,12 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 <script>
 function marksSheet() {
     return {
-        selectedExam: '{{ selected_exam_id or "" }}',
-        selectedAcademicYearId: '{{ selected_academic_year_id or "" }}',
-        selectedTermId: '{{ selected_term_id or "" }}',
+        selectedExam: '',
+        selectedAcademicYearId: '',
+        selectedTermId: '',
+        defaultExamId: '{{ selected_exam_id or "" }}',
+        defaultAcademicYearId: '{{ selected_academic_year_id or "" }}',
+        defaultTermId: '{{ selected_term_id or "" }}',
         marks: {{ (student_marks or {})|tojson|safe }},
         loading: false,
         saveStatus: {},
@@ -242,54 +278,118 @@ function marksSheet() {
         },
 
         get filteredExams() {
-            return this.examList.filter(e => {
-                const yearOk = this.selectedAcademicYearId ? String(e.academic_year_id) === String(this.selectedAcademicYearId) : true;
-                const termOk = this.selectedTermId ? String(e.term_id) === String(this.selectedTermId) : true;
-                return yearOk && termOk;
+            const yearScoped = this.examList.filter(e =>
+                this.selectedAcademicYearId ? String(e.academic_year_id) === String(this.selectedAcademicYearId) : true
+            );
+            if (!this.selectedTermId) return [];
+            return yearScoped.filter(e => String(e.term_id) === String(this.selectedTermId));
+        },
+
+        chooseDefaultExam(candidates) {
+            if (!candidates || !candidates.length) return '';
+            const today = new Date().toISOString().slice(0, 10);
+            const todayExam = candidates.find(e => (e.exam_date || '') === today);
+            if (todayExam) return String(todayExam.id);
+
+            const sorted = [...candidates].sort((a, b) => {
+                const da = (a.exam_date || '');
+                const db = (b.exam_date || '');
+                if (da !== db) return db.localeCompare(da);
+                return Number(b.id || 0) - Number(a.id || 0);
             });
+            return sorted.length ? String(sorted[0].id) : '';
         },
 
         enforceDefaults() {
-            // 1) Year default (prefer current)
-            if (!this.selectedAcademicYearId) {
+            // 1) Year default (server default -> current -> first)
+            const hasSelectedYear = this.academicYears.some(y => String(y.id) === String(this.selectedAcademicYearId));
+            if (!hasSelectedYear) {
+                const byServer = this.academicYears.find(y => String(y.id) === String(this.defaultAcademicYearId));
                 const currentYear = this.academicYears.find(y => !!y.is_current);
-                const fallbackYear = currentYear || this.academicYears[0];
+                const fallbackYear = byServer || currentYear || this.academicYears[0];
                 this.selectedAcademicYearId = fallbackYear ? String(fallbackYear.id) : '';
             }
 
-            // 2) Term default within selected year (prefer current term)
-            if (!this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
-                const currentTerm = this.filteredTerms.find(t => !!t.is_current);
-                const fallbackTerm = currentTerm || this.filteredTerms[0];
+            // 2) Term default for selected year (server default -> current -> first in year)
+            const yearTerms = this.terms.filter(t => String(t.academic_year_id) === String(this.selectedAcademicYearId));
+            const hasSelectedTerm = yearTerms.some(t => String(t.id) === String(this.selectedTermId));
+            if (!hasSelectedTerm) {
+                const byServer = yearTerms.find(t => String(t.id) === String(this.defaultTermId));
+                const currentTerm = yearTerms.find(t => !!t.is_current);
+                const fallbackTerm = byServer || currentTerm || yearTerms[0];
                 this.selectedTermId = fallbackTerm ? String(fallbackTerm.id) : '';
             }
 
-            // 3) Exam default for selected year+term
-            if (!this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
-                this.selectedExam = '';
-            }
-            if (!this.selectedExam && this.filteredExams.length > 0) {
-                this.selectedExam = String(this.filteredExams[0].id);
+            // 3) Exam default for selected year+term (server default -> today -> latest)
+            const scopedExams = this.examList.filter(e =>
+                String(e.academic_year_id) === String(this.selectedAcademicYearId) &&
+                String(e.term_id) === String(this.selectedTermId)
+            );
+            const hasSelectedExam = scopedExams.some(e => String(e.id) === String(this.selectedExam));
+            if (!hasSelectedExam) {
+                const byServer = scopedExams.find(e => String(e.id) === String(this.defaultExamId));
+                this.selectedExam = byServer ? String(byServer.id) : this.chooseDefaultExam(scopedExams);
             }
         },
 
         init() {
-            // Run once now and once after DOM/options settle.
+            // Force defaults on load even when Alpine initial binding starts empty.
             this.enforceDefaults();
-            this.$nextTick(() => this.enforceDefaults());
-            if (this.selectedExam) {
+            this.$nextTick(async () => {
+                await this.loadExamsForFilters();
+                this.enforceDefaults();
+                if (this.selectedExam) this.onExamSelected();
+            });
+        },
+
+        async onAcademicYearChange() {
+            this.selectedExam = '';
+            this.enforceDefaults();
+            await this.loadExamsForFilters();
+            this.enforceDefaults();
+            this.onExamSelected();
+        },
+
+        async onTermChange() {
+            this.selectedExam = '';
+            this.enforceDefaults();
+            await this.loadExamsForFilters();
+            this.enforceDefaults();
+            this.onExamSelected();
+        },
+
+        resetToCurrent() {
+            this.selectedAcademicYearId = '';
+            this.selectedTermId = '';
+            this.selectedExam = '';
+            this.enforceDefaults();
+            this.loadExamsForFilters().then(() => {
+                this.enforceDefaults();
                 this.onExamSelected();
+            });
+        },
+
+        async loadExamsForFilters() {
+            if (!this.selectedAcademicYearId || !this.selectedTermId) {
+                this.examList = [];
+                return;
             }
-        },
-
-        onAcademicYearChange() {
-            this.enforceDefaults();
-            if (this.selectedExam) this.onExamSelected();
-        },
-
-        onTermChange() {
-            this.enforceDefaults();
-            if (this.selectedExam) this.onExamSelected();
+            try {
+                const response = await fetch('{{ employee_dash_url('exams-assessments/get-exams') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        level_id: this.levelId,
+                        academic_year_id: this.selectedAcademicYearId,
+                        term_id: this.selectedTermId
+                    })
+                });
+                const result = await response.json();
+                this.examList = (result && result.success) ? (result.exams || []) : [];
+            } catch (error) {
+                console.error('Exam load error:', error);
+                this.examList = [];
+            }
         },
 
         async onExamSelected() {
@@ -367,6 +467,71 @@ function marksSheet() {
             return '';
         },
 
+        handleEnterKey(event) {
+            event.preventDefault();
+            const currentInput = event.target;
+            const rowIndex = Number(currentInput.dataset.rowIndex);
+            const colIndex = Number(currentInput.dataset.colIndex);
+            const movingUp = event.shiftKey;
+
+            // Blur triggers @blur save on the current input.
+            currentInput.blur();
+
+            // Move vertically in the same subject column:
+            // Enter = down, Shift+Enter = up.
+            this.$nextTick(() => {
+                const maxRows = this.studentIds.length;
+                let nextRow = movingUp ? rowIndex - 1 : rowIndex + 1;
+
+                while (nextRow >= 0 && nextRow < maxRows) {
+                    const nextInput = document.querySelector(
+                        `.mark-input[data-row-index="${nextRow}"][data-col-index="${colIndex}"]`
+                    );
+                    if (nextInput && !nextInput.disabled) {
+                        nextInput.focus();
+                        nextInput.select();
+                        return;
+                    }
+                    nextRow += movingUp ? -1 : 1;
+                }
+            });
+        },
+
+        handleArrowKey(event) {
+            const currentInput = event.target;
+            const rowIndex = Number(currentInput.dataset.rowIndex);
+            const colIndex = Number(currentInput.dataset.colIndex);
+            const maxRows = this.studentIds.length;
+            const maxCols = this.subjectIds.length;
+
+            let rowStep = 0;
+            let colStep = 0;
+            if (event.key === 'ArrowUp') rowStep = -1;
+            if (event.key === 'ArrowDown') rowStep = 1;
+            if (event.key === 'ArrowLeft') colStep = -1;
+            if (event.key === 'ArrowRight') colStep = 1;
+
+            if (!rowStep && !colStep) return;
+
+            this.$nextTick(() => {
+                let nextRow = rowIndex + rowStep;
+                let nextCol = colIndex + colStep;
+
+                while (nextRow >= 0 && nextRow < maxRows && nextCol >= 0 && nextCol < maxCols) {
+                    const nextInput = document.querySelector(
+                        `.mark-input[data-row-index="${nextRow}"][data-col-index="${nextCol}"]`
+                    );
+                    if (nextInput && !nextInput.disabled) {
+                        nextInput.focus();
+                        nextInput.select();
+                        return;
+                    }
+                    nextRow += rowStep;
+                    nextCol += colStep;
+                }
+            });
+        },
+
         async saveMark(studentId, subjectId, value) {
             if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
             
@@ -408,6 +573,11 @@ function marksSheet() {
         },
 
         async loadMarks() {
+            if (!this.selectedExam) {
+                // Never show stale/all-exam marks when no exam is selected.
+                this.marks = {};
+                return;
+            }
             this.loading = true;
             
             try {

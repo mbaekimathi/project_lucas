@@ -480,5 +480,119 @@
 {% endblock %}
 
 {% block content %}
+{% set current_role = (current_employee_role if is_technician and current_employee_role else role)|lower %}
+{% if current_role in ['teacher', 'teachers'] %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20">
+    <div class="max-w-7xl mx-auto space-y-6">
+        <div class="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-5 sm:p-6 shadow-lg">
+            <h1 class="text-2xl font-bold">Teacher Timetables</h1>
+            {% if teacher_dashboard_name %}
+            <p class="text-emerald-100 mt-1">Welcome, {{ teacher_dashboard_name }}</p>
+            {% endif %}
+            <div class="mt-3 flex flex-wrap gap-2">
+                {% if teacher_dashboard_year %}
+                <span class="px-3 py-1 rounded-lg bg-white/20 text-sm font-semibold">{{ teacher_dashboard_year }}</span>
+                {% endif %}
+                {% if teacher_dashboard_term %}
+                <span class="px-3 py-1 rounded-lg bg-white/20 text-sm font-semibold">{{ teacher_dashboard_term }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center">
+                    <i class="fas fa-calendar-alt"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">In-Session Class Timetable</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Allocated classes, time slots, and subjects</p>
+                </div>
+            </div>
+            {% if teacher_class_timetable %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-700/40">
+                        <tr>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Day</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Time</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Class</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Subject</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">In Session</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for row in teacher_class_timetable %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.day or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.time or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.level_name or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">
+                                {{ row.subject_name or '-' }}
+                                {% if row.subject_code %}<span class="text-xs text-gray-500 dark:text-gray-400 ml-1">({{ row.subject_code }})</span>{% endif %}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded-md text-xs font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                    {{ row.in_session_count or 0 }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-6 text-sm text-gray-500 dark:text-gray-400">No class timetable found for the current term.</div>
+            {% endif %}
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-amber-600 text-white flex items-center justify-center">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">Exam Timetable</h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Exams allocated to you as supervisor</p>
+                </div>
+            </div>
+            {% if teacher_exam_timetable %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-700/40">
+                        <tr>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Date</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Time</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Exam</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Class</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Subject</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Session</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                        {% for row in teacher_exam_timetable %}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.exam_date or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.start_time or '-' }}{% if row.end_time %} - {{ row.end_time }}{% endif %}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.exam_name or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.level_name or '-' }}</td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">
+                                {{ row.subject_name or '-' }}
+                                {% if row.subject_code %}<span class="text-xs text-gray-500 dark:text-gray-400 ml-1">({{ row.subject_code }})</span>{% endif %}
+                            </td>
+                            <td class="px-4 py-3 text-gray-900 dark:text-white">{{ row.session_type or '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="p-6 text-sm text-gray-500 dark:text-gray-400">No exam timetable allocations found for the current term.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% else %}
 <div class="w-full min-h-[8rem]" aria-label="Dashboard"></div>
+{% endif %}
 {% endblock %}

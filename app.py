@@ -3389,26 +3389,46 @@ def register_employee():
         employee_id = request.form.get('employee_id', '').strip()  # Keep as is (numeric)
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
+
+        def render_registration_error(message):
+            return render_template(
+                'employee_registration_form.html',
+                register_error=message,
+                register_success='',
+                ask_login_after_register=False,
+                form_data={
+                    'full_name': full_name,
+                    'email': email,
+                    'phone': phone,
+                    'id_number': id_number,
+                    'employee_id': employee_id,
+                },
+            )
+
+        def render_registration_success(message):
+            return render_template(
+                'employee_registration_form.html',
+                register_error='',
+                register_success=message,
+                ask_login_after_register=True,
+                form_data={},
+            )
         
         # Validate required fields
         if not all([full_name, email, phone, id_number, employee_id, password, confirm_password]):
-            flash('Please fill in all required fields.', 'error')
-            return redirect(url_for('home'))
+            return render_registration_error('Please fill in all required fields.')
         
         # Validate employee ID is 6 digits
         if not employee_id.isdigit() or len(employee_id) != 6:
-            flash('Employee ID must be exactly 6 digits.', 'error')
-            return redirect(url_for('home'))
+            return render_registration_error('Employee ID must be exactly 6 digits.')
         
         # Validate passwords match
         if password != confirm_password:
-            flash('Passwords do not match.', 'error')
-            return redirect(url_for('home'))
+            return render_registration_error('Passwords do not match.')
         
         # Validate password strength
         if len(password) < 6:
-            flash('Password must be at least 6 characters long.', 'error')
-            return redirect(url_for('home'))
+            return render_registration_error('Password must be at least 6 characters long.')
         
         # Handle profile picture upload
         profile_picture = None
@@ -3433,14 +3453,12 @@ def register_employee():
                     # Check if employee ID already exists
                     cursor.execute("SELECT id FROM employees WHERE employee_id = %s", (employee_id,))
                     if cursor.fetchone():
-                        flash('Employee ID already exists. Please use a different ID.', 'error')
-                        return redirect(url_for('home'))
+                        return render_registration_error('Employee ID already exists. Please use a different ID.')
                     
                     # Check if email already exists
                     cursor.execute("SELECT id FROM employees WHERE email = %s", (email,))
                     if cursor.fetchone():
-                        flash('Email already registered. Please use a different email.', 'error')
-                        return redirect(url_for('home'))
+                        return render_registration_error('Email already registered. Please use a different email.')
                     
                     # Insert employee data
                     employee_sql = """
@@ -3461,15 +3479,17 @@ def register_employee():
                     except Exception as email_error:
                         print(f"Error sending welcome email: {email_error}")
                         # Don't fail the registration if email fails
-                    
-                    flash('Employee registration submitted successfully! Your application is pending approval. You will receive a welcome email shortly.', 'success')
+                    return render_registration_success(
+                        'Employee registration submitted successfully! Your application is pending approval. '
+                        'You will receive a welcome email shortly.'
+                    )
             except Exception as e:
                 print(f"Error saving employee registration: {e}")
                 try:
                     connection.rollback()
                 except:
                     pass  # Connection might already be closed
-                flash('An error occurred while submitting your registration. Please try again.', 'error')
+                return render_registration_error('An error occurred while submitting your registration. Please try again.')
             finally:
                 if connection:
                     try:
@@ -3477,12 +3497,18 @@ def register_employee():
                     except:
                         pass  # Connection might already be closed
         else:
-            flash('Database connection error. Please try again later.', 'error')
+            return render_registration_error('Database connection error. Please try again later.')
         
         return redirect(url_for('home'))
     
     # GET request - render employee registration form
-    return render_template('employee_registration_form.html')
+    return render_template(
+        'employee_registration_form.html',
+        form_data={},
+        register_error='',
+        register_success='',
+        ask_login_after_register=False,
+    )
 
 @app.route('/check-employee-id', methods=['POST'])
 def check_employee_id():
@@ -3524,33 +3550,32 @@ def check_employee_id():
 def login():
     if request.method == 'POST':
         role = request.form.get('role', '').strip()
-        password = request.form.get('password', '').strip()
+        raw_password = request.form.get('password', '')
+        password = raw_password.strip()
         code = (
             request.form.get('login_code', '').strip()
             or request.form.get('employee_id', '').strip()
             or request.form.get('admission_number', '').strip()
         )
 
-        def redirect_login_error():
-            """Return to login page so flash messages are visible (not lost on home redirect)."""
-            if role in ('employee', 'parent', 'student'):
-                return redirect(url_for('login', role=role))
-            return redirect(url_for('login'))
+        def render_login_error(message):
+            return render_template(
+                'login.html',
+                default_role=role if role in ('employee', 'parent', 'student') else '',
+                login_error=message,
+                login_code=code,
+            )
 
         if not role or not password:
-            flash('Please fill in all required fields.', 'error')
-            return redirect_login_error()
+            return render_login_error('Please fill in all required fields.')
 
         if role not in ('employee', 'parent', 'student'):
-            flash('Invalid role selected.', 'error')
-            return redirect_login_error()
+            return render_login_error('Invalid role selected.')
 
         if not code:
-            flash('Please enter your six-digit code.', 'error')
-            return redirect_login_error()
+            return render_login_error('Please enter your six-digit code.')
         if not code.isdigit() or len(code) != 6:
-            flash('Your sign-in code must be exactly 6 digits.', 'error')
-            return redirect_login_error()
+            return render_login_error('Your sign-in code must be exactly 6 digits.')
 
         connection = get_db_connection()
         if connection:
@@ -3566,27 +3591,46 @@ def login():
                         employee = cursor.fetchone()
 
                         if employee:
-                            if check_password_hash(employee['password_hash'], password):
+                            stored_hash = employee.get('password_hash') if isinstance(employee, dict) else None
+                            password_ok = False
+                            try:
+                                if stored_hash:
+                                    # Accept both exact entry and trimmed entry for compatibility.
+                                    password_ok = check_password_hash(stored_hash, raw_password) or check_password_hash(stored_hash, password)
+                            except Exception:
+                                password_ok = False
+
+                            # Legacy fallback: if a plaintext value is stored by mistake, migrate it on successful login.
+                            if not password_ok and stored_hash and (stored_hash == raw_password or stored_hash == password):
+                                try:
+                                    with connection.cursor() as update_cursor:
+                                        update_cursor.execute(
+                                            "UPDATE employees SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                                            (generate_password_hash(password), employee['id']),
+                                        )
+                                    connection.commit()
+                                    password_ok = True
+                                except Exception as migrate_err:
+                                    print(f"Password hash migration failed: {migrate_err}")
+                                    password_ok = False
+
+                            if password_ok:
                                 status = employee['status']
 
-                                if status == 'pending approval':
+                                if status in ['pending', 'pending approval']:
                                     flash(
                                         'Your account is pending approval. Please review the terms and conditions.',
                                         'info',
                                     )
                                     return redirect(url_for('terms_and_conditions'))
                                 if status in ['suspended', 'fired']:
-                                    flash(
-                                        'Your account has been suspended. Please contact the relevant authorities for assistance.',
-                                        'error',
+                                    return render_login_error(
+                                        'Your account has been suspended. Please contact the relevant authorities for assistance.'
                                     )
-                                    return redirect_login_error()
                                 if status == 'retired':
-                                    flash(
-                                        'Thank you for your service! Your account has been retired.',
-                                        'info',
+                                    return render_login_error(
+                                        'Thank you for your service! Your account has been retired.'
                                     )
-                                    return redirect_login_error()
                                 if status == 'active':
                                     session['user_id'] = employee['id']
                                     session['email'] = employee['email']
@@ -3596,16 +3640,13 @@ def login():
                                     session['profile_picture'] = employee.get('profile_picture')
                                     flash(f'Welcome back, {employee["full_name"]}!', 'success')
                                     return redirect(employee_dashboard_path())
-                                flash('Your account status is invalid. Please contact support.', 'error')
-                                return redirect_login_error()
-                            flash(
-                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
-                                'error',
+                                return render_login_error('Your account status is invalid. Please contact support.')
+                            return render_login_error(
+                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
                             )
                         else:
-                            flash(
-                                'No employee account matches this code. Check your six-digit employee code and try again.',
-                                'error',
+                            return render_login_error(
+                                'No employee account matches this code. Check your six-digit employee code and try again.'
                             )
                     else:
                         cursor.execute(
@@ -3624,15 +3665,13 @@ def login():
                         user = cursor.fetchone()
 
                         if not user:
-                            flash(
+                            return render_login_error(
                                 'No account matches this six-digit code for the role you selected. '
-                                'If you were given a portal code, use that; students may also try the last six characters of their student ID.',
-                                'error',
+                                'If you were given a portal code, use that; students may also try the last six characters of their student ID.'
                             )
-                        elif not check_password_hash(user['password_hash'], password):
-                            flash(
-                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.',
-                                'error',
+                        elif not (check_password_hash(user['password_hash'], raw_password) or check_password_hash(user['password_hash'], password)):
+                            return render_login_error(
+                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
                             )
                         else:
                             session['user_id'] = user['id']
@@ -3647,7 +3686,7 @@ def login():
                             return redirect(url_for(f'dashboard_{role}'))
             except Exception as e:
                 print(f"Login error: {e}")
-                flash('An error occurred during login. Please try again.', 'error')
+                return render_login_error('An error occurred during login. Please try again.')
             finally:
                 if connection:
                     try:
@@ -3655,15 +3694,13 @@ def login():
                     except Exception:
                         pass
         else:
-            flash('Database connection error. Please try again later.', 'error')
-
-        return redirect_login_error()
+            return render_login_error('Database connection error. Please try again later.')
 
     # GET request — optional ?role=employee|parent|student
     role = request.args.get('role', '')
     if role not in ('employee', 'parent', 'student'):
         role = ''
-    return render_template('login.html', default_role=role)
+    return render_template('login.html', default_role=role, login_code='')
 
 
 @app.route('/retrieve-password', methods=['GET', 'POST'])
@@ -4695,9 +4732,156 @@ def dashboard_employee():
     is_technician = user_role == 'technician'
     current_view_role = session.get('viewing_as_role', user_role)
     current_employee_role = session.get('viewing_as_employee_role', user_role if user_role in EMPLOYEE_SUB_ROLES else 'employee')
+    normalized_current_role = (current_employee_role or '').lower()
+    is_teacher_view = normalized_current_role in ('teacher', 'teachers')
     
     # List of all employee roles for technician to view
     employee_roles_list = list(EMPLOYEE_SUB_ROLES)
+
+    teacher_dashboard_name = None
+    teacher_dashboard_term = None
+    teacher_dashboard_year = None
+    teacher_class_timetable = []
+    teacher_exam_timetable = []
+
+    if is_teacher_view:
+        teacher_id = session.get('viewing_as_employee_id') if is_technician else session.get('user_id')
+        if teacher_id:
+            teacher_conn = get_db_connection()
+            if teacher_conn:
+                try:
+                    with teacher_conn.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT full_name
+                            FROM employees
+                            WHERE id = %s
+                        """, (teacher_id,))
+                        teacher_row = cursor.fetchone()
+                        if teacher_row:
+                            teacher_dashboard_name = teacher_row.get('full_name') if isinstance(teacher_row, dict) else teacher_row[0]
+
+                        current_academic_year_id = None
+                        current_term_id = None
+
+                        cursor.execute("""
+                            SELECT id, year_name
+                            FROM academic_years
+                            WHERE is_current = TRUE AND status = 'active'
+                            LIMIT 1
+                        """)
+                        year_row = cursor.fetchone()
+                        if year_row:
+                            current_academic_year_id = year_row.get('id') if isinstance(year_row, dict) else year_row[0]
+                            teacher_dashboard_year = year_row.get('year_name') if isinstance(year_row, dict) else year_row[1]
+
+                        if current_academic_year_id:
+                            cursor.execute("""
+                                SELECT id, term_name
+                                FROM terms
+                                WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                                LIMIT 1
+                            """, (current_academic_year_id,))
+                            term_row = cursor.fetchone()
+                            if term_row:
+                                current_term_id = term_row.get('id') if isinstance(term_row, dict) else term_row[0]
+                                teacher_dashboard_term = term_row.get('term_name') if isinstance(term_row, dict) else term_row[1]
+
+                        in_session_by_level = {}
+                        cursor.execute("""
+                            SELECT academic_level_id, COUNT(*) AS in_session_count
+                            FROM students
+                            WHERE status = 'in session' AND academic_level_id IS NOT NULL
+                            GROUP BY academic_level_id
+                        """)
+                        for row in (cursor.fetchall() or []):
+                            level_id = row.get('academic_level_id') if isinstance(row, dict) else (row[0] if len(row) > 0 else None)
+                            count_val = row.get('in_session_count', 0) if isinstance(row, dict) else (row[1] if len(row) > 1 else 0)
+                            if level_id is not None:
+                                in_session_by_level[level_id] = int(count_val or 0)
+
+                        if current_term_id:
+                            cursor.execute("""
+                                SELECT t.day_of_week, t.time_slot, al.level_name,
+                                       t.academic_level_id, s.subject_name, s.subject_code
+                                FROM timetables t
+                                LEFT JOIN academic_levels al ON t.academic_level_id = al.id
+                                LEFT JOIN subjects s ON t.subject_id = s.id
+                                WHERE t.teacher_id = %s AND t.term_id = %s
+                                ORDER BY
+                                    FIELD(t.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+                                    t.time_slot
+                            """, (teacher_id, current_term_id))
+                            for row in (cursor.fetchall() or []):
+                                if isinstance(row, dict):
+                                    day = row.get('day_of_week', '')
+                                    time = row.get('time_slot', '')
+                                    level_name = row.get('level_name', '')
+                                    level_id = row.get('academic_level_id')
+                                    subject_name = row.get('subject_name') or 'No Subject Assigned'
+                                    subject_code = row.get('subject_code') or ''
+                                else:
+                                    day = row[0] if len(row) > 0 else ''
+                                    time = row[1] if len(row) > 1 else ''
+                                    level_name = row[2] if len(row) > 2 else ''
+                                    level_id = row[3] if len(row) > 3 else None
+                                    subject_name = (row[4] if len(row) > 4 and row[4] else 'No Subject Assigned')
+                                    subject_code = row[5] if len(row) > 5 and row[5] else ''
+
+                                teacher_class_timetable.append({
+                                    'day': day,
+                                    'time': time,
+                                    'level_name': level_name,
+                                    'subject_name': subject_name,
+                                    'subject_code': subject_code,
+                                    'in_session_count': in_session_by_level.get(level_id, 0),
+                                })
+
+                            cursor.execute("""
+                                SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, e.session_type,
+                                       al.level_name, s.subject_name, s.subject_code, ay.year_name, tm.term_name
+                                FROM exams e
+                                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                                LEFT JOIN subjects s ON e.subject_id = s.id
+                                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                                LEFT JOIN terms tm ON e.term_id = tm.id
+                                WHERE e.supervisor_id = %s AND e.term_id = %s
+                                ORDER BY e.exam_date ASC, e.start_time ASC
+                            """, (teacher_id, current_term_id))
+                            for row in (cursor.fetchall() or []):
+                                if isinstance(row, dict):
+                                    exam_date = row.get('exam_date')
+                                    exam_date_str = exam_date.strftime('%Y-%m-%d') if exam_date and hasattr(exam_date, 'strftime') else (str(exam_date) if exam_date else '')
+                                    teacher_exam_timetable.append({
+                                        'exam_name': row.get('exam_name', ''),
+                                        'exam_date': exam_date_str,
+                                        'start_time': row.get('start_time', ''),
+                                        'end_time': row.get('end_time', ''),
+                                        'session_type': row.get('session_type', ''),
+                                        'level_name': row.get('level_name', ''),
+                                        'subject_name': row.get('subject_name', ''),
+                                        'subject_code': row.get('subject_code', ''),
+                                        'year_name': row.get('year_name', ''),
+                                        'term_name': row.get('term_name', ''),
+                                    })
+                                else:
+                                    exam_date = row[1] if len(row) > 1 else None
+                                    exam_date_str = exam_date.strftime('%Y-%m-%d') if exam_date and hasattr(exam_date, 'strftime') else (str(exam_date) if exam_date else '')
+                                    teacher_exam_timetable.append({
+                                        'exam_name': row[0] if len(row) > 0 else '',
+                                        'exam_date': exam_date_str,
+                                        'start_time': row[2] if len(row) > 2 else '',
+                                        'end_time': row[3] if len(row) > 3 else '',
+                                        'session_type': row[4] if len(row) > 4 else '',
+                                        'level_name': row[5] if len(row) > 5 else '',
+                                        'subject_name': row[6] if len(row) > 6 else '',
+                                        'subject_code': row[7] if len(row) > 7 else '',
+                                        'year_name': row[8] if len(row) > 8 else '',
+                                        'term_name': row[9] if len(row) > 9 else '',
+                                    })
+                except Exception as e:
+                    print(f"Error loading teacher dashboard timetable data: {e}")
+                finally:
+                    teacher_conn.close()
     
     return render_template('dashboards/dashboard_employee.html', 
                          role=session.get('role', 'employee'),
@@ -4705,7 +4889,12 @@ def dashboard_employee():
                          is_technician=is_technician,
                          current_view_role=current_view_role,
                          current_employee_role=current_employee_role,
-                         employee_roles_list=employee_roles_list)
+                         employee_roles_list=employee_roles_list,
+                         teacher_dashboard_name=teacher_dashboard_name,
+                         teacher_dashboard_term=teacher_dashboard_term,
+                         teacher_dashboard_year=teacher_dashboard_year,
+                         teacher_class_timetable=teacher_class_timetable,
+                         teacher_exam_timetable=teacher_exam_timetable)
 
 # Exams and Grades Route (for teachers)
 @app.route('/dashboard/employee/exams-and-grades')
@@ -5312,33 +5501,42 @@ def teacher_my_classes():
                             'subject_name': row[5] if len(row) > 5 else '',
                             'subject_code': row[6] if len(row) > 6 else ''
                         })
+
+                # Count students currently in session per academic level
+                in_session_by_level = {}
+                cursor.execute("""
+                    SELECT academic_level_id, COUNT(*) AS in_session_count
+                    FROM students
+                    WHERE status = 'in session' AND academic_level_id IS NOT NULL
+                    GROUP BY academic_level_id
+                """)
+                in_session_results = cursor.fetchall()
+                for row in in_session_results:
+                    if isinstance(row, dict):
+                        level_id = row.get('academic_level_id')
+                        in_session_count = row.get('in_session_count', 0)
+                    else:
+                        level_id = row[0] if len(row) > 0 else None
+                        in_session_count = row[1] if len(row) > 1 else 0
+                    if level_id is not None:
+                        in_session_by_level[level_id] = int(in_session_count or 0)
                 
                 # Get timetable entries for this teacher
                 if current_term_id:
                     cursor.execute("""
                         SELECT DISTINCT t.id, t.day_of_week, t.time_slot, t.academic_level_id,
-                               al.level_name, al.level_category
+                               al.level_name, al.level_category, t.subject_id,
+                               s.subject_name, s.subject_code
                         FROM timetables t
                         LEFT JOIN academic_levels al ON t.academic_level_id = al.id
+                        LEFT JOIN subjects s ON t.subject_id = s.id
                         WHERE t.teacher_id = %s AND t.term_id = %s
                         ORDER BY 
                             FIELD(t.day_of_week, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
                             t.time_slot
                     """, (teacher_id, current_term_id))
                     timetable_results = cursor.fetchall()
-                    
-                    # Create a map of academic_level_id to subjects for this teacher
-                    level_subjects_map = {}
-                    for assignment in assignments:
-                        level_id = assignment.get('academic_level_id')
-                        if level_id:
-                            if level_id not in level_subjects_map:
-                                level_subjects_map[level_id] = []
-                            level_subjects_map[level_id].append({
-                                'subject_name': assignment.get('subject_name', ''),
-                                'subject_code': assignment.get('subject_code', '')
-                            })
-                    
+
                     # Organize timetable by day and time
                     for row in timetable_results:
                         if isinstance(row, dict):
@@ -5346,38 +5544,39 @@ def teacher_my_classes():
                             time = row.get('time_slot', '')
                             level_name = row.get('level_name', '')
                             academic_level_id = row.get('academic_level_id')
+                            subject_name = row.get('subject_name') or ''
+                            subject_code = row.get('subject_code') or ''
+                            subject_id = row.get('subject_id')
                         else:
                             day = row[1] if len(row) > 1 else ''
                             time = row[2] if len(row) > 2 else ''
                             level_name = row[4] if len(row) > 4 else ''
                             academic_level_id = row[3] if len(row) > 3 else None
+                            subject_id = row[6] if len(row) > 6 else None
+                            subject_name = row[7] if len(row) > 7 and row[7] else ''
+                            subject_code = row[8] if len(row) > 8 and row[8] else ''
                         
                         if day and time:
                             if day not in timetable_data:
                                 timetable_data[day] = {}
                             if time not in timetable_data[day]:
                                 timetable_data[day][time] = []
-                            
-                            # Get subjects for this academic level
-                            subjects_for_level = level_subjects_map.get(academic_level_id, [])
-                            
-                            if subjects_for_level:
-                                # Add each subject as a separate entry
-                                for subject in subjects_for_level:
-                                    timetable_data[day][time].append({
-                                        'level_name': level_name,
-                                        'subject_name': subject.get('subject_name', ''),
-                                        'subject_code': subject.get('subject_code', ''),
-                                        'academic_level_id': academic_level_id
-                                    })
-                            else:
-                                # If no subjects assigned, just show the level
-                                timetable_data[day][time].append({
-                                    'level_name': level_name,
-                                    'subject_name': 'No Subject Assigned',
-                                    'subject_code': '',
-                                    'academic_level_id': academic_level_id
-                                })
+
+                            # If subject isn't set on this slot, fallback to assignment for same class.
+                            if not subject_name and subject_id and assignments:
+                                for assignment in assignments:
+                                    if assignment.get('academic_level_id') == academic_level_id and assignment.get('subject_id') == subject_id:
+                                        subject_name = assignment.get('subject_name', '') or ''
+                                        subject_code = assignment.get('subject_code', '') or ''
+                                        break
+
+                            timetable_data[day][time].append({
+                                'level_name': level_name,
+                                'subject_name': subject_name or 'No Subject Assigned',
+                                'subject_code': subject_code,
+                                'academic_level_id': academic_level_id,
+                                'in_session_count': in_session_by_level.get(academic_level_id, 0),
+                            })
                 
         except Exception as e:
             print(f"Error fetching teacher classes: {e}")
@@ -10888,7 +11087,7 @@ def assign_roles_approve():
                     SELECT id, employee_id, full_name, email, phone, id_number, role, status, 
                            profile_picture, created_at
                     FROM employees 
-                    WHERE status = 'pending approval'
+                    WHERE status IN ('pending', 'pending approval')
                     ORDER BY created_at DESC
                 """)
                 employees = cursor.fetchall()
@@ -10988,15 +11187,18 @@ def update_employee(employee_id):
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update employees.'}), 403
     
-    data = request.get_json()
-    full_name = data.get('full_name', '').strip().upper()
-    email = data.get('email', '').strip().lower()
-    phone = data.get('phone', '').strip()
-    id_number = data.get('id_number', '').strip().upper()
-    role = data.get('role', '').strip()
+    data = request.get_json(silent=True) or {}
+    full_name = str(data.get('full_name', '')).strip().upper()
+    email = str(data.get('email', '')).strip().lower()
+    phone = str(data.get('phone', '')).strip()
+    id_number = str(data.get('id_number', '')).strip().upper()
+    role = str(data.get('role', '')).strip()
+    new_password = str(data.get('new_password', ''))
     
-    if not all([full_name, email, phone]):
+    if not all([full_name, email, phone, role]):
         return jsonify({'success': False, 'message': 'Please fill in all required fields.'}), 400
+    if new_password and len(new_password.strip()) < 6:
+        return jsonify({'success': False, 'message': 'New password must be at least 6 characters long.'}), 400
     
     connection = get_db_connection()
     if not connection:
@@ -11014,14 +11216,35 @@ def update_employee(employee_id):
             if cursor.fetchone():
                 return jsonify({'success': False, 'message': 'Email is already in use by another employee.'}), 400
             
-            # Update employee
-            cursor.execute("""
-                UPDATE employees 
-                SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (full_name, email, phone, id_number, role, employee_id))
+            if new_password.strip():
+                password_hash = generate_password_hash(new_password.strip())
+                cursor.execute("""
+                    UPDATE employees 
+                    SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, password_hash = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (full_name, email, phone, id_number, role, password_hash, employee_id))
+
+                # Verify hash is stored and can be used for login before commit.
+                cursor.execute("SELECT password_hash FROM employees WHERE id = %s", (employee_id,))
+                row = cursor.fetchone()
+                stored_hash = row.get('password_hash') if isinstance(row, dict) else (row[0] if row else None)
+                try:
+                    if not stored_hash or not check_password_hash(stored_hash, new_password.strip()):
+                        connection.rollback()
+                        return jsonify({'success': False, 'message': 'Password update verification failed. Please try again.'}), 500
+                except Exception:
+                    connection.rollback()
+                    return jsonify({'success': False, 'message': 'Password format error. Please set the password again.'}), 500
+            else:
+                cursor.execute("""
+                    UPDATE employees 
+                    SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (full_name, email, phone, id_number, role, employee_id))
             
             connection.commit()
+            if new_password.strip():
+                return jsonify({'success': True, 'message': 'Employee updated successfully. Password changed.'})
             return jsonify({'success': True, 'message': 'Employee updated successfully.'})
             
     except Exception as e:
@@ -16472,6 +16695,107 @@ def exam_evaluation_eligible_supervisors():
         connection.close()
 
 
+@app.route('/dashboard/employee/exam-evaluation/allocation-options', methods=['POST'])
+@login_required
+def exam_evaluation_allocation_options():
+    """Return subjects and teacher mappings for one academic level."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        level_id = int(data.get('academic_level_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid academic level'}), 400
+
+    if level_id <= 0:
+        return jsonify({'success': False, 'message': 'Academic level is required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, level_name
+                FROM academic_levels
+                WHERE id = %s
+                LIMIT 1
+            """, (level_id,))
+            lvl = cursor.fetchone()
+            if not lvl:
+                return jsonify({'success': False, 'message': 'Academic level not found'}), 404
+
+            level_name = lvl.get('level_name', '') if isinstance(lvl, dict) else (lvl[1] if len(lvl) > 1 else '')
+
+            cursor.execute("""
+                SELECT DISTINCT
+                    s.id AS subject_id,
+                    s.subject_name,
+                    s.subject_code,
+                    e.id AS teacher_id,
+                    e.full_name,
+                    e.employee_id
+                FROM teacher_subject_assignments tsa
+                INNER JOIN subjects s ON s.id = tsa.subject_id
+                INNER JOIN employees e ON e.id = tsa.teacher_id
+                WHERE tsa.academic_level_id = %s
+                  AND COALESCE(s.status, 'active') = 'active'
+                  AND e.status = 'active'
+                  AND (e.role = 'teachers' OR e.role = 'teacher')
+                ORDER BY s.subject_name ASC, e.full_name ASC
+            """, (level_id,))
+            rows = cursor.fetchall() or []
+
+            subjects = []
+            subject_seen = set()
+            teachers_by_subject = {}
+            for r in rows:
+                subject_id = r.get('subject_id') if isinstance(r, dict) else r[0]
+                subject_name = r.get('subject_name', '') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')
+                subject_code = r.get('subject_code', '') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
+                teacher_id = r.get('teacher_id') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+                full_name = r.get('full_name', '') if isinstance(r, dict) else (r[4] if len(r) > 4 else '')
+                employee_id = r.get('employee_id', '') if isinstance(r, dict) else (r[5] if len(r) > 5 else '')
+
+                if subject_id and subject_id not in subject_seen:
+                    subject_seen.add(subject_id)
+                    subjects.append({
+                        'id': int(subject_id),
+                        'subject_name': subject_name or '',
+                        'subject_code': subject_code or '',
+                    })
+
+                if subject_id and teacher_id:
+                    key = str(int(subject_id))
+                    teachers_by_subject.setdefault(key, [])
+                    teachers_by_subject[key].append({
+                        'id': int(teacher_id),
+                        'full_name': full_name or '',
+                        'employee_id': employee_id or '',
+                    })
+
+            return jsonify({
+                'success': True,
+                'level_name': level_name or '',
+                'subjects': subjects,
+                'teachers_by_subject': teachers_by_subject,
+            })
+    except Exception as e:
+        print(f"Error allocation options: {e}")
+        return jsonify({'success': False, 'message': 'Could not load allocation options'}), 500
+    finally:
+        connection.close()
+
+
 # Delete Exam Route
 @app.route('/dashboard/employee/exam-evaluation/delete', methods=['POST'])
 @login_required
@@ -19999,28 +20323,55 @@ def students_by_academic_level(level_id):
                         if term_obj['is_current'] and not current_term_id:
                             current_term_id = term_obj['id']
 
-                    if is_teacher and teacher_id:
-                        cursor.execute("""
-                            SELECT e.exam_name, MIN(e.id) AS id,
-                                   e.academic_year_id, e.term_id
-                            FROM exams e
-                            INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
-                                AND e.subject_id = tsa.subject_id
-                            WHERE e.academic_level_id = %s 
-                              AND tsa.teacher_id = %s
-                            GROUP BY e.exam_name, e.academic_year_id, e.term_id
-                            HAVING MAX(COALESCE(e.is_locked, 0)) = 0
-                            ORDER BY e.academic_year_id DESC, e.term_id DESC, e.exam_name ASC
-                        """, (level_id, teacher_id))
-                    else:
-                        cursor.execute("""
-                            SELECT exam_name, MIN(id) AS id, academic_year_id, term_id
-                            FROM exams
-                            WHERE academic_level_id = %s
-                            GROUP BY exam_name, academic_year_id, term_id
-                            HAVING MAX(COALESCE(is_locked, 0)) = 0
-                            ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
-                        """, (level_id,))
+                    try:
+                        if is_teacher and teacher_id:
+                            cursor.execute("""
+                                SELECT e.exam_name, MIN(e.id) AS id,
+                                       e.academic_year_id, e.term_id,
+                                       MAX(e.exam_date) AS exam_date,
+                                       MAX(COALESCE(e.is_locked, 0)) AS is_locked
+                                FROM exams e
+                                INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
+                                    AND e.subject_id = tsa.subject_id
+                                WHERE e.academic_level_id = %s 
+                                  AND tsa.teacher_id = %s
+                                GROUP BY e.exam_name, e.academic_year_id, e.term_id
+                                ORDER BY e.academic_year_id DESC, e.term_id DESC, e.exam_name ASC
+                            """, (level_id, teacher_id))
+                        else:
+                            cursor.execute("""
+                                SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
+                                       MAX(COALESCE(is_locked, 0)) AS is_locked
+                                FROM exams
+                                WHERE academic_level_id = %s
+                                GROUP BY exam_name, academic_year_id, term_id
+                                ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
+                            """, (level_id,))
+                    except Exception:
+                        # Backward compatibility when exams.is_locked is missing.
+                        if is_teacher and teacher_id:
+                            cursor.execute("""
+                                SELECT e.exam_name, MIN(e.id) AS id,
+                                       e.academic_year_id, e.term_id,
+                                       MAX(e.exam_date) AS exam_date,
+                                       0 AS is_locked
+                                FROM exams e
+                                INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
+                                    AND e.subject_id = tsa.subject_id
+                                WHERE e.academic_level_id = %s 
+                                  AND tsa.teacher_id = %s
+                                GROUP BY e.exam_name, e.academic_year_id, e.term_id
+                                ORDER BY e.academic_year_id DESC, e.term_id DESC, e.exam_name ASC
+                            """, (level_id, teacher_id))
+                        else:
+                            cursor.execute("""
+                                SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
+                                       0 AS is_locked
+                                FROM exams
+                                WHERE academic_level_id = %s
+                                GROUP BY exam_name, academic_year_id, term_id
+                                ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
+                            """, (level_id,))
                     exams_results = cursor.fetchall()
                     for row in exams_results:
                         exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[0] or '').strip()
@@ -20031,7 +20382,8 @@ def students_by_academic_level(level_id):
                             'exam_name': exam_name,
                             'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
                             'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
-                            'is_locked': False
+                            'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
+                            'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False)
                         })
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
@@ -20148,15 +20500,24 @@ def students_by_academic_level(level_id):
         if not current_term_id and terms:
             current_term_id = terms[0].get('id')
 
-    # Default exam: unlocked exam in current year/term, else first unlocked exam
+    # Default exam: prefer current year+term exam closest to today, else most recent in the same term, else first available
     selected_exam_id = None
     if exams:
-        selected = next(
-            (e for e in exams if e.get('academic_year_id') == current_year_id and e.get('term_id') == current_term_id),
-            None
-        )
+        unlocked_exams = [e for e in exams if not e.get('is_locked')]
+        exams_for_default = unlocked_exams if unlocked_exams else exams
+        selected = None
+        current_scope_exams = [
+            e for e in exams_for_default
+            if str(e.get('academic_year_id')) == str(current_year_id) and str(e.get('term_id')) == str(current_term_id)
+        ]
+        if current_scope_exams:
+            today_str = datetime.now().date().isoformat()
+            selected = next((e for e in current_scope_exams if (e.get('exam_date') or '') == today_str), None)
+            if not selected:
+                current_scope_exams.sort(key=lambda x: ((x.get('exam_date') or ''), int(x.get('id') or 0)), reverse=True)
+                selected = current_scope_exams[0]
         if not selected:
-            selected = exams[0]
+            selected = exams_for_default[0]
         if selected:
             selected_exam_id = selected.get('id')
 
@@ -20266,40 +20627,70 @@ def get_marks_by_exam():
                                 'message': 'This exam is locked. Marks cannot be viewed or edited.',
                                 'locked': True
                             }), 403
+                        # Resolve all exam row IDs belonging to the same logical exam group
+                        # (same level + name + year + term). Different roles can receive a different
+                        # representative ID for the same group, so we must load by group IDs.
+                        cursor.execute("""
+                            SELECT academic_level_id, exam_name, academic_year_id, term_id
+                            FROM exams
+                            WHERE id = %s
+                        """, (exam_id,))
+                        selected_exam_row = cursor.fetchone()
+                        if not selected_exam_row:
+                            return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+
+                        selected_level_id = selected_exam_row.get('academic_level_id') if isinstance(selected_exam_row, dict) else selected_exam_row[0]
+                        selected_exam_name = selected_exam_row.get('exam_name') if isinstance(selected_exam_row, dict) else selected_exam_row[1]
+                        selected_year_id = selected_exam_row.get('academic_year_id') if isinstance(selected_exam_row, dict) else selected_exam_row[2]
+                        selected_term_id = selected_exam_row.get('term_id') if isinstance(selected_exam_row, dict) else selected_exam_row[3]
+
+                        cursor.execute("""
+                            SELECT id
+                            FROM exams
+                            WHERE academic_level_id = %s
+                              AND exam_name = %s
+                              AND academic_year_id = %s
+                              AND term_id = %s
+                        """, (selected_level_id, selected_exam_name, selected_year_id, selected_term_id))
+                        exam_group_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])]
+                        if not exam_group_ids:
+                            exam_group_ids = [exam_id]
                         # Get marks filtered by exam
                         try:
+                            exam_placeholders = ','.join(['%s'] * len(exam_group_ids))
                             if is_teacher and teacher_id and teacher_subject_ids:
                                 # Filter by teacher's subjects
-                                placeholders = ','.join(['%s'] * len(teacher_subject_ids))
+                                subject_placeholders = ','.join(['%s'] * len(teacher_subject_ids))
                                 cursor.execute(f"""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
                                     FROM student_marks sm
                                     INNER JOIN exams e ON sm.exam_id = e.id
                                     WHERE sm.student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
-                                    AND sm.exam_id = %s
-                                    AND sm.subject_id IN ({placeholders})
-                                """, [level_name, exam_id] + teacher_subject_ids)
+                                    AND sm.exam_id IN ({exam_placeholders})
+                                    AND sm.subject_id IN ({subject_placeholders})
+                                """, [level_name] + exam_group_ids + teacher_subject_ids)
                             else:
                                 cursor.execute("""
                                     SELECT sm.student_id, sm.subject_id, sm.marks, sm.exam_id
                                     FROM student_marks sm
                                     INNER JOIN exams e ON sm.exam_id = e.id
                                     WHERE sm.student_id IN (SELECT student_id FROM students WHERE current_grade = %s)
-                                    AND sm.exam_id = %s
-                                """, (level_name, exam_id))
+                                    AND sm.exam_id IN ({})
+                                """.format(exam_placeholders), [level_name] + exam_group_ids)
                             marks_results = cursor.fetchall()
                             
                             for mark_row in marks_results:
                                 student_id = mark_row.get('student_id') if isinstance(mark_row, dict) else mark_row[0]
                                 subject_id = mark_row.get('subject_id') if isinstance(mark_row, dict) else mark_row[1]
                                 marks = mark_row.get('marks') if isinstance(mark_row, dict) else mark_row[2]
-                                exam_id_from_db = mark_row.get('exam_id') if isinstance(mark_row, dict) else mark_row[3]
                                 
                                 if student_id not in student_marks:
                                     student_marks[student_id] = {}
                                 if subject_id not in student_marks[student_id]:
                                     student_marks[student_id][subject_id] = {}
-                                student_marks[student_id][subject_id][exam_id_from_db] = marks
+                                # Normalize to requested exam_id so UI can render consistently
+                                # even if subject rows use different underlying exam IDs.
+                                student_marks[student_id][subject_id][exam_id] = marks
                         except Exception as e:
                             print(f"Marks table not found or error: {e}")
                             pass
@@ -20371,6 +20762,118 @@ def get_marks_by_exam():
         print(f"Error in get_marks_by_exam: {e}")
         return jsonify({'success': False, 'message': 'An error occurred.'}), 500
 
+@app.route('/dashboard/employee/exams-assessments/get-exams', methods=['POST'])
+@login_required
+def get_exams_for_filters():
+    """Get exams for selected academic level, year and term."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
+        return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
+
+    teacher_id = None
+    if is_teacher:
+        if is_technician:
+            teacher_id = session.get('viewing_as_employee_id')
+        else:
+            teacher_id = session.get('user_id')
+
+    try:
+        data = request.get_json() or {}
+        level_id = data.get('level_id')
+        academic_year_id = data.get('academic_year_id')
+        term_id = data.get('term_id')
+
+        if not level_id or not academic_year_id or not term_id:
+            return jsonify({'success': False, 'message': 'Missing required filters.'}), 400
+
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
+
+        try:
+            exams = []
+            with connection.cursor() as cursor:
+                try:
+                    if is_teacher and teacher_id:
+                        cursor.execute("""
+                            SELECT e.exam_name, MIN(e.id) AS id, e.academic_year_id, e.term_id,
+                                   MAX(e.exam_date) AS exam_date, MAX(COALESCE(e.is_locked, 0)) AS is_locked
+                            FROM exams e
+                            INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id
+                                AND e.subject_id = tsa.subject_id
+                            WHERE e.academic_level_id = %s
+                              AND e.academic_year_id = %s
+                              AND e.term_id = %s
+                              AND tsa.teacher_id = %s
+                            GROUP BY e.exam_name, e.academic_year_id, e.term_id
+                            ORDER BY MAX(e.exam_date) DESC, e.exam_name ASC
+                        """, (level_id, academic_year_id, term_id, teacher_id))
+                    else:
+                        cursor.execute("""
+                            SELECT exam_name, MIN(id) AS id, academic_year_id, term_id,
+                                   MAX(exam_date) AS exam_date, MAX(COALESCE(is_locked, 0)) AS is_locked
+                            FROM exams
+                            WHERE academic_level_id = %s
+                              AND academic_year_id = %s
+                              AND term_id = %s
+                            GROUP BY exam_name, academic_year_id, term_id
+                            ORDER BY MAX(exam_date) DESC, exam_name ASC
+                        """, (level_id, academic_year_id, term_id))
+                except Exception:
+                    # Backward compatibility: older DBs may not have exams.is_locked yet.
+                    if is_teacher and teacher_id:
+                        cursor.execute("""
+                            SELECT e.exam_name, MIN(e.id) AS id, e.academic_year_id, e.term_id,
+                                   MAX(e.exam_date) AS exam_date, 0 AS is_locked
+                            FROM exams e
+                            INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id
+                                AND e.subject_id = tsa.subject_id
+                            WHERE e.academic_level_id = %s
+                              AND e.academic_year_id = %s
+                              AND e.term_id = %s
+                              AND tsa.teacher_id = %s
+                            GROUP BY e.exam_name, e.academic_year_id, e.term_id
+                            ORDER BY MAX(e.exam_date) DESC, e.exam_name ASC
+                        """, (level_id, academic_year_id, term_id, teacher_id))
+                    else:
+                        cursor.execute("""
+                            SELECT exam_name, MIN(id) AS id, academic_year_id, term_id,
+                                   MAX(exam_date) AS exam_date, 0 AS is_locked
+                            FROM exams
+                            WHERE academic_level_id = %s
+                              AND academic_year_id = %s
+                              AND term_id = %s
+                            GROUP BY exam_name, academic_year_id, term_id
+                            ORDER BY MAX(exam_date) DESC, exam_name ASC
+                        """, (level_id, academic_year_id, term_id))
+
+                for row in (cursor.fetchall() or []):
+                    exam_name = (row.get('exam_name', '') if isinstance(row, dict) else row[0]) or ''
+                    if not exam_name.strip():
+                        continue
+                    exams.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[1],
+                        'exam_name': exam_name.strip(),
+                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
+                        'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
+                        'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
+                        'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
+                    })
+
+            return jsonify({'success': True, 'exams': exams})
+        finally:
+            connection.close()
+    except Exception as e:
+        print(f"Error in get_exams_for_filters: {e}")
+        return jsonify({'success': False, 'message': 'An error occurred while fetching exams.'}), 500
+
 # API Endpoint to save marks
 @app.route('/dashboard/employee/exams-assessments/save-marks', methods=['POST'])
 @login_required
@@ -20437,6 +20940,38 @@ def save_marks():
                     assignment = cursor.fetchone()
                     if not assignment:
                         return jsonify({'success': False, 'message': 'You are not assigned to this subject for this level.'}), 403
+
+                # Resolve the subject-specific exam row ID for this logical exam
+                # (same level + exam_name + year + term + subject). This ensures marks entered by
+                # teachers are visible to other roles that may use a different representative exam ID.
+                resolved_exam_id = exam_id
+                cursor.execute("""
+                    SELECT academic_level_id, exam_name, academic_year_id, term_id
+                    FROM exams
+                    WHERE id = %s
+                """, (exam_id,))
+                exam_scope_row = cursor.fetchone()
+                if not exam_scope_row:
+                    return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+                exam_scope_level_id = exam_scope_row.get('academic_level_id') if isinstance(exam_scope_row, dict) else exam_scope_row[0]
+                exam_scope_name = exam_scope_row.get('exam_name') if isinstance(exam_scope_row, dict) else exam_scope_row[1]
+                exam_scope_year_id = exam_scope_row.get('academic_year_id') if isinstance(exam_scope_row, dict) else exam_scope_row[2]
+                exam_scope_term_id = exam_scope_row.get('term_id') if isinstance(exam_scope_row, dict) else exam_scope_row[3]
+
+                cursor.execute("""
+                    SELECT id
+                    FROM exams
+                    WHERE academic_level_id = %s
+                      AND exam_name = %s
+                      AND academic_year_id = %s
+                      AND term_id = %s
+                      AND subject_id = %s
+                    ORDER BY id ASC
+                    LIMIT 1
+                """, (exam_scope_level_id, exam_scope_name, exam_scope_year_id, exam_scope_term_id, subject_id))
+                subject_exam_row = cursor.fetchone()
+                if subject_exam_row:
+                    resolved_exam_id = subject_exam_row.get('id') if isinstance(subject_exam_row, dict) else subject_exam_row[0]
                 
                 # Validate marks (should be numeric or empty/null)
                 marks_value = None
@@ -20452,7 +20987,7 @@ def save_marks():
                 cursor.execute("""
                     SELECT id FROM student_marks
                     WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                """, (student_id, subject_id, exam_id))
+                """, (student_id, subject_id, resolved_exam_id))
                 existing = cursor.fetchone()
                 
                 if existing:
@@ -20462,20 +20997,20 @@ def save_marks():
                             UPDATE student_marks
                             SET marks = %s, updated_at = CURRENT_TIMESTAMP
                             WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                        """, (marks_value, student_id, subject_id, exam_id))
+                        """, (marks_value, student_id, subject_id, resolved_exam_id))
                     else:
                         # Delete mark if empty
                         cursor.execute("""
                             DELETE FROM student_marks
                             WHERE student_id = %s AND subject_id = %s AND exam_id = %s
-                        """, (student_id, subject_id, exam_id))
+                        """, (student_id, subject_id, resolved_exam_id))
                 else:
                     # Insert new mark (only if marks value is provided)
                     if marks_value is not None:
                         cursor.execute("""
                             INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
                             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                        """, (student_id, subject_id, exam_id, marks_value))
+                        """, (student_id, subject_id, resolved_exam_id, marks_value))
                 
                 connection.commit()
                 return jsonify({

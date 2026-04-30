@@ -43,12 +43,22 @@
                     <span>{{ allocation_count }} allocation(s)</span>
                 </p>
             </div>
-            {% if exam_meta.is_locked %}
-            <div class="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm font-medium shrink-0">
-                <i class="fas fa-lock"></i>
-                This exam is locked. Timetables are view-only until it is unlocked on the registration page.
+            <div class="flex flex-wrap items-center gap-2">
+                {% if not exam_meta.is_locked %}
+                <button type="button"
+                        id="erd-open-add-modal"
+                        class="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-md">
+                    <i class="fas fa-plus"></i>
+                    Allocate Other Class
+                </button>
+                {% endif %}
+                {% if exam_meta.is_locked %}
+                <div class="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm font-medium shrink-0">
+                    <i class="fas fa-lock"></i>
+                    This exam is locked. Timetables are view-only until it is unlocked on the registration page.
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
         </div>
     </div>
 
@@ -434,11 +444,57 @@
     </div>
 </div>
 
+<div id="erd-add-modal" class="fixed inset-0 z-[121] hidden">
+    <div id="erd-add-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
+        <div class="w-full max-w-2xl max-h-[95vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
+            <div class="px-4 sm:px-5 py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white flex items-center justify-between gap-3">
+                <h3 class="font-bold text-base sm:text-lg">Allocate Another Class</h3>
+                <button id="erd-add-close-modal" type="button" class="w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="erd-add-form" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
+                        <select id="erd-add-level" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
+                        <input id="erd-add-date" type="date" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
+                        <input id="erd-add-venue" type="text" readonly class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Defaulted from selected class (academic level).</p>
+                    </div>
+                </div>
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 sm:p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200">Subject allocations</h4>
+                        <button id="erd-add-row-btn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white">
+                            <i class="fas fa-plus"></i> Add Subject
+                        </button>
+                    </div>
+                    <div id="erd-add-rows" class="space-y-3"></div>
+                </div>
+                <p id="erd-add-error" class="hidden text-sm text-red-600 dark:text-red-400"></p>
+                <div class="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-2">
+                    <button id="erd-add-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
+                    <button id="erd-add-save-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold">Allocate Selected Subjects</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script type="application/json" id="erd-analytics-bundle">{{ analytics|tojson|safe }}</script>
 <script type="application/json" id="erd-exam-rows">{{ exam_rows|tojson|safe }}</script>
 <script type="application/json" id="erd-levels">{{ academic_levels|tojson|safe }}</script>
 <script type="application/json" id="erd-subjects">{{ subjects|tojson|safe }}</script>
 <script type="application/json" id="erd-teachers">{{ teachers|tojson|safe }}</script>
+<script type="application/json" id="erd-exam-meta">{{ exam_meta|tojson|safe }}</script>
 
 <script>
 (function () {
@@ -746,10 +802,12 @@
 <script>
 (function () {
     const rows = JSON.parse(document.getElementById('erd-exam-rows')?.textContent || '[]');
+    const examMeta = JSON.parse(document.getElementById('erd-exam-meta')?.textContent || '{}');
     const levels = JSON.parse(document.getElementById('erd-levels')?.textContent || '[]');
     const subjects = JSON.parse(document.getElementById('erd-subjects')?.textContent || '[]');
     const teachers = JSON.parse(document.getElementById('erd-teachers')?.textContent || '[]');
     const byId = new Map(rows.map(r => [String(r.id), r]));
+    const SAVE_URL = {{ employee_dash_url('exam-evaluation/save')|tojson }};
 
     const modal = document.getElementById('erd-edit-modal');
     const backdrop = document.getElementById('erd-edit-backdrop');
@@ -1102,6 +1160,296 @@
                 .catch(function () { alert('Could not delete.'); });
         });
     });
+
+    // Add-allocation modal
+    const addModal = document.getElementById('erd-add-modal');
+    const addOpenBtn = document.getElementById('erd-open-add-modal');
+    const addBackdrop = document.getElementById('erd-add-backdrop');
+    const addCloseBtn = document.getElementById('erd-add-close-modal');
+    const addCancelBtn = document.getElementById('erd-add-cancel-btn');
+    const addForm = document.getElementById('erd-add-form');
+    const addErrEl = document.getElementById('erd-add-error');
+    const addSaveBtn = document.getElementById('erd-add-save-btn');
+    const addLevelEl = document.getElementById('erd-add-level');
+    const addDateEl = document.getElementById('erd-add-date');
+    const addVenueEl = document.getElementById('erd-add-venue');
+    const addRowsWrap = document.getElementById('erd-add-rows');
+    const addRowBtn = document.getElementById('erd-add-row-btn');
+    const ALLOC_OPTIONS_URL = {{ employee_dash_url('exam-evaluation/allocation-options')|tojson }};
+    const baseExamId = rows.length ? Number(rows[0].id || 0) : 0;
+    let addOptions = { subjects: [], teachers_by_subject: {} };
+
+    if (addLevelEl) {
+        fillSelect(addLevelEl, levels, function(x) { return x.level_name + (x.level_category ? ' (' + x.level_category + ')' : ''); });
+        addLevelEl.addEventListener('change', async function () {
+            await loadAllocationOptionsForLevel();
+            seedVenueFromLevel();
+        });
+    }
+
+    function closeAddModal() {
+        if (!addModal) return;
+        addModal.classList.add('hidden');
+        addErrEl.classList.add('hidden');
+        addErrEl.textContent = '';
+    }
+    async function openAddModal() {
+        if (!addModal) return;
+        addErrEl.classList.add('hidden');
+        addErrEl.textContent = '';
+        addModal.classList.remove('hidden');
+        addDateEl.value = '';
+        addVenueEl.value = '';
+        if (addRowsWrap) addRowsWrap.innerHTML = '';
+        try {
+            await loadAllocationOptionsForLevel();
+            seedVenueFromLevel();
+            addAllocationRow();
+        } catch (e) {
+            console.error('Open add-allocation modal failed:', e);
+        }
+    }
+
+    function levelNameById(levelId) {
+        const lv = levels.find(function (x) { return String(x.id) === String(levelId); });
+        return lv ? String(lv.level_name || '') : '';
+    }
+    function seedVenueFromLevel() {
+        addVenueEl.value = (levelNameById(addLevelEl.value) || '').toUpperCase();
+    }
+    async function loadAllocationOptionsForLevel() {
+        const levelId = parseInt(addLevelEl.value || '0', 10);
+        if (!levelId) {
+            addOptions = { subjects: [], teachers_by_subject: {} };
+            return;
+        }
+        try {
+            const res = await fetch(ALLOC_OPTIONS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ academic_level_id: levelId })
+            });
+            const j = await res.json();
+            addOptions = (j && j.success) ? { subjects: j.subjects || [], teachers_by_subject: j.teachers_by_subject || {} } : { subjects: [], teachers_by_subject: {} };
+        } catch (e) {
+            addOptions = { subjects: [], teachers_by_subject: {} };
+        }
+    }
+    function newAllocationRowHtml(idx) {
+        const subjOptions = ['<option value="">Select subject</option>'].concat((addOptions.subjects || []).map(function (s) {
+            const label = (s.subject_name || '') + ((s.subject_code || '') ? (' (' + s.subject_code + ')') : '');
+            return '<option value="' + String(s.id) + '">' + label + '</option>';
+        })).join('');
+        return '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3" data-row-idx="' + idx + '">' +
+            '<div class="flex items-center justify-between mb-2"><p class="text-xs font-semibold text-gray-500">Subject row ' + (idx + 1) + '</p>' +
+            '<button type="button" class="text-xs text-red-600 font-semibold" data-remove-row="' + idx + '">Remove</button></div>' +
+            '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">' +
+            '<div><label class="block text-xs font-semibold mb-1">Subject</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-subject="' + idx + '">' + subjOptions + '</select></div>' +
+            '<div><label class="block text-xs font-semibold mb-1">Session</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-session="' + idx + '"><option value="">Select session</option><option value="MORNING">Morning</option><option value="MIDDAY">Mid Day</option><option value="AFTERNOON">Afternoon</option><option value="EVENING">Evening</option><option value="CUSTOM">Custom</option></select></div>' +
+            '<div><label class="block text-xs font-semibold mb-1">Teacher</label><select class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-teacher="' + idx + '"><option value="">Select teacher</option></select></div>' +
+            '</div>' +
+            '<div class="hidden grid grid-cols-1 md:grid-cols-3 gap-3 mt-3" data-row-custom="' + idx + '">' +
+            '<div><label class="block text-xs font-semibold mb-1">Start</label><input type="time" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-start="' + idx + '"></div>' +
+            '<div><label class="block text-xs font-semibold mb-1">Duration</label><input type="number" min="1" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800" data-row-duration="' + idx + '"></div>' +
+            '<div><label class="block text-xs font-semibold mb-1">End</label><input type="text" readonly class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700" data-row-end="' + idx + '"></div>' +
+            '</div>' +
+            '<p class="mt-2 text-xs text-amber-700 hidden" data-row-msg="' + idx + '"></p>' +
+            '</div>';
+    }
+    function availableTeachersBySubject(subjectId) {
+        return (addOptions.teachers_by_subject && addOptions.teachers_by_subject[String(subjectId)]) ? addOptions.teachers_by_subject[String(subjectId)] : [];
+    }
+    function addAllocationRow() {
+        const idx = addRowsWrap.querySelectorAll('[data-row-idx]').length;
+        addRowsWrap.insertAdjacentHTML('beforeend', newAllocationRowHtml(idx));
+        wireRow(idx);
+    }
+    function setRowTeacherOptions(idx, list, conflictsMap) {
+        const sel = addRowsWrap.querySelector('[data-row-teacher="' + idx + '"]');
+        if (!sel) return;
+        const opts = ['<option value="">Select teacher</option>'];
+        (list || []).forEach(function (t) {
+            const busy = conflictsMap && conflictsMap[String(t.id)] && conflictsMap[String(t.id)].length;
+            const label = (t.full_name || '') + (t.employee_id ? (' (' + t.employee_id + ')') : '') + (busy ? ' - busy at this time' : '');
+            opts.push('<option value="' + String(t.id) + '"' + (busy ? ' style="color:#b45309"' : '') + '>' + label + '</option>');
+        });
+        sel.innerHTML = opts.join('');
+    }
+    function minutesFromTime(t) {
+        if (!t) return null;
+        const p = String(t).split(':');
+        if (p.length < 2) return null;
+        const h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    }
+    function computeEnd(start, duration) {
+        const s = minutesFromTime(start);
+        const d = parseInt(duration || '0', 10);
+        if (s === null || !d || d <= 0) return '';
+        const e = (s + d) % (24 * 60);
+        return String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0');
+    }
+    async function checkRowAvailability(idx) {
+        const subjectEl = addRowsWrap.querySelector('[data-row-subject="' + idx + '"]');
+        const sessionEl = addRowsWrap.querySelector('[data-row-session="' + idx + '"]');
+        const startEl = addRowsWrap.querySelector('[data-row-start="' + idx + '"]');
+        const durationEl = addRowsWrap.querySelector('[data-row-duration="' + idx + '"]');
+        const msgEl = addRowsWrap.querySelector('[data-row-msg="' + idx + '"]');
+        const subjectId = parseInt(subjectEl && subjectEl.value || '0', 10);
+        const teacherPool = availableTeachersBySubject(subjectId);
+        setRowTeacherOptions(idx, teacherPool, {});
+        if (!baseExamId || !subjectId || !addDateEl.value || !sessionEl || !sessionEl.value) {
+            if (msgEl) msgEl.classList.add('hidden');
+            return;
+        }
+        const payload = { exam_id: baseExamId, exam_date: addDateEl.value, session_type: sessionEl.value };
+        if (sessionEl.value === 'CUSTOM') {
+            payload.start_time = startEl ? startEl.value : '';
+            payload.duration_minutes = parseInt(durationEl && durationEl.value || '0', 10);
+            if (!payload.start_time || !(payload.duration_minutes > 0)) return;
+        }
+        try {
+            const res = await fetch(ELIGIBLE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            const conflicts = (data && data.conflicts_by_supervisor_id) ? data.conflicts_by_supervisor_id : {};
+            setRowTeacherOptions(idx, teacherPool, conflicts);
+            if (msgEl) {
+                msgEl.textContent = 'Teachers marked "busy at this time" have overlapping sessions and may be rejected.';
+                msgEl.classList.remove('hidden');
+            }
+        } catch (e) {
+            if (msgEl) msgEl.classList.add('hidden');
+        }
+    }
+    function wireRow(idx) {
+        const row = addRowsWrap.querySelector('[data-row-idx="' + idx + '"]');
+        if (!row) return;
+        const removeBtn = row.querySelector('[data-remove-row="' + idx + '"]');
+        const subjectSel = row.querySelector('[data-row-subject="' + idx + '"]');
+        const sessionSel = row.querySelector('[data-row-session="' + idx + '"]');
+        const customWrap = row.querySelector('[data-row-custom="' + idx + '"]');
+        const startEl = row.querySelector('[data-row-start="' + idx + '"]');
+        const durationEl = row.querySelector('[data-row-duration="' + idx + '"]');
+        const endEl = row.querySelector('[data-row-end="' + idx + '"]');
+        if (removeBtn) removeBtn.addEventListener('click', function () { row.remove(); });
+        if (subjectSel) subjectSel.addEventListener('change', function () { checkRowAvailability(idx); });
+        if (sessionSel) {
+            sessionSel.addEventListener('change', function () {
+                customWrap.classList.toggle('hidden', sessionSel.value !== 'CUSTOM');
+                if (sessionSel.value === 'MORNING') { startEl.value = '08:00'; endEl.value = '11:00'; durationEl.value = ''; }
+                if (sessionSel.value === 'MIDDAY') { startEl.value = '11:30'; endEl.value = '13:30'; durationEl.value = ''; }
+                if (sessionSel.value === 'AFTERNOON') { startEl.value = '14:00'; endEl.value = '16:00'; durationEl.value = ''; }
+                if (sessionSel.value === 'EVENING') { startEl.value = '17:00'; endEl.value = '19:00'; durationEl.value = ''; }
+                if (sessionSel.value === 'CUSTOM') { endEl.value = computeEnd(startEl.value, durationEl.value); }
+                checkRowAvailability(idx);
+            });
+        }
+        if (startEl) startEl.addEventListener('input', function () { endEl.value = computeEnd(startEl.value, durationEl.value); checkRowAvailability(idx); });
+        if (durationEl) durationEl.addEventListener('input', function () { endEl.value = computeEnd(startEl.value, durationEl.value); checkRowAvailability(idx); });
+    }
+
+    // Rewritten open logic: delegated click handling keeps popup responsive
+    // even if this button is re-rendered or replaced in the DOM.
+    document.addEventListener('click', function (e) {
+        var openTrigger = e.target && e.target.closest ? e.target.closest('#erd-open-add-modal') : null;
+        if (!openTrigger) return;
+        e.preventDefault();
+        try {
+            openAddModal();
+        } catch (err) {
+            console.error('Allocate popup open error:', err);
+            if (addModal) addModal.classList.remove('hidden');
+        }
+    });
+    [addBackdrop, addCloseBtn, addCancelBtn].forEach(function(el) {
+        if (el) el.addEventListener('click', closeAddModal);
+    });
+    if (addRowBtn) addRowBtn.addEventListener('click', addAllocationRow);
+    if (addDateEl && addRowsWrap) addDateEl.addEventListener('change', function () {
+        addRowsWrap.querySelectorAll('[data-row-idx]').forEach(function (r) {
+            checkRowAvailability(r.getAttribute('data-row-idx'));
+        });
+    });
+    if (addForm) {
+        addForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            addErrEl.classList.add('hidden');
+            const levelId = parseInt(addLevelEl.value || '0', 10);
+            if (!levelId || !addDateEl.value) {
+                addErrEl.textContent = 'Select class and exam date.';
+                addErrEl.classList.remove('hidden');
+                return;
+            }
+            const allocations = [];
+            const rowsEls = Array.prototype.slice.call(addRowsWrap.querySelectorAll('[data-row-idx]'));
+            if (!rowsEls.length) {
+                addErrEl.textContent = 'Add at least one subject allocation row.';
+                addErrEl.classList.remove('hidden');
+                return;
+            }
+            for (const r of rowsEls) {
+                const idx = r.getAttribute('data-row-idx');
+                const subj = parseInt((r.querySelector('[data-row-subject="' + idx + '"]') || {}).value || '0', 10);
+                const session = ((r.querySelector('[data-row-session="' + idx + '"]') || {}).value || '').trim();
+                const teacher = parseInt((r.querySelector('[data-row-teacher="' + idx + '"]') || {}).value || '0', 10);
+                const start = ((r.querySelector('[data-row-start="' + idx + '"]') || {}).value || '').trim();
+                const duration = parseInt(((r.querySelector('[data-row-duration="' + idx + '"]') || {}).value || '0'), 10);
+                if (!subj || !session || !teacher) {
+                    addErrEl.textContent = 'Each row needs subject, session and teacher.';
+                    addErrEl.classList.remove('hidden');
+                    return;
+                }
+                if (session === 'CUSTOM' && (!start || !(duration > 0))) {
+                    addErrEl.textContent = 'Custom session rows require start time and duration.';
+                    addErrEl.classList.remove('hidden');
+                    return;
+                }
+                allocations.push({
+                    academic_level_id: levelId,
+                    subject_id: subj,
+                    teacher_id: teacher,
+                    exam_date: addDateEl.value,
+                    venue: (addVenueEl.value || '').trim().toUpperCase(),
+                    session_type: session,
+                    start_time: session === 'CUSTOM' ? start : null,
+                    duration_minutes: session === 'CUSTOM' ? duration : null
+                });
+            }
+            addSaveBtn.disabled = true;
+            fetch(SAVE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    exam_name: (examMeta.exam_name || '').toUpperCase(),
+                    exam_type: (examMeta.exam_type || 'OPENING EXAM').toUpperCase(),
+                    academic_year_id: Number(examMeta.academic_year_id || 0),
+                    term_id: Number(examMeta.term_id || 0),
+                    allocations: allocations
+                })
+            })
+                .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+                .then(function (x) {
+                    if (x.ok && x.j && x.j.success) {
+                        window.location.reload();
+                    } else {
+                        addErrEl.textContent = (x.j && x.j.message) || 'Could not add allocation.';
+                        addErrEl.classList.remove('hidden');
+                    }
+                })
+                .catch(function () {
+                    addErrEl.textContent = 'Could not add allocation.';
+                    addErrEl.classList.remove('hidden');
+                })
+                .finally(function () {
+                    addSaveBtn.disabled = false;
+                });
+        });
+    }
 })();
 </script>
 

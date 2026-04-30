@@ -20,12 +20,17 @@
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="mt-5 rounded-xl border px-4 py-3 text-sm {% if category == 'error' %}border-red-500/40 bg-red-500/10 text-red-100{% elif category == 'success' %}border-emerald-500/40 bg-emerald-500/10 text-emerald-100{% else %}border-white/15 bg-white/5 text-white/85{% endif %}">
+                        <div class="mt-5 rounded-xl border px-4 py-3 text-sm font-medium {% if category == 'error' %}border-red-300 bg-red-50 text-red-800{% elif category == 'success' %}border-green-300 bg-green-50 text-green-800{% else %}border-blue-300 bg-blue-50 text-blue-800{% endif %}">
                             {{ message }}
                         </div>
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+            {% if login_error %}
+                <div class="mt-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">
+                    {{ login_error }}
+                </div>
+            {% endif %}
 
             <form method="POST" action="{{ url_for('login') }}" class="cbc-premium-form mt-6 space-y-4" novalidate>
                 <input type="hidden" id="role" name="role" value="employee">
@@ -39,7 +44,7 @@
                 </div>
                 <div>
                     <label for="login_code">Six-digit code</label>
-                    <input type="text" id="login_code" name="login_code" pattern="[0-9]{6}" maxlength="6" minlength="6" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" required>
+                    <input type="text" id="login_code" name="login_code" value="{{ login_code or '' }}" pattern="[0-9]{6}" maxlength="6" minlength="6" placeholder="000000" inputmode="numeric" autocomplete="one-time-code" required>
                 </div>
                 <div class="cbc-password-field" x-data="{ showPassword: false }">
                     <label for="password">Password</label>
