@@ -3,11 +3,14 @@
 {% block title %}Exam & Evaluation - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('grades-registration') }}"
-   class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-list-check w-5"></i>
-    <span>Grades Registration</span>
-</a>
+<div class="space-y-2">
+    <a href="{{ employee_dash_url() }}"
+       class="w-full sidebar-item"
+       aria-label="Back to staff dashboard">
+        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
+        <span>Back to dashboard</span>
+    </a>
+</div>
 {% endblock %}
 
 {% block extra_head %}
@@ -213,7 +216,7 @@
                         <input type="radio" name="registrationMode" value="auto" x-model="registrationMode" @change="onRegistrationModeChange()" class="mt-1">
                         <span>
                             <span class="font-semibold text-gray-900 dark:text-white">Auto (all selected levels)</span>
-                            <span class="block text-xs text-gray-600 dark:text-gray-400 mt-1">Default mode. Uses <strong>Subject &amp; Class Allocation</strong> for every selected class. Supervisors and sessions are chosen so each teacher has at most one paper per time slot; extra subjects roll to the next slot or next day.</span>
+                            <span class="block text-xs text-gray-600 dark:text-gray-400 mt-1">Uses <strong>Subject &amp; Class Allocation</strong> for each selected class. For every subject, <strong>one supervisor is chosen at random</strong> from teachers assigned to that class/subject who are <strong>active</strong> in the system. Sessions are packed so each teacher has at most one paper per time slot; extra subjects move to the next slot or the next day.</span>
                         </span>
                     </label>
                     <label class="flex items-start gap-3 cursor-pointer p-4 rounded-xl border-2 transition-all flex-1"
@@ -281,7 +284,7 @@
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">First papers use Morning → Mid → Afternoon → Evening; further papers for the same teacher move to the next day.</p>
                     <p class="mt-2 text-xs text-gray-600 dark:text-gray-300">
                         <i class="fas fa-map-marker-alt mr-1 text-brand-primary"></i>
-                        Venue is set to each <strong>class name</strong> (academic level) so every paper is tied to the correct class.
+                        Venue uses each academic level’s <strong>class identity</strong>: <strong>level code</strong> when set on the level, otherwise <strong>category + class name</strong> (same label as shown in Classes to include).
                     </p>
                 </div>
 
@@ -568,8 +571,8 @@
                 <span x-text="uniqueExams.length"></span> exam(s)
             </span>
         </div>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Click an exam name or <i class="fas fa-calendar-alt text-brand-primary mx-0.5"></i> to open its page with <strong>all class timetables</strong> (every level and date).
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Use <strong>Allocation</strong> on each exam to open that exam page and set its timetable.
         </p>
 
         <div x-show="errorMessage" x-cloak class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
@@ -593,14 +596,15 @@
                 <table class="w-full border-collapse">
                     <thead>
                         <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
-                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-14" title="View timetables">
-                                <span class="sr-only">Timetables</span>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-14" title="Allocation">
+                                <span class="sr-only">Allocation</span>
                                 <i class="fas fa-calendar-alt" aria-hidden="true"></i>
                             </th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Exam Name</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Type</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Year</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Term</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
                             <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Lock</th>
                         </tr>
                     </thead>
@@ -609,9 +613,10 @@
                             <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
                                 <td class="p-3 sm:p-4 align-middle text-center">
                                     <a :href="registeredExamDetailUrl(exam)"
-                                       class="inline-flex items-center justify-center w-10 h-10 rounded-xl text-brand-primary hover:bg-brand-primary/10 dark:hover:bg-brand-primary/20"
-                                       title="View all timetables">
-                                        <i class="fas fa-calendar-alt text-lg"></i>
+                                       class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs font-semibold"
+                                       title="Open allocation timetable page">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        <span>Allocation</span>
                                     </a>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle">
@@ -625,6 +630,24 @@
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.exam_type || '—'"></td>
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.year_name || '—'"></td>
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.term_name || '—'"></td>
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                    <div class="inline-flex items-center gap-2">
+                                        <button type="button"
+                                                @click="editRegistration(exam)"
+                                                :disabled="!exam.id || exam.is_locked || savingExam"
+                                                class="modern-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-blue-600 hover:bg-blue-700 text-white"
+                                                title="Edit exam registration details">
+                                            <i class="fas fa-edit mr-1"></i>Edit
+                                        </button>
+                                        <button type="button"
+                                                @click="deleteRegistration(exam)"
+                                                :disabled="!exam.id || exam.is_locked || savingExam"
+                                                class="modern-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed bg-red-600 hover:bg-red-700 text-white"
+                                                title="Delete exam registration">
+                                            <i class="fas fa-trash mr-1"></i>Delete
+                                        </button>
+                                    </div>
+                                </td>
                                 <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
                                     <div class="flex flex-col items-end gap-1">
                                         <span x-show="exam.is_locked"
@@ -650,6 +673,81 @@
             </div>
         </div>
     </div>
+
+<!-- Edit Registration Modal -->
+<div x-show="editingRegistration"
+     x-cloak
+     class="fixed inset-0 z-[110] flex items-center justify-center p-4 sm:p-6"
+     @keydown.escape.window="if (editingRegistration && !savingExam) editingRegistration = null">
+    <div class="absolute inset-0 bg-gray-900/70 dark:bg-black/75 backdrop-blur-md"
+         @click="if (!savingExam) editingRegistration = null"
+         aria-hidden="true"></div>
+    <div class="relative w-full max-w-xl rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-700/80 shadow-2xl"
+         @click.stop>
+        <div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-5 py-4">
+            <h3 class="text-lg font-bold">Edit Exam Registration</h3>
+            <p class="text-xs text-white/80 mt-1" x-text="editingRegistration ? editingRegistration.old_exam_name : ''"></p>
+        </div>
+        <form @submit.prevent="saveRegistrationEdit()" class="p-5 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic Year</label>
+                    <select x-model="editingRegistration.academic_year_id"
+                            @change="syncRegistrationExamName()"
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        <option value="">Select Academic Year</option>
+                        <template x-for="year in academicYears" :key="'reg-year-' + year.id">
+                            <option :value="year.id" x-text="year.year_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Term</label>
+                    <select x-model="editingRegistration.term_id"
+                            @change="syncRegistrationExamName()"
+                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        <option value="">Select Term</option>
+                        <template x-for="term in registrationTerms" :key="'reg-term-' + term.id">
+                            <option :value="term.id" x-text="term.term_name"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Exam Type</label>
+                <select x-model="editingRegistration.exam_type"
+                        @change="syncRegistrationExamName()"
+                        class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    <option value="">Select Type</option>
+                    <option value="OPENING">Opening</option>
+                    <option value="MIDTERM">Midterm</option>
+                    <option value="CLOSING">Closing</option>
+                    <option value="OTHER">Other</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Exam Name</label>
+                <input type="text"
+                       x-model="editingRegistration.exam_name"
+                       readonly
+                       class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white uppercase font-semibold">
+            </div>
+            <div class="flex justify-end gap-3 pt-2">
+                <button type="button"
+                        @click="editingRegistration = null"
+                        :disabled="savingExam"
+                        class="modern-btn px-5 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300">
+                    Cancel
+                </button>
+                <button type="submit"
+                        :disabled="savingExam"
+                        class="modern-btn px-6 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold disabled:opacity-50">
+                    <i class="fas fa-save mr-2"></i>Save Registration
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
 
     <!-- Edit Exam Modal -->
     <div x-show="editingExam"
@@ -904,6 +1002,7 @@ function examEvaluation() {
         clientConflictMessage: '',
         showRegisterExamPanel: false,
         editingExam: null,
+        editingRegistration: null,
 
         sessionPresets: {
             MORNING: { start: '08:00', end: '11:00' },
@@ -1009,17 +1108,34 @@ function examEvaluation() {
                 if (seen.has(key)) continue;
                 seen.add(key);
                 out.push({
+                    id: e.id,
                     exam_name: e.exam_name,
                     exam_type: e.exam_type,
                     year_name: e.year_name,
                     term_name: e.term_name,
                     academic_year_id: e.academic_year_id,
                     term_id: e.term_id,
+                    academic_level_id: e.academic_level_id,
+                    subject_id: e.subject_id,
+                    supervisor_id: e.supervisor_id,
+                    exam_date: e.exam_date,
+                    venue: e.venue,
+                    session_type: e.session_type,
+                    start_time: e.start_time,
+                    end_time: e.end_time,
+                    duration_minutes: e.duration_minutes,
+                    level_name: e.level_name,
+                    level_category: e.level_category,
                     is_locked: !!e.is_locked,
                     _key: key
                 });
             }
             return out;
+        },
+
+        get registrationTerms() {
+            if (!this.editingRegistration || !this.editingRegistration.academic_year_id) return [];
+            return this.termsAll.filter(t => String(t.academic_year_id) === String(this.editingRegistration.academic_year_id));
         },
 
         get isHeaderValid() {
@@ -1409,6 +1525,118 @@ function examEvaluation() {
                 end_time: this._timeForInput(exam.end_time),
                 duration_minutes: exam.duration_minutes || '',
             };
+        },
+
+        editRegistration(exam) {
+            if (!exam) return;
+            if (exam.is_locked) {
+                this.errorMessage = 'This exam is locked. Unlock it before editing registration details.';
+                return;
+            }
+            this.errorMessage = '';
+            this.successMessage = '';
+            this.editingRegistration = {
+                old_exam_name: exam.exam_name || '',
+                old_academic_year_id: exam.academic_year_id || '',
+                old_term_id: exam.term_id || '',
+                academic_year_id: exam.academic_year_id || '',
+                term_id: exam.term_id || '',
+                exam_type: exam.exam_type || '',
+                exam_name: exam.exam_name || '',
+            };
+            this.syncRegistrationExamName();
+        },
+
+        syncRegistrationExamName() {
+            if (!this.editingRegistration) return;
+            const reg = this.editingRegistration;
+            if (!reg.academic_year_id || !reg.term_id || !reg.exam_type) {
+                reg.exam_name = '';
+                return;
+            }
+            const year = this.academicYears.find(y => String(y.id) === String(reg.academic_year_id));
+            const term = this.termsAll.find(t => String(t.id) === String(reg.term_id));
+            if (!year || !term) {
+                reg.exam_name = '';
+                return;
+            }
+            let typeText = 'EXAM';
+            if (reg.exam_type === 'OPENING') typeText = 'OPENING EXAM';
+            else if (reg.exam_type === 'MIDTERM') typeText = 'MIDTERM EXAM';
+            else if (reg.exam_type === 'CLOSING') typeText = 'CLOSING EXAM';
+            reg.exam_name = `${year.year_name} - ${term.term_name} - ${typeText}`.toUpperCase();
+        },
+
+        async saveRegistrationEdit() {
+            if (!this.editingRegistration) return;
+            const reg = this.editingRegistration;
+            if (!reg.exam_name || !reg.exam_type || !reg.academic_year_id || !reg.term_id) {
+                this.errorMessage = 'Please complete exam type, year, and term.';
+                return;
+            }
+            this.errorMessage = '';
+            this.successMessage = '';
+            this.savingExam = true;
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/update-registration') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        old_exam_name: reg.old_exam_name,
+                        old_academic_year_id: parseInt(reg.old_academic_year_id, 10),
+                        old_term_id: parseInt(reg.old_term_id, 10),
+                        exam_name: reg.exam_name.trim().toUpperCase(),
+                        exam_type: reg.exam_type.trim().toUpperCase(),
+                        academic_year_id: parseInt(reg.academic_year_id, 10),
+                        term_id: parseInt(reg.term_id, 10),
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Registration updated successfully.';
+                    this.editingRegistration = null;
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not update registration.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not update registration. Please try again.';
+            } finally {
+                this.savingExam = false;
+            }
+        },
+
+        async deleteRegistration(exam) {
+            if (!exam) return;
+            if (exam.is_locked) {
+                this.errorMessage = 'This exam is locked. Unlock it before deleting this registration.';
+                return;
+            }
+            if (!confirm('Delete this registered exam and all its allocation rows? This cannot be undone.')) return;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/delete-registration') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exam_name: exam.exam_name,
+                        academic_year_id: parseInt(exam.academic_year_id, 10),
+                        term_id: parseInt(exam.term_id, 10),
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Registration deleted.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not delete registration.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not delete registration. Please try again.';
+            }
         },
 
         applySessionPresetToEdit() {

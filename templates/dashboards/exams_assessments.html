@@ -21,6 +21,12 @@
     <span>Exam Analytics</span>
     {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('exams-assessments/timetable') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Exams Timetable</span>
+    {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endblock %}
 
 {% block extra_head %}
@@ -114,6 +120,11 @@
                 </p>
             </div>
             <div class="flex flex-wrap items-center gap-3">
+                <a href="{{ employee_dash_url('exams-assessments/timetable') }}"
+                   class="inline-flex items-center px-4 py-2.5 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-sm font-semibold transition-all shadow-sm">
+                    <i class="fas fa-calendar-alt mr-2"></i>
+                    Exams Timetable
+                </a>
                 <a href="{{ employee_dash_url('exam-analytics') }}" 
                    class="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
                     <i class="fas fa-chart-line mr-2"></i>

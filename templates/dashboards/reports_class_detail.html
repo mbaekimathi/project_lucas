@@ -12,12 +12,42 @@
         <span class="font-semibold">Reports</span>
         <i class="fas fa-check-circle ml-auto text-green-500"></i>
     </a>
+    <a href="{{ employee_dash_url('academic-reports') }}" class="w-full sidebar-item">
+        <i class="fas fa-clipboard-list w-5"></i>
+        <span>Academic Reports</span>
+    </a>
+    <a href="{{ employee_dash_url('student-fees') }}" class="w-full sidebar-item">
+        <i class="fas fa-file-invoice-dollar w-5"></i>
+        <span>Accounts / Fees</span>
+    </a>
 </div>
 {% endif %}
 {% endblock %}
 
 {% block content %}
 <div class="p-4 lg:p-6 max-w-6xl mx-auto">
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-5 mb-5 print:shadow-none print:border-gray-300">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+                    {{ school_settings.school_name or 'School' }}
+                </h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                    {{ school_settings.address or school_settings.location or 'School report details' }}
+                </p>
+            </div>
+            <div class="text-sm text-gray-600 dark:text-gray-300 sm:text-right">
+                <div class="font-semibold text-gray-900 dark:text-white">Class Report Details</div>
+                <div id="report-generated-at">Generated: --</div>
+            </div>
+        </div>
+        <div class="mt-4 no-print">
+            <button type="button" onclick="window.print()" class="inline-flex items-center px-4 py-2.5 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-md hover:opacity-95 transition-all">
+                <i class="fas fa-print mr-2"></i>Print Report
+            </button>
+        </div>
+    </div>
+
     <div class="mb-6">
         <a href="{{ url_for('reports') }}" class="inline-flex items-center text-sm font-medium text-brand-primary hover:underline mb-3">
             <i class="fas fa-arrow-left mr-2"></i> Reports
@@ -198,4 +228,12 @@
         </p>
     </section>
 </div>
+<script>
+(function() {
+    var out = document.getElementById('report-generated-at');
+    if (!out) return;
+    var now = new Date();
+    out.textContent = 'Generated: ' + now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+})();
+</script>
 {% endblock %}

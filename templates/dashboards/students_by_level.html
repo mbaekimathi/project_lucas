@@ -214,7 +214,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 <script>
 function marksSheet() {
     return {
-        selectedExam: '',
+        selectedExam: '{{ selected_exam_id or "" }}',
         selectedAcademicYearId: '{{ selected_academic_year_id or "" }}',
         selectedTermId: '{{ selected_term_id or "" }}',
         marks: {{ (student_marks or {})|tojson|safe }},
@@ -249,33 +249,47 @@ function marksSheet() {
             });
         },
 
-        init() {
-            // Ensure defaults point to current year/term and exam list matches them.
-            if (this.selectedAcademicYearId && !this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
-                const firstTerm = this.filteredTerms[0];
-                this.selectedTermId = firstTerm ? String(firstTerm.id) : '';
+        enforceDefaults() {
+            // 1) Year default (prefer current)
+            if (!this.selectedAcademicYearId) {
+                const currentYear = this.academicYears.find(y => !!y.is_current);
+                const fallbackYear = currentYear || this.academicYears[0];
+                this.selectedAcademicYearId = fallbackYear ? String(fallbackYear.id) : '';
             }
-            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
+
+            // 2) Term default within selected year (prefer current term)
+            if (!this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
+                const currentTerm = this.filteredTerms.find(t => !!t.is_current);
+                const fallbackTerm = currentTerm || this.filteredTerms[0];
+                this.selectedTermId = fallbackTerm ? String(fallbackTerm.id) : '';
+            }
+
+            // 3) Exam default for selected year+term
+            if (!this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
                 this.selectedExam = '';
+            }
+            if (!this.selectedExam && this.filteredExams.length > 0) {
+                this.selectedExam = String(this.filteredExams[0].id);
+            }
+        },
+
+        init() {
+            // Run once now and once after DOM/options settle.
+            this.enforceDefaults();
+            this.$nextTick(() => this.enforceDefaults());
+            if (this.selectedExam) {
+                this.onExamSelected();
             }
         },
 
         onAcademicYearChange() {
-            if (!this.filteredTerms.some(t => String(t.id) === String(this.selectedTermId))) {
-                const firstTerm = this.filteredTerms[0];
-                this.selectedTermId = firstTerm ? String(firstTerm.id) : '';
-            }
-            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
-                this.selectedExam = '';
-                this.marks = {};
-            }
+            this.enforceDefaults();
+            if (this.selectedExam) this.onExamSelected();
         },
 
         onTermChange() {
-            if (this.selectedExam && !this.filteredExams.some(e => String(e.id) === String(this.selectedExam))) {
-                this.selectedExam = '';
-                this.marks = {};
-            }
+            this.enforceDefaults();
+            if (this.selectedExam) this.onExamSelected();
         },
 
         async onExamSelected() {

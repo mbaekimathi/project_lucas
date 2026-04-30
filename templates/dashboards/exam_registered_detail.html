@@ -3,10 +3,22 @@
 {% block title %}{{ exam_meta.exam_name }} — Exam Timetables | {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
+<div class="space-y-2">
+    <div class="w-full sidebar-item sidebar-item-active cursor-default" aria-current="page">
+        <i class="fas fa-calendar-alt w-5"></i>
+        <span>Exam timetable &amp; analytics</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+{# Use single-quoted x-data so |tojson's double-quotes cannot break the attribute (otherwise: x-data="erdExamPage("timetable")" breaks Alpine). #}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"
+     x-data='erdExamPage({{ erd_tab|tojson }})'>
     <div class="mb-6">
         <a href="{{ url_for('exam_evaluation') }}"
            class="inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:underline mb-4">
@@ -40,6 +52,26 @@
         </div>
     </div>
 
+    <div class="mb-6 flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-4">
+        <button type="button"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition"
+                :class="mainTab === 'timetable'
+                    ? 'bg-brand-primary text-white shadow-md'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-brand-primary/40'"
+                @click="setMainTab('timetable')">
+            <i class="fas fa-calendar-alt mr-2"></i>Timetable
+        </button>
+        <button type="button"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition"
+                :class="mainTab === 'analytics'
+                    ? 'bg-violet-600 text-white shadow-md'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-violet-500/40'"
+                @click="setMainTab('analytics')">
+            <i class="fas fa-chart-pie mr-2"></i>Analytics
+        </button>
+    </div>
+
+    <div x-show="mainTab === 'timetable'">
     {% if not timetables_by_level %}
     <div class="dashboard-card rounded-2xl shadow-xl p-12 text-center text-gray-600 dark:text-gray-400">
         No class-level allocations found for this exam.
@@ -62,7 +94,65 @@
                         <i class="fas fa-calendar-day text-brand-primary"></i>
                         {{ block.date or '—' }}
                     </h3>
-                    <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+                    <div class="md:hidden space-y-3">
+                        {% for slot in block.slots %}
+                        <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 p-3.5 sm:p-4 bg-white/80 dark:bg-gray-800/60">
+                            <div class="flex items-start justify-between gap-3">
+                                <p class="text-sm font-semibold text-gray-900 dark:text-white">
+                                    {{ slot.subject_name or '—' }}
+                                    {% if slot.subject_code %}<span class="text-xs text-gray-500 dark:text-gray-400">({{ slot.subject_code }})</span>{% endif %}
+                                </p>
+                                {% set st = (slot.status or 'scheduled')|lower %}
+                                <span class="px-2 py-1 rounded-full text-[10px] font-semibold whitespace-nowrap
+                                    {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300
+                                    {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300
+                                    {% elif st == 'completed' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300
+                                    {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300
+                                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                                    {{ slot.status or 'scheduled' }}
+                                </span>
+                            </div>
+                            <div class="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-700 dark:text-gray-300">
+                                <p><span class="font-semibold">Time:</span>
+                                    {% if slot.start_time or slot.end_time %}
+                                        {{ (slot.start_time or '—')[:5] }} – {{ (slot.end_time or '—')[:5] }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </p>
+                                <p><span class="font-semibold">Session:</span> {{ slot.session_type or '—' }}</p>
+                                <p><span class="font-semibold">Teacher:</span>
+                                    {% if slot.supervisor_name or slot.supervisor_employee_id %}
+                                        {{ slot.supervisor_name or '' }}{% if slot.supervisor_employee_id %} ({{ slot.supervisor_employee_id }}){% endif %}
+                                    {% else %}—{% endif %}
+                                </p>
+                                <p><span class="font-semibold">Venue:</span> {{ slot.venue or '—' }}</p>
+                            </div>
+                            <div class="mt-3">
+                                {% if exam_meta.is_locked %}
+                                <span class="text-xs text-gray-400 dark:text-gray-500">Locked</span>
+                                {% else %}
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button type="button"
+                                       class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white min-h-[42px]"
+                                       data-edit-exam-id="{{ slot.id }}">
+                                        <i class="fas fa-edit"></i>
+                                        <span>Edit</span>
+                                    </button>
+                                    <button type="button"
+                                            class="inline-flex items-center justify-center gap-1.5 px-2.5 py-2.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[42px]"
+                                            data-delete-exam-id="{{ slot.id }}">
+                                        <i class="fas fa-trash"></i>
+                                        Delete
+                                    </button>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="hidden md:block overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
                         <table class="w-full border-collapse text-sm">
                             <thead>
                                 <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
@@ -113,11 +203,16 @@
                                         {% if exam_meta.is_locked %}
                                         <span class="text-xs text-gray-400 dark:text-gray-500" title="Unlock the exam on the registration page first">—</span>
                                         {% else %}
-                                        <a href="{{ url_for('exam_evaluation', open_edit=slot.id) }}"
-                                           class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white mr-1">Edit</a>
                                         <button type="button"
-                                                class="inline-flex items-center px-2 py-1 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white"
+                                           class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white mr-1 min-h-[34px]"
+                                           data-edit-exam-id="{{ slot.id }}">
+                                            <i class="fas fa-edit"></i>
+                                            <span>Edit</span>
+                                        </button>
+                                        <button type="button"
+                                                class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-red-600 hover:bg-red-700 text-white min-h-[34px]"
                                                 data-delete-exam-id="{{ slot.id }}">
+                                            <i class="fas fa-trash"></i>
                                             Delete
                                         </button>
                                         {% endif %}
@@ -134,10 +229,859 @@
         {% endfor %}
     </div>
     {% endif %}
+    </div>{# end timetable tab #}
+
+    <div x-show="mainTab === 'analytics'" x-cloak class="space-y-8">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Allocations</p>
+                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ analytics.total_allocations }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Total slots</p>
+            </div>
+            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classes</p>
+                <p class="text-2xl font-bold text-emerald-700 dark:text-emerald-300 mt-1">{{ analytics.distinct_levels }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Levels covered</p>
+            </div>
+            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subjects</p>
+                <p class="text-2xl font-bold text-sky-700 dark:text-sky-300 mt-1">{{ analytics.distinct_subjects }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Distinct subjects</p>
+            </div>
+            <div class="dashboard-card rounded-xl p-4 border border-gray-200/80 dark:border-gray-700">
+                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Supervisors</p>
+                <p class="text-2xl font-bold text-violet-700 dark:text-violet-300 mt-1">{{ analytics.assigned_supervisors }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Teachers allocated</p>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+                    :class="analyticsSlice === 'class' ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
+                    @click="analyticsSlice='class'; destroyCharts()">By class</button>
+            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+                    :class="analyticsSlice === 'subject' ? 'bg-sky-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
+                    @click="analyticsSlice='subject'; destroyCharts()">By subject</button>
+            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+                    :class="analyticsSlice === 'supervisor' ? 'bg-violet-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
+                    @click="analyticsSlice='supervisor'; destroyCharts()">By supervisor</button>
+        </div>
+
+        {# —— Class —— #}
+        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'class'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-layer-group text-emerald-600 dark:text-emerald-400"></i>
+                        Exams per class
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Slots per academic level.</p>
+                </div>
+                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="classMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-emerald-800 dark:text-emerald-200' : 'text-gray-500'"
+                            @click="classMode='raw'; destroyChart('class')">Raw data</button>
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="classMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-emerald-800 dark:text-emerald-200' : 'text-gray-500'"
+                            @click="classMode='visual'; scheduleChartBuild('class')">Visual</button>
+                </div>
+            </div>
+            <div x-show="classMode === 'raw'" class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-3 pr-4">Class</th>
+                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-3 text-right">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for row in analytics.class_stats %}
+                        <tr>
+                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                                {{ row.level_name }}{% if row.level_category %} <span class="text-gray-500 dark:text-gray-400 font-normal">({{ row.level_category }})</span>{% endif %}
+                            </td>
+                            <td class="py-3 pr-4 hidden sm:table-cell">
+                                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
+                                    <div class="h-full rounded-full bg-emerald-500 dark:bg-emerald-400" style="width: {{ row.bar_pct }}%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
+                            </td>
+                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div x-show="classMode === 'visual'" class="relative w-full overflow-hidden rounded-lg bg-white/50 dark:bg-gray-900/40"
+                 style="min-height: 200px;"
+                 :style="{ height: chartBoxHeight('class') }">
+                <canvas id="erdChartClass" class="block w-full h-full max-h-full"></canvas>
+            </div>
+        </section>
+
+        {# —— Subject —— #}
+        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'subject'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-book-open text-sky-600 dark:text-sky-400"></i>
+                        Subject analysis
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Appearances across the timetable.</p>
+                </div>
+                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="subjectMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-sky-800 dark:text-sky-200' : 'text-gray-500'"
+                            @click="subjectMode='raw'; destroyChart('subject')">Raw data</button>
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="subjectMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-sky-800 dark:text-sky-200' : 'text-gray-500'"
+                            @click="subjectMode='visual'; scheduleChartBuild('subject')">Visual</button>
+                </div>
+            </div>
+            <div x-show="subjectMode === 'raw'" class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-3 pr-4">Subject</th>
+                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-3 text-right">Slots</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for row in analytics.subject_stats %}
+                        <tr>
+                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                                {{ row.subject_name }}{% if row.subject_code %}<span class="text-xs text-gray-500 ml-1">({{ row.subject_code }})</span>{% endif %}
+                            </td>
+                            <td class="py-3 pr-4 hidden sm:table-cell">
+                                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
+                                    <div class="h-full rounded-full bg-sky-500 dark:bg-sky-400" style="width: {{ row.bar_pct }}%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
+                            </td>
+                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div x-show="subjectMode === 'visual'" class="relative w-full overflow-hidden rounded-lg bg-white/50 dark:bg-gray-900/40"
+                 style="min-height: 200px;"
+                 :style="{ height: chartBoxHeight('subject') }">
+                <canvas id="erdChartSubject" class="block w-full h-full max-h-full"></canvas>
+            </div>
+        </section>
+
+        {# —— Supervisor —— #}
+        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'supervisor'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400"></i>
+                        Supervisor analysis
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Sessions per teacher.</p>
+                </div>
+                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="superMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-violet-800 dark:text-violet-200' : 'text-gray-500'"
+                            @click="superMode='raw'; destroyChart('supervisor')">Raw data</button>
+                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
+                            :class="superMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-violet-800 dark:text-violet-200' : 'text-gray-500'"
+                            @click="superMode='visual'; scheduleChartBuild('supervisor')">Visual</button>
+                </div>
+            </div>
+            <div x-show="superMode === 'raw'" class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-3 pr-4">Teacher</th>
+                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-3 text-right">Sessions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for row in analytics.supervisor_stats %}
+                        <tr>
+                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
+                                {{ row.full_name }}{% if row.employee_id %}<span class="text-xs text-gray-500 ml-1">({{ row.employee_id }})</span>{% endif %}
+                            </td>
+                            <td class="py-3 pr-4 hidden sm:table-cell">
+                                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
+                                    <div class="h-full rounded-full bg-violet-500 dark:bg-violet-400" style="width: {{ row.bar_pct }}%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
+                            </td>
+                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div x-show="superMode === 'visual'" class="relative w-full overflow-hidden rounded-lg bg-white/50 dark:bg-gray-900/40"
+                 style="min-height: 200px;"
+                 :style="{ height: chartBoxHeight('supervisor') }">
+                <canvas id="erdChartSupervisor" class="block w-full h-full max-h-full"></canvas>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script type="application/json" id="erd-analytics-bundle">{{ analytics|tojson|safe }}</script>
+<script type="application/json" id="erd-exam-rows">{{ exam_rows|tojson|safe }}</script>
+<script type="application/json" id="erd-levels">{{ academic_levels|tojson|safe }}</script>
+<script type="application/json" id="erd-subjects">{{ subjects|tojson|safe }}</script>
+<script type="application/json" id="erd-teachers">{{ teachers|tojson|safe }}</script>
+
+<script>
+(function () {
+    window.erdExamPage = function (initialTab) {
+        var tabNorm = initialTab === 'analytics' ? 'analytics' : 'timetable';
+        return {
+            mainTab: tabNorm,
+            analyticsSlice: 'class',
+            classMode: 'raw',
+            subjectMode: 'raw',
+            superMode: 'raw',
+            charts: {},
+            /** Server analytics JSON — avoid naming this `analytics` (Alpine / scope quirks). */
+            erdBreakdown: {},
+
+            init() {
+                var bundle = document.getElementById('erd-analytics-bundle');
+                try {
+                    this.erdBreakdown = bundle ? JSON.parse(bundle.textContent) : {};
+                } catch (e) {
+                    this.erdBreakdown = {};
+                }
+                var self = this;
+                this._erdLastDarkClass = document.documentElement.classList.contains('dark');
+                this._erdThemeDeb = null;
+
+                try {
+                    this._erdDarkMo = new MutationObserver(function () {
+                        var darkNow = document.documentElement.classList.contains('dark');
+                        if (darkNow === self._erdLastDarkClass) return;
+                        self._erdLastDarkClass = darkNow;
+                        clearTimeout(self._erdThemeDeb);
+                        self._erdThemeDeb = setTimeout(function () {
+                            self.refreshChartsTheme();
+                        }, 60);
+                    });
+                    this._erdDarkMo.observe(document.documentElement, {
+                        attributes: true,
+                        attributeFilter: ['class']
+                    });
+                } catch (e) {
+                    /* ignore */
+                }
+            },
+
+            refreshChartsTheme() {
+                var self = this;
+                ['class', 'subject', 'supervisor'].forEach(function (k) {
+                    self.destroyChart(k);
+                });
+                if (this.mainTab !== 'analytics') return;
+                var tick = typeof this.$nextTick === 'function' ? function (fn) { self.$nextTick(fn); } : function (fn) { setTimeout(fn, 0); };
+                tick(function () {
+                    requestAnimationFrame(function () {
+                        requestAnimationFrame(function () {
+                            if (self.analyticsSlice === 'class' && self.classMode === 'visual') {
+                                self.buildChart('class');
+                                if (self.charts.class) try { self.charts.class.resize(); } catch (e) { /* noop */ }
+                            } else if (self.analyticsSlice === 'subject' && self.subjectMode === 'visual') {
+                                self.buildChart('subject');
+                                if (self.charts.subject) try { self.charts.subject.resize(); } catch (e) { /* noop */ }
+                            } else if (self.analyticsSlice === 'supervisor' && self.superMode === 'visual') {
+                                self.buildChart('supervisor');
+                                if (self.charts.supervisor) try { self.charts.supervisor.resize(); } catch (e) { /* noop */ }
+                            }
+                        });
+                    });
+                });
+            },
+
+            chartBoxHeight(kind) {
+                var key = kind === 'class' ? 'class_stats' : (kind === 'subject' ? 'subject_stats' : 'supervisor_stats');
+                var rows = ((this.erdBreakdown || {})[key] || []).length || 1;
+                var h = Math.min(640, Math.max(200, 56 + rows * 28));
+                return h + 'px';
+            },
+
+            scheduleChartBuild(kind) {
+                var self = this;
+                var run = function () {
+                    self.buildChart(kind);
+                    if (self.charts[kind]) {
+                        try { self.charts[kind].resize(); } catch (e) { /* noop */ }
+                    }
+                };
+                if (typeof self.$nextTick === 'function') {
+                    self.$nextTick(function () {
+                        requestAnimationFrame(function () {
+                            requestAnimationFrame(run);
+                        });
+                    });
+                } else {
+                    requestAnimationFrame(function () {
+                        requestAnimationFrame(run);
+                    });
+                }
+            },
+
+            setMainTab(t) {
+                this.mainTab = t;
+                try {
+                    var u = new URL(window.location.href);
+                    if (t === 'analytics') u.searchParams.set('erd_tab', 'analytics');
+                    else u.searchParams.delete('erd_tab');
+                    history.replaceState({}, '', u);
+                } catch (e) { /* noop */ }
+                this.destroyCharts();
+                if (t === 'analytics') {
+                    if (this.analyticsSlice === 'class' && this.classMode === 'visual') this.scheduleChartBuild('class');
+                    else if (this.analyticsSlice === 'subject' && this.subjectMode === 'visual') this.scheduleChartBuild('subject');
+                    else if (this.analyticsSlice === 'supervisor' && this.superMode === 'visual') this.scheduleChartBuild('supervisor');
+                }
+            },
+
+            destroyChart(kind) {
+                if (!this.charts[kind]) return;
+                try { this.charts[kind].destroy(); } catch (e) { /* noop */ }
+                delete this.charts[kind];
+            },
+
+            destroyCharts() {
+                this.destroyChart('class');
+                this.destroyChart('subject');
+                this.destroyChart('supervisor');
+            },
+
+            buildChart(kind) {
+                var ChartCtor = typeof Chart !== 'undefined' ? Chart : null;
+                if (!ChartCtor) return;
+                this.destroyChart(kind);
+
+                var statsKey = kind === 'class' ? 'class_stats' : (kind === 'subject' ? 'subject_stats' : 'supervisor_stats');
+                var canvasId = kind === 'class' ? 'erdChartClass' : (kind === 'subject' ? 'erdChartSubject' : 'erdChartSupervisor');
+                var cfg = kind === 'class'
+                    ? { label: 'Exam slots per class', color: 'rgba(16, 185, 129, 0.75)' }
+                    : (kind === 'subject'
+                        ? { label: 'Slots per subject', color: 'rgba(14, 165, 233, 0.78)' }
+                        : { label: 'Sessions per supervisor', color: 'rgba(139, 92, 246, 0.78)' });
+
+                var series = (this.erdBreakdown[statsKey] || []).slice();
+                if (!series.length) return;
+
+                var labels = series.map(function (r) {
+                    if (kind === 'class') {
+                        var lc = r.level_category ? ' (' + String(r.level_category) + ')' : '';
+                        return String(r.level_name || '—') + lc;
+                    }
+                    if (kind === 'subject') {
+                        var c = r.subject_code ? ' (' + String(r.subject_code) + ')' : '';
+                        return String(r.subject_name || '—') + c;
+                    }
+                    var e = r.employee_id ? ' (' + String(r.employee_id) + ')' : '';
+                    return String(r.full_name || '—') + e;
+                });
+                var values = series.map(function (r) { return Number(r.exam_count) || 0; });
+
+                var el = document.getElementById(canvasId);
+                if (!el) return;
+                var isDark = document.documentElement.classList.contains('dark');
+                var tick = isDark ? '#94a3b8' : '#64748b';
+                var lbl = isDark ? '#cbd5e1' : '#334155';
+                var grid = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.08)';
+                var tipBg = isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.96)';
+                var tipTitle = isDark ? '#f8fafc' : '#0f172a';
+                var tipBody = isDark ? '#e2e8f0' : '#334155';
+                var tipBorder = isDark ? 'rgba(148,163,184,0.25)' : 'rgba(148,163,184,0.35)';
+
+                var ctx = el.getContext('2d');
+                this.charts[kind] = new ChartCtor(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: cfg.label,
+                            data: values,
+                            backgroundColor: cfg.color,
+                            borderRadius: 4,
+                            barThickness: 18,
+                            maxBarThickness: 26
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: tipBg,
+                                titleColor: tipTitle,
+                                bodyColor: tipBody,
+                                borderColor: tipBorder,
+                                borderWidth: 1,
+                                padding: 10,
+                                displayColors: false,
+                                callbacks: {
+                                    title: function (items) {
+                                        var i = items.length ? items[0].dataIndex : 0;
+                                        return labels[i] || '';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                ticks: {
+                                    precision: 0,
+                                    color: tick
+                                },
+                                grid: { color: grid }
+                            },
+                            y: {
+                                ticks: {
+                                    color: lbl,
+                                    autoSkipPadding: 6,
+                                    font: { size: 11 }
+                                },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+        };
+    };
+})();
+</script>
+
+<div id="erd-edit-modal" class="fixed inset-0 z-[120] hidden">
+    <div id="erd-edit-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
+        <div class="w-full max-w-2xl max-h-[95vh] overflow-hidden rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl flex flex-col">
+            <div class="px-4 sm:px-5 py-4 bg-gradient-to-r from-brand-primary to-brand-secondary text-white flex items-center justify-between gap-3">
+                <h3 class="font-bold text-base sm:text-lg">Edit Allocation</h3>
+                <button id="erd-close-modal" type="button" class="w-9 h-9 rounded-lg bg-white/20 hover:bg-white/30">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="erd-edit-form" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+                <input type="hidden" id="erd-id">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Academic Level</label>
+                        <select id="erd-level" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Subject</label>
+                        <select id="erd-subject" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Teacher</label>
+                        <select id="erd-teacher" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"></select>
+                        <p id="erd-teacher-hint" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                            <span class="text-emerald-700 dark:text-emerald-400 font-medium">Green group</span>: free for this date and session.
+                            <span class="text-amber-800 dark:text-amber-300 font-medium">Amber group</span>: already has another exam overlapping this slot—select to see those times; Save will be blocked until you pick someone free.
+                        </p>
+                        <p id="erd-teacher-hint-dynamic" class="mt-1 text-xs text-amber-800 dark:text-amber-300 hidden"></p>
+                        <div id="erd-teacher-conflict-detail" class="hidden mt-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/25 px-3 py-2.5 text-xs text-amber-950 dark:text-amber-100"></div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Exam Date</label>
+                        <input id="erd-date" type="date" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Venue</label>
+                        <input id="erd-venue" type="text" class="w-full px-3 py-2.5 uppercase rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Session</label>
+                        <select id="erd-session" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                            <option value="">Select Session</option>
+                            <option value="MORNING">Morning Session</option>
+                            <option value="MIDDAY">Mid Day Session</option>
+                            <option value="AFTERNOON">Afternoon Session</option>
+                            <option value="EVENING">Evening Session</option>
+                            <option value="CUSTOM">Custom Session</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="erd-custom-wrap" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Start Time</label>
+                        <input id="erd-start" type="time" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">Duration (min)</label>
+                        <input id="erd-duration" type="number" min="1" class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold mb-1 text-gray-700 dark:text-gray-300">End Time</label>
+                        <input id="erd-end" type="text" readonly class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+                </div>
+                <p id="erd-error" class="hidden text-sm text-red-600 dark:text-red-400"></p>
+                <div class="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-2">
+                    <button id="erd-cancel-btn" type="button" class="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300">Cancel</button>
+                    <button id="erd-save-btn" type="submit" class="px-5 py-2.5 rounded-xl bg-brand-primary text-white font-semibold">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <script>
 (function () {
+    const rows = JSON.parse(document.getElementById('erd-exam-rows')?.textContent || '[]');
+    const levels = JSON.parse(document.getElementById('erd-levels')?.textContent || '[]');
+    const subjects = JSON.parse(document.getElementById('erd-subjects')?.textContent || '[]');
+    const teachers = JSON.parse(document.getElementById('erd-teachers')?.textContent || '[]');
+    const byId = new Map(rows.map(r => [String(r.id), r]));
+
+    const modal = document.getElementById('erd-edit-modal');
+    const backdrop = document.getElementById('erd-edit-backdrop');
+    const closeBtn = document.getElementById('erd-close-modal');
+    const cancelBtn = document.getElementById('erd-cancel-btn');
+    const form = document.getElementById('erd-edit-form');
+    const errEl = document.getElementById('erd-error');
+    const saveBtn = document.getElementById('erd-save-btn');
+
+    const idEl = document.getElementById('erd-id');
+    const levelEl = document.getElementById('erd-level');
+    const subjectEl = document.getElementById('erd-subject');
+    const teacherEl = document.getElementById('erd-teacher');
+    const dateEl = document.getElementById('erd-date');
+    const venueEl = document.getElementById('erd-venue');
+    const sessionEl = document.getElementById('erd-session');
+    const startEl = document.getElementById('erd-start');
+    const durationEl = document.getElementById('erd-duration');
+    const endEl = document.getElementById('erd-end');
+    const customWrap = document.getElementById('erd-custom-wrap');
+
+    const ELIGIBLE_URL = {{ employee_dash_url('exam-evaluation/eligible-supervisors')|tojson }};
+    const teacherHintDynamicEl = document.getElementById('erd-teacher-hint-dynamic');
+    const conflictDetailEl = document.getElementById('erd-teacher-conflict-detail');
+
+    let lastTeacherAvail = null;
+
+    function fillSelect(el, items, getLabel) {
+        el.innerHTML = '<option value="">Select</option>' + items.map(function(it) {
+            return '<option value="' + String(it.id) + '">' + getLabel(it) + '</option>';
+        }).join('');
+    }
+    fillSelect(levelEl, levels, function(x) { return x.level_name + (x.level_category ? ' (' + x.level_category + ')' : ''); });
+    fillSelect(subjectEl, subjects, function(x) { return x.subject_name + (x.subject_code ? ' (' + x.subject_code + ')' : ''); });
+
+    function escTeacherLabel(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function setTeacherHintDynamic(msg) {
+        if (!teacherHintDynamicEl) return;
+        if (msg) {
+            teacherHintDynamicEl.textContent = msg;
+            teacherHintDynamicEl.classList.remove('hidden');
+        } else {
+            teacherHintDynamicEl.textContent = '';
+            teacherHintDynamicEl.classList.add('hidden');
+        }
+    }
+
+    function sortTeachersByName(arr) {
+        return arr.slice().sort(function (a, b) {
+            return String(a.full_name || '').localeCompare(String(b.full_name || ''));
+        });
+    }
+
+    function optionHtml(t, conflictTone) {
+        var label = escTeacherLabel(String(t.full_name || '') + (t.employee_id ? ' (' + t.employee_id + ')' : ''));
+        if (conflictTone) {
+            return '<option value="' + String(t.id) + '" class="erd-opt-conflict" style="color:#b45309;background:#fffbeb">' + label + '</option>';
+        }
+        return '<option value="' + String(t.id) + '" class="erd-opt-free" style="color:#047857;background:#ecfdf5">' + label + '</option>';
+    }
+
+    function populateTeacherSelectPlain(idSet, msgFallback) {
+        lastTeacherAvail = null;
+        setTeacherHintDynamic(msgFallback || '');
+        var flat = '<option value="">Select</option>';
+        sortTeachersByName(teachers.filter(function (x) { return idSet.has(Number(x.id)); })).forEach(function (x) {
+            flat += optionHtml(x, false);
+        });
+        teacherEl.innerHTML = flat;
+        syncTeacherConflictUI();
+    }
+
+    function populateTeacherSelectFromAvail(data) {
+        lastTeacherAvail = data;
+        setTeacherHintDynamic('');
+        var elig = new Set((data.eligible_ids || []).map(Number));
+        var busy = new Set();
+        (data.busy_supervisor_ids || []).forEach(function (x) { busy.add(Number(x)); });
+        Object.keys(data.conflicts_by_supervisor_id || {}).forEach(function (k) { busy.add(Number(k)); });
+        var availList = sortTeachersByName(teachers.filter(function (x) { return elig.has(Number(x.id)); }));
+        var busyTeachers = sortTeachersByName(teachers.filter(function (x) { return busy.has(Number(x.id)); }));
+        var html = '<option value="">Select</option>';
+        html += '<optgroup label="Available — no overlap with other exams">';
+        availList.forEach(function (x) { html += optionHtml(x, false); });
+        html += '</optgroup>';
+        html += '<optgroup label="Overlaps another exam this day (shown in amber — select to see times)">';
+        if (busyTeachers.length === 0) {
+            html += '<option disabled value="">— nobody in overlap list —</option>';
+        }
+        busyTeachers.forEach(function (x) { html += optionHtml(x, true); });
+        html += '</optgroup>';
+        teacherEl.innerHTML = html;
+        syncTeacherConflictUI();
+    }
+
+    function syncTeacherConflictUI() {
+        if (!conflictDetailEl) return;
+        var selId = teacherEl.value;
+        var clashes = selId && lastTeacherAvail && lastTeacherAvail.conflicts_by_supervisor_id
+            ? (lastTeacherAvail.conflicts_by_supervisor_id[String(selId)] || [])
+            : [];
+        teacherEl.classList.toggle('erd-teacher-select--conflict', clashes.length > 0);
+        if (!clashes.length) {
+            conflictDetailEl.innerHTML = '';
+            conflictDetailEl.classList.add('hidden');
+            return;
+        }
+        function fmtHm(t) {
+            var s = (t == null ? '' : String(t));
+            return s.length >= 5 ? s.slice(0, 5) : s;
+        }
+        var lines = clashes.map(function (c) {
+            var st = escTeacherLabel(fmtHm(c.start_time));
+            var en = escTeacherLabel(fmtHm(c.end_time));
+            var tn = '<strong>' + st + ' – ' + en + '</strong>';
+            var name = escTeacherLabel(c.exam_name || 'Exam #' + String(c.exam_id || ''));
+            return '<li class="mb-1">' + tn + ' · ' + name + '</li>';
+        });
+        var slotIntro = '';
+        if (lastTeacherAvail && lastTeacherAvail.slot_window_start && lastTeacherAvail.slot_window_end) {
+            var ws = escTeacherLabel(String(lastTeacherAvail.slot_window_start).slice(0, 5));
+            var we = escTeacherLabel(String(lastTeacherAvail.slot_window_end).slice(0, 5));
+            slotIntro = '<p class="mb-2 font-semibold">Clashes with this allocation window (' + ws + ' – ' + we + ').</p>';
+        }
+        conflictDetailEl.innerHTML = slotIntro + '<p class="mb-1">Other overlapping session(s):</p><ul class="list-disc pl-4">' + lines.join('') + '</ul>';
+        conflictDetailEl.classList.remove('hidden');
+    }
+
+    async function refreshTeacherSelect() {
+        var eid = parseInt(idEl.value, 10);
+        setTeacherHintDynamic('');
+        if (!eid) {
+            populateTeacherSelectPlain(new Set(teachers.map(function (t) { return Number(t.id); })), '');
+            return;
+        }
+
+        var payload = {
+            exam_id: eid,
+            exam_date: dateEl.value || '',
+            session_type: sessionEl.value || ''
+        };
+        if (sessionEl.value === 'CUSTOM') {
+            payload.start_time = startEl.value || '';
+            payload.duration_minutes = parseInt(durationEl.value || '0', 10) || 0;
+        }
+
+        function allTeachersFallback(msg) {
+            populateTeacherSelectPlain(new Set(teachers.map(function (t) { return Number(t.id); })), msg || '');
+        }
+
+        if (!payload.exam_date || !payload.session_type) {
+            allTeachersFallback('Fill date and session to split the list into available vs overlapping supervisors.');
+            return;
+        }
+        if (payload.session_type === 'CUSTOM' && (!payload.start_time || !(payload.duration_minutes > 0))) {
+            allTeachersFallback('Set custom start time and duration to check overlaps—until then everyone is listed as available.');
+            return;
+        }
+
+        try {
+            var res = await fetch(ELIGIBLE_URL, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            var data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Could not resolve supervisors');
+            populateTeacherSelectFromAvail(data);
+        } catch (err) {
+            console.error(err);
+            allTeachersFallback('Could not reach overlap service; everyone is listed. Save still validates on the server.');
+        }
+    }
+
+    let teacherDeb = null;
+    function scheduleTeacherRefresh() {
+        if (modal.classList.contains('hidden')) return;
+        clearTimeout(teacherDeb);
+        teacherDeb = setTimeout(function() { refreshTeacherSelect(); }, 280);
+    }
+
+    function closeModal() {
+        modal.classList.add('hidden');
+        errEl.classList.add('hidden');
+        errEl.textContent = '';
+        if (conflictDetailEl) {
+            conflictDetailEl.innerHTML = '';
+            conflictDetailEl.classList.add('hidden');
+        }
+        teacherEl.classList.remove('erd-teacher-select--conflict');
+        setTeacherHintDynamic('');
+        lastTeacherAvail = null;
+    }
+    async function openModal(row) {
+        errEl.classList.add('hidden');
+        errEl.textContent = '';
+
+        idEl.value = row.id || '';
+        levelEl.value = row.academic_level_id || '';
+        subjectEl.value = row.subject_id || '';
+        dateEl.value = row.exam_date || '';
+        venueEl.value = (row.venue || '').toUpperCase();
+        sessionEl.value = row.session_type || '';
+        startEl.value = row.start_time ? String(row.start_time).slice(0, 5) : '';
+        durationEl.value = row.duration_minutes || '';
+        endEl.value = row.end_time ? String(row.end_time).slice(0, 5) : '';
+        customWrap.classList.toggle('hidden', sessionEl.value !== 'CUSTOM');
+
+        modal.classList.remove('hidden');
+
+        await refreshTeacherSelect();
+        var want = row.supervisor_id != null ? String(row.supervisor_id) : '';
+        teacherEl.value = want;
+        syncTeacherConflictUI();
+        if (want && !Array.prototype.some.call(teacherEl.options, function(o) { return o.value === want && o.value !== ''; })) {
+            teacherEl.value = '';
+            syncTeacherConflictUI();
+            errEl.textContent = 'Current supervisor is not in the teacher list. Pick someone from the dropdown.';
+            errEl.classList.remove('hidden');
+        }
+    }
+
+    teacherEl.addEventListener('change', syncTeacherConflictUI);
+
+    function mins(t) {
+        if (!t) return null;
+        const p = String(t).split(':');
+        if (p.length < 2) return null;
+        const h = parseInt(p[0], 10);
+        const m = parseInt(p[1], 10);
+        if (isNaN(h) || isNaN(m)) return null;
+        return h * 60 + m;
+    }
+    function autoEnd() {
+        if (sessionEl.value !== 'CUSTOM') return;
+        const s = mins(startEl.value);
+        const d = parseInt(durationEl.value || '0', 10);
+        if (s === null || !d || d <= 0) {
+            endEl.value = '';
+            return;
+        }
+        const e = (s + d) % (24 * 60);
+        endEl.value = String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0');
+    }
+
+    sessionEl.addEventListener('change', function() {
+        customWrap.classList.toggle('hidden', sessionEl.value !== 'CUSTOM');
+        if (sessionEl.value === 'MORNING') { startEl.value = '08:00'; endEl.value = '11:00'; durationEl.value = ''; }
+        if (sessionEl.value === 'MIDDAY') { startEl.value = '11:30'; endEl.value = '13:30'; durationEl.value = ''; }
+        if (sessionEl.value === 'AFTERNOON') { startEl.value = '14:00'; endEl.value = '16:00'; durationEl.value = ''; }
+        if (sessionEl.value === 'EVENING') { startEl.value = '17:00'; endEl.value = '19:00'; durationEl.value = ''; }
+        if (sessionEl.value === 'CUSTOM') autoEnd();
+        scheduleTeacherRefresh();
+    });
+    if (dateEl) dateEl.addEventListener('change', scheduleTeacherRefresh);
+    startEl.addEventListener('input', function() { autoEnd(); scheduleTeacherRefresh(); });
+    durationEl.addEventListener('input', function() { autoEnd(); scheduleTeacherRefresh(); });
+
+    document.querySelectorAll('[data-edit-exam-id]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const id = btn.getAttribute('data-edit-exam-id');
+            const row = byId.get(String(id));
+            if (!row) return;
+            openModal(row);
+        });
+    });
+
+    [backdrop, closeBtn, cancelBtn].forEach(function(el) {
+        if (el) el.addEventListener('click', closeModal);
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+    });
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        errEl.classList.add('hidden');
+        const payload = {
+            exam_id: parseInt(idEl.value, 10),
+            academic_level_id: parseInt(levelEl.value, 10),
+            subject_id: parseInt(subjectEl.value, 10),
+            supervisor_id: parseInt(teacherEl.value, 10),
+            exam_date: dateEl.value,
+            venue: (venueEl.value || '').trim().toUpperCase(),
+            session_type: sessionEl.value,
+            start_time: sessionEl.value === 'CUSTOM' ? startEl.value : null,
+            duration_minutes: sessionEl.value === 'CUSTOM' ? parseInt(durationEl.value || '0', 10) : null,
+        };
+        if (!payload.exam_id || !payload.academic_level_id || !payload.subject_id || !payload.supervisor_id || !payload.exam_date || !payload.session_type) {
+            errEl.textContent = 'Please fill all required fields.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        var supKey = String(payload.supervisor_id);
+        if (lastTeacherAvail && lastTeacherAvail.conflicts_by_supervisor_id && (lastTeacherAvail.conflicts_by_supervisor_id[supKey] || []).length) {
+            errEl.textContent = 'This supervisor overlaps another exam in this slot. Choose someone from the Available group or change date/session.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        if (payload.session_type === 'CUSTOM' && (!payload.start_time || !payload.duration_minutes || payload.duration_minutes <= 0)) {
+            errEl.textContent = 'Custom session requires start time and duration.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+        saveBtn.disabled = true;
+        fetch('{{ employee_dash_url('exam-evaluation/update') }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (x) {
+                if (x.ok && x.j && x.j.success) {
+                    window.location.reload();
+                } else {
+                    errEl.textContent = (x.j && x.j.message) || 'Could not save changes.';
+                    errEl.classList.remove('hidden');
+                }
+            })
+            .catch(function () {
+                errEl.textContent = 'Could not save changes.';
+                errEl.classList.remove('hidden');
+            })
+            .finally(function () {
+                saveBtn.disabled = false;
+            });
+    });
+
     document.querySelectorAll('[data-delete-exam-id]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var id = btn.getAttribute('data-delete-exam-id');
@@ -162,6 +1106,14 @@
 </script>
 
 <style>
+    #erd-teacher.erd-teacher-select--conflict {
+        border-color: rgb(217 119 6);
+        box-shadow: 0 0 0 1px rgb(217 119 6 / 0.35);
+    }
+    .dark #erd-teacher.erd-teacher-select--conflict {
+        border-color: rgb(251 191 36);
+        box-shadow: 0 0 0 1px rgb(251 191 36 / 0.25);
+    }
     .dashboard-card {
         background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(10px);
@@ -170,6 +1122,12 @@
     .dark .dashboard-card {
         background: rgba(17, 24, 39, 0.95);
         border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    @media (max-width: 640px) {
+        .dashboard-card {
+            border-radius: 1rem;
+        }
     }
 </style>
 {% endblock %}

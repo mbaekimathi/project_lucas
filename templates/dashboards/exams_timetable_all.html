@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+
+{% block title %}All Exams Timetable - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Wall-style exam timetable — strong grid lines, print-friendly */
+    .exam-tt-sheet {
+        --exam-tt-border: rgb(55 65 81);
+        --exam-tt-head: rgb(6 95 70);
+        --exam-tt-head-text: rgb(255 255 255);
+        --exam-tt-stripe: rgba(16, 185, 129, 0.06);
+    }
+    .dark .exam-tt-sheet {
+        --exam-tt-border: rgb(209 213 219);
+        --exam-tt-head: rgb(4 120 87);
+        --exam-tt-stripe: rgba(16, 185, 129, 0.12);
+    }
+    .exam-tt-banner {
+        background: linear-gradient(135deg, rgb(16 185 129), rgb(4 120 87));
+        color: #fff;
+        border-radius: 0.5rem 0.5rem 0 0;
+        padding: 0.65rem 1rem;
+        border: 2px solid var(--exam-tt-head);
+        border-bottom: none;
+    }
+    .exam-tt-table-wrap {
+        border: 2px solid var(--exam-tt-border);
+        border-radius: 0 0 0.5rem 0.5rem;
+        overflow-x: auto;
+        background: rgb(255 255 255);
+    }
+    .dark .exam-tt-table-wrap {
+        background: rgb(17 24 39);
+    }
+    .exam-tt-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+        min-width: 52rem;
+    }
+    .exam-tt-table th {
+        background: var(--exam-tt-head);
+        color: var(--exam-tt-head-text);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.6875rem;
+        padding: 0.65rem 0.55rem;
+        border: 1px solid var(--exam-tt-head);
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .exam-tt-table td {
+        border: 1px solid var(--exam-tt-border);
+        padding: 0.55rem 0.55rem;
+        vertical-align: top;
+    }
+    .exam-tt-table tbody tr:nth-child(even) td {
+        background: var(--exam-tt-stripe);
+    }
+    .exam-tt-period {
+        width: 2.5rem;
+        text-align: center;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        background: rgb(243 244 246) !important;
+        color: rgb(55 65 81);
+        border-right: 2px solid var(--exam-tt-border) !important;
+    }
+    .dark .exam-tt-period {
+        background: rgb(31 41 55) !important;
+        color: rgb(229 231 235);
+    }
+    .exam-tt-time {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+    }
+    .exam-tt-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-weight: 700;
+        font-size: 0.8125rem;
+        letter-spacing: 0.02em;
+    }
+    .exam-tt-muted {
+        color: rgb(107 114 128);
+        font-size: 0.7rem;
+    }
+    .dark .exam-tt-muted {
+        color: rgb(156 163 175);
+    }
+    #exam-tt-root[data-loading="1"] {
+        opacity: 0.72;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+    @media print {
+        .exam-tt-sheet { break-inside: avoid; page-break-inside: avoid; }
+        .exam-tt-banner { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .exam-tt-table th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+</style>
+{% endblock %}
+
+{% block sidebar_content %}
+<a href="{{ employee_dash_url('exam-evaluation') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam Registration</span>
+    {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exams-assessments') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Exams & Assessments</span>
+    {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exam-analytics') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Exam Analytics</span>
+    {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exams-assessments/timetable') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Exams Timetable</span>
+    {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div class="mb-6 sm:mb-8">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                    <span class="w-11 h-11 rounded-xl bg-gradient-to-br from-green-500 to-emerald-700 flex items-center justify-center mr-3 shadow-lg">
+                        <i class="fas fa-calendar-alt text-white"></i>
+                    </span>
+                    Exams Timetable
+                </h1>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 sm:ml-[3.5rem]">
+                    Weekly-style schedule by examination day. Filters update the timetable immediately as you choose options.
+                </p>
+            </div>
+            <div id="exam-tt-summary" class="px-4 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 text-sm font-semibold">
+                {{ total_slots }} slot{{ '' if total_slots == 1 else 's' }} · {{ timetable_by_date|length }} day{{ '' if timetable_by_date|length == 1 else 's' }}
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-6 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-4 sm:p-5 exam-tt-filters">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            <i class="fas fa-bolt mr-1 text-green-600 dark:text-green-400"></i>
+            Live filter — results refresh when you change a dropdown (no page reload).
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 items-end">
+            <div class="lg:col-span-1">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Academic Year</label>
+                <select id="exam-tt-year" class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                    <option value="">All Years</option>
+                    {% for year in academic_years %}
+                    <option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.year_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lg:col-span-1">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Term</label>
+                <select id="exam-tt-term" class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                    <option value="">All Terms</option>
+                    {% for term in terms %}
+                    <option value="{{ term.id }}" {% if selected_term_id == term.id %}selected{% endif %}>{{ term.term_name }}{% if term.academic_year_name %} — {{ term.academic_year_name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lg:col-span-1">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Exam</label>
+                <select id="exam-tt-exam" class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                    <option value="">All Exams</option>
+                    {% for exam_name in exams_for_filter %}
+                    <option value="{{ exam_name }}" {% if selected_exam_name == exam_name %}selected{% endif %}>{{ exam_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="lg:col-span-1">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Class</label>
+                <select id="exam-tt-class" class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-2.5 text-sm">
+                    <option value="">All Classes</option>
+                    {% for c in classes_for_filter %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.level_name }}{% if c.level_category %} ({{ c.level_category }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="xl:col-span-2 flex flex-col sm:flex-row gap-2 lg:justify-end">
+                <button type="button" id="exam-tt-reset"
+                        class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold w-full sm:w-auto">
+                    <i class="fas fa-undo mr-2"></i>
+                    Clear filters
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="exam-tt-root" data-loading="0">
+        {% if not timetable_by_date %}
+        <div class="exam-tt-empty rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-10 text-center text-gray-600 dark:text-gray-400">
+            No exam timetables match this filter.
+        </div>
+        {% else %}
+        <div class="space-y-8 exam-tt-sheet">
+            {% for day in timetable_by_date %}
+            <section aria-labelledby="exam-tt-{{ loop.index }}-title">
+                <div id="exam-tt-{{ loop.index }}-title" class="exam-tt-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    {% if day.weekday %}
+                    <span class="text-lg font-extrabold tracking-tight">{{ day.weekday }}</span>
+                    <span class="text-sm font-semibold opacity-95">{{ day.date_heading }}</span>
+                    {% else %}
+                    <span class="text-lg font-extrabold tracking-tight">{{ day.date_heading }}</span>
+                    {% endif %}
+                    <span class="text-xs opacity-85 ml-auto font-medium">{{ day.slots|length }} period{{ '' if day.slots|length == 1 else 's' }}</span>
+                </div>
+                <div class="exam-tt-table-wrap shadow-inner">
+                    <table class="exam-tt-table">
+                        <thead>
+                            <tr>
+                                <th class="exam-tt-period">#</th>
+                                <th>Time</th>
+                                <th>Class</th>
+                                <th>Subject</th>
+                                <th>Supervisor</th>
+                                <th>Venue</th>
+                                <th>Paper</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for slot in day.slots %}
+                            <tr>
+                                <td class="exam-tt-period">{{ loop.index }}</td>
+                                <td class="exam-tt-time text-gray-900 dark:text-gray-100">
+                                    {% if slot.start_time or slot.end_time %}
+                                    {{ slot.start_time or '—' }}–{{ slot.end_time or '—' }}
+                                    {% endif %}
+                                    {% if slot.session_type %}
+                                    {% if slot.start_time or slot.end_time %}<br>{% endif %}
+                                    <span class="exam-tt-muted font-semibold">{{ slot.session_type }}</span>
+                                    {% elif not slot.start_time and not slot.end_time %}
+                                    <span class="exam-tt-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-gray-900 dark:text-gray-100">
+                                    <span class="font-semibold">{{ slot.level_name or '—' }}</span>
+                                    {% if slot.level_category %}
+                                    <br><span class="exam-tt-muted">{{ slot.level_category }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-gray-900 dark:text-gray-100">
+                                    {% if slot.subject_code %}
+                                    <span class="exam-tt-code text-emerald-800 dark:text-emerald-300">{{ slot.subject_code }}</span>
+                                    {% if slot.subject_name %}<br><span class="exam-tt-muted">{{ slot.subject_name }}</span>{% endif %}
+                                    {% elif slot.subject_name %}
+                                    {{ slot.subject_name }}
+                                    {% else %}
+                                    <span class="exam-tt-muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td class="exam-tt-code text-gray-900 dark:text-gray-100">{{ slot.teacher_code or '—' }}</td>
+                                <td class="exam-tt-code text-gray-800 dark:text-gray-200">{{ slot.venue or '—' }}</td>
+                                <td class="text-gray-900 dark:text-gray-100">
+                                    <span class="font-semibold">{{ slot.exam_name or '—' }}</span>
+                                    {% if slot.exam_type %}
+                                    <br><span class="exam-tt-muted">{{ slot.exam_type }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set st = (slot.status or 'scheduled')|lower %}
+                                    <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase
+                                        {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
+                                        {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+                                        {% elif st == 'completed' %}bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200
+                                        {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
+                                        {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                                        {{ slot.status or 'scheduled' }}
+                                    </span>
+                                    {% if slot.year_name or slot.term_name %}
+                                    <div class="exam-tt-muted mt-1">{{ slot.year_name or '—' }} · {{ slot.term_name or '—' }}</div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+<script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exams-assessments/timetable/api'), 'timetable_by_date': timetable_by_date, 'total_slots': total_slots, 'days_count': timetable_by_date|length, 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
+<script>
+(function () {
+    const boot = JSON.parse(document.getElementById('exam-tt-bootstrap').textContent || '{}');
+    const API_URL = boot.api_url || '';
+
+    function escHtml(s) {
+        if (s == null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function escAttr(s) {
+        return escHtml(s).replace(/`/g, '&#096;');
+    }
+
+    function statusBadgeClasses(stRaw) {
+        const st = (stRaw || 'scheduled').toLowerCase();
+        if (st === 'scheduled') return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
+        if (st === 'ongoing') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
+        if (st === 'completed') return 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200';
+        if (st === 'cancelled') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    }
+
+    function slotTimeCell(slot) {
+        let html = '';
+        if (slot.start_time || slot.end_time) {
+            html += escHtml(slot.start_time || '—') + '–' + escHtml(slot.end_time || '—');
+        }
+        if (slot.session_type) {
+            if (html) html += '<br>';
+            html += '<span class="exam-tt-muted font-semibold">' + escHtml(slot.session_type) + '</span>';
+        }
+        if (!html) html = '<span class="exam-tt-muted">—</span>';
+        return html;
+    }
+
+    function slotSubjectCell(slot) {
+        if (slot.subject_code) {
+            let h = '<span class="exam-tt-code text-emerald-800 dark:text-emerald-300">' + escHtml(slot.subject_code) + '</span>';
+            if (slot.subject_name) h += '<br><span class="exam-tt-muted">' + escHtml(slot.subject_name) + '</span>';
+            return h;
+        }
+        if (slot.subject_name) return escHtml(slot.subject_name);
+        return '<span class="exam-tt-muted">—</span>';
+    }
+
+    function renderDaySection(day, sectionIndex) {
+        const bannerId = 'exam-tt-js-' + sectionIndex + '-title';
+        let ban = '';
+        if (day.weekday) {
+            ban = '<span class="text-lg font-extrabold tracking-tight">' + escHtml(day.weekday) + '</span>' +
+                  '<span class="text-sm font-semibold opacity-95">' + escHtml(day.date_heading) + '</span>';
+        } else {
+            ban = '<span class="text-lg font-extrabold tracking-tight">' + escHtml(day.date_heading) + '</span>';
+        }
+        const n = day.slots ? day.slots.length : 0;
+        const plural = n === 1 ? '' : 's';
+        ban += '<span class="text-xs opacity-85 ml-auto font-medium">' + n + ' period' + plural + '</span>';
+
+        let rows = '';
+        (day.slots || []).forEach(function (slot, i) {
+            const stCls = statusBadgeClasses(slot.status);
+            const yt = ((slot.year_name || '—') + ' · ' + (slot.term_name || '—'));
+            rows += '<tr>' +
+              '<td class="exam-tt-period">' + (i + 1) + '</td>' +
+              '<td class="exam-tt-time text-gray-900 dark:text-gray-100">' + slotTimeCell(slot) + '</td>' +
+              '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.level_name || '—') + '</span>' +
+                (slot.level_category ? '<br><span class="exam-tt-muted">' + escHtml(slot.level_category) + '</span>' : '') + '</td>' +
+              '<td class="text-gray-900 dark:text-gray-100">' + slotSubjectCell(slot) + '</td>' +
+              '<td class="exam-tt-code text-gray-900 dark:text-gray-100">' + escHtml(slot.teacher_code || '—') + '</td>' +
+              '<td class="exam-tt-code text-gray-800 dark:text-gray-200">' + escHtml(slot.venue || '—') + '</td>' +
+              '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.exam_name || '—') + '</span>' +
+                (slot.exam_type ? '<br><span class="exam-tt-muted">' + escHtml(slot.exam_type) + '</span>' : '') + '</td>' +
+              '<td><span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ' + stCls + '">' + escHtml(slot.status || 'scheduled') + '</span>' +
+              '<div class="exam-tt-muted mt-1">' + escHtml(yt) + '</div></td>' +
+            '</tr>';
+        });
+
+        return '<section aria-labelledby="' + bannerId + '">' +
+          '<div id="' + bannerId + '" class="exam-tt-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">' + ban + '</div>' +
+          '<div class="exam-tt-table-wrap shadow-inner">' +
+          '<table class="exam-tt-table"><thead><tr>' +
+          '<th class="exam-tt-period">#</th><th>Time</th><th>Class</th><th>Subject</th><th>Supervisor</th><th>Venue</th><th>Paper</th><th>Status</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table></div></section>';
+    }
+
+    function renderTimetableRoot(timetableByDate, totalSlots) {
+        const root = document.getElementById('exam-tt-root');
+        const summary = document.getElementById('exam-tt-summary');
+        if (!root) return;
+
+        const days = timetableByDate && timetableByDate.length ? timetableByDate.length : 0;
+        summary.textContent = String(totalSlots) + ' slot' + (totalSlots === 1 ? '' : 's') +
+            ' · ' + String(days) + ' day' + (days === 1 ? '' : 's');
+
+        if (!timetableByDate || timetableByDate.length === 0) {
+            root.innerHTML = '<div class="exam-tt-empty rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-10 text-center text-gray-600 dark:text-gray-400">No exam timetables match this filter.</div>';
+            return;
+        }
+
+        let html = '<div class="space-y-8 exam-tt-sheet">';
+        timetableByDate.forEach(function (day, idx) {
+            html += renderDaySection(day, idx + 1);
+        });
+        html += '</div>';
+        root.innerHTML = html;
+    }
+
+    function updateExamDropdown(exams) {
+        const examSel = document.getElementById('exam-tt-exam');
+        if (!examSel) return;
+        const cur = examSel.value || '';
+        let opts = '<option value="">All Exams</option>';
+        (exams || []).forEach(function (name) {
+            opts += '<option value="' + escAttr(name) + '">' + escHtml(name) + '</option>';
+        });
+        examSel.innerHTML = opts;
+        let found = false;
+        Array.prototype.forEach.call(examSel.options, function (o) {
+            if (o.value === cur) found = true;
+        });
+        if (found) examSel.value = cur;
+        else examSel.value = '';
+    }
+
+    async function reloadTimetable() {
+        const root = document.getElementById('exam-tt-root');
+        if (!API_URL || !root) return;
+        root.setAttribute('data-loading', '1');
+
+        const y = document.getElementById('exam-tt-year');
+        const t = document.getElementById('exam-tt-term');
+        const e = document.getElementById('exam-tt-exam');
+        const c = document.getElementById('exam-tt-class');
+
+        const params = new URLSearchParams({ live: '1' });
+
+        const yv = (y && y.value) ? String(y.value).trim() : '';
+        const tv = (t && t.value) ? String(t.value).trim() : '';
+        if (!yv && !tv) params.set('show_all', '1');
+        else params.set('show_all', '0');
+
+        params.set('academic_year_id', yv);
+        params.set('term_id', tv);
+        params.set('exam_name', e && e.value ? e.value.trim() : '');
+        params.set('class_id', c && c.value ? c.value.trim() : '');
+
+        try {
+            const res = await fetch(API_URL + '?' + params.toString(), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Request failed');
+
+            renderTimetableRoot(data.timetable_by_date, data.total_slots || 0);
+            if (Array.isArray(data.exams_for_filter)) {
+                updateExamDropdown(data.exams_for_filter);
+            }
+        } catch (err) {
+            console.error(err);
+            renderTimetableRoot([], 0);
+            const summary = document.getElementById('exam-tt-summary');
+            if (summary) summary.textContent = 'Could not refresh timetable';
+        } finally {
+            root.setAttribute('data-loading', '0');
+        }
+    }
+
+    let debounceTimer;
+    function scheduleReload() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () { reloadTimetable(); }, 180);
+    }
+
+    ['exam-tt-year', 'exam-tt-term', 'exam-tt-exam', 'exam-tt-class'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', scheduleReload);
+    });
+
+    var resetBtn = document.getElementById('exam-tt-reset');
+    if (resetBtn) resetBtn.addEventListener('click', function () {
+        var y = document.getElementById('exam-tt-year');
+        var t = document.getElementById('exam-tt-term');
+        var e = document.getElementById('exam-tt-exam');
+        var c = document.getElementById('exam-tt-class');
+        if (y) y.value = '';
+        if (t) t.value = '';
+        if (e) e.value = '';
+        if (c) c.value = '';
+        scheduleReload();
+    });
+})();
+</script>
+{% endblock %}

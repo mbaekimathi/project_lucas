@@ -7,6 +7,24 @@
 {% endblock %}
 
 {% block content %}
+<style>
+@media print {
+    body * {
+        visibility: hidden !important;
+    }
+    #ar-preview-wrap,
+    #ar-preview-wrap * {
+        visibility: visible !important;
+    }
+    #ar-preview-wrap {
+        position: absolute !important;
+        inset: 0 auto auto 0 !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+}
+</style>
 <div class="p-4 lg:p-6 print:p-2 max-w-5xl mx-auto">
     <div class="mb-6 no-print">
         <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
@@ -14,7 +32,7 @@
             Academic reports
         </h1>
         <p class="text-sm text-gray-600 dark:text-gray-400">
-            Pick what you need below, set <strong>year</strong>, <strong>term</strong>, and <strong>class</strong> where it applies, then <strong>Open report</strong> (full page), <strong>Download CSV</strong>, or <strong>Print</strong>.
+            Choose the report and filters below. The details table updates directly on this page.
         </p>
     </div>
 
@@ -109,33 +127,40 @@
         <p id="ar-filter-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-3"></p>
     </div>
 
-    <!-- Status -->
-    <div id="ar-status-banner" class="hidden no-print mb-5 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm" role="status" aria-live="polite">
-        <span id="ar-status-icon" class="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm" aria-hidden="true"></span>
-        <div class="min-w-0 flex-1">
-            <p id="ar-status-title" class="font-semibold text-gray-900 dark:text-white"></p>
-            <p id="ar-status-detail" class="text-sm text-gray-600 dark:text-gray-400 mt-0.5"></p>
+    <!-- 3) Report details -->
+    <div id="ar-preview-wrap" class="mt-5">
+        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div class="flex items-start gap-3">
+                        {% if school_settings.school_logo %}
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                             alt="{{ school_settings.school_name or 'School logo' }}"
+                             class="w-12 h-12 object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white">
+                        {% endif %}
+                        <div>
+                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Report details</h2>
+                            <p class="text-xs text-gray-600 dark:text-gray-400">{{ school_settings.school_name or 'School' }}</p>
+                            <p id="ar-generated-at" class="text-xs text-gray-500 dark:text-gray-400">Generated: --</p>
+                        </div>
+                    </div>
+                    <button type="button"
+                            onclick="window.print()"
+                            class="no-print inline-flex items-center px-3 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm hover:opacity-95 transition-all">
+                        <i class="fas fa-print mr-2"></i>Print
+                    </button>
+                </div>
+            </div>
+            <div id="ar-details-list" class="p-4 sm:p-5">
+                <p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>
+            </div>
         </div>
-    </div>
-
-    <!-- 3) Actions -->
-    <div class="no-print flex flex-wrap gap-2 items-center">
-        <button type="button" id="ar-open" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-primary text-white text-sm font-semibold hover:opacity-90 shadow-sm">
-            <i class="fas fa-external-link-alt"></i> Open report
-        </button>
-        <button type="button" id="ar-download" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-200 dark:bg-gray-600 text-gray-900 dark:text-gray-100 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-500">
-            <i class="fas fa-download"></i> Download CSV
-        </button>
-        <button type="button" id="ar-print" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-500 text-gray-800 dark:text-gray-200 text-sm font-semibold hover:bg-gray-50 dark:hover:bg-gray-700">
-            <i class="fas fa-print"></i> Print
-        </button>
     </div>
 </div>
 
 <script>
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
-  const PREVIEW = {{ employee_dash_url('academic-reports/preview')|tojson }};
 
   const CATALOG = {
     class_list: {
@@ -184,6 +209,14 @@
   const wrapStudent = document.getElementById('ar-wrap-student');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
+  const detailsListEl = document.getElementById('ar-details-list');
+  const generatedAtEl = document.getElementById('ar-generated-at');
+
+  function setGeneratedNow() {
+    if (!generatedAtEl) return;
+    const now = new Date();
+    generatedAtEl.textContent = 'Generated: ' + now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+  }
 
   function currentReportId() {
     return (reportEl.value || '').trim();
@@ -201,6 +234,7 @@
     reportEl.selectedIndex = 0;
     updateReportDescription();
     updateExtraFilters();
+    loadDetails();
   }
 
   function updateReportDescription() {
@@ -234,6 +268,7 @@
   reportEl.addEventListener('change', function() {
     updateReportDescription();
     updateExtraFilters();
+    loadDetails();
   });
 
   fillReportOptions(sectionEl.value);
@@ -249,25 +284,16 @@
     const yi = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const ti = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
     const li = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
-    const base = {
-      academic_year_id: yi,
-      term_id: ti,
-      level_id: li,
-    };
-    const needsTeacher = reportType === 'timetable_teacher';
-    const needsTimetableView = reportType === 'timetable_subject';
-    const needsStudent = reportType === 'exam_individual_performance' || reportType === 'exam_individual' || reportType === 'attendance_individual';
-    const needsDates = reportType === 'attendance_class' || reportType === 'attendance_individual';
-    const out = Object.assign({}, base);
-    out.teacher_id = needsTeacher && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
-    out.timetable_view = needsTimetableView ? (val('gf-timetable-view') || 'student') : null;
-    if (needsStudent) {
-      const s = val('gf-student');
-      out.student_id = (s && String(s).trim()) ? String(s).trim() : null;
+    const out = { academic_year_id: yi, term_id: ti, level_id: li };
+    out.teacher_id = reportType === 'timetable_teacher' && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
+    out.timetable_view = reportType === 'timetable_subject' ? (val('gf-timetable-view') || 'student') : null;
+    if (reportType === 'exam_individual_performance' || reportType === 'exam_individual' || reportType === 'attendance_individual') {
+      const sid = val('gf-student');
+      out.student_id = sid ? String(sid).trim() : null;
     } else {
       out.student_id = null;
     }
-    if (needsDates) {
+    if (reportType === 'attendance_class' || reportType === 'attendance_individual') {
       out.date_from = val('gf-dfrom') || null;
       out.date_to = val('gf-dto') || null;
     } else {
@@ -277,90 +303,192 @@
     return out;
   }
 
-  function buildPreviewUrl(reportType) {
-    const f = getFiltersForReport(reportType);
-    const p = new URLSearchParams();
-    p.set('report_type', reportType);
-    Object.keys(f).forEach(function(k) {
-      var v = f[k];
-      if (v !== null && v !== undefined && v !== '') {
-        p.set(k, String(v));
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderTable(bundle) {
+    const columns = Array.isArray(bundle.columns) ? bundle.columns : [];
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length || !columns.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No data found for this report and filters.</p>';
+    }
+    const head = columns.map(function(c) {
+      return '<th class="text-left py-2 px-3 font-semibold whitespace-nowrap border-b border-gray-200 dark:border-gray-700">' + escapeHtml(c.replaceAll('_', ' ')) + '</th>';
+    }).join('');
+    const body = rows.map(function(row) {
+      const cells = columns.map(function(c) {
+        return '<td class="py-2 px-3 border-b border-gray-100 dark:border-gray-800 whitespace-nowrap">' + escapeHtml(row[c]) + '</td>';
+      }).join('');
+      return '<tr>' + cells + '</tr>';
+    }).join('');
+    return '<div class="overflow-x-auto"><table class="w-full text-sm min-w-[720px]"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderExamTimetable(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No exam timetable entries found for these filters.</p>';
+    }
+
+    function pick(row, keys) {
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return String(row[k]);
       }
+      return '';
+    }
+
+    function dayLabel(dateText) {
+      if (!dateText) return '';
+      var d = new Date(dateText);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString(undefined, { weekday: 'long' });
+    }
+
+    function parseSortableDate(v) {
+      var d = new Date(v || '');
+      return isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
+    }
+
+    function parseSortableTime(v) {
+      if (!v) return Number.MAX_SAFE_INTEGER;
+      var s = String(v).trim();
+      var m = s.match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return Number.MAX_SAFE_INTEGER;
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+
+    var normalized = rows.map(function(r) {
+      var examName = pick(r, ['exam_name', 'exam', 'title']);
+      var dateText = pick(r, ['exam_date', 'date', 'scheduled_date']);
+      var start = pick(r, ['start_time', 'time_from', 'start_time_text', 'time']);
+      var end = pick(r, ['end_time', 'time_to', 'end_time_text']);
+      var className = pick(r, ['level_name', 'class_name', 'academic_level', 'level']);
+      var subject = pick(r, ['subject_name', 'subject', 'subject_code']);
+      var venue = pick(r, ['venue', 'room', 'exam_room', 'location']);
+      var invigilator = pick(r, ['teacher_name', 'supervisor', 'invigilator']);
+      return {
+        examName: examName || 'Exam',
+        dateText: dateText || '-',
+        dayText: dayLabel(dateText),
+        start: start || '',
+        end: end || '',
+        timeText: (start || end) ? (start + (end ? ' - ' + end : '')) : '-',
+        className: className || '-',
+        subject: subject || '-',
+        venue: venue || '-',
+        invigilator: invigilator || '-',
+        __d: parseSortableDate(dateText),
+        __t: parseSortableTime(start)
+      };
     });
-    return PREVIEW + '?' + p.toString();
+
+    normalized.sort(function(a, b) {
+      if (a.__d !== b.__d) return a.__d - b.__d;
+      return a.__t - b.__t;
+    });
+
+    var names = [];
+    normalized.forEach(function(n) {
+      if (n.examName && names.indexOf(n.examName) === -1) names.push(n.examName);
+    });
+    var heading = names.length === 1 ? names[0] : 'Exam Timetable';
+    var namesMeta = names.length > 1
+      ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Exams: ' + escapeHtml(names.join(', ')) + '</p>'
+      : '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Structured timetable view</p>';
+
+    var grouped = {};
+    var order = [];
+    normalized.forEach(function(item) {
+      var key = item.dateText;
+      if (!grouped[key]) {
+        grouped[key] = [];
+        order.push(key);
+      }
+      grouped[key].push(item);
+    });
+
+    var sections = order.map(function(dateKey) {
+      var day = grouped[dateKey][0].dayText;
+      var title = escapeHtml(dateKey) + (day ? ' (' + escapeHtml(day) + ')' : '');
+      var body = grouped[dateKey].map(function(item) {
+        return '<tr class="border-b border-gray-100 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/30">' +
+          '<td class="py-3 px-3 font-semibold text-brand-primary dark:text-brand-secondary whitespace-nowrap">' + escapeHtml(item.timeText) + '</td>' +
+          '<td class="py-3 px-3 text-gray-800 dark:text-gray-200"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">' + escapeHtml(item.className) + '</span></td>' +
+          '<td class="py-3 px-3 text-gray-900 dark:text-white font-medium">' + escapeHtml(item.subject) + '</td>' +
+          '<td class="py-3 px-3 text-gray-700 dark:text-gray-300"><span class="inline-flex items-center gap-1"><i class="fas fa-map-marker-alt text-rose-500"></i>' + escapeHtml(item.venue) + '</span></td>' +
+          '<td class="py-3 px-3 text-gray-700 dark:text-gray-300"><span class="inline-flex items-center gap-1"><i class="fas fa-user-check text-emerald-500"></i>' + escapeHtml(item.invigilator) + '</span></td>' +
+          '</tr>';
+      }).join('');
+      return '' +
+      '<div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">' +
+        '<div class="px-4 py-2.5 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 dark:from-brand-primary/25 dark:to-brand-secondary/25 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-200">' + title + '</div>' +
+        '<div class="overflow-x-auto">' +
+          '<table class="w-full min-w-[720px] text-sm">' +
+            '<thead>' +
+              '<tr class="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">' +
+                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Time</th>' +
+                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Class</th>' +
+                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Subject</th>' +
+                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Venue</th>' +
+                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Invigilator</th>' +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + body + '</tbody>' +
+          '</table>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return '' +
+      '<div class="mb-3">' +
+        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-calendar-alt text-brand-primary"></i>' + escapeHtml(heading) + '</h3>' +
+        namesMeta +
+      '</div>' +
+      sections;
   }
 
-  function setBanner(kind, title, detail) {
-    var bar = document.getElementById('ar-status-banner');
-    var icon = document.getElementById('ar-status-icon');
-    var tEl = document.getElementById('ar-status-title');
-    var dEl = document.getElementById('ar-status-detail');
-    if (!bar || !icon || !tEl || !dEl) return;
-    bar.classList.remove('hidden');
-    bar.className = 'no-print mb-5 rounded-xl border px-4 py-3 flex items-start gap-3 shadow-sm';
-    icon.className = 'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm';
-    if (kind === 'loading') {
-      bar.classList.add('border-blue-200', 'bg-blue-50', 'dark:border-blue-800', 'dark:bg-blue-900/30');
-      icon.classList.add('bg-blue-200', 'dark:bg-blue-800', 'text-blue-600');
-      icon.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-    } else if (kind === 'success') {
-      bar.classList.add('border-green-200', 'bg-green-50', 'dark:border-green-800', 'dark:bg-green-900/25');
-      icon.classList.add('bg-green-200', 'dark:bg-green-800', 'text-green-700', 'dark:text-green-300');
-      icon.innerHTML = '<i class="fas fa-check"></i>';
-    } else if (kind === 'warning') {
-      bar.classList.add('border-amber-200', 'bg-amber-50', 'dark:border-amber-800', 'dark:bg-amber-900/25');
-      icon.classList.add('bg-amber-200', 'dark:bg-amber-800', 'text-amber-800', 'dark:text-amber-200');
-      icon.innerHTML = '<i class="fas fa-exclamation-triangle"></i>';
-    } else {
-      bar.classList.add('border-red-200', 'bg-red-50', 'dark:border-red-900', 'dark:bg-red-900/25');
-      icon.classList.add('bg-red-200', 'dark:bg-red-900', 'text-red-700', 'dark:text-red-300');
-      icon.innerHTML = '<i class="fas fa-times"></i>';
-    }
-    tEl.textContent = title || '';
-    dEl.textContent = detail || '';
+  async function loadDetails() {
+    const reportType = currentReportId();
+    const selected = (CATALOG[sectionEl.value].reports || []).find(function(r) { return r.id === reportType; });
+    if (!reportType || !detailsListEl) return;
+    detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>';
     try {
-      bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } catch (e) {}
-  }
-
-  async function runCsvDownload(reportType) {
-    setBanner('loading', 'Preparing download…', 'Please wait.');
-    const res = await fetch(API, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ report_type: reportType, format: 'csv', filters: getFiltersForReport(reportType) }),
-    });
-    const ct = (res.headers.get('content-type') || '');
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setBanner('error', 'Download failed', (j.message || ('HTTP ' + res.status)));
-      return;
+      const res = await fetch(API, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ report_type: reportType, format: 'json', filters: getFiltersForReport(reportType) }),
+      });
+      const data = await res.json().catch(function() { return {}; });
+      if (!res.ok || data.success === false) {
+        detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">' + escapeHtml(data.message || 'Could not load report details.') + '</p>';
+        return;
+      }
+      const bundle = {
+        title: data.title || '',
+        columns: Array.isArray(data.columns) ? data.columns : [],
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        meta: data.meta || {},
+      };
+      detailsListEl.innerHTML =
+        '<div class="mb-3">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(selected ? selected.label : (bundle.title || reportType)) + '</p>' +
+          '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' + escapeHtml(selected ? selected.desc : '') + '</p>' +
+        '</div>' +
+        (reportType === 'timetable_exam' ? renderExamTimetable(bundle) : renderTable(bundle));
+      setGeneratedNow();
+    } catch (e) {
+      detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
+      setGeneratedNow();
     }
-    if (ct.indexOf('application/json') !== -1) {
-      const j = await res.json().catch(() => ({}));
-      setBanner('error', 'Download failed', j.message || 'Server returned an error.');
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = reportType + '.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-    setBanner('success', 'Download started', 'Your CSV file should download shortly.');
   }
-
-  document.getElementById('ar-open').addEventListener('click', function() {
-    window.location.href = buildPreviewUrl(currentReportId());
-  });
-  document.getElementById('ar-download').addEventListener('click', function() {
-    runCsvDownload(currentReportId());
-  });
-  document.getElementById('ar-print').addEventListener('click', function() {
-    window.location.href = buildPreviewUrl(currentReportId());
-  });
 
   const termEl = document.getElementById('gf-term');
   const yearEl = document.getElementById('gf-year');
@@ -375,7 +503,18 @@
         }
       }
     }
+    loadDetails();
   });
+  ['gf-year', 'gf-level', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', loadDetails);
+  });
+  const studentInput = document.getElementById('gf-student');
+  if (studentInput) {
+    studentInput.addEventListener('change', loadDetails);
+    studentInput.addEventListener('input', loadDetails);
+  }
+  loadDetails();
 })();
 </script>
 {% endblock %}

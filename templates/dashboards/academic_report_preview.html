@@ -61,8 +61,34 @@
         <p class="text-sm text-gray-600">{{ title }}</p>
     </div>
 
+    {% if simple_view %}
+    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+        {% if not rows or rows|length == 0 %}
+        <p class="p-8 text-center text-gray-500">No data.</p>
+        {% else %}
+        <table class="w-full text-sm min-w-[640px] border-collapse">
+            <thead>
+                <tr class="border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40">
+                    {% for c in columns %}
+                    <th class="text-left py-2.5 px-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap border-r border-gray-200 dark:border-gray-700 last:border-r-0">{{ c|replace('_', ' ') }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="border-b border-gray-100 dark:border-gray-700/60 odd:bg-white odd:dark:bg-gray-800 even:bg-gray-50/70 even:dark:bg-gray-800/50">
+                    {% for c in columns %}
+                    <td class="py-2 px-3 text-gray-800 dark:text-gray-200 align-top border-r border-gray-100 dark:border-gray-700/70 last:border-r-0 whitespace-nowrap">{{ row.get(c, '') }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+
     {# ——— Timetable grid ——— #}
-    {% if layout == 'timetable' %}
+    {% elif layout == 'timetable' %}
     <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
             <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Timetable</h2>

@@ -3,7 +3,7 @@ from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import pymysql
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as date_cls
 import os
 import re
 import json
@@ -8241,13 +8241,30 @@ def create_fee_structure():
         data = request.get_json()
         
         # Validate required fields
+        raw_level_ids = data.get('academic_level_ids')
         academic_level_id = data.get('academic_level_id')
         academic_year_id = data.get('academic_year_id')
         term_id = data.get('term_id')
         fee_name = data.get('fee_name', '').strip().upper()
         fee_items = data.get('fee_items', [])
-        
-        if not academic_level_id or not academic_year_id or not term_id or not fee_name:
+
+        if isinstance(raw_level_ids, list) and raw_level_ids:
+            academic_level_ids = []
+            for value in raw_level_ids:
+                try:
+                    academic_level_ids.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+            academic_level_ids = sorted(list(set(academic_level_ids)))
+        elif academic_level_id:
+            try:
+                academic_level_ids = [int(academic_level_id)]
+            except (TypeError, ValueError):
+                academic_level_ids = []
+        else:
+            academic_level_ids = []
+
+        if not academic_level_ids or not academic_year_id or not term_id or not fee_name:
             return jsonify({'success': False, 'message': 'All required fields must be filled'}), 400
         
         if not fee_items or len(fee_items) == 0:
@@ -8290,99 +8307,91 @@ def create_fee_structure():
                         'message': 'Invalid category. Please select a valid category (Self Sponsored, Sponsored, or Both).'
                     }), 400
                 
-                # Check for category conflicts:
-                # 1. If creating "both", check if "self sponsored" or "sponsored" exists
-                # 2. If creating "self sponsored" or "sponsored", check if "both" exists
-                # 3. Check if exact same category already exists
-                
-                if category == 'both':
-                    # Check if "self sponsored" or "sponsored" exists
-                    cursor.execute("""
-                        SELECT id, fee_name, category
-                        FROM fee_structures 
-                        WHERE academic_year_id = %s
-                        AND term_id = %s
-                        AND academic_level_id = %s 
-                        AND category IN ('self sponsored', 'sponsored')
-                        AND status = 'active'
-                    """, (academic_year_id, term_id, academic_level_id))
-                    
-                    existing_individual = cursor.fetchone()
-                    if existing_individual:
-                        existing_name = existing_individual.get('fee_name') if isinstance(existing_individual, dict) else existing_individual[1]
-                        existing_category = existing_individual.get('category') if isinstance(existing_individual, dict) else existing_individual[2]
-                        return jsonify({
-                            'success': False, 
-                            'message': f'Cannot create a fee structure for "Both" category because a fee structure already exists for "{existing_category.title()}" category. The "Both" category covers both self-sponsored and sponsored students, so it cannot coexist with individual category fee structures. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing structure first.'
-                        }), 400
-                else:
-                    # Check if "both" exists
+                created_structure_ids = []
+                total_items_inserted = 0
+
+                for academic_level_id in academic_level_ids:
+                    if category == 'both':
+                        cursor.execute("""
+                            SELECT id, fee_name, category
+                            FROM fee_structures 
+                            WHERE academic_year_id = %s
+                            AND term_id = %s
+                            AND academic_level_id = %s 
+                            AND category IN ('self sponsored', 'sponsored')
+                            AND status = 'active'
+                        """, (academic_year_id, term_id, academic_level_id))
+                        existing_individual = cursor.fetchone()
+                        if existing_individual:
+                            existing_name = existing_individual.get('fee_name') if isinstance(existing_individual, dict) else existing_individual[1]
+                            existing_category = existing_individual.get('category') if isinstance(existing_individual, dict) else existing_individual[2]
+                            connection.rollback()
+                            return jsonify({
+                                'success': False,
+                                'message': f'Cannot create "Both" for level {academic_level_id}. Existing "{existing_category}" structure: {existing_name}.'
+                            }), 400
+                    else:
+                        cursor.execute("""
+                            SELECT id, fee_name
+                            FROM fee_structures 
+                            WHERE academic_year_id = %s
+                            AND term_id = %s
+                            AND academic_level_id = %s 
+                            AND category = 'both'
+                            AND status = 'active'
+                        """, (academic_year_id, term_id, academic_level_id))
+                        existing_both = cursor.fetchone()
+                        if existing_both:
+                            existing_name = existing_both.get('fee_name') if isinstance(existing_both, dict) else existing_both[1]
+                            connection.rollback()
+                            return jsonify({
+                                'success': False,
+                                'message': f'Cannot create "{category}" for level {academic_level_id}. Existing "Both" structure: {existing_name}.'
+                            }), 400
+
                     cursor.execute("""
                         SELECT id, fee_name
                         FROM fee_structures 
                         WHERE academic_year_id = %s
                         AND term_id = %s
                         AND academic_level_id = %s 
-                        AND category = 'both'
+                        AND category = %s
                         AND status = 'active'
-                    """, (academic_year_id, term_id, academic_level_id))
-                    
-                    existing_both = cursor.fetchone()
-                    if existing_both:
-                        existing_name = existing_both.get('fee_name') if isinstance(existing_both, dict) else existing_both[1]
+                    """, (academic_year_id, term_id, academic_level_id, category))
+                    existing_structure = cursor.fetchone()
+                    if existing_structure:
+                        existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
+                        connection.rollback()
                         return jsonify({
-                            'success': False, 
-                            'message': f'Cannot create a fee structure for "{category.title()}" category because a fee structure already exists for "Both" category. The "Both" category covers both self-sponsored and sponsored students, so individual category fee structures cannot be created when "Both" exists. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit/delete the existing "Both" structure first.'
+                            'success': False,
+                            'message': f'Fee structure already exists for level {academic_level_id} ({category}): {existing_name}.'
                         }), 400
-                
-                # Check if exact same category already exists
-                cursor.execute("""
-                    SELECT id, fee_name
-                    FROM fee_structures 
-                    WHERE academic_year_id = %s
-                    AND term_id = %s
-                    AND academic_level_id = %s 
-                    AND category = %s
-                    AND status = 'active'
-                """, (academic_year_id, term_id, academic_level_id, category))
-                
-                existing_structure = cursor.fetchone()
-                if existing_structure:
-                    existing_name = existing_structure.get('fee_name') if isinstance(existing_structure, dict) else existing_structure[1]
-                    return jsonify({
-                        'success': False, 
-                        'message': f'A fee structure already exists for this Category ({category}), Academic Level, Term, and Academic Year combination. Each academic level can have one fee structure per category per term. Existing structure: {existing_name}. Please select a different category, term, or academic level, or edit the existing structure.'
-                    }), 400
-                
-                # Insert fee structure
-                cursor.execute("""
-                    INSERT INTO fee_structures 
-                    (academic_level_id, academic_year_id, term_id, fee_name, category, start_date, end_date, payment_deadline, total_amount, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (academic_level_id, academic_year_id, term_id, fee_name, category, term_start_date, term_end_date, payment_deadline, total_amount, employee_id))
-                
-                fee_structure_id = cursor.lastrowid
-                
-                # Insert fee items
-                items_inserted = 0
-                for index, item in enumerate(fee_items):
-                    item_name = item.get('item_name', '').strip().upper()
-                    item_description = item.get('item_description', '').strip()
-                    amount = float(item.get('amount', 0))
-                    
-                    # Validate item data
-                    if not item_name or amount <= 0:
-                        continue  # Skip invalid items
-                    
+
                     cursor.execute("""
-                        INSERT INTO fee_items 
-                        (fee_structure_id, item_name, item_description, amount, item_order)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (fee_structure_id, item_name, item_description, amount, index))
-                    items_inserted += 1
+                        INSERT INTO fee_structures 
+                        (academic_level_id, academic_year_id, term_id, fee_name, category, start_date, end_date, payment_deadline, total_amount, created_by)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (academic_level_id, academic_year_id, term_id, fee_name, category, term_start_date, term_end_date, payment_deadline, total_amount, employee_id))
+                    fee_structure_id = cursor.lastrowid
+                    created_structure_ids.append(fee_structure_id)
+
+                    items_inserted = 0
+                    for index, item in enumerate(fee_items):
+                        item_name = item.get('item_name', '').strip().upper()
+                        item_description = item.get('item_description', '').strip()
+                        amount = float(item.get('amount', 0))
+                        if not item_name or amount <= 0:
+                            continue
+                        cursor.execute("""
+                            INSERT INTO fee_items 
+                            (fee_structure_id, item_name, item_description, amount, item_order)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (fee_structure_id, item_name, item_description, amount, index))
+                        items_inserted += 1
+                    total_items_inserted += items_inserted
                 
                 # Verify items were inserted
-                if items_inserted == 0:
+                if total_items_inserted == 0:
                     connection.rollback()
                     return jsonify({
                         'success': False, 
@@ -8392,22 +8401,11 @@ def create_fee_structure():
                 connection.commit()
                 
                 # Verify items were saved
-                cursor.execute("SELECT COUNT(*) as count FROM fee_items WHERE fee_structure_id = %s", (fee_structure_id,))
-                items_count = cursor.fetchone()
-                count = items_count.get('count') if isinstance(items_count, dict) else items_count[0]
-                
-                if count == 0:
-                    connection.rollback()
-                    return jsonify({
-                        'success': False, 
-                        'message': 'Fee structure was created but fee items failed to save. Please try again.'
-                    }), 500
-                
                 return jsonify({
                     'success': True, 
-                    'message': f'Fee structure created successfully with {count} fee item(s)',
-                    'fee_structure_id': fee_structure_id,
-                    'items_count': count
+                    'message': f'Created {len(created_structure_ids)} fee structure(s) with {total_items_inserted} item row(s).',
+                    'fee_structure_ids': created_structure_ids,
+                    'items_count': total_items_inserted
                 }), 200
                 
         except Exception as e:
@@ -11682,11 +11680,33 @@ def _filter_students_by_level_for_ids(students_by_level_all, allowed_ids):
     return out
 
 
+def _coerce_date_only(val):
+    """Normalize DB/date-like values to a Python date."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date_cls):
+        return val
+    du = getattr(val, 'date', None)
+    if callable(du):
+        try:
+            out = du()
+            if isinstance(out, date_cls):
+                return out
+        except Exception:
+            pass
+    try:
+        return datetime.strptime(str(val)[:10], '%Y-%m-%d').date()
+    except Exception:
+        return None
+
+
 def _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, req_args):
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
     academic_year_id = req_args.get('academic_year_id', type=int)
-    default_filter_type = 'day'
+    default_filter_type = 'month'
     filter_type = (req_args.get('filter_type') or default_filter_type).strip().lower()
     if filter_type not in ('month', 'day', 'period'):
         filter_type = default_filter_type
@@ -11695,7 +11715,12 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
     selected_period_start = (req_args.get('period_start') or '').strip()
     selected_period_end = (req_args.get('period_end') or '').strip()
     if filter_type == 'day' and not selected_day:
-        selected_day = datetime.now().date().strftime('%Y-%m-%d')
+        selected_day = date_cls.today().strftime('%Y-%m-%d')
+    calendar_date_min = ''
+    calendar_date_max = ''
+    calendar_month_min = ''
+    calendar_month_max = ''
+    today_server = date_cls.today().strftime('%Y-%m-%d')
     academic_years = []
     terms = []
     weeks_options = []
@@ -11792,15 +11817,34 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                     cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s", (term_id,))
                     tr = cursor.fetchone()
                     if tr:
-                        start = tr.get('start_date') if isinstance(tr, dict) else tr[0]
-                        end = tr.get('end_date') if isinstance(tr, dict) else tr[1]
-                        if start and end:
-                            range_start = start
-                            range_end = end
+                        start_raw = tr.get('start_date') if isinstance(tr, dict) else tr[0]
+                        end_raw = tr.get('end_date') if isinstance(tr, dict) else tr[1]
+                        ts = _coerce_date_only(start_raw)
+                        te = _coerce_date_only(end_raw)
+                        today_d = date_cls.today()
+
+                        selected_week_days = []
+                        lo = hi = None
+                        if ts and te:
+                            lo = ts
+                            hi = min(te, today_d)
+                            if hi >= lo:
+                                calendar_date_min = lo.isoformat()
+                                calendar_date_max = hi.isoformat()
+                                calendar_month_min = lo.strftime('%Y-%m')
+                                calendar_month_max = hi.strftime('%Y-%m')
+
+                        if ts and te and hi is not None and lo is not None and hi >= lo:
+                            range_start = lo
+                            range_end = hi
 
                             if filter_type == 'day' and selected_day:
                                 try:
                                     d = datetime.strptime(selected_day, '%Y-%m-%d').date()
+                                    if d < lo:
+                                        d = lo
+                                    elif d > hi:
+                                        d = hi
                                     range_start = d
                                     range_end = d
                                 except Exception:
@@ -11823,8 +11867,9 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                                     except Exception:
                                         month_dt = None
                                 if month_dt is None:
-                                    month_dt = start.replace(day=1)
-                                    selected_month = month_dt.strftime('%Y-%m')
+                                    anchor = min(max(today_d, lo), hi)
+                                    month_dt = anchor.replace(day=1)
+                                selected_month = month_dt.strftime('%Y-%m')
                                 first_day = month_dt.replace(day=1)
                                 if first_day.month == 12:
                                     next_month = first_day.replace(year=first_day.year + 1, month=1, day=1)
@@ -11834,28 +11879,35 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                                 range_start = first_day
                                 range_end = last_day
 
-                            # Do not clamp single-day range to term bounds: if "today" (or chosen day)
-                            # falls outside the term, clamping would make range_start > range_end and
-                            # the register would show no columns/students.
-                            if filter_type != 'day':
-                                if range_start < start:
-                                    range_start = start
-                                if range_end > end:
-                                    range_end = end
+                            if isinstance(range_start, datetime):
+                                range_start = range_start.date()
+                            if isinstance(range_end, datetime):
+                                range_end = range_end.date()
 
-                            selected_week_days = []
-                            cur_date = range_start
-                            while cur_date <= range_end:
-                                weekday_name = cur_date.strftime('%A')
-                                # In single-day mode, always show the selected day so the register is visible.
-                                include_day = (filter_type == 'day') or (weekday_name in allowed_weekdays)
-                                if include_day:
-                                    selected_week_days.append({
-                                        'date': cur_date,
-                                        'date_str': cur_date.strftime('%Y-%m-%d'),
-                                        'label': cur_date.strftime('%a %d')
-                                    })
-                                cur_date += timedelta(days=1)
+                            range_start = max(range_start, lo)
+                            range_end = min(range_end, hi)
+                            if range_end < range_start:
+                                selected_week_days = []
+                            else:
+                                if filter_type == 'day':
+                                    selected_day = range_start.strftime('%Y-%m-%d')
+                                elif filter_type == 'period':
+                                    selected_period_start = range_start.strftime('%Y-%m-%d')
+                                    selected_period_end = range_end.strftime('%Y-%m-%d')
+                                else:
+                                    selected_month = range_start.strftime('%Y-%m')
+
+                                cur_date = range_start
+                                while cur_date <= range_end:
+                                    weekday_name = cur_date.strftime('%A')
+                                    include_day = (filter_type == 'day') or (weekday_name in allowed_weekdays)
+                                    if include_day:
+                                        selected_week_days.append({
+                                            'date': cur_date,
+                                            'date_str': cur_date.strftime('%Y-%m-%d'),
+                                            'label': cur_date.strftime('%a %d')
+                                        })
+                                    cur_date += timedelta(days=1)
 
                     if is_academic_coordinator:
                         cursor.execute("""
@@ -11971,6 +12023,11 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
         'schedule_days_list': schedule_days_list,
         'attendance_records': attendance_records,
         'attendance_summary': attendance_summary,
+        'calendar_date_min': calendar_date_min,
+        'calendar_date_max': calendar_date_max,
+        'calendar_month_min': calendar_month_min,
+        'calendar_month_max': calendar_month_max,
+        'today_server': today_server,
     }
 
 
@@ -12209,20 +12266,25 @@ def student_attendance():
         week_dates_str = request.form.get('week_dates', '')
         student_ids_str = request.form.get('student_ids', '')
         week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
+        week_dates_set = set(week_dates)
         student_ids = [s.strip() for s in student_ids_str.split(',') if s.strip()]
-        if not student_ids and week_dates:
-            seen_ids = set()
+
+        def _ids_from_att_field_names(prefix='att_'):
+            out = set()
             for key in request.form:
-                if not key.startswith('att_'):
+                if not key.startswith(prefix):
                     continue
-                rest = key[4:]
+                rest = key[len(prefix):]
                 idx = rest.rfind('_')
                 if idx <= 0:
                     continue
                 sid, date_str = rest[:idx], rest[idx + 1:]
-                if date_str in week_dates and sid:
-                    seen_ids.add(sid)
-            student_ids = sorted(seen_ids)
+                if date_str in week_dates_set and sid:
+                    out.add(sid)
+            return out
+
+        ids_from_cells = _ids_from_att_field_names() if week_dates_set else set()
+        student_ids = sorted(set(student_ids) | ids_from_cells)
 
         if term_id and week_dates_str and student_ids:
             conn = get_db_connection()
@@ -12230,16 +12292,38 @@ def student_attendance():
                 try:
                     with conn.cursor() as cur:
                         cur.execute("SELECT id, level_name FROM academic_levels")
-                        level_id_by_name = {r.get('level_name') if isinstance(r, dict) else r[1]: r.get('id') if isinstance(r, dict) else r[0] for r in (cur.fetchall() or [])}
+                        level_rows = cur.fetchall() or []
+                        level_id_by_name = {}
+                        level_id_by_lower = {}
+                        for r in level_rows:
+                            lid = r.get('id') if isinstance(r, dict) else r[0]
+                            lname = r.get('level_name') if isinstance(r, dict) else r[1]
+                            if lid is None or not lname:
+                                continue
+                            lname_str = str(lname).strip()
+                            level_id_by_name[lname_str] = lid
+                            level_id_by_lower[lname_str.lower()] = lid
+
+                        def resolve_level_id(grade_raw):
+                            if grade_raw is None:
+                                return None
+                            gn = str(grade_raw).strip()
+                            if not gn:
+                                return None
+                            if gn in level_id_by_name:
+                                return level_id_by_name[gn]
+                            return level_id_by_lower.get(gn.lower())
+
                         emp_id = session.get('user_id') or session.get('employee_id')
                         checked = set()
+                        student_id_set_for_form = set(student_ids)
                         for key in request.form:
                             if key.startswith('att_') and request.form.get(key) == 'on':
                                 rest = key[4:]
                                 idx = rest.rfind('_')
                                 if idx > 0:
                                     sid, date_str = rest[:idx], rest[idx+1:]
-                                    if sid in student_ids and date_str in week_dates:
+                                    if sid in student_id_set_for_form and date_str in week_dates_set:
                                         checked.add((sid, date_str))
                         for sid in student_ids:
                             cur.execute("SELECT current_grade FROM students WHERE student_id = %s", (sid,))
@@ -12247,7 +12331,7 @@ def student_attendance():
                             if not row:
                                 continue
                             level_name = row.get('current_grade') if isinstance(row, dict) else row[0]
-                            lid = level_id_by_name.get(level_name) if level_name else None
+                            lid = resolve_level_id(level_name)
                             if not lid:
                                 continue
                             for date_str in week_dates:
@@ -12291,13 +12375,33 @@ def student_attendance():
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
     ctx = _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, request.args)
-    return render_template(
-        'dashboards/student_attendance.html',
+    merged = {
         **ctx,
-        is_teacher_view=is_teacher,
-        class_level_options=class_level_options,
-        selected_class_level=selected_class_level
-    )
+        'is_teacher_view': is_teacher,
+        'class_level_options': class_level_options,
+        'selected_class_level': selected_class_level,
+    }
+    if (request.args.get('format') or '').strip().lower() == 'json':
+        live_html = render_template('dashboards/_student_attendance_live_block.html', **merged)
+        terms_json = [{'id': t.get('id'), 'term_name': t.get('term_name') or '', 'year_name': t.get('year_name') or ''} for t in (ctx.get('terms') or [])]
+        return jsonify({
+            'ok': True,
+            'html': live_html,
+            'terms': terms_json,
+            'selected_term_id': ctx.get('selected_term_id'),
+            'selected_academic_year_id': ctx.get('selected_academic_year_id'),
+            'calendar_date_min': ctx.get('calendar_date_min') or '',
+            'calendar_date_max': ctx.get('calendar_date_max') or '',
+            'calendar_month_min': ctx.get('calendar_month_min') or '',
+            'calendar_month_max': ctx.get('calendar_month_max') or '',
+            'selected_filter_type': ctx.get('selected_filter_type'),
+            'selected_month': ctx.get('selected_month') or '',
+            'selected_day': ctx.get('selected_day') or '',
+            'selected_period_start': ctx.get('selected_period_start') or '',
+            'selected_period_end': ctx.get('selected_period_end') or '',
+            'today_server': ctx.get('today_server') or '',
+        })
+    return render_template('dashboards/student_attendance.html', **merged)
 
 
 def _parent_dashboard_auth():
@@ -15216,6 +15320,125 @@ def exam_evaluation():
                          open_edit_id=open_edit_id)
 
 
+def _build_exam_registered_analytics_from_records(records):
+    """Count allocations by academic level, subject, and supervisor (one row per timetable slot)."""
+    from collections import defaultdict
+
+    empty = {
+        'total_allocations': 0,
+        'distinct_levels': 0,
+        'distinct_subjects': 0,
+        'assigned_supervisors': 0,
+        'class_stats': [],
+        'subject_stats': [],
+        'supervisor_stats': [],
+    }
+    if not records:
+        return empty
+
+    total_alloc = len(records)
+    by_level = defaultdict(int)
+    level_labels = {}
+    by_subject = defaultdict(int)
+    subject_labels = {}
+    by_super = defaultdict(int)
+    super_labels = {}
+
+    def pct(n, m):
+        return round(100.0 * n / m, 1) if m else 0.0
+
+    for rec in records:
+        lid = rec.get('academic_level_id')
+        sid = rec.get('subject_id')
+        sup = rec.get('supervisor_id')
+        ln = rec.get('level_name') or '—'
+        lc = rec.get('level_category') or ''
+        sn = rec.get('subject_name') or '—'
+        sc = rec.get('subject_code') or ''
+        fn = rec.get('supervisor_name') or ''
+        eid = rec.get('supervisor_employee_id') or ''
+
+        lvl_key = int(lid) if lid is not None else -1
+        by_level[lvl_key] += 1
+        if lvl_key not in level_labels:
+            level_labels[lvl_key] = {'level_name': ln, 'level_category': lc}
+
+        sub_key = int(sid) if sid is not None else -1
+        by_subject[sub_key] += 1
+        if sub_key not in subject_labels:
+            subject_labels[sub_key] = {'subject_name': sn, 'subject_code': sc}
+
+        if sup is None:
+            sup_key = -1
+            if -1 not in super_labels:
+                super_labels[-1] = {'name': 'Unassigned', 'employee_id': ''}
+        else:
+            sup_key = int(sup)
+            if sup_key not in super_labels:
+                super_labels[sup_key] = {
+                    'name': fn or '—',
+                    'employee_id': eid or '',
+                }
+        by_super[sup_key] += 1
+
+    max_class = max(by_level.values()) if by_level else 0
+    max_sub = max(by_subject.values()) if by_subject else 0
+    max_sup = max(by_super.values()) if by_super else 0
+
+    class_stats = []
+    for k in sorted(by_level.keys(), key=lambda x: (-by_level[x], level_labels.get(x, {}).get('level_name', ''))):
+        lab = level_labels.get(k, {'level_name': '—', 'level_category': ''})
+        c = by_level[k]
+        class_stats.append({
+            'academic_level_id': k,
+            'level_name': lab.get('level_name') or '—',
+            'level_category': lab.get('level_category') or '',
+            'exam_count': c,
+            'bar_pct': pct(c, max_class),
+            'share_pct': pct(c, total_alloc),
+        })
+
+    subject_stats = []
+    for k in sorted(by_subject.keys(), key=lambda x: (-by_subject[x], subject_labels.get(x, {}).get('subject_name', ''))):
+        lab = subject_labels.get(k, {'subject_name': '—', 'subject_code': ''})
+        c = by_subject[k]
+        subject_stats.append({
+            'subject_id': k,
+            'subject_name': lab.get('subject_name') or '—',
+            'subject_code': lab.get('subject_code') or '',
+            'exam_count': c,
+            'bar_pct': pct(c, max_sub),
+            'share_pct': pct(c, total_alloc),
+        })
+
+    supervisor_stats = []
+    for k in sorted(by_super.keys(), key=lambda x: (-by_super[x], super_labels.get(x, {}).get('name', ''))):
+        lab = super_labels.get(k, {'name': '—', 'employee_id': ''})
+        c = by_super[k]
+        supervisor_stats.append({
+            'supervisor_id': k,
+            'full_name': lab.get('name') or '—',
+            'employee_id': lab.get('employee_id') or '',
+            'exam_count': c,
+            'bar_pct': pct(c, max_sup),
+            'share_pct': pct(c, total_alloc),
+        })
+
+    distinct_levels = sum(1 for k in by_level if k >= 0)
+    distinct_subjects = sum(1 for k in by_subject if k >= 0)
+    assigned_supervisors = sum(1 for k in by_super if k >= 0)
+
+    return {
+        'total_allocations': total_alloc,
+        'distinct_levels': distinct_levels,
+        'distinct_subjects': distinct_subjects,
+        'assigned_supervisors': assigned_supervisors,
+        'class_stats': class_stats,
+        'subject_stats': subject_stats,
+        'supervisor_stats': supervisor_stats,
+    }
+
+
 @app.route('/dashboard/employee/exam-evaluation/registered')
 @login_required
 def exam_evaluation_registered_detail():
@@ -15230,6 +15453,10 @@ def exam_evaluation_registered_detail():
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
+
+    erd_tab = (request.args.get('erd_tab') or 'timetable').strip().lower()
+    if erd_tab not in ('timetable', 'analytics'):
+        erd_tab = 'timetable'
 
     exam_name_raw = (request.args.get('exam_name') or '').strip()
     try:
@@ -15250,6 +15477,9 @@ def exam_evaluation_registered_detail():
         return redirect(url_for('exam_evaluation'))
 
     records = []
+    academic_levels = []
+    subjects = []
+    teachers = []
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
@@ -15343,6 +15573,45 @@ def exam_evaluation_registered_detail():
                     'supervisor_name': row.get('supervisor_name', '') if isinstance(row, dict) else '',
                     'supervisor_employee_id': row.get('supervisor_employee_id', '') if isinstance(row, dict) else ''
                 })
+
+            cursor.execute("""
+                SELECT id, level_name, level_category
+                FROM academic_levels
+                WHERE level_status = 'active'
+                ORDER BY level_name ASC
+            """)
+            for row in cursor.fetchall() or []:
+                academic_levels.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'level_name': row.get('level_name', '') if isinstance(row, dict) else row[1],
+                    'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                })
+
+            cursor.execute("""
+                SELECT id, subject_name, subject_code
+                FROM subjects
+                WHERE status = 'active'
+                ORDER BY subject_name ASC
+            """)
+            for row in cursor.fetchall() or []:
+                subjects.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'subject_name': row.get('subject_name', '') if isinstance(row, dict) else row[1],
+                    'subject_code': row.get('subject_code', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                })
+
+            cursor.execute("""
+                SELECT id, full_name, employee_id
+                FROM employees
+                WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+                ORDER BY full_name ASC
+            """)
+            for row in cursor.fetchall() or []:
+                teachers.append({
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
+                    'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                })
     except Exception as e:
         print(f"Error loading registered exam detail: {e}")
         import traceback
@@ -15403,13 +15672,64 @@ def exam_evaluation_registered_detail():
             'dates': date_blocks,
         })
 
+    erd_query = urlencode({
+        'academic_year_id': academic_year_id,
+        'term_id': term_id,
+        'exam_name': (r0.get('exam_name') or exam_name_key),
+    })
+
+    analytics = _build_exam_registered_analytics_from_records(records)
+
     return render_template(
         'dashboards/exam_registered_detail.html',
         role=user_role,
         exam_meta=exam_meta,
         timetables_by_level=timetables_by_level,
         allocation_count=len(records),
+        exam_rows=records,
+        academic_levels=academic_levels,
+        subjects=subjects,
+        teachers=teachers,
+        erd_query=erd_query,
+        analytics=analytics,
+        erd_tab=erd_tab,
     )
+
+
+@app.route('/dashboard/employee/exam-evaluation/registered/analytics')
+@login_required
+def exam_evaluation_registered_analytics():
+    """Legacy analytics URL → same page with Analytics tab."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    exam_name_raw = (request.args.get('exam_name') or '').strip()
+    try:
+        academic_year_id = int(request.args.get('academic_year_id', 0))
+        term_id = int(request.args.get('term_id', 0))
+    except (ValueError, TypeError):
+        flash('Invalid exam link.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    if not exam_name_raw or academic_year_id <= 0 or term_id <= 0:
+        flash('Missing exam details.', 'error')
+        return redirect(url_for('exam_evaluation'))
+
+    q = urlencode({
+        'academic_year_id': academic_year_id,
+        'term_id': term_id,
+        'exam_name': exam_name_raw,
+        'erd_tab': 'analytics',
+    })
+    return redirect(f"{employee_dashboard_path('exam-evaluation/registered')}?{q}")
 
 
 # Save Exam Route
@@ -15574,6 +15894,7 @@ def save_exam():
         
         with connection.cursor() as cursor:
             if auto_generate:
+                import random
                 from collections import defaultdict
 
                 level_ids = []
@@ -15594,16 +15915,25 @@ def save_exam():
 
                 ph = ','.join(['%s'] * len(level_ids))
                 cursor.execute(f"""
-                    SELECT id, level_name FROM academic_levels
+                    SELECT id, level_category, level_name, level_code
+                    FROM academic_levels
                     WHERE id IN ({ph})
                 """, tuple(level_ids))
                 level_venue_by_id = {}
                 for r in cursor.fetchall():
                     lid = r.get('id') if isinstance(r, dict) else r[0]
-                    lname = (r.get('level_name') if isinstance(r, dict) else r[1]) or ''
-                    label = lname.strip().upper()
+                    lcat = (r.get('level_category') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')) or ''
+                    lname = (r.get('level_name') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or ''
+                    lcode = (r.get('level_code') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')) or ''
+                    code_u = str(lcode).strip().upper()
+                    if code_u:
+                        label = code_u
+                    else:
+                        parts = [p.strip() for p in (lcat, lname) if p and str(p).strip()]
+                        label = ' '.join(parts).strip().upper()
                     level_venue_by_id[lid] = label if label else f'LEVEL {lid}'
 
+                # One query: all assignments; only employees with status active + teacher role (see JOIN).
                 cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
                     FROM teacher_subject_assignments tsa
@@ -15613,7 +15943,6 @@ def save_exam():
                         AND emp.status = 'active'
                         AND (emp.role = 'teachers' OR emp.role = 'teacher')
                     WHERE tsa.academic_level_id IN ({ph})
-                    ORDER BY tsa.teacher_id, tsa.academic_level_id, tsa.subject_id
                 """, tuple(level_ids))
                 assign_rows = cursor.fetchall()
                 if not assign_rows:
@@ -15622,19 +15951,31 @@ def save_exam():
                         'message': 'No subject–class allocations with active teachers for the selected levels. Add them in Subject & Class Allocation, or ensure each assigned employee has role Teacher.'
                     }), 400
 
-                by_ls = {}
+                # Every (class, subject) may have multiple allocated teachers; pick one active teacher at random per pair.
+                by_ls_teachers = defaultdict(set)
                 for row in assign_rows:
                     lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
                     sid = row.get('subject_id') if isinstance(row, dict) else row[1]
                     tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
-                    key = (lid, sid)
-                    if key not in by_ls:
-                        by_ls[key] = tid
+                    if lid and sid and tid:
+                        by_ls_teachers[(lid, sid)].add(int(tid))
 
-                task_list = [
-                    {'academic_level_id': k[0], 'subject_id': k[1], 'teacher_id': v}
-                    for k, v in sorted(by_ls.items())
-                ]
+                task_list = []
+                for (lid, sid) in sorted(by_ls_teachers.keys(), key=lambda k: (k[0], k[1])):
+                    candidates = list(by_ls_teachers[(lid, sid)])
+                    if not candidates:
+                        continue
+                    chosen_teacher_id = random.choice(candidates)
+                    task_list.append({
+                        'academic_level_id': lid,
+                        'subject_id': sid,
+                        'teacher_id': chosen_teacher_id,
+                    })
+                if not task_list:
+                    return jsonify({
+                        'success': False,
+                        'message': 'No valid class/subject/teacher combinations after resolving allocations.'
+                    }), 400
 
                 by_teacher = defaultdict(list)
                 for t in task_list:
@@ -15953,6 +16294,184 @@ def update_exam():
         connection.close()
 
 
+@app.route('/dashboard/employee/exam-evaluation/eligible-supervisors', methods=['POST'])
+@login_required
+def exam_evaluation_eligible_supervisors():
+    """Return teachers free for this slot vs those busy elsewhere, with overlap details for UX."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        exam_id = int(data.get('exam_id', 0))
+        exam_date = (data.get('exam_date') or '').strip()
+        session_type = (data.get('session_type') or '').strip().upper()
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid data'}), 400
+
+    if exam_id <= 0 or not exam_date or not session_type:
+        return jsonify({'success': False, 'message': 'Missing exam, date, or session'}), 400
+
+    session_presets = {
+        'MORNING': ('08:00:00', '11:00:00'),
+        'MIDDAY': ('11:30:00', '13:30:00'),
+        'AFTERNOON': ('14:00:00', '16:00:00'),
+        'EVENING': ('17:00:00', '19:00:00'),
+    }
+
+    def _time_to_minutes(t: str) -> int | None:
+        try:
+            parts = str(t).strip().split(':')
+            if len(parts) < 2:
+                return None
+            return int(parts[0]) * 60 + int(parts[1])
+        except Exception:
+            return None
+
+    def _minutes_to_time_str(total_minutes: int) -> str:
+        total_minutes = total_minutes % (24 * 60)
+        return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}:00"
+
+    def _calc_end(start_time_str: str, duration_min: int) -> str:
+        sm = _time_to_minutes(start_time_str)
+        if sm is None:
+            raise ValueError('Invalid start time')
+        return _minutes_to_time_str(sm + duration_min)
+
+    try:
+        if session_type == 'CUSTOM':
+            start_time = (data.get('start_time') or '').strip()
+            try:
+                duration_minutes = int(data.get('duration_minutes', 0))
+            except (ValueError, TypeError):
+                duration_minutes = 0
+            if not start_time or duration_minutes <= 0:
+                return jsonify({'success': False, 'message': 'Custom session requires start time and duration'}), 400
+            end_time = _calc_end(start_time, duration_minutes)
+            start_time_str = start_time if len(start_time.split(':')) == 3 else f"{start_time}:00"
+            end_time_str = end_time
+        else:
+            if session_type not in session_presets:
+                return jsonify({'success': False, 'message': 'Invalid session type'}), 400
+            start_time_str, end_time_str = session_presets[session_type]
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid time values'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id FROM exams WHERE id = %s LIMIT 1
+            """, (exam_id,))
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'Exam not found'}), 404
+
+            def _normalize_time_mysql(val):
+                if val is None:
+                    return None
+                if isinstance(val, timedelta):
+                    secs = int(val.total_seconds())
+                    secs = secs % (24 * 3600)
+                    mm = secs // 60
+                    return f"{mm // 60:02d}:{mm % 60:02d}"
+                if hasattr(val, 'strftime'):
+                    return val.strftime('%H:%M')
+                s = str(val).strip()
+                parts = s.split(':')
+                if len(parts) >= 2:
+                    try:
+                        return f"{int(parts[0]):02d}:{int(parts[1]):02d}"
+                    except (ValueError, TypeError):
+                        pass
+                return s[:5] if s else ''
+
+            cursor.execute("""
+                SELECT id, exam_name, exam_date, start_time, end_time, supervisor_id
+                FROM exams
+                WHERE exam_date = %s
+                  AND id != %s
+                  AND supervisor_id IS NOT NULL
+                  AND start_time IS NOT NULL
+                  AND end_time IS NOT NULL
+                  AND (start_time < %s AND end_time > %s)
+                ORDER BY supervisor_id ASC, start_time ASC, id ASC
+            """, (exam_date, exam_id, end_time_str, start_time_str))
+            conflicts_by_supervisor = {}
+            busy_ids = set()
+            for r in cursor.fetchall() or []:
+                row_id = r.get('id') if isinstance(r, dict) else r[0]
+                exname = r.get('exam_name', '') if isinstance(r, dict) else r[1]
+                ed = r.get('exam_date') if isinstance(r, dict) else r[2]
+                st_raw = r.get('start_time') if isinstance(r, dict) else r[3]
+                en_raw = r.get('end_time') if isinstance(r, dict) else r[4]
+                sid_val = r.get('supervisor_id') if isinstance(r, dict) else r[5]
+                if sid_val is None:
+                    continue
+                sid_i = int(sid_val)
+                busy_ids.add(sid_i)
+                if hasattr(ed, 'strftime'):
+                    ed_str = ed.strftime('%Y-%m-%d')
+                elif ed:
+                    ed_str = str(ed)[:10]
+                else:
+                    ed_str = str(exam_date)
+                conflicts_by_supervisor.setdefault(sid_i, []).append({
+                    'exam_id': int(row_id) if row_id is not None else None,
+                    'exam_name': str(exname or ''),
+                    'exam_date': ed_str,
+                    'start_time': _normalize_time_mysql(st_raw) or '',
+                    'end_time': _normalize_time_mysql(en_raw) or '',
+                })
+
+            cursor.execute("""
+                SELECT id FROM employees
+                WHERE status = 'active'
+                  AND (role = 'teachers' OR role = 'teacher')
+                ORDER BY full_name ASC, id ASC
+            """)
+            eligible = []
+            for r in cursor.fetchall() or []:
+                tid = r.get('id') if isinstance(r, dict) else r[0]
+                if tid is None:
+                    continue
+                tid = int(tid)
+                if tid in busy_ids:
+                    continue
+                eligible.append(tid)
+
+            eligible = sorted(set(eligible))
+            conflicts_json = {
+                str(int(k)): v for k, v in sorted(conflicts_by_supervisor.items(), key=lambda x: x[0])
+            }
+
+            return jsonify({
+                'success': True,
+                'eligible_ids': eligible,
+                'busy_supervisor_ids': sorted(busy_ids),
+                'conflicts_by_supervisor_id': conflicts_json,
+                'slot_window_start': start_time_str,
+                'slot_window_end': end_time_str,
+                'exam_date': exam_date,
+            })
+    except Exception as e:
+        print(f"Error eligible supervisors: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+
 # Delete Exam Route
 @app.route('/dashboard/employee/exam-evaluation/delete', methods=['POST'])
 @login_required
@@ -16003,6 +16522,148 @@ def delete_exam():
         except Exception:
             pass
         return jsonify({'success': False, 'message': f'Error deleting exam: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/update-registration', methods=['POST'])
+@login_required
+def update_exam_registration():
+    """Update exam registration header for all rows in a registration group."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    old_exam_name = (data.get('old_exam_name') or '').strip().upper()
+    try:
+        old_academic_year_id = int(data.get('old_academic_year_id', 0))
+        old_term_id = int(data.get('old_term_id', 0))
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year/term values'}), 400
+
+    exam_type = (data.get('exam_type') or '').strip().upper()
+    exam_name = (data.get('exam_name') or '').strip().upper()
+
+    if not old_exam_name or old_academic_year_id <= 0 or old_term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing registration key'}), 400
+    if not exam_name or not exam_type or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing required fields'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, COALESCE(is_locked, 0) AS il
+                FROM exams
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+            """, (old_exam_name, old_academic_year_id, old_term_id))
+            rows = cursor.fetchall() or []
+            if not rows:
+                return jsonify({'success': False, 'message': 'Registered exam not found'}), 404
+            if any((r.get('il') if isinstance(r, dict) else r[1]) for r in rows):
+                return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before editing registration details.'}), 400
+
+            cursor.execute("""
+                UPDATE exams
+                SET exam_name = %s,
+                    exam_type = %s,
+                    academic_year_id = %s,
+                    term_id = %s
+                WHERE exam_name = %s
+                  AND academic_year_id = %s
+                  AND term_id = %s
+            """, (
+                exam_name, exam_type, academic_year_id, term_id,
+                old_exam_name, old_academic_year_id, old_term_id
+            ))
+            updated = cursor.rowcount or 0
+            connection.commit()
+            return jsonify({'success': True, 'message': f'Registration updated for {updated} allocation(s).'})
+    except Exception as e:
+        print(f"Error updating exam registration: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error updating registration: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/delete-registration', methods=['POST'])
+@login_required
+def delete_exam_registration():
+    """Delete all allocation rows for an exam registration group."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    exam_name = (data.get('exam_name') or '').strip().upper()
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid year/term values'}), 400
+
+    if not exam_name or academic_year_id <= 0 or term_id <= 0:
+        return jsonify({'success': False, 'message': 'Missing registration key'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, COALESCE(is_locked, 0) AS il
+                FROM exams
+                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+            """, (exam_name, academic_year_id, term_id))
+            rows = cursor.fetchall() or []
+            if not rows:
+                return jsonify({'success': False, 'message': 'Registered exam not found'}), 404
+            if any((r.get('il') if isinstance(r, dict) else r[1]) for r in rows):
+                return jsonify({'success': False, 'message': 'This exam is locked. Unlock it before deleting this registration.'}), 400
+
+            cursor.execute("""
+                DELETE FROM exams
+                WHERE exam_name = %s
+                  AND academic_year_id = %s
+                  AND term_id = %s
+            """, (exam_name, academic_year_id, term_id))
+            deleted = cursor.rowcount or 0
+            connection.commit()
+            return jsonify({'success': True, 'message': f'Registration deleted ({deleted} allocation row(s)).'})
+    except Exception as e:
+        print(f"Error deleting exam registration: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error deleting registration: {str(e)}'}), 500
     finally:
         connection.close()
 
@@ -18129,6 +18790,509 @@ def exams_assessments():
     
     return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
 
+
+def _compute_exams_assessments_timetable_bundle():
+    """Build exams timetable data from ``request.args`` (full page or ``live=1`` AJAX)."""
+    def _format_time_value(raw_value):
+        if not raw_value:
+            return ''
+        if isinstance(raw_value, timedelta):
+            seconds = int(raw_value.total_seconds())
+            return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}"
+        if hasattr(raw_value, 'strftime'):
+            return raw_value.strftime('%H:%M')
+        return str(raw_value)[:5]
+
+    def _format_date_value(raw_value):
+        if not raw_value:
+            return ''
+        if hasattr(raw_value, 'strftime'):
+            return raw_value.strftime('%Y-%m-%d')
+        return str(raw_value)
+
+    selected_exam_name = (request.args.get('exam_name') or '').strip()
+    explicit_live = str(request.args.get('live', '')).lower() in ('1', 'true', 'yes')
+    raw_class_id = request.args.get('class_id', '')
+    try:
+        selected_class_id = int(str(raw_class_id).strip()) if str(raw_class_id).strip() != '' else 0
+    except (ValueError, TypeError):
+        selected_class_id = 0
+
+    show_all_flag = str(request.args.get('show_all', '')).lower() in ('1', 'true', 'yes')
+
+    def _int_form_arg(param_name):
+        if param_name not in request.args:
+            return None
+        raw = request.args.get(param_name, '')
+        if raw is None or str(raw).strip() == '':
+            return 0
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 0
+
+    if explicit_live:
+        # AJAX: explicit year/term (0 = no filter); never auto-pick current year unless client sends defaults.
+        show_all = show_all_flag
+        if show_all:
+            selected_year_id = 0
+            selected_term_id = 0
+            default_year_term_from_cursor = False
+            infer_term_for_year = False
+            infer_year_for_term = False
+        else:
+
+            def _int_live(qname):
+                if qname not in request.args:
+                    return 0
+                raw = request.args.get(qname, '')
+                if raw is None or str(raw).strip() == '':
+                    return 0
+                try:
+                    return int(raw)
+                except (ValueError, TypeError):
+                    return 0
+
+            selected_year_id = _int_live('academic_year_id')
+            selected_term_id = _int_live('term_id')
+            yr_missing = (
+                'academic_year_id' not in request.args
+                or str(request.args.get('academic_year_id', '')).strip() == ''
+            )
+            tm_missing = (
+                'term_id' not in request.args or str(request.args.get('term_id', '')).strip() == ''
+            )
+            default_year_term_from_cursor = False
+            infer_term_for_year = bool(selected_year_id > 0 and tm_missing)
+            infer_year_for_term = bool(selected_term_id > 0 and yr_missing)
+    else:
+        show_all = show_all_flag
+        # Bare visit → current unlocked academic year & term ("is_current"). Explicit ?show_all=1 → no year/term filter.
+        # Submitted filters always send both query keys so we distinguish first load from "All years/terms" clears.
+        if show_all:
+            selected_year_id = 0
+            selected_term_id = 0
+            default_year_term_from_cursor = False
+            infer_term_for_year = False
+            infer_year_for_term = False
+        elif 'academic_year_id' not in request.args and 'term_id' not in request.args:
+            selected_year_id = None
+            selected_term_id = None
+            default_year_term_from_cursor = True
+            infer_term_for_year = False
+            infer_year_for_term = False
+        elif 'academic_year_id' in request.args and 'term_id' not in request.args:
+            selected_year_id = _int_form_arg('academic_year_id')
+            selected_term_id = None
+            default_year_term_from_cursor = False
+            infer_term_for_year = bool(selected_year_id and selected_year_id > 0)
+            infer_year_for_term = False
+        elif 'term_id' in request.args and 'academic_year_id' not in request.args:
+            selected_year_id = None
+            selected_term_id = _int_form_arg('term_id')
+            default_year_term_from_cursor = False
+            infer_term_for_year = False
+            infer_year_for_term = bool(selected_term_id and selected_term_id > 0)
+        else:
+            selected_year_id = _int_form_arg('academic_year_id')
+            selected_term_id = _int_form_arg('term_id')
+            default_year_term_from_cursor = False
+            infer_term_for_year = False
+            infer_year_for_term = False
+
+    timetable_rows = []
+    academic_years = []
+    terms = []
+    exams_for_filter = []
+    classes_for_filter = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+
+                ACTIVE_UNLOCKED_YEAR = "status = 'active' AND (is_locked = FALSE OR is_locked IS NULL)"
+
+                def _fetch_one_int(query, params=None):
+                    cursor.execute(query, params or ())
+                    r = cursor.fetchone()
+                    if not r:
+                        return None
+                    return r.get('id') if isinstance(r, dict) else r[0]
+
+                # Resolve defaults (current unlocked year + current term within that year) or partial-query inference.
+                if default_year_term_from_cursor:
+                    yid = _fetch_one_int(f"""
+                        SELECT id FROM academic_years
+                        WHERE {ACTIVE_UNLOCKED_YEAR} AND COALESCE(is_current, FALSE) = TRUE
+                        ORDER BY start_date DESC
+                        LIMIT 1
+                    """)
+                    if yid is None:
+                        yid = _fetch_one_int(f"""
+                            SELECT id FROM academic_years
+                            WHERE {ACTIVE_UNLOCKED_YEAR}
+                            ORDER BY start_date DESC
+                            LIMIT 1
+                        """)
+                    selected_year_id = yid or 0
+                    selected_term_id = 0
+                    if selected_year_id:
+                        tid = _fetch_one_int("""
+                            SELECT t.id FROM terms t
+                            INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                            WHERE t.academic_year_id = %s
+                              AND ay.status = 'active' AND (ay.is_locked = FALSE OR ay.is_locked IS NULL)
+                              AND t.status = 'active' AND (t.is_locked = FALSE OR t.is_locked IS NULL)
+                              AND COALESCE(t.is_current, FALSE) = TRUE
+                            LIMIT 1
+                        """, (selected_year_id,))
+                        if tid is None:
+                            tid = _fetch_one_int("""
+                                SELECT t.id FROM terms t
+                                INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                                WHERE t.academic_year_id = %s
+                                  AND ay.status = 'active' AND (ay.is_locked = FALSE OR ay.is_locked IS NULL)
+                                  AND t.status = 'active' AND (t.is_locked = FALSE OR t.is_locked IS NULL)
+                                ORDER BY t.start_date ASC, t.id ASC
+                                LIMIT 1
+                            """, (selected_year_id,))
+                        selected_term_id = tid or 0
+
+                elif infer_year_for_term and selected_term_id:
+                    ay_id = _fetch_one_int(
+                        """
+                        SELECT t.academic_year_id AS id FROM terms t
+                        WHERE t.id = %s
+                        LIMIT 1
+                        """,
+                        (selected_term_id,),
+                    )
+                    if ay_id is not None:
+                        selected_year_id = ay_id
+
+                elif infer_term_for_year and selected_year_id:
+                    tid = _fetch_one_int("""
+                        SELECT t.id FROM terms t
+                        INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                        WHERE t.academic_year_id = %s
+                          AND ay.status = 'active' AND (ay.is_locked = FALSE OR ay.is_locked IS NULL)
+                          AND t.status = 'active' AND (t.is_locked = FALSE OR t.is_locked IS NULL)
+                          AND COALESCE(t.is_current, FALSE) = TRUE
+                        LIMIT 1
+                    """, (selected_year_id,))
+                    if tid is None:
+                        tid = _fetch_one_int("""
+                            SELECT t.id FROM terms t
+                            INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                            WHERE t.academic_year_id = %s
+                              AND ay.status = 'active' AND (ay.is_locked = FALSE OR ay.is_locked IS NULL)
+                              AND t.status = 'active' AND (t.is_locked = FALSE OR t.is_locked IS NULL)
+                            ORDER BY t.start_date ASC, t.id ASC
+                            LIMIT 1
+                        """, (selected_year_id,))
+                    selected_term_id = tid or 0
+
+                if selected_year_id is None:
+                    selected_year_id = 0
+                if selected_term_id is None:
+                    selected_term_id = 0
+
+                # Only selectable years/terms: active and not locked (same idea as fee / registration UIs).
+                cursor.execute("""
+                    SELECT id, year_name
+                    FROM academic_years
+                    WHERE status = 'active'
+                      AND (is_locked = FALSE OR is_locked IS NULL)
+                    ORDER BY start_date DESC
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_years.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'year_name': row.get('year_name', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')
+                    })
+                unlocked_year_ids = {y['id'] for y in academic_years}
+                if selected_year_id > 0 and selected_year_id not in unlocked_year_ids:
+                    cursor.execute(
+                        """
+                        SELECT id, year_name
+                        FROM academic_years
+                        WHERE id = %s
+                        LIMIT 1
+                        """,
+                        (selected_year_id,),
+                    )
+                    row_merge = cursor.fetchone()
+                    if row_merge:
+                        yn = row_merge.get('year_name', '') if isinstance(row_merge, dict) else (row_merge[1] if len(row_merge) > 1 else '')
+                        academic_years.append({
+                            'id': selected_year_id,
+                            'year_name': f"{yn} (locked)",
+                        })
+
+                cursor.execute("""
+                    SELECT t.id, t.term_name, t.academic_year_id,
+                           ay.year_name AS academic_year_name
+                    FROM terms t
+                    INNER JOIN academic_years ay ON t.academic_year_id = ay.id
+                    WHERE ay.status = 'active'
+                      AND (ay.is_locked = FALSE OR ay.is_locked IS NULL)
+                      AND t.status = 'active'
+                      AND (t.is_locked = FALSE OR t.is_locked IS NULL)
+                    ORDER BY ay.start_date DESC, t.start_date ASC, t.id ASC
+                """)
+                for row in cursor.fetchall() or []:
+                    terms.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'term_name': row.get('term_name', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else ''),
+                        'academic_year_name': row.get('academic_year_name', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+                    })
+                unlocked_term_ids = {t['id'] for t in terms}
+                if selected_term_id > 0 and selected_term_id not in unlocked_term_ids:
+                    cursor.execute(
+                        """
+                        SELECT t.id, t.term_name, ay.year_name AS academic_year_name
+                        FROM terms t
+                        LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                        WHERE t.id = %s
+                        LIMIT 1
+                        """,
+                        (selected_term_id,),
+                    )
+                    row_merge_t = cursor.fetchone()
+                    if row_merge_t:
+                        tn = row_merge_t.get('term_name', '') if isinstance(row_merge_t, dict) else (row_merge_t[1] if len(row_merge_t) > 1 else '')
+                        yn = row_merge_t.get('academic_year_name', '') if isinstance(row_merge_t, dict) else (row_merge_t[2] if len(row_merge_t) > 2 else '')
+                        terms.append({
+                            'id': selected_term_id,
+                            'term_name': f"{tn} (locked)",
+                            'academic_year_name': yn or '',
+                        })
+
+                exam_filter_query = """
+                    SELECT DISTINCT e.exam_name
+                    FROM exams e
+                    WHERE TRIM(COALESCE(e.exam_name, '')) <> ''
+                """
+                exam_filter_params = []
+                if selected_year_id > 0:
+                    exam_filter_query += " AND e.academic_year_id = %s"
+                    exam_filter_params.append(selected_year_id)
+                if selected_term_id > 0:
+                    exam_filter_query += " AND e.term_id = %s"
+                    exam_filter_params.append(selected_term_id)
+                exam_filter_query += " ORDER BY e.exam_name ASC"
+                cursor.execute(exam_filter_query, tuple(exam_filter_params))
+                for row in cursor.fetchall() or []:
+                    exam_name_value = (row.get('exam_name') if isinstance(row, dict) else row[0]) or ''
+                    if exam_name_value:
+                        exams_for_filter.append(exam_name_value)
+
+                cursor.execute("""
+                    SELECT id, level_name, level_category
+                    FROM academic_levels
+                    WHERE level_status = 'active'
+                    ORDER BY level_category ASC, level_name ASC
+                """)
+                for row in cursor.fetchall() or []:
+                    classes_for_filter.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'level_name': row.get('level_name', '') if isinstance(row, dict) else row[1],
+                        'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                    })
+
+                timetable_query = """
+                    SELECT
+                        e.id,
+                        e.exam_name,
+                        e.exam_type,
+                        e.exam_date,
+                        e.session_type,
+                        e.start_time,
+                        e.end_time,
+                        e.venue,
+                        e.status,
+                        al.id AS level_id,
+                        al.level_name,
+                        al.level_category,
+                        s.subject_name,
+                        s.subject_code,
+                        emp.full_name AS teacher_name,
+                        emp.employee_id AS teacher_employee_id,
+                        ay.year_name,
+                        t.term_name
+                    FROM exams e
+                    LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                    LEFT JOIN subjects s ON e.subject_id = s.id
+                    LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                    LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                    LEFT JOIN terms t ON e.term_id = t.id
+                    WHERE 1 = 1
+                """
+                timetable_params = []
+                if selected_year_id > 0:
+                    timetable_query += " AND e.academic_year_id = %s"
+                    timetable_params.append(selected_year_id)
+                if selected_term_id > 0:
+                    timetable_query += " AND e.term_id = %s"
+                    timetable_params.append(selected_term_id)
+                if selected_exam_name:
+                    timetable_query += " AND e.exam_name = %s"
+                    timetable_params.append(selected_exam_name)
+                if selected_class_id > 0:
+                    timetable_query += " AND e.academic_level_id = %s"
+                    timetable_params.append(selected_class_id)
+                timetable_query += """
+                    ORDER BY
+                        e.exam_date ASC,
+                        al.level_category ASC,
+                        al.level_name ASC,
+                        e.start_time ASC,
+                        e.id ASC
+                """
+                cursor.execute(timetable_query, tuple(timetable_params))
+                rows = cursor.fetchall() or []
+                for row in rows:
+                    timetable_rows.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'exam_name': (row.get('exam_name', '') if isinstance(row, dict) else row[1]) or '',
+                        'exam_type': (row.get('exam_type', '') if isinstance(row, dict) else row[2]) or '',
+                        'exam_date': _format_date_value(row.get('exam_date') if isinstance(row, dict) else row[3]),
+                        'session_type': (row.get('session_type', '') if isinstance(row, dict) else row[4]) or '',
+                        'start_time': _format_time_value(row.get('start_time') if isinstance(row, dict) else row[5]),
+                        'end_time': _format_time_value(row.get('end_time') if isinstance(row, dict) else row[6]),
+                        'venue': (row.get('venue', '') if isinstance(row, dict) else row[7]) or '',
+                        'status': (row.get('status', 'scheduled') if isinstance(row, dict) else (row[8] if len(row) > 8 else 'scheduled')) or 'scheduled',
+                        'level_id': row.get('level_id') if isinstance(row, dict) else row[9],
+                        'level_name': (row.get('level_name', '') if isinstance(row, dict) else (row[10] if len(row) > 10 else '')) or '',
+                        'level_category': (row.get('level_category', '') if isinstance(row, dict) else (row[11] if len(row) > 11 else '')) or '',
+                        'subject_name': (row.get('subject_name', '') if isinstance(row, dict) else (row[12] if len(row) > 12 else '')) or '',
+                        'subject_code': (row.get('subject_code', '') if isinstance(row, dict) else (row[13] if len(row) > 13 else '')) or '',
+                        'teacher_name': (row.get('teacher_name', '') if isinstance(row, dict) else (row[14] if len(row) > 14 else '')) or '',
+                        'teacher_employee_id': (row.get('teacher_employee_id', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else '')) or '',
+                        'year_name': (row.get('year_name', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else '')) or '',
+                        'term_name': (row.get('term_name', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else '')) or '',
+                    })
+        except Exception as e:
+            print(f"Error fetching all exam timetables: {e}")
+        finally:
+            connection.close()
+
+    from collections import defaultdict
+
+    timetable_by_date = []
+    if timetable_rows:
+        for tr in timetable_rows:
+            tc = str(tr.get('teacher_employee_id') or '').strip()
+            tr['teacher_code'] = tc
+
+        by_date = defaultdict(list)
+        for item in timetable_rows:
+            dk = item.get('exam_date') or ''
+            by_date[dk].append(item)
+
+        def _sort_date_key(x):
+            if not x:
+                return '9999-12-31'
+            return x
+
+        ordered_dates = sorted((k for k in by_date.keys() if k), key=_sort_date_key)
+        if '' in by_date:
+            ordered_dates.append('')
+
+        for dk in ordered_dates:
+            slots = sorted(
+                by_date[dk],
+                key=lambda r: (
+                    r.get('start_time') or '99:99',
+                    r.get('session_type') or '',
+                    r.get('level_name') or '',
+                    r.get('exam_name') or '',
+                    r.get('id') or 0,
+                ),
+            )
+            weekday = ''
+            date_heading = dk or 'No date assigned'
+            if dk:
+                try:
+                    dt = datetime.strptime(dk, '%Y-%m-%d')
+                    weekday = dt.strftime('%A')
+                    date_heading = dt.strftime('%d %B %Y')
+                except ValueError:
+                    date_heading = dk
+
+            timetable_by_date.append({
+                'date_iso': dk,
+                'weekday': weekday,
+                'date_heading': date_heading,
+                'slots': slots,
+            })
+
+    return {
+        'timetable_rows': timetable_rows,
+        'timetable_by_date': timetable_by_date,
+        'total_slots': len(timetable_rows),
+        'academic_years': academic_years,
+        'terms': terms,
+        'exams_for_filter': exams_for_filter,
+        'classes_for_filter': classes_for_filter,
+        'selected_year_id': selected_year_id,
+        'selected_term_id': selected_term_id,
+        'selected_exam_name': selected_exam_name,
+        'selected_class_id': selected_class_id,
+    }
+
+
+@app.route('/dashboard/employee/exams-assessments/timetable')
+@login_required
+def exams_assessments_timetable():
+    """All exams timetable with filters for year, term, exam, and class."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    ctx = _compute_exams_assessments_timetable_bundle()
+    ctx['role'] = user_role
+    return render_template('dashboards/exams_timetable_all.html', **ctx)
+
+
+@app.route('/dashboard/employee/exams-assessments/timetable/api')
+@login_required
+def exams_assessments_timetable_api():
+    """JSON for live timetable filtering (requires ``live=1`` plus filter query params)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    if str(request.args.get('live', '')).lower() not in ('1', 'true', 'yes'):
+        return jsonify({'success': False, 'message': 'Missing live=1'}), 400
+
+    ctx = _compute_exams_assessments_timetable_bundle()
+    return jsonify({
+        'success': True,
+        'timetable_by_date': ctx.get('timetable_by_date') or [],
+        'total_slots': ctx.get('total_slots', 0),
+        'days_count': len(ctx.get('timetable_by_date') or []),
+        'exams_for_filter': ctx.get('exams_for_filter') or [],
+        'classes_for_filter': ctx.get('classes_for_filter') or [],
+        'selected_year_id': ctx.get('selected_year_id', 0),
+        'selected_term_id': ctx.get('selected_term_id', 0),
+        'selected_exam_name': ctx.get('selected_exam_name') or '',
+        'selected_class_id': ctx.get('selected_class_id', 0),
+    })
+
 # Exam Analytics Route
 @app.route('/dashboard/employee/exam-analytics')
 @login_required
@@ -18969,6 +20133,33 @@ def students_by_academic_level(level_id):
         flash('Database connection failed.', 'error')
         return redirect(url_for('exams_assessments'))
     
+    # Resolve year/term defaults robustly
+    if not current_year_id and academic_years:
+        current_year_id = academic_years[0].get('id')
+
+    if not current_term_id:
+        if current_year_id:
+            year_terms = [t for t in terms if str(t.get('academic_year_id')) == str(current_year_id)]
+            current_term = next((t for t in year_terms if t.get('is_current')), None)
+            if current_term:
+                current_term_id = current_term.get('id')
+            elif year_terms:
+                current_term_id = year_terms[0].get('id')
+        if not current_term_id and terms:
+            current_term_id = terms[0].get('id')
+
+    # Default exam: unlocked exam in current year/term, else first unlocked exam
+    selected_exam_id = None
+    if exams:
+        selected = next(
+            (e for e in exams if e.get('academic_year_id') == current_year_id and e.get('term_id') == current_term_id),
+            None
+        )
+        if not selected:
+            selected = exams[0]
+        if selected:
+            selected_exam_id = selected.get('id')
+
     # Academic coordinators and principals can input/edit marks; teachers can edit for their level
     can_edit = is_teacher or is_academic_coordinator or is_principal
     
@@ -18983,6 +20174,7 @@ def students_by_academic_level(level_id):
                          terms=terms,
                          selected_academic_year_id=current_year_id,
                          selected_term_id=current_term_id,
+                         selected_exam_id=selected_exam_id,
                          student_marks=student_marks,
                          can_edit=can_edit)
 
@@ -19460,6 +20652,8 @@ def reports():
     level_id = request.args.get('level_id', type=int)
     term_id = request.args.get('term_id', type=int)
     academic_year_id = request.args.get('academic_year_id', type=int)
+    has_term_param = 'term_id' in request.args
+    has_year_param = 'academic_year_id' in request.args
     
     academic_levels = []
     terms = []
@@ -19510,6 +20704,19 @@ def reports():
                         'year_name': row.get('year_name') if isinstance(row, dict) else row[1],
                         'is_current': row.get('is_current') if isinstance(row, dict) else (row[2] if len(row) > 2 else False),
                     })
+
+                # Default filters for first page load:
+                # current academic year + current term (scoped to that year when possible).
+                if not has_year_param and not academic_year_id and academic_years:
+                    current_year = next((y for y in academic_years if y.get('is_current')), None)
+                    academic_year_id = (current_year or academic_years[0]).get('id')
+
+                if not has_term_param and not term_id and terms:
+                    terms_for_year = [t for t in terms if not academic_year_id or t.get('academic_year_id') == academic_year_id]
+                    if not terms_for_year:
+                        terms_for_year = list(terms)
+                    current_term = next((t for t in terms_for_year if str(t.get('status') or '').strip().lower() == 'current'), None)
+                    term_id = (current_term or terms_for_year[0]).get('id')
                 
                 # Build report if filters provided
                 if level_id or term_id or academic_year_id:
@@ -21042,13 +22249,23 @@ def _build_academic_report_payload(cursor, report_type, f):
         return {'title': 'Subject timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'timetable_exam':
-        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'status']
+        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'invigilator_name', 'status']
         q = """
             SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, al.level_name,
-                   COALESCE(sub.subject_name, '-') AS subject_name, COALESCE(e.venue, '') AS venue, e.status
+                   COALESCE(sub.subject_name, '-') AS subject_name,
+                   COALESCE(e.venue, '') AS venue,
+                   COALESCE(sup.full_name, tch.full_name, '') AS invigilator_name,
+                   e.status
             FROM exams e
             JOIN academic_levels al ON e.academic_level_id = al.id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
+            LEFT JOIN employees sup ON e.supervisor_id = sup.id
+            LEFT JOIN (
+                SELECT academic_level_id, subject_id, MIN(teacher_id) AS teacher_id
+                FROM teacher_subject_assignments
+                GROUP BY academic_level_id, subject_id
+            ) tsa ON tsa.academic_level_id = e.academic_level_id AND tsa.subject_id = e.subject_id
+            LEFT JOIN employees tch ON tsa.teacher_id = tch.id
             WHERE 1=1
         """
         params = []
@@ -21074,7 +22291,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[4],
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else r[5],
                 'venue': r.get('venue') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
-                'status': r.get('status') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
+                'invigilator_name': r.get('invigilator_name') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
+                'status': r.get('status') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
             })
         return {'title': 'Exam timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -21567,6 +22785,7 @@ def academic_report_preview():
     download_url = employee_dashboard_path('academic-reports/preview') + '?' + urlencode(args_flat)
 
     display = _preview_display_context(report_type, bundle)
+    simple_view = (request.args.get('simple') or '').strip().lower() in ('1', 'true', 'yes')
     return render_template(
         'dashboards/academic_report_preview.html',
         role=session.get('role', '').lower(),
@@ -21583,6 +22802,7 @@ def academic_report_preview():
         attendance_register=display.get('attendance_register'),
         exam_by_student=display.get('exam_by_student'),
         class_sections=display.get('class_sections'),
+        simple_view=simple_view,
     )
 
 
