@@ -9,6 +9,10 @@
 {% block content %}
 <style>
 @media print {
+    @page {
+        size: landscape;
+        margin: 10mm;
+    }
     body * {
         visibility: hidden !important;
     }
@@ -22,6 +26,44 @@
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
+    }
+    .no-print {
+        display: none !important;
+    }
+    #ar-preview-wrap .overflow-x-auto {
+        overflow: visible !important;
+    }
+    #ar-preview-wrap table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: auto !important;
+        border-collapse: collapse !important;
+    }
+    #ar-preview-wrap th,
+    #ar-preview-wrap td {
+        white-space: normal !important;
+        word-break: break-word !important;
+        font-size: 10px !important;
+        line-height: 1.25 !important;
+        padding: 4px 6px !important;
+    }
+    #ar-preview-wrap tr {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    #ar-preview-wrap .rounded-xl,
+    #ar-preview-wrap .rounded-lg {
+        border-radius: 0 !important;
+    }
+    #ar-preview-wrap .shadow-sm,
+    #ar-preview-wrap .shadow-md {
+        box-shadow: none !important;
+    }
+    #ar-preview-wrap .bg-gradient-to-r {
+        background: #e5e7eb !important;
+        color: #111827 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
 }
 </style>
@@ -144,11 +186,19 @@
                             <p id="ar-generated-at" class="text-xs text-gray-500 dark:text-gray-400">Generated: --</p>
                         </div>
                     </div>
-                    <button type="button"
-                            onclick="window.print()"
-                            class="no-print inline-flex items-center px-3 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm hover:opacity-95 transition-all">
-                        <i class="fas fa-print mr-2"></i>Print
-                    </button>
+                    <div class="no-print flex items-center gap-2">
+                        <select id="ar-export-format"
+                                class="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                            <option value="csv">CSV</option>
+                            <option value="excel">Excel (.xls)</option>
+                            <option value="pdf_picture">PDF (picture)</option>
+                        </select>
+                        <button type="button"
+                                id="ar-export-btn"
+                                class="inline-flex items-center px-3 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm hover:opacity-95 transition-all">
+                            <i class="fas fa-file-export mr-2"></i>Export
+                        </button>
+                    </div>
                 </div>
             </div>
             <div id="ar-details-list" class="p-4 sm:p-5">
@@ -161,6 +211,7 @@
 <script>
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
+  const PREVIEW_BASE = {{ employee_dash_url('academic-reports/preview')|tojson }};
 
   const CATALOG = {
     class_list: {
@@ -303,6 +354,88 @@
     return out;
   }
 
+  function buildExportUrl(reportType, fmt) {
+    const f = getFiltersForReport(reportType);
+    const q = new URLSearchParams();
+    q.set('report_type', reportType);
+    q.set('format', fmt || 'csv');
+    Object.keys(f).forEach(function(k) {
+      const v = f[k];
+      if (v !== null && v !== undefined && String(v).trim() !== '') {
+        q.set(k, String(v));
+      }
+    });
+    return PREVIEW_BASE + '?' + q.toString();
+  }
+
+  function safeFileBaseName(reportType) {
+    return String(reportType || 'report').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60);
+  }
+
+  function ensureScript(src, testFn) {
+    return new Promise(function(resolve, reject) {
+      try {
+        if (testFn && testFn()) return resolve();
+        var existing = Array.from(document.querySelectorAll('script')).find(function(s) { return s.src === src; });
+        if (existing) {
+          existing.addEventListener('load', function() { resolve(); }, { once: true });
+          existing.addEventListener('error', function() { reject(new Error('Failed to load ' + src)); }, { once: true });
+          return;
+        }
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function() { resolve(); };
+        s.onerror = function() { reject(new Error('Failed to load ' + src)); };
+        document.head.appendChild(s);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function exportPdfPicture(reportType) {
+    const target = document.getElementById('ar-preview-wrap');
+    if (!target) throw new Error('Report preview is not available.');
+
+    await ensureScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js', function() {
+      return typeof window.html2canvas === 'function';
+    });
+    await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', function() {
+      return !!(window.jspdf && window.jspdf.jsPDF);
+    });
+
+    const canvas = await window.html2canvas(target, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      scrollX: 0,
+      scrollY: -window.scrollY
+    });
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 8;
+    const drawW = pageW - (margin * 2);
+    const drawH = (canvas.height * drawW) / canvas.width;
+
+    let remainingH = drawH;
+    let y = margin;
+    pdf.addImage(imgData, 'PNG', margin, y, drawW, drawH);
+    remainingH -= (pageH - margin * 2);
+    while (remainingH > 0) {
+      pdf.addPage();
+      y = margin - (drawH - remainingH);
+      pdf.addImage(imgData, 'PNG', margin, y, drawW, drawH);
+      remainingH -= (pageH - margin * 2);
+    }
+
+    pdf.save(safeFileBaseName(reportType) + '.pdf');
+  }
+
   function escapeHtml(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -371,8 +504,10 @@
       var end = pick(r, ['end_time', 'time_to', 'end_time_text']);
       var className = pick(r, ['level_name', 'class_name', 'academic_level', 'level']);
       var subject = pick(r, ['subject_name', 'subject', 'subject_code']);
+      var subjectCode = pick(r, ['subject_code']);
       var venue = pick(r, ['venue', 'room', 'exam_room', 'location']);
-      var invigilator = pick(r, ['teacher_name', 'supervisor', 'invigilator']);
+      var invigilator = pick(r, ['invigilator_name', 'teacher_name', 'supervisor', 'invigilator']);
+      var invigilatorCode = pick(r, ['invigilator_code', 'supervisor_employee_id', 'teacher_code']);
       return {
         examName: examName || 'Exam',
         dateText: dateText || '-',
@@ -382,8 +517,10 @@
         timeText: (start || end) ? (start + (end ? ' - ' + end : '')) : '-',
         className: className || '-',
         subject: subject || '-',
+        subjectCode: subjectCode || '',
         venue: venue || '-',
         invigilator: invigilator || '-',
+        invigilatorCode: invigilatorCode || '',
         __d: parseSortableDate(dateText),
         __t: parseSortableTime(start)
       };
@@ -414,44 +551,299 @@
       grouped[key].push(item);
     });
 
-    var sections = order.map(function(dateKey) {
-      var day = grouped[dateKey][0].dayText;
-      var title = escapeHtml(dateKey) + (day ? ' (' + escapeHtml(day) + ')' : '');
-      var body = grouped[dateKey].map(function(item) {
-        return '<tr class="border-b border-gray-100 dark:border-gray-700/60 hover:bg-gray-50 dark:hover:bg-gray-700/30">' +
-          '<td class="py-3 px-3 font-semibold text-brand-primary dark:text-brand-secondary whitespace-nowrap">' + escapeHtml(item.timeText) + '</td>' +
-          '<td class="py-3 px-3 text-gray-800 dark:text-gray-200"><span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">' + escapeHtml(item.className) + '</span></td>' +
-          '<td class="py-3 px-3 text-gray-900 dark:text-white font-medium">' + escapeHtml(item.subject) + '</td>' +
-          '<td class="py-3 px-3 text-gray-700 dark:text-gray-300"><span class="inline-flex items-center gap-1"><i class="fas fa-map-marker-alt text-rose-500"></i>' + escapeHtml(item.venue) + '</span></td>' +
-          '<td class="py-3 px-3 text-gray-700 dark:text-gray-300"><span class="inline-flex items-center gap-1"><i class="fas fa-user-check text-emerald-500"></i>' + escapeHtml(item.invigilator) + '</span></td>' +
-          '</tr>';
+    var allTimesSet = new Set();
+    normalized.forEach(function (n) { if (n.timeText && n.timeText !== '-') allTimesSet.add(n.timeText); });
+    var allTimes = Array.from(allTimesSet).sort(function (a, b) { return parseSortableTime(a) - parseSortableTime(b); });
+    var matrix = {};
+    var subjectLegend = {};
+    var invigilatorLegend = {};
+    var classNames = Array.from(new Set(normalized.map(function (n) { return String(n.className || '').trim(); }).filter(Boolean))).sort();
+    order.forEach(function (d) { matrix[d] = {}; allTimes.forEach(function (t) { matrix[d][t] = []; }); });
+    normalized.forEach(function (n) {
+      if (!matrix[n.dateText]) return;
+      if (!matrix[n.dateText][n.timeText]) matrix[n.dateText][n.timeText] = [];
+      matrix[n.dateText][n.timeText].push(n);
+      if (n.subjectCode && n.subject) subjectLegend[n.subjectCode] = n.subject;
+      if (n.invigilatorCode && n.invigilator) invigilatorLegend[n.invigilatorCode] = n.invigilator;
+    });
+
+    var bodyRows = order.map(function (dateKey) {
+      var day = (grouped[dateKey] && grouped[dateKey][0] && grouped[dateKey][0].dayText) ? grouped[dateKey][0].dayText : '';
+      var rowTitle = escapeHtml(dateKey) + (day ? ' (' + escapeHtml(day) + ')' : '');
+      var cells = allTimes.map(function (slot) {
+        var entries = (matrix[dateKey] && matrix[dateKey][slot]) ? matrix[dateKey][slot] : [];
+        if (!entries.length) {
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                 '</td>';
+        }
+        var lines = entries.map(function (item) {
+          var subjectLabel = item.subjectCode || item.subject || '-';
+          var invLabel = item.invigilatorCode || item.invigilator || '-';
+          return '<div class="mb-1 last:mb-0 leading-tight">' +
+                   '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
+                   '<div class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(invLabel) + ' • ' + escapeHtml(item.venue) + '</div>' +
+                 '</div>';
+        }).join('');
+        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
       }).join('');
-      return '' +
-      '<div class="mb-5 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm">' +
-        '<div class="px-4 py-2.5 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 dark:from-brand-primary/25 dark:to-brand-secondary/25 text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-200">' + title + '</div>' +
-        '<div class="overflow-x-auto">' +
-          '<table class="w-full min-w-[720px] text-sm">' +
-            '<thead>' +
-              '<tr class="bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">' +
-                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Time</th>' +
-                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Class</th>' +
-                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Subject</th>' +
-                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Venue</th>' +
-                '<th class="text-left py-2.5 px-3 font-semibold text-gray-700 dark:text-gray-300">Invigilator</th>' +
-              '</tr>' +
-            '</thead>' +
-            '<tbody>' + body + '</tbody>' +
-          '</table>' +
-        '</div>' +
-      '</div>';
+      return '<tr>' +
+               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[120px]">' + rowTitle + '</td>' +
+               cells +
+             '</tr>';
     }).join('');
 
     return '' +
       '<div class="mb-3">' +
         '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-calendar-alt text-brand-primary"></i>' + escapeHtml(heading) + '</h3>' +
         namesMeta +
+        (classNames.length
+          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(classNames.join(', ')) + '</p>'
+          : '') +
       '</div>' +
-      sections;
+      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+          '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+            '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Date</th>' +
+            allTimes.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+          '</tr></thead>' +
+          '<tbody>' + bodyRows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      '<div class="mt-4 space-y-3">' +
+        (Object.keys(subjectLegend).length
+          ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+            Object.keys(subjectLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(subjectLegend[c]) + '</div>'; }).join('') +
+          '</div></div>' : '') +
+        (Object.keys(invigilatorLegend).length
+          ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Invigilator code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+            Object.keys(invigilatorLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(invigilatorLegend[c]) + '</div>'; }).join('') +
+          '</div></div>' : '') +
+      '</div>';
+  }
+
+  function renderSubjectClassTimetable(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    const meta = bundle.meta || {};
+    const timetableView = String(meta.timetable_view || 'student').toLowerCase();
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No timetable entries found for these filters.</p>';
+    }
+
+    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const daySet = new Set();
+    const timeSet = new Set();
+    const matrix = {};
+    const subjectLegend = {};
+    const teacherLegend = {};
+
+    function timeSortKey(v) {
+      const m = String(v || '').match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return Number.MAX_SAFE_INTEGER;
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+
+    rows.forEach(function (r) {
+      const day = String(r.day_of_week || '').trim();
+      const slot = String(r.time_slot || '').trim();
+      if (!day || !slot) return;
+      daySet.add(day);
+      timeSet.add(slot);
+      if (!matrix[slot]) matrix[slot] = {};
+      if (!matrix[slot][day]) matrix[slot][day] = [];
+      matrix[slot][day].push({
+        level: String(r.level_name || '-'),
+        teacher: String(r.teacher_name || '-'),
+        teacherCode: String(r.teacher_code || ''),
+        subject: String(r.subject_name || '-'),
+        code: String(r.subject_code || ''),
+      });
+      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
+      if (r.teacher_code && r.teacher_name) teacherLegend[String(r.teacher_code)] = String(r.teacher_name);
+    });
+
+    const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
+    const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
+    const days = orderedDays.concat(extraDays);
+    const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
+    const levelNames = Array.from(new Set(rows.map(function (r) { return String(r.level_name || '').trim(); }).filter(Boolean))).sort();
+
+    if (!days.length || !times.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No timetable entries found for these filters.</p>';
+    }
+
+    const header = '' +
+      '<div class="mb-3">' +
+        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">' +
+          '<i class="fas fa-table-cells-large text-brand-primary"></i>Subject / Class Timetable' +
+        '</h3>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Designed timetable grid view (' + escapeHtml(timetableView) + ' mode)</p>' +
+        (levelNames.length
+          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(levelNames.join(', ')) + '</p>'
+          : '') +
+      '</div>';
+
+    const bodyRows = days.map(function (day) {
+        const cells = times.map(function (slot) {
+        const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
+        if (!entries.length) {
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                 '</td>';
+        }
+        const lines = entries.map(function (e) {
+          const subjectLabel = e.code || '-';
+          const teacherLabel = e.teacherCode || '-';
+          const topLine = timetableView === 'teacher'
+            ? ('<span class="font-semibold">' + escapeHtml(teacherLabel) + '</span>')
+            : ('<span class="font-semibold">' + escapeHtml(subjectLabel) + '</span>');
+          const subLine = timetableView === 'teacher'
+            ? ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(subjectLabel) + '</span>')
+            : ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(teacherLabel) + '</span>');
+          return '<div class="mb-1 last:mb-0 leading-tight">' +
+                   '<div class="text-[11px] text-gray-900 dark:text-white">' + topLine + '</div>' +
+                   '<div class="text-[10px]">' + subLine + '</div>' +
+                 '</div>';
+        }).join('');
+        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
+      }).join('');
+
+      return '<tr>' +
+               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+               cells +
+             '</tr>';
+    }).join('');
+
+    const table = '' +
+      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+          '<thead>' +
+            '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+              times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + bodyRows + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    const subjectCodes = Object.keys(subjectLegend).sort();
+    const teacherCodes = Object.keys(teacherLegend).sort();
+    const legendSubject = subjectCodes.length
+      ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60">' +
+          '<p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p>' +
+          '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+            subjectCodes.map(function (c) {
+              return '<div class="text-gray-800 dark:text-gray-200"><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(subjectLegend[c]) + '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>'
+      : '';
+    const legendTeacher = teacherCodes.length
+      ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60">' +
+          '<p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">T-code legend</p>' +
+          '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+            teacherCodes.map(function (c) {
+              return '<div class="text-gray-800 dark:text-gray-200"><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(teacherLegend[c]) + '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>'
+      : '';
+
+    return header + table + '<div class="mt-4 space-y-3">' + legendSubject + legendTeacher + '</div>';
+  }
+
+  function renderTeacherTimetable(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No teacher timetable entries found for these filters.</p>';
+    }
+
+    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const daySet = new Set();
+    const timeSet = new Set();
+    const matrix = {};
+    const subjectLegend = {};
+    let teacherCode = '';
+    let teacherName = '';
+    const classNames = Array.from(new Set(rows.map(function (r) { return String(r.level_name || '').trim(); }).filter(Boolean))).sort();
+
+    function timeSortKey(v) {
+      const m = String(v || '').match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return Number.MAX_SAFE_INTEGER;
+      return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    }
+
+    rows.forEach(function (r) {
+      const day = String(r.day_of_week || '').trim();
+      const slot = String(r.time_slot || '').trim();
+      if (!day || !slot) return;
+      daySet.add(day);
+      timeSet.add(slot);
+      if (!matrix[slot]) matrix[slot] = {};
+      if (!matrix[slot][day]) matrix[slot][day] = [];
+      matrix[slot][day].push({
+        level: String(r.level_name || '-'),
+        subject: String(r.subject_name || '-'),
+        code: String(r.subject_code || ''),
+      });
+      if (!teacherCode && r.teacher_code) teacherCode = String(r.teacher_code);
+      if (!teacherName && r.teacher_name) teacherName = String(r.teacher_name);
+      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
+    });
+
+    const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
+    const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
+    const days = orderedDays.concat(extraDays);
+    const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
+
+    const bodyRows = days.map(function (day) {
+      const cells = times.map(function (slot) {
+        const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
+        if (!entries.length) {
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                 '</td>';
+        }
+        const lines = entries.map(function (e) {
+          const subjectLabel = e.code || '-';
+          return '<div class="mb-1 last:mb-0 leading-tight">' +
+                   '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
+                 '</div>';
+        }).join('');
+        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
+      }).join('');
+
+      return '<tr>' +
+               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+               cells +
+             '</tr>';
+    }).join('');
+
+    return '' +
+      '<div class="mb-3">' +
+        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-user-clock text-brand-primary"></i>Teacher Timetable</h3>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Teacher:</span> ' + escapeHtml(teacherCode || '-') + (teacherName ? ' (' + escapeHtml(teacherName) + ')' : '') + '</p>' +
+        (classNames.length
+          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(classNames.join(', ')) + '</p>'
+          : '') +
+      '</div>' +
+      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+          '<thead>' +
+            '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+              times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + bodyRows + '</tbody>' +
+        '</table>' +
+      '</div>' +
+      (Object.keys(subjectLegend).length
+        ? '<div class="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+          Object.keys(subjectLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(subjectLegend[c]) + '</div>'; }).join('') +
+        '</div></div>'
+        : '');
   }
 
   async function loadDetails() {
@@ -482,7 +874,11 @@
           '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(selected ? selected.label : (bundle.title || reportType)) + '</p>' +
           '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' + escapeHtml(selected ? selected.desc : '') + '</p>' +
         '</div>' +
-        (reportType === 'timetable_exam' ? renderExamTimetable(bundle) : renderTable(bundle));
+        (reportType === 'timetable_exam'
+          ? renderExamTimetable(bundle)
+          : (reportType === 'timetable_subject'
+              ? renderSubjectClassTimetable(bundle)
+              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))));
       setGeneratedNow();
     } catch (e) {
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
@@ -513,6 +909,31 @@
   if (studentInput) {
     studentInput.addEventListener('change', loadDetails);
     studentInput.addEventListener('input', loadDetails);
+  }
+  const exportBtn = document.getElementById('ar-export-btn');
+  const exportFmtEl = document.getElementById('ar-export-format');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', async function() {
+      const reportType = currentReportId();
+      if (!reportType) return;
+      const fmt = exportFmtEl ? (exportFmtEl.value || 'csv') : 'csv';
+      if (fmt === 'pdf_picture') {
+        const oldHtml = exportBtn.innerHTML;
+        exportBtn.disabled = true;
+        exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Exporting...';
+        try {
+          await exportPdfPicture(reportType);
+        } catch (e) {
+          alert('Could not export PDF picture. Please try again.');
+          console.error(e);
+        } finally {
+          exportBtn.disabled = false;
+          exportBtn.innerHTML = oldHtml;
+        }
+        return;
+      }
+      window.location.href = buildExportUrl(reportType, fmt);
+    });
   }
   loadDetails();
 })();
