@@ -2040,6 +2040,10 @@ def role_required(role):
         return decorated_function
     return decorator
 
+def _employee_staff_identity_sql(alias='e'):
+    """SQL expression: employees.id (auto-generated DB primary key) for timetables/reports—not portal login code or id_number."""
+    return f"CAST({alias}.id AS CHAR)"
+
 def has_permission(employee_id, permission_key):
     """Check if an employee has a specific permission"""
     if not employee_id:
@@ -15584,11 +15588,13 @@ def exam_evaluation():
                     print(f"Note: subjects table may not exist: {e}")
                 
                 # Get teachers
-                cursor.execute("""
-                    SELECT id, employee_id, full_name
-                    FROM employees
-                    WHERE role = 'teachers' AND status = 'active'
-                    ORDER BY full_name ASC
+                cursor.execute(f"""
+                    SELECT emp.id,
+                           {_employee_staff_identity_sql('emp')} AS employee_id,
+                           emp.full_name
+                    FROM employees emp
+                    WHERE emp.role = 'teachers' AND emp.status = 'active'
+                    ORDER BY emp.full_name ASC
                 """)
                 teachers_results = cursor.fetchall()
                 for row in teachers_results:
@@ -15599,9 +15605,10 @@ def exam_evaluation():
                     })
 
                 # Teacher-subject allocation pairs per level
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
-                           e.full_name, e.employee_id,
+                           e.full_name,
+                           {_employee_staff_identity_sql('e')} AS employee_id,
                            s.subject_name, s.subject_code
                     FROM teacher_subject_assignments tsa
                     INNER JOIN employees e ON e.id = tsa.teacher_id
@@ -15636,7 +15643,7 @@ def exam_evaluation():
                 
                 # Get existing exams (each row represents a subject allocation + supervisor)
                 try:
-                    cursor.execute("""
+                    cursor.execute(f"""
                         SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
                                e.duration_minutes, e.venue, e.status,
                                e.academic_year_id, e.term_id,
@@ -15645,7 +15652,7 @@ def exam_evaluation():
                                al.level_name, al.level_category,
                                s.subject_name, s.subject_code,
                                ay.year_name, t.term_name,
-                               emp.full_name as supervisor_name, emp.employee_id as supervisor_employee_id
+                               emp.full_name as supervisor_name, {_employee_staff_identity_sql('emp')} as supervisor_employee_id
                         FROM exams e
                         LEFT JOIN academic_levels al ON e.academic_level_id = al.id
                         LEFT JOIN subjects s ON e.subject_id = s.id
@@ -15920,7 +15927,7 @@ def exam_evaluation_registered_detail():
     teachers = []
     try:
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
                        e.duration_minutes, e.venue, e.status,
                        e.academic_year_id, e.term_id,
@@ -15929,7 +15936,7 @@ def exam_evaluation_registered_detail():
                        al.level_name, al.level_category,
                        s.subject_name, s.subject_code,
                        ay.year_name, t.term_name,
-                       emp.full_name as supervisor_name, emp.employee_id as supervisor_employee_id
+                       emp.full_name as supervisor_name, {_employee_staff_identity_sql('emp')} as supervisor_employee_id
                 FROM exams e
                 LEFT JOIN academic_levels al ON e.academic_level_id = al.id
                 LEFT JOIN subjects s ON e.subject_id = s.id
@@ -16951,14 +16958,14 @@ def exam_evaluation_allocation_options():
 
             level_name = lvl.get('level_name', '') if isinstance(lvl, dict) else (lvl[1] if len(lvl) > 1 else '')
 
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT DISTINCT
                     s.id AS subject_id,
                     s.subject_name,
                     s.subject_code,
                     e.id AS teacher_id,
                     e.full_name,
-                    e.employee_id
+                    {_employee_staff_identity_sql('e')} AS employee_id
                 FROM teacher_subject_assignments tsa
                 INNER JOIN subjects s ON s.id = tsa.subject_id
                 INNER JOIN employees e ON e.id = tsa.teacher_id
@@ -17605,8 +17612,9 @@ def classes_subjects_level_detail(level_id):
                         'teachers': [],
                     }
 
-                cursor.execute("""
-                    SELECT tsa.subject_id, e.id AS teacher_id, e.full_name AS teacher_name, e.employee_id AS teacher_code
+                cursor.execute(f"""
+                    SELECT tsa.subject_id, e.id AS teacher_id, e.full_name AS teacher_name,
+                           {_employee_staff_identity_sql('e')} AS teacher_employee_id
                     FROM teacher_subject_assignments tsa
                     LEFT JOIN employees e ON tsa.teacher_id = e.id
                     WHERE tsa.academic_level_id = %s
@@ -17618,7 +17626,7 @@ def classes_subjects_level_detail(level_id):
                         continue
                     teacher_id = trow.get('teacher_id') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else None)
                     teacher_name = (trow.get('teacher_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or ''
-                    teacher_code = (trow.get('teacher_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or ''
+                    teacher_employee_id = (trow.get('teacher_employee_id', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or ''
                     if teacher_id is None and not teacher_name:
                         continue
 
@@ -17629,7 +17637,7 @@ def classes_subjects_level_detail(level_id):
                     subjects_map[subject_id]['teachers'].append({
                         'teacher_id': teacher_id,
                         'teacher_name': teacher_name or 'Teacher',
-                        'teacher_code': teacher_code,
+                        'teacher_employee_id': teacher_employee_id,
                     })
 
                 level_subjects = sorted(subjects_map.values(), key=lambda x: (x.get('subject_name') or '').lower())
@@ -18004,26 +18012,33 @@ def register_timetable():
                 }
                 
                 # Get teachers (employees with role 'teachers')
-                cursor.execute("""
-                    SELECT id, employee_id, full_name, email
-                    FROM employees
-                    WHERE role = 'teachers' AND status = 'active'
-                    ORDER BY full_name ASC
+                cursor.execute(f"""
+                    SELECT emp.id,
+                           emp.full_name,
+                           emp.email,
+                           {_employee_staff_identity_sql('emp')} AS employee_id,
+                           emp.employee_id AS portal_employee_number
+                    FROM employees emp
+                    WHERE emp.role = 'teachers' AND emp.status = 'active'
+                    ORDER BY emp.full_name ASC
                 """)
                 teachers_results = cursor.fetchall()
                 teachers = []
                 for row in teachers_results:
                     teachers.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else row[1],
-                        'full_name': row.get('full_name', '') if isinstance(row, dict) else row[2],
-                        'email': row.get('email', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+                        'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
+                        'email': row.get('email', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                        'portal_employee_number': row.get('portal_employee_number', '') if isinstance(row, dict) else (row[4] if len(row) > 4 else ''),
                     })
 
                 # Teacher-subject allocations per level (one session uses exactly one pair)
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
-                           e.full_name, e.employee_id,
+                           e.full_name,
+                           {_employee_staff_identity_sql('e')} AS employee_id,
+                           e.employee_id AS portal_employee_number,
                            s.subject_name, s.subject_code
                     FROM teacher_subject_assignments tsa
                     INNER JOIN employees e ON e.id = tsa.teacher_id
@@ -18043,6 +18058,7 @@ def register_timetable():
                             'subject_id': int(row.get('subject_id')),
                             'teacher_name': row.get('full_name', ''),
                             'employee_id': row.get('employee_id', ''),
+                            'portal_employee_number': row.get('portal_employee_number', '') or '',
                             'subject_name': row.get('subject_name', ''),
                             'subject_code': row.get('subject_code', '') or ''
                         })
@@ -18053,8 +18069,9 @@ def register_timetable():
                             'subject_id': int(row[2]),
                             'teacher_name': row[3] if len(row) > 3 else '',
                             'employee_id': row[4] if len(row) > 4 else '',
-                            'subject_name': row[5] if len(row) > 5 else '',
-                            'subject_code': (row[6] if len(row) > 6 else '') or ''
+                            'portal_employee_number': row[5] if len(row) > 5 else '',
+                            'subject_name': row[6] if len(row) > 6 else '',
+                            'subject_code': (row[7] if len(row) > 7 else '') or ''
                         })
         except Exception as e:
             print(f"Error fetching data for register timetable: {e}")
@@ -18146,9 +18163,10 @@ def load_timetable():
     try:
         with connection.cursor() as cursor:
             # Fetch existing timetable entries
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.day_of_week, t.time_slot, t.teacher_id, t.subject_id,
-                       e.full_name as teacher_name, e.employee_id,
+                       e.full_name as teacher_name,
+                       {_employee_staff_identity_sql('e')} AS employee_id,
                        s.subject_name, s.subject_code
                 FROM timetables t
                 LEFT JOIN employees e ON t.teacher_id = e.id
@@ -18287,6 +18305,168 @@ def check_teacher_conflict():
             connection.close()
 
 # Auto Generate Timetable Route
+def _get_current_employee_identity(cursor):
+    """Resolve current session user to employee identity used for security checks."""
+    employee_id_from_session = session.get('employee_id') or session.get('user_id')
+    if not employee_id_from_session:
+        return None
+    cursor.execute("""
+        SELECT id, full_name, email, password_hash
+        FROM employees
+        WHERE id = %s OR employee_id = %s
+        LIMIT 1
+    """, (employee_id_from_session, employee_id_from_session))
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': row.get('id'),
+            'full_name': row.get('full_name', ''),
+            'email': row.get('email', ''),
+            'password_hash': row.get('password_hash', '')
+        }
+    return {
+        'id': row[0],
+        'full_name': row[1] if len(row) > 1 else '',
+        'email': row[2] if len(row) > 2 else '',
+        'password_hash': row[3] if len(row) > 3 else ''
+    }
+
+
+def send_timetable_overwrite_code_email(to_email, recipient_name, verification_code):
+    """Send 6-digit confirmation code for timetable overwrite."""
+    try:
+        if not apply_mail_config_from_env_and_integration():
+            print("Timetable overwrite code: SMTP not configured.")
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip() or 'School'
+        safe_name = (recipient_name or 'there').strip() or 'there'
+        subject = f"{school_name} — Timetable overwrite confirmation code"
+        html_body = f"""
+        <!DOCTYPE html>
+        <html><head><meta charset="UTF-8"></head>
+        <body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;max-width:560px;margin:0 auto;padding:24px;">
+            <p>Hello {safe_name},</p>
+            <p>You requested to overwrite an existing timetable via auto-generate.</p>
+            <p>Use this 6-digit code to continue:</p>
+            <p style="font-size:28px;font-weight:700;letter-spacing:0.2em;color:#1e293b;">{verification_code}</p>
+            <p style="color:#64748b;font-size:14px;">This code expires in 10 minutes. If this wasn't you, ignore this email.</p>
+            <p style="margin-top:24px;font-size:13px;color:#94a3b8;">{school_name}</p>
+        </body></html>
+        """
+        text_body = (
+            f"Hello {safe_name},\n\n"
+            f"Use this code to confirm timetable overwrite: {verification_code}\n\n"
+            f"This code expires in 10 minutes. If you didn't request this, ignore it.\n\n{school_name}\n"
+        )
+        msg = Message(subject=subject, recipients=[to_email], html=html_body, body=text_body)
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"Error sending timetable overwrite code email: {e}")
+        return False
+
+
+@app.route('/dashboard/employee/timetable-management/register-timetable/auto-generate/request-code', methods=['POST'])
+@login_required
+def request_auto_generate_confirmation_code():
+    """Verify password and send 6-digit code to confirm timetable overwrite."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        academic_year_id = int(data.get('academic_year_id', 0))
+        term_id = int(data.get('term_id', 0))
+        selected_level_id = int(data.get('academic_level_id', 0)) if data.get('academic_level_id') not in (None, '') else 0
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid ID values'}), 400
+
+    current_password = str(data.get('current_password', '')).strip()
+    if not current_password:
+        return jsonify({'success': False, 'message': 'Current password is required.'}), 400
+    if term_id <= 0 or academic_year_id <= 0:
+        return jsonify({'success': False, 'message': 'Academic year and term are required'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            identity = _get_current_employee_identity(cursor)
+            if not identity or not identity.get('password_hash'):
+                return jsonify({'success': False, 'message': 'Unable to validate your account password.'}), 400
+            if not check_password_hash(identity.get('password_hash'), current_password):
+                return jsonify({'success': False, 'message': 'Current password is incorrect.'}), 401
+
+            # Require overwrite confirmation only when entries already exist in scope.
+            if selected_level_id > 0:
+                cursor.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM timetables
+                    WHERE term_id = %s AND academic_year_id = %s AND academic_level_id = %s
+                """, (term_id, academic_year_id, selected_level_id))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM timetables
+                    WHERE term_id = %s AND academic_year_id = %s
+                """, (term_id, academic_year_id))
+            row = cursor.fetchone()
+            existing_count = int(row.get('count', 0)) if isinstance(row, dict) else int(row[0] if row else 0)
+            if existing_count <= 0:
+                return jsonify({'success': True, 'message': 'No existing timetable found. You can auto-generate directly.', 'requires_confirmation': False})
+
+            recipient_email = (identity.get('email') or '').strip()
+            if not recipient_email:
+                return jsonify({'success': False, 'message': 'Your account has no email configured to receive the confirmation code.'}), 400
+
+            code = ''.join(secrets.choice('0123456789') for _ in range(6))
+            session['timetable_autogen_confirmation'] = {
+                'code_hash': generate_password_hash(code),
+                'academic_year_id': academic_year_id,
+                'term_id': term_id,
+                'academic_level_id': selected_level_id,
+                'requested_by': identity.get('id'),
+                'expires_at': (datetime.utcnow() + timedelta(minutes=10)).isoformat(),
+                'existing_count': existing_count
+            }
+            session.modified = True
+
+            sent = send_timetable_overwrite_code_email(recipient_email, identity.get('full_name') or 'User', code)
+            if not sent:
+                # Temporary fallback: allow confirmation flow to continue even when SMTP is unavailable.
+                # Return the code once so the user can proceed without email delivery.
+                return jsonify({
+                    'success': True,
+                    'requires_confirmation': True,
+                    'delivery': 'onscreen',
+                    'dev_code': code,
+                    'message': 'Email delivery is currently unavailable. Use the code shown on screen to continue.',
+                    'existing_count': existing_count
+                })
+
+            return jsonify({
+                'success': True,
+                'requires_confirmation': True,
+                'message': f'Confirmation code sent to {recipient_email}.',
+                'existing_count': existing_count
+            })
+    except Exception as e:
+        print(f"Error requesting auto-generate confirmation code: {e}")
+        return jsonify({'success': False, 'message': 'Error requesting confirmation code.'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/timetable-management/register-timetable/auto-generate', methods=['POST'])
 @login_required
 def auto_generate_timetable():
@@ -18308,6 +18488,7 @@ def auto_generate_timetable():
         selected_level_id = int(data.get('academic_level_id', 0)) if data.get('academic_level_id') not in (None, '') else 0
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Invalid ID values'}), 400
+    confirmation_code = str(data.get('confirmation_code', '')).strip()
 
     if term_id <= 0 or academic_year_id <= 0:
         return jsonify({'success': False, 'message': 'Academic year and term are required'}), 400
@@ -18322,6 +18503,60 @@ def auto_generate_timetable():
             cursor.execute("SELECT id FROM terms WHERE id = %s AND academic_year_id = %s LIMIT 1", (term_id, academic_year_id))
             if not cursor.fetchone():
                 return jsonify({'success': False, 'message': 'Selected term does not belong to selected academic year.'}), 400
+
+            # Check existing timetable in scope and enforce explicit password+6-digit code confirmation.
+            if selected_level_id > 0:
+                cursor.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM timetables
+                    WHERE term_id = %s AND academic_year_id = %s AND academic_level_id = %s
+                """, (term_id, academic_year_id, selected_level_id))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) AS count
+                    FROM timetables
+                    WHERE term_id = %s AND academic_year_id = %s
+                """, (term_id, academic_year_id))
+            existing_row = cursor.fetchone()
+            existing_count = int(existing_row.get('count', 0)) if isinstance(existing_row, dict) else int(existing_row[0] if existing_row else 0)
+
+            if existing_count > 0:
+                pending = session.get('timetable_autogen_confirmation') or {}
+                expires_at_str = str(pending.get('expires_at') or '').strip()
+                try:
+                    expires_at = datetime.fromisoformat(expires_at_str) if expires_at_str else None
+                except Exception:
+                    expires_at = None
+                is_expired = (expires_at is None) or (datetime.utcnow() > expires_at)
+                pending_matches_scope = (
+                    int(pending.get('academic_year_id', 0)) == academic_year_id and
+                    int(pending.get('term_id', 0)) == term_id and
+                    int(pending.get('academic_level_id', 0)) == selected_level_id
+                )
+                if not confirmation_code:
+                    return jsonify({
+                        'success': False,
+                        'requires_confirmation': True,
+                        'existing_count': existing_count,
+                        'message': f'This action will overwrite {existing_count} existing timetable slot(s). Enter your current password and a 6-digit confirmation code to proceed.'
+                    }), 200
+                if (not pending_matches_scope) or is_expired:
+                    return jsonify({
+                        'success': False,
+                        'requires_confirmation': True,
+                        'existing_count': existing_count,
+                        'message': 'Your confirmation session is missing or expired. Request a new 6-digit code and try again.'
+                    }), 200
+                pending_code_hash = str(pending.get('code_hash') or '')
+                code_ok = False
+                try:
+                    code_ok = bool(pending_code_hash) and check_password_hash(pending_code_hash, confirmation_code)
+                except Exception:
+                    code_ok = False
+                if not code_ok:
+                    return jsonify({'success': False, 'message': 'Invalid confirmation code.'}), 401
+                session.pop('timetable_autogen_confirmation', None)
+                session.modified = True
 
             # Active levels (optionally scoped to one level)
             if selected_level_id > 0:
@@ -18350,13 +18585,13 @@ def auto_generate_timetable():
                 return jsonify({'success': False, 'message': 'No active academic levels found.'}), 400
 
             # Subject+teacher pairs assigned to each level via subject-class allocation
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT DISTINCT
                        tsa.academic_level_id,
                        tsa.subject_id,
                        e.id AS teacher_id,
                        e.full_name,
-                       e.employee_id,
+                       {_employee_staff_identity_sql('e')} AS employee_id,
                        s.subject_code
                 FROM teacher_subject_assignments tsa
                 INNER JOIN employees e ON e.id = tsa.teacher_id
@@ -18391,7 +18626,7 @@ def auto_generate_timetable():
                         'teacher_id': teacher_id,
                         'subject_id': subject_id,
                         'teacher_name': full_name,
-                        'teacher_code': employee_code,
+                        'employee_id': employee_code,
                         'subject_code': subject_code or ''
                     })
 
@@ -18466,41 +18701,99 @@ def auto_generate_timetable():
                 pair_count = len(eligible_pairs)
                 pointer = 0
 
+                # Build fair-distribution targets by subject for this level.
+                unique_subject_ids = sorted(list({int(p.get('subject_id')) for p in eligible_pairs if p.get('subject_id') is not None}))
+                subject_target = {}
+                subject_assigned_count = {}
+                if unique_subject_ids:
+                    base_target = level_total // len(unique_subject_ids)
+                    remainder = level_total % len(unique_subject_ids)
+                    for idx, subject_id in enumerate(unique_subject_ids):
+                        subject_target[subject_id] = base_target + (1 if idx < remainder else 0)
+                        subject_assigned_count[subject_id] = 0
+                teacher_assigned_count = {}
+                prev_day_subject_by_time = {}
+
                 for day in days:
+                    day_last_subject_id = None
+                    current_day_subject_by_time = {}
                     for start_time in class_times:
                         key = (day, start_time)
                         occupied = busy.get(key, set())
                         selected_pair = None
+                        selected_pair_idx = None
 
                         if pair_count > 0:
+                            best_score = None
+                            best_tuple = None
                             for offset in range(pair_count):
                                 idx = (pointer + offset) % pair_count
                                 candidate = eligible_pairs[idx]
-                                candidate_id = int(candidate['teacher_id'])
-                                if candidate_id not in occupied:
-                                    selected_pair = candidate
-                                    pointer = (idx + 1) % pair_count
-                                    break
+                                candidate_teacher_id = int(candidate['teacher_id'])
+                                candidate_subject_id = int(candidate['subject_id'])
+                                if candidate_teacher_id in occupied:
+                                    continue
+
+                                # Lower score is better.
+                                # Heavily penalize consecutive duplicate subjects in the same day.
+                                score = 0
+                                if day_last_subject_id is not None and candidate_subject_id == day_last_subject_id:
+                                    score += 1000
+
+                                # Penalize same subject appearing at the same time on consecutive days.
+                                prev_day_subject = prev_day_subject_by_time.get(start_time)
+                                if prev_day_subject is not None and candidate_subject_id == prev_day_subject:
+                                    score += 120
+
+                                # Keep subjects fairly distributed toward target counts.
+                                current_subject_count = subject_assigned_count.get(candidate_subject_id, 0)
+                                target_for_subject = subject_target.get(candidate_subject_id, 0)
+                                if current_subject_count >= target_for_subject:
+                                    score += 80 + ((current_subject_count - target_for_subject) * 20)
+                                score += current_subject_count * 6
+
+                                # Prefer spreading teacher load too.
+                                score += teacher_assigned_count.get(candidate_teacher_id, 0) * 2
+
+                                # Keep a light round-robin behavior as tie-breaker.
+                                score += offset * 0.1
+
+                                rank = (score, offset, idx)
+                                if best_score is None or rank < best_score:
+                                    best_score = rank
+                                    best_tuple = (candidate, idx)
+
+                            if best_tuple is not None:
+                                selected_pair, selected_pair_idx = best_tuple
+                                pointer = (selected_pair_idx + 1) % pair_count
 
                         if selected_pair:
                             selected_teacher_id = int(selected_pair['teacher_id'])
+                            selected_subject_id = int(selected_pair.get('subject_id'))
                             generated_slots_for_level[level_id].append({
                                 'day': day,
                                 'time': start_time,
                                 'teacher_id': selected_teacher_id,
                                 'teacher_name': selected_pair.get('teacher_name', ''),
-                                'teacher_code': selected_pair.get('teacher_code', ''),
-                                'subject_id': int(selected_pair.get('subject_id')),
+                                'teacher_code': selected_pair.get('employee_id', ''),
+                                'subject_id': selected_subject_id,
                                 'subject_code': selected_pair.get('subject_code', '')
                             })
                             if key not in busy:
                                 busy[key] = set()
                             busy[key].add(selected_teacher_id)
+                            day_last_subject_id = selected_subject_id
+                            current_day_subject_by_time[start_time] = selected_subject_id
+                            subject_assigned_count[selected_subject_id] = subject_assigned_count.get(selected_subject_id, 0) + 1
+                            teacher_assigned_count[selected_teacher_id] = teacher_assigned_count.get(selected_teacher_id, 0) + 1
                             assigned_count += 1
                             level_assigned += 1
                         else:
+                            current_day_subject_by_time[start_time] = None
                             blank_count += 1
                             level_blank += 1
+
+                    prev_day_subject_by_time = current_day_subject_by_time
 
                 per_level_summary.append({
                     'level_id': level_id,
@@ -18848,24 +19141,30 @@ def manage_timetable():
                     })
                 
                 # Get teachers
-                cursor.execute("""
-                    SELECT id, employee_id, full_name
-                    FROM employees
-                    WHERE (role = 'teachers' OR role = 'teacher') AND status = 'active'
-                    ORDER BY full_name ASC
+                cursor.execute(f"""
+                    SELECT emp.id,
+                           emp.full_name,
+                           {_employee_staff_identity_sql('emp')} AS employee_id,
+                           emp.employee_id AS portal_employee_number
+                    FROM employees emp
+                    WHERE (emp.role = 'teachers' OR emp.role = 'teacher') AND emp.status = 'active'
+                    ORDER BY emp.full_name ASC
                 """)
                 teachers_results = cursor.fetchall()
                 for row in teachers_results:
                     teachers.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else row[1],
-                        'full_name': row.get('full_name', '') if isinstance(row, dict) else row[2]
+                        'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
+                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                        'portal_employee_number': row.get('portal_employee_number', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
                     })
 
                 # Teacher-subject allocation pairs by class level
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
-                           e.full_name, e.employee_id,
+                           e.full_name,
+                           {_employee_staff_identity_sql('e')} AS employee_id,
+                           e.employee_id AS portal_employee_number,
                            s.subject_name, s.subject_code
                     FROM teacher_subject_assignments tsa
                     INNER JOIN employees e ON e.id = tsa.teacher_id
@@ -18884,6 +19183,7 @@ def manage_timetable():
                             'subject_id': int(row.get('subject_id')),
                             'teacher_name': row.get('full_name', ''),
                             'employee_id': row.get('employee_id', ''),
+                            'portal_employee_number': row.get('portal_employee_number', '') or '',
                             'subject_name': row.get('subject_name', ''),
                             'subject_code': row.get('subject_code', '') or ''
                         })
@@ -18894,8 +19194,9 @@ def manage_timetable():
                             'subject_id': int(row[2]),
                             'teacher_name': row[3] if len(row) > 3 else '',
                             'employee_id': row[4] if len(row) > 4 else '',
-                            'subject_name': row[5] if len(row) > 5 else '',
-                            'subject_code': (row[6] if len(row) > 6 else '') or ''
+                            'portal_employee_number': row[5] if len(row) > 5 else '',
+                            'subject_name': row[6] if len(row) > 6 else '',
+                            'subject_code': (row[7] if len(row) > 7 else '') or ''
                         })
                 
                 # Keep defaults; class-specific schedule settings are resolved per selected level
@@ -18948,9 +19249,9 @@ def get_class_timetable():
     try:
         with connection.cursor() as cursor:
             # Build query based on provided filters
-            query = """
+            query = f"""
                 SELECT t.id, t.day_of_week, t.time_slot, t.teacher_id, t.subject_id, t.term_id, t.academic_level_id,
-                       e.full_name as teacher_name, e.employee_id,
+                       e.full_name as teacher_name, {_employee_staff_identity_sql('e')} AS employee_id,
                        al.level_name, al.level_category,
                        tr.term_name, tr.academic_year_id,
                        ay.year_name as academic_year_name,
@@ -19379,11 +19680,11 @@ def timetable_analytics():
                                 'scheduled_slots': int(row[5] or 0) if len(row) > 5 else 0
                             })
 
-                    cursor.execute("""
+                    cursor.execute(f"""
                         SELECT
                             e.id AS teacher_id,
                             e.full_name,
-                            COALESCE(e.employee_id, '') AS employee_id,
+                            {_employee_staff_identity_sql('e')} AS employee_id,
                             COUNT(DISTINCT tsa.academic_level_id) AS levels_allocated,
                             COUNT(DISTINCT tsa.subject_id) AS subjects_allocated,
                             COUNT(DISTINCT CASE WHEN t.term_id = %s THEN CONCAT(t.academic_level_id, '|', t.day_of_week, '|', t.time_slot) END) AS scheduled_slots
@@ -19394,7 +19695,7 @@ def timetable_analytics():
                               AND t.term_id = %s
                         WHERE e.role = 'teachers'
                           AND COALESCE(e.status, 'active') = 'active'
-                        GROUP BY e.id, e.full_name, e.employee_id
+                        GROUP BY e.id, e.full_name
                         HAVING levels_allocated > 0 OR subjects_allocated > 0 OR scheduled_slots > 0
                         ORDER BY e.full_name ASC
                     """, (term_id, term_id))
@@ -19808,7 +20109,7 @@ def _compute_exams_assessments_timetable_bundle():
                         'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
                     })
 
-                timetable_query = """
+                timetable_query = f"""
                     SELECT
                         e.id,
                         e.exam_name,
@@ -19825,7 +20126,7 @@ def _compute_exams_assessments_timetable_bundle():
                         s.subject_name,
                         s.subject_code,
                         emp.full_name AS teacher_name,
-                        emp.employee_id AS teacher_employee_id,
+                        {_employee_staff_identity_sql('emp')} AS teacher_employee_id,
                         ay.year_name,
                         t.term_name
                     FROM exams e
@@ -19889,10 +20190,6 @@ def _compute_exams_assessments_timetable_bundle():
 
     timetable_by_date = []
     if timetable_rows:
-        for tr in timetable_rows:
-            tc = str(tr.get('teacher_employee_id') or '').strip()
-            tr['teacher_code'] = tc
-
         by_date = defaultdict(list)
         for item in timetable_rows:
             dk = item.get('exam_date') or ''
@@ -22826,6 +23123,11 @@ def _coerce_academic_report_filters(f):
         out['student_id'] = None
     else:
         out['student_id'] = str(sid).strip() or None
+    exam_name = f.get('exam_name')
+    if exam_name is None or exam_name == '' or exam_name == 'null':
+        out['exam_name'] = None
+    else:
+        out['exam_name'] = str(exam_name).strip() or None
     for dk in ('date_from', 'date_to'):
         dv = f.get(dk)
         if dv is None or dv == '' or dv == 'null':
@@ -22927,7 +23229,7 @@ def _make_academic_report_excel_response(bundle, report_type):
     return output
 
 
-def _build_timetable_grid(rows, teacher_mode=False):
+def _build_timetable_grid(rows, teacher_mode=False, compact_class_cell=False):
     """Grid: days x time slots; each cell is a list of entry dicts."""
     day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     days_present = set()
@@ -22953,19 +23255,57 @@ def _build_timetable_grid(rows, teacher_mode=False):
             continue
         if teacher_mode:
             code = (r.get('subject_code') or '').strip()
+            if compact_class_cell:
+                sec = str(r.get('subject_name') or '').strip()
+            else:
+                sec = ' · '.join(x for x in (r.get('level_name'), r.get('subject_name')) if x)
             cells[d][t].append({
                 'primary': r.get('teacher_name') or '—',
-                'secondary': ' · '.join(x for x in (r.get('level_name'), r.get('subject_name')) if x),
+                'secondary': sec,
                 'badge': code,
             })
         else:
             code = (r.get('subject_code') or '').strip()
+            if compact_class_cell:
+                sec = ' · '.join(x for x in (r.get('teacher_name'),) if x)
+            else:
+                sec = ' · '.join(x for x in (r.get('level_name'), r.get('teacher_name')) if x)
             cells[d][t].append({
                 'primary': r.get('subject_name') or '—',
-                'secondary': ' · '.join(x for x in (r.get('level_name'), r.get('teacher_name')) if x),
+                'secondary': sec,
                 'badge': code,
             })
     return {'days': days, 'slots': slots_sorted, 'cells': cells}
+
+
+def _timetable_sections_from_rows(rows, teacher_mode):
+    """One timetable grid per class (level_name) — easier to read than a merged sheet."""
+    from collections import defaultdict
+    by_level = defaultdict(list)
+    for r in rows:
+        ln = str((r.get('level_name') or '')).strip() or '—'
+        by_level[ln].append(r)
+    order = sorted(by_level.keys(), key=lambda x: (x == '—', x.lower()))
+    sections = []
+    for ln in order:
+        sub = by_level[ln]
+        grid = _build_timetable_grid(sub, teacher_mode, compact_class_cell=True)
+        if grid.get('days') and grid.get('slots'):
+            sections.append({'level_name': ln, 'timetable': grid})
+    return sections
+
+
+def _exam_timetable_sections_from_rows(rows):
+    from collections import defaultdict
+    by_level = defaultdict(list)
+    for r in rows:
+        ln = str((r.get('level_name') or '')).strip() or '—'
+        by_level[ln].append(r)
+    order = sorted(by_level.keys(), key=lambda x: (x == '—', x.lower()))
+    return [
+        {'level_name': ln, 'exam_timetable_grid': _build_exam_timetable_grid(by_level[ln])}
+        for ln in order if by_level[ln]
+    ]
 
 
 def _build_exam_schedule_by_date(rows):
@@ -23070,19 +23410,23 @@ def _preview_display_context(report_type, bundle):
     ctx = {
         'layout': 'plain',
         'timetable': None,
+        'timetable_sections': None,
         'exam_schedule': None,
         'exam_timetable_grid': None,
+        'exam_timetable_sections': None,
         'attendance_register': None,
         'exam_by_student': None,
     }
     if report_type in ('timetable_subject', 'timetable_teacher'):
         ctx['layout'] = 'timetable'
-        timetable_view = 'teacher' if report_type == 'timetable_teacher' else ((meta.get('timetable_view') or 'student').lower())
-        ctx['timetable'] = _build_timetable_grid(rows, timetable_view == 'teacher')
+        teacher_mode = report_type == 'timetable_teacher' or (meta.get('timetable_view') or '').lower() == 'teacher'
+        ctx['timetable_sections'] = _timetable_sections_from_rows(rows, teacher_mode)
+        ctx['timetable'] = None
     elif report_type == 'timetable_exam':
         ctx['layout'] = 'exam_timetable'
         ctx['exam_schedule'] = _build_exam_schedule_by_date(rows)
-        ctx['exam_timetable_grid'] = _build_exam_timetable_grid(rows)
+        ctx['exam_timetable_sections'] = _exam_timetable_sections_from_rows(rows)
+        ctx['exam_timetable_grid'] = None
     elif report_type == 'attendance_class':
         ctx['layout'] = 'attendance_summary'
     elif report_type == 'attendance_individual':
@@ -23094,7 +23438,7 @@ def _preview_display_context(report_type, bundle):
         ctx['layout'] = 'exam_marks'
         ctx['exam_by_student'] = _build_exam_marks_by_student(rows)
     elif report_type == 'exam_all_students_performance':
-        ctx['layout'] = 'plain'
+        ctx['layout'] = 'exam_all_student_cards'
     elif report_type == 'class_list_attendance':
         if meta.get('class_sections'):
             ctx['layout'] = 'class_list_grouped'
@@ -23133,6 +23477,7 @@ def _build_academic_report_payload(cursor, report_type, f):
     teacher_id = f.get('teacher_id')
     timetable_view = (f.get('timetable_view') or 'student').lower()
     student_id = _str_opt(f.get('student_id'))
+    exam_name = _str_opt(f.get('exam_name'))
     date_from = _str_opt(f.get('date_from'))
     date_to = _str_opt(f.get('date_to'))
 
@@ -23149,9 +23494,144 @@ def _build_academic_report_payload(cursor, report_type, f):
 
     meta = {}
 
+    def _load_grade_bands_for_reports():
+        default_bands = []
+        subject_bands = {}
+        try:
+            cursor.execute("""
+                SELECT code, level_label, start_mark, end_mark
+                FROM grade_registrations
+                WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+                ORDER BY start_mark DESC, end_mark DESC
+            """)
+            for grow in (cursor.fetchall() or []):
+                if isinstance(grow, dict):
+                    default_bands.append({
+                        'code': (grow.get('code') or '').strip(),
+                        'label': (grow.get('level_label') or '').strip(),
+                        'start': float(grow.get('start_mark') or 0),
+                        'end': float(grow.get('end_mark') or 0),
+                    })
+                else:
+                    default_bands.append({
+                        'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
+                        'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
+                        'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
+                        'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                    })
+        except Exception as ge:
+            print(f"Note: grade_registrations lookup skipped on academic reports: {ge}")
+
+        try:
+            cursor.execute("""
+                SELECT subject_id, code, start_mark, end_mark
+                FROM subject_grade_mark_overrides
+                WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+                ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
+            """)
+            for srow in (cursor.fetchall() or []):
+                if isinstance(srow, dict):
+                    sid = int(srow.get('subject_id') or 0)
+                    band = {
+                        'code': (srow.get('code') or '').strip(),
+                        'label': '',
+                        'start': float(srow.get('start_mark') or 0),
+                        'end': float(srow.get('end_mark') or 0),
+                    }
+                else:
+                    sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                    band = {
+                        'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
+                        'label': '',
+                        'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
+                        'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                    }
+                if sid <= 0:
+                    continue
+                if sid not in subject_bands:
+                    subject_bands[sid] = []
+                subject_bands[sid].append(band)
+        except Exception as se:
+            print(f"Note: subject_grade_mark_overrides lookup skipped on academic reports: {se}")
+
+        return default_bands, subject_bands
+
+    def _grade_from_settings(subject_id, marks_value, default_bands, subject_bands):
+        if marks_value is None:
+            return ''
+        try:
+            mv = float(marks_value)
+        except Exception:
+            return ''
+        bands = subject_bands.get(int(subject_id or 0)) or default_bands
+        for band in bands:
+            if mv >= float(band.get('start', 0)) and mv <= float(band.get('end', 0)):
+                return (band.get('code') or band.get('label') or '').strip()
+        return ''
+
     def _lookup_name(query, value):
         if value is None:
             return None
+
+    def _resolve_exam_window():
+        """Get first-to-latest exam span for current filters."""
+        q = """
+            SELECT exam_name, exam_date
+            FROM exams
+            WHERE 1=1
+        """
+        p = []
+        if ay:
+            q += " AND academic_year_id = %s"
+            p.append(ay)
+        if tid:
+            q += " AND term_id = %s"
+            p.append(tid)
+        if lid:
+            q += " AND academic_level_id = %s"
+            p.append(lid)
+        if student_id:
+            q += " AND id IN (SELECT DISTINCT exam_id FROM student_marks WHERE student_id = %s)"
+            p.append(student_id)
+        q += " ORDER BY exam_date ASC, id ASC"
+        try:
+            cursor.execute(q, p)
+            items = cursor.fetchall() or []
+        except Exception:
+            return None
+        if not items:
+            return None
+        first = items[0]
+        last = items[-1]
+        if isinstance(first, dict):
+            first_name = str(first.get('exam_name') or '').strip()
+            first_date_obj = first.get('exam_date')
+        else:
+            first_name = str(first[0] if len(first) > 0 else '').strip()
+            first_date_obj = first[1] if len(first) > 1 else None
+        if isinstance(last, dict):
+            last_name = str(last.get('exam_name') or '').strip()
+            last_date_obj = last.get('exam_date')
+        else:
+            last_name = str(last[0] if len(last) > 0 else '').strip()
+            last_date_obj = last[1] if len(last) > 1 else None
+
+        first_date = first_date_obj.strftime('%Y-%m-%d') if hasattr(first_date_obj, 'strftime') else (str(first_date_obj)[:10] if first_date_obj else '')
+        last_date = last_date_obj.strftime('%Y-%m-%d') if hasattr(last_date_obj, 'strftime') else (str(last_date_obj)[:10] if last_date_obj else '')
+
+        label = 'All exams'
+        if first_name and last_name:
+            label = f"From {first_name} ({first_date or '-'}) to {last_name} ({last_date or '-'})"
+        elif first_name:
+            label = first_name
+        return {
+            'first_exam_name': first_name,
+            'first_exam_date': first_date,
+            'last_exam_name': last_name,
+            'last_exam_date': last_date,
+            'exam_count': len(items),
+            'label': label,
+        }
         try:
             cursor.execute(query, (value,))
             rr = cursor.fetchone()
@@ -23172,12 +23652,18 @@ def _build_academic_report_payload(cursor, report_type, f):
         'class_level': level_name or ('All classes' if not lid else f"Level ID {lid}"),
         'teacher': teacher_name or ('Not selected' if not teacher_id else f"Teacher ID {teacher_id}"),
         'student_id': student_id or 'All students',
+        'exam_name': exam_name or 'All exams',
         'date_from': date_from or 'Auto / not set',
         'date_to': date_to or 'Auto / not set',
         'timetable_view': 'Teacher view' if timetable_view == 'teacher' else 'Student view',
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
     }
     meta['timetable_view'] = timetable_view
+    if report_type.startswith('exam_'):
+        exam_window = _resolve_exam_window() if not exam_name else None
+        if exam_window:
+            meta['exam_window'] = exam_window
+            meta['applied_filters']['exam_name'] = exam_window.get('label') or 'All exams'
 
     if report_type == 'class_list_exam':
         title = 'Class list — exam entry'
@@ -23237,13 +23723,13 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not tid:
             return {
                 'title': 'Subject timetable',
-                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code'],
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_id', 'subject_name', 'subject_code'],
                 'rows': [],
                 'meta': {**meta, 'hint': 'Select a term in Global filters to load timetable rows.'},
             }
-        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code']
-        q = """
-            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, COALESCE(e.employee_id, '') AS teacher_code,
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_id', 'subject_name', 'subject_code']
+        q = f"""
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, {_employee_staff_identity_sql('e')} AS teacher_id,
                    COALESCE(sub.subject_name, '-') AS subject_name, COALESCE(sub.subject_code, '') AS subject_code
             FROM timetables t
             JOIN academic_levels al ON t.academic_level_id = al.id
@@ -23270,20 +23756,20 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
-                'teacher_code': r.get('teacher_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+                'teacher_id': r.get('teacher_id') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
                 'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         return {'title': 'Subject timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'timetable_exam':
-        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'invigilator_name', 'invigilator_code', 'status']
-        q = """
+        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'invigilator_name', 'invigilator_employee_id', 'status']
+        q = f"""
             SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, al.level_name,
                    COALESCE(sub.subject_name, '-') AS subject_name,
                    COALESCE(e.venue, '') AS venue,
                    COALESCE(sup.full_name, tch.full_name, '') AS invigilator_name,
-                   COALESCE(sup.employee_id, tch.employee_id, '') AS invigilator_code,
+                   COALESCE({_employee_staff_identity_sql('sup')}, {_employee_staff_identity_sql('tch')}, '') AS invigilator_employee_id,
                    e.status
             FROM exams e
             JOIN academic_levels al ON e.academic_level_id = al.id
@@ -23321,7 +23807,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else r[5],
                 'venue': r.get('venue') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
                 'invigilator_name': r.get('invigilator_name') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
-                'invigilator_code': r.get('invigilator_code') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
+                'invigilator_employee_id': r.get('invigilator_employee_id') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
                 'status': r.get('status') if isinstance(r, dict) else (r[9] if len(r) > 9 else ''),
             })
         return {'title': 'Exam timetable', 'columns': cols, 'rows': rows, 'meta': meta}
@@ -23330,13 +23816,13 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not tid or not teacher_id:
             return {
                 'title': 'Teacher timetable',
-                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code'],
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_id', 'subject_name', 'subject_code'],
                 'rows': [],
                 'meta': {**meta, 'hint': 'Select both a term and a teacher in Global filters for this report.'},
             }
-        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code']
-        cursor.execute("""
-            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, COALESCE(e.employee_id, '') AS teacher_code,
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_id', 'subject_name', 'subject_code']
+        cursor.execute(f"""
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, {_employee_staff_identity_sql('e')} AS teacher_id,
                    COALESCE(s.subject_name, '-') AS subject_name, COALESCE(s.subject_code, '') AS subject_code
             FROM timetables t
             JOIN academic_levels al ON t.academic_level_id = al.id
@@ -23353,7 +23839,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
-                'teacher_code': r.get('teacher_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+                'teacher_id': r.get('teacher_id') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
                 'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
@@ -23363,47 +23849,164 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not lid:
             return {
                 'title': 'All students — exam performance',
-                'columns': ['student_id', 'full_name', 'level_name', 'mark_entries', 'average_mark', 'highest_mark', 'lowest_mark'],
+                'columns': ['position', 'admission_number', 'full_name', 'total_marks', 'mean', 'grade'],
                 'rows': [],
                 'meta': {**meta, 'hint': 'Select a class/level to show performance for every student in that class.'},
             }
-        cols = ['student_id', 'full_name', 'level_name', 'mark_entries', 'average_mark', 'highest_mark', 'lowest_mark']
+        cols = ['position', 'admission_number', 'full_name']
+        default_grade_bands, _subject_grade_bands = _load_grade_bands_for_reports()
+        if default_grade_bands:
+            meta['grade_bands'] = default_grade_bands
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
-                   COUNT(sm.id) AS mark_entries,
-                   ROUND(AVG(CAST(sm.marks AS DECIMAL(10,2))), 2) AS average_mark,
-                   ROUND(MAX(CAST(sm.marks AS DECIMAL(10,2))), 2) AS highest_mark,
-                   ROUND(MIN(CAST(sm.marks AS DECIMAL(10,2))), 2) AS lowest_mark
+                   COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
+                   sm.marks, COALESCE(st.profile_image, '') AS profile_image
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
-            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            INNER JOIN students st ON sm.student_id = st.student_id
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
+            WHERE e.academic_level_id = %s
+        """
+        q_no_image = """
+            SELECT st.student_id, st.full_name, al.level_name,
+                   COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
+                   sm.marks
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id
+            INNER JOIN academic_levels al ON e.academic_level_id = al.id
+            INNER JOIN students st ON sm.student_id = st.student_id
+            LEFT JOIN subjects sub ON e.subject_id = sub.id
             WHERE e.academic_level_id = %s
         """
         params = [lid]
         if tid:
             q += " AND e.term_id = %s"
+            q_no_image += " AND e.term_id = %s"
             params.append(tid)
         if ay:
             q += " AND e.academic_year_id = %s"
+            q_no_image += " AND e.academic_year_id = %s"
             params.append(ay)
-        q += """
-            GROUP BY st.student_id, st.full_name, al.level_name
-            HAVING COUNT(sm.id) > 0
-            ORDER BY al.level_name, st.full_name
-        """
-        cursor.execute(q, params)
-        rows = []
+        if exam_name:
+            q += " AND e.exam_name = %s"
+            q_no_image += " AND e.exam_name = %s"
+            params.append(exam_name)
+        q += " ORDER BY st.full_name, sub.subject_name"
+        q_no_image += " ORDER BY st.full_name, sub.subject_name"
+        include_profile_image = True
+        try:
+            cursor.execute(q, params)
+        except Exception:
+            include_profile_image = False
+            cursor.execute(q_no_image, params)
+        grouped = {}
+        subject_names_set = set()
         for r in cursor.fetchall() or []:
-            rows.append({
-                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
-                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
-                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
-                'mark_entries': int(r.get('mark_entries') or 0) if isinstance(r, dict) else int(r[3] or 0),
-                'average_mark': r.get('average_mark') if isinstance(r, dict) else r[4],
-                'highest_mark': r.get('highest_mark') if isinstance(r, dict) else r[5],
-                'lowest_mark': r.get('lowest_mark') if isinstance(r, dict) else r[6],
+            admission_number = r.get('student_id') if isinstance(r, dict) else r[0]
+            full_name = r.get('full_name') if isinstance(r, dict) else r[1]
+            level_nm = r.get('level_name') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
+            subject_name = r.get('subject_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')
+            subject_code = r.get('subject_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else '')
+            mark_val = _float_marks(r.get('marks') if isinstance(r, dict) else (r[5] if len(r) > 5 else None))
+            if include_profile_image:
+                if isinstance(r, dict):
+                    raw_pf = str(r.get('profile_image') or '').strip()
+                else:
+                    raw_pf = str(r[6] if len(r) > 6 else '').strip()
+            else:
+                raw_pf = ''
+            subject_label = str(subject_code or '').strip() or str(subject_name or '').strip() or 'SUBJECT'
+            if admission_number not in grouped:
+                grouped[admission_number] = {
+                    'admission_number': admission_number,
+                    'full_name': full_name,
+                    'level_name': level_nm or '',
+                    'profile_raw': raw_pf if include_profile_image else '',
+                    'subject_marks': {}
+                }
+            else:
+                g0 = grouped[admission_number]
+                if include_profile_image and raw_pf and not (g0.get('profile_raw') or '').strip():
+                    g0['profile_raw'] = raw_pf
+                if level_nm and not (g0.get('level_name') or '').strip():
+                    g0['level_name'] = level_nm or ''
+            if subject_label:
+                subject_names_set.add(subject_label)
+            if mark_val is not None:
+                if subject_label not in grouped[admission_number]['subject_marks']:
+                    grouped[admission_number]['subject_marks'][subject_label] = []
+                grouped[admission_number]['subject_marks'][subject_label].append(mark_val)
+
+        subject_columns = sorted(subject_names_set)
+        cols.extend(subject_columns)
+        cols.extend(['total_marks', 'mean', 'grade'])
+
+        pre_rows = []
+        for student in grouped.values():
+            subject_marks_map = {}
+            normalized_marks = []
+            for subject_name in subject_columns:
+                marks_for_subject = student['subject_marks'].get(subject_name, [])
+                if marks_for_subject:
+                    avg_subject_mark = round(sum(marks_for_subject) / len(marks_for_subject), 2)
+                    subject_marks_map[subject_name] = avg_subject_mark
+                    normalized_marks.append(avg_subject_mark)
+                else:
+                    subject_marks_map[subject_name] = ''
+            marks = normalized_marks
+            if not marks:
+                continue
+            total_marks = round(sum(marks), 2)
+            mean_marks = round(total_marks / len(marks), 2) if marks else 0.0
+            grade = _grade_from_settings(None, mean_marks, default_grade_bands, {})
+            raw_pf = str(student.get('profile_raw') or '').strip()
+            photo_url = ''
+            if raw_pf:
+                try:
+                    photo_url = url_for('static', filename=str(raw_pf))
+                except Exception:
+                    photo_url = ''
+            pre_rows.append({
+                'admission_number': student['admission_number'],
+                'student_id': student['admission_number'],
+                'full_name': student['full_name'],
+                'level_name': student.get('level_name') or '',
+                'student_photo': photo_url,
+                'subject_marks': subject_marks_map,
+                'total_marks': total_marks,
+                'mean': mean_marks,
+                'grade': grade or '-',
             })
+
+        pre_rows.sort(key=lambda x: (-float(x.get('total_marks') or 0), -float(x.get('mean') or 0), str(x.get('full_name') or '').lower()))
+        rows = []
+        last_key = None
+        current_position = 0
+        for index, item in enumerate(pre_rows, start=1):
+            rank_key = (float(item.get('total_marks') or 0), float(item.get('mean') or 0))
+            if rank_key != last_key:
+                current_position = index
+                last_key = rank_key
+            flat_row = {
+                'position': current_position,
+                'admission_number': item['admission_number'],
+                'student_id': item.get('student_id') or item['admission_number'],
+                'full_name': item['full_name'],
+                'level_name': item.get('level_name') or '',
+                'student_photo': item.get('student_photo') or '',
+            }
+            for subject_name in subject_columns:
+                flat_row[subject_name] = item['subject_marks'].get(subject_name, '')
+            flat_row['total_marks'] = item['total_marks']
+            flat_row['mean'] = item['mean']
+            flat_row['grade'] = item['grade']
+            rows.append({
+                **flat_row
+            })
+        meta['subject_columns'] = subject_columns
         return {'title': 'All students — exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_teacher_performance':
@@ -23422,7 +24025,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
-            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            INNER JOIN students st ON sm.student_id = st.student_id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
             LEFT JOIN employees sup ON e.supervisor_id = sup.id
             LEFT JOIN (
@@ -23440,6 +24043,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND e.academic_year_id = %s"
             params.append(ay)
+        if exam_name:
+            q += " AND e.exam_name = %s"
+            params.append(exam_name)
         cursor.execute(q, params)
         grp = defaultdict(list)
         for r in cursor.fetchall() or []:
@@ -23470,7 +24076,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
-            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            INNER JOIN students st ON sm.student_id = st.student_id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
             WHERE 1=1
         """
@@ -23484,6 +24090,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         if lid:
             q += " AND e.academic_level_id = %s"
             params.append(lid)
+        if exam_name:
+            q += " AND e.exam_name = %s"
+            params.append(exam_name)
         cursor.execute(q, params)
         grp_level_subj = defaultdict(list)
         grp_subj = defaultdict(list)
@@ -23552,13 +24161,18 @@ def _build_academic_report_payload(cursor, report_type, f):
                     'meta': {**meta, 'hint': 'Enter a student ID to load marks for that learner in the selected class.'},
                 }
         cols = ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks']
+        default_grade_bands, subject_grade_bands = _load_grade_bands_for_reports()
+        if default_grade_bands:
+            meta['grade_bands'] = default_grade_bands
+        if subject_grade_bands:
+            meta['subject_grade_bands'] = {str(k): v for k, v in subject_grade_bands.items()}
         q = """
             SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
-                   e.exam_name, e.exam_date, sm.marks
+                   e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
-            INNER JOIN students st ON sm.student_id = st.student_id AND st.current_grade = al.level_name
+            INNER JOIN students st ON sm.student_id = st.student_id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
             WHERE 1=1
         """
@@ -23572,14 +24186,59 @@ def _build_academic_report_payload(cursor, report_type, f):
         if lid:
             q += " AND e.academic_level_id = %s"
             params.append(lid)
+        if exam_name:
+            q += " AND e.exam_name = %s"
+            params.append(exam_name)
         if student_id:
             q += " AND st.student_id = %s"
             params.append(student_id)
         q += " ORDER BY st.full_name, e.exam_date, sub.subject_name LIMIT 3000"
-        cursor.execute(q, params)
+        try:
+            cursor.execute(q, params)
+            include_profile_image = True
+        except Exception:
+            # Backward-compatible fallback for databases without students.profile_image.
+            q_no_image = """
+                SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                       e.exam_name, e.exam_date, sm.marks, e.subject_id
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id
+                INNER JOIN academic_levels al ON e.academic_level_id = al.id
+                INNER JOIN students st ON sm.student_id = st.student_id
+                LEFT JOIN subjects sub ON e.subject_id = sub.id
+                WHERE 1=1
+            """
+            if tid:
+                q_no_image += " AND e.term_id = %s"
+            if ay:
+                q_no_image += " AND e.academic_year_id = %s"
+            if lid:
+                q_no_image += " AND e.academic_level_id = %s"
+            if exam_name:
+                q_no_image += " AND e.exam_name = %s"
+            if student_id:
+                q_no_image += " AND st.student_id = %s"
+            q_no_image += " ORDER BY st.full_name, e.exam_date, sub.subject_name LIMIT 3000"
+            cursor.execute(q_no_image, params)
+            include_profile_image = False
         rows = []
         for r in cursor.fetchall() or []:
             ed = r.get('exam_date') if isinstance(r, dict) else r[5]
+            raw_profile = ''
+            if include_profile_image:
+                raw_profile = r.get('profile_image') if isinstance(r, dict) else (r[7] if len(r) > 7 else '')
+            photo_url = ''
+            if raw_profile:
+                try:
+                    photo_url = url_for('static', filename=str(raw_profile))
+                except Exception:
+                    photo_url = ''
+            subject_id_val = None
+            if include_profile_image:
+                subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[8] if len(r) > 8 else None)
+            else:
+                subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[7] if len(r) > 7 else None)
+            grade_code = _grade_from_settings(subject_id_val, r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else None), default_grade_bands, subject_grade_bands)
             rows.append({
                 'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
                 'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
@@ -23588,6 +24247,9 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'exam_name': r.get('exam_name') if isinstance(r, dict) else r[4],
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
                 'marks': r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
+                'student_photo': photo_url,
+                'subject_id': subject_id_val,
+                'grade_code': grade_code,
             })
         meta['row_limit'] = 3000
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
@@ -23707,6 +24369,7 @@ def academic_reports():
     terms = []
     academic_years = []
     teachers = []
+    exam_names = []
 
     connection = get_db_connection()
     if connection:
@@ -23755,6 +24418,19 @@ def academic_reports():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
                     })
+                cursor.execute("""
+                    SELECT DISTINCT exam_name, academic_year_id, term_id, academic_level_id
+                    FROM exams
+                    WHERE TRIM(COALESCE(exam_name, '')) <> ''
+                    ORDER BY exam_name ASC
+                """)
+                for row in cursor.fetchall() or []:
+                    exam_names.append({
+                        'exam_name': row.get('exam_name') if isinstance(row, dict) else row[0],
+                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[1] if len(row) > 1 else None),
+                        'term_id': row.get('term_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
+                        'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
+                    })
         except Exception as e:
             print(f"Error loading academic_reports shell: {e}")
             flash('Error loading report options.', 'error')
@@ -23768,6 +24444,7 @@ def academic_reports():
         terms=terms,
         academic_years=academic_years,
         teachers=teachers,
+        exam_names=exam_names,
     )
 
 
@@ -23834,8 +24511,10 @@ def academic_report_preview():
         download_url=download_url,
         layout=display['layout'],
         timetable=display.get('timetable'),
+        timetable_sections=display.get('timetable_sections'),
         exam_schedule=display.get('exam_schedule'),
         exam_timetable_grid=display.get('exam_timetable_grid'),
+        exam_timetable_sections=display.get('exam_timetable_sections'),
         attendance_register=display.get('attendance_register'),
         exam_by_student=display.get('exam_by_student'),
         class_sections=display.get('class_sections'),

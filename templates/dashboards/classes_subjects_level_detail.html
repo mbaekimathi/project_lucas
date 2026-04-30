@@ -72,7 +72,7 @@
                 class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-4 level-subject-card"
                 data-subject-name="{{ (item.subject_name or '')|lower }}"
                 data-subject-code="{{ (item.subject_code or '')|lower }}"
-                data-teacher-names="{% for t in item.teachers %}{{ (t.teacher_name or '')|lower }} {{ (t.teacher_code or '')|lower }} {% endfor %}"
+                data-teacher-names="{% for t in item.teachers %}{{ (t.teacher_name or '')|lower }} {{ (t.teacher_employee_id or '')|lower }} {% endfor %}"
             >
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -92,8 +92,8 @@
                     <li class="py-2 flex flex-wrap items-center gap-2 text-sm">
                         <i class="fas fa-user text-gray-400 dark:text-gray-500"></i>
                         <span class="font-medium text-gray-900 dark:text-white">{{ t.teacher_name }}</span>
-                        {% if t.teacher_code %}
-                        <span class="text-gray-500 dark:text-gray-400">({{ t.teacher_code }})</span>
+                        {% if t.teacher_employee_id %}
+                        <span class="text-gray-500 dark:text-gray-400 text-xs" title="Staff employee ID (not numeric DB id)">ID {{ t.teacher_employee_id }}</span>
                         {% endif %}
                     </li>
                     {% endfor %}

@@ -229,7 +229,7 @@
                                 <th>Time</th>
                                 <th>Class</th>
                                 <th>Subject</th>
-                                <th>Supervisor</th>
+                                <th title="Supervisor record reference: auto-generated employees.id (not portal code or profile ID number)">Supervisor (ref. ID)</th>
                                 <th>Venue</th>
                                 <th>Paper</th>
                                 <th>Status</th>
@@ -266,7 +266,7 @@
                                     <span class="exam-tt-muted">—</span>
                                     {% endif %}
                                 </td>
-                                <td class="exam-tt-code text-gray-900 dark:text-gray-100">{{ slot.teacher_code or '—' }}</td>
+                                <td class="exam-tt-code text-gray-900 dark:text-gray-100">{{ slot.teacher_employee_id or slot.teacher_code or '—' }}</td>
                                 <td class="exam-tt-code text-gray-800 dark:text-gray-200">{{ slot.venue or '—' }}</td>
                                 <td class="text-gray-900 dark:text-gray-100">
                                     <span class="font-semibold">{{ slot.exam_name or '—' }}</span>
@@ -374,7 +374,7 @@
               '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.level_name || '—') + '</span>' +
                 (slot.level_category ? '<br><span class="exam-tt-muted">' + escHtml(slot.level_category) + '</span>' : '') + '</td>' +
               '<td class="text-gray-900 dark:text-gray-100">' + slotSubjectCell(slot) + '</td>' +
-              '<td class="exam-tt-code text-gray-900 dark:text-gray-100">' + escHtml(slot.teacher_code || '—') + '</td>' +
+              '<td class="exam-tt-code text-gray-900 dark:text-gray-100">' + escHtml(slot.teacher_employee_id || slot.teacher_code || '—') + '</td>' +
               '<td class="exam-tt-code text-gray-800 dark:text-gray-200">' + escHtml(slot.venue || '—') + '</td>' +
               '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.exam_name || '—') + '</span>' +
                 (slot.exam_type ? '<br><span class="exam-tt-muted">' + escHtml(slot.exam_type) + '</span>' : '') + '</td>' +

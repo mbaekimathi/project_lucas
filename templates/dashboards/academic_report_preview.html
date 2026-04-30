@@ -18,7 +18,7 @@
                 {{ title }}
             </h1>
             <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                {% if layout == 'timetable' %}Weekly timetable view{% elif layout == 'exam_timetable' %}Exam timetable (sessions × dates){% elif layout == 'attendance_summary' %}Attendance overview{% elif layout == 'attendance_register' %}Attendance register{% elif layout == 'exam_performance' %}Performance summary{% elif layout == 'exam_teacher' %}Teacher performance (selected class){% elif layout == 'exam_marks' %}Exam results{% elif layout == 'class_list' %}Class register list{% else %}Data table{% endif %}
+                {% if layout == 'timetable' %}Weekly timetable — separate grid per class{% elif layout == 'exam_timetable' %}Exam timetable (sessions × dates) — per class{% elif layout == 'attendance_summary' %}Attendance overview{% elif layout == 'attendance_register' %}Attendance register{% elif layout == 'exam_performance' %}Performance summary{% elif layout == 'exam_teacher' %}Teacher performance (selected class){% elif layout == 'exam_marks' %}Exam results{% elif layout == 'class_list' %}Class register list{% else %}Data table{% endif %}
                 {% if rows and rows|length %} · {{ rows|length }} record(s){% endif %}
             </p>
         </div>
@@ -87,116 +87,143 @@
         {% endif %}
     </div>
 
-    {# ——— Timetable grid ——— #}
+    {# ——— Timetable grid — one preview card per class ——— #}
     {% elif layout == 'timetable' %}
-    <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
-            <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Timetable</h2>
-            <p class="text-xs text-gray-500 mt-0.5">Rows are periods; columns are days of the week.</p>
+    <div class="space-y-8">
+        <div class="no-print px-1 text-xs text-gray-500 dark:text-gray-400">
+            <p><i class="fas fa-layer-group mr-1"></i>Each class has its own grid so slots are easier to follow.</p>
         </div>
-        {% if not timetable or not timetable.days or not timetable.slots %}
-        <p class="p-10 text-center text-gray-500">No periods to display. Adjust filters or add timetable entries.</p>
+        {% if not timetable_sections or timetable_sections|length == 0 %}
+        <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-10 text-center text-gray-500">
+            <p>No periods to display. Adjust filters or add timetable entries.</p>
+        </div>
         {% else %}
-        <div class="overflow-x-auto">
-            <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
-                <thead>
-                    <tr>
-                        <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-28">Time</th>
-                        {% for day in timetable.days %}
-                        <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[140px]">{{ day }}</th>
+        {% for sec in timetable_sections %}
+        {% set tt = sec.timetable %}
+        <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden {% if not loop.last %}print:break-after-page{% endif %}">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ sec.level_name }}</h2>
+                    <p class="text-xs text-gray-500 mt-0.5">Teaching timetable · rows are periods · columns are days</p>
+                </div>
+            </div>
+            {% if tt and tt.days and tt.slots %}
+            <div class="overflow-x-auto">
+                <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
+                    <thead>
+                        <tr>
+                            <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-28">Time</th>
+                            {% for day in tt.days %}
+                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[140px]">{{ day }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for slot in tt.slots %}
+                        <tr>
+                            <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{{ slot }}</td>
+                            {% for day in tt.days %}
+                            <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[4rem]">
+                                {% set cell_items = tt.cells[day][slot] %}
+                                {% if cell_items %}
+                                    {% for item in cell_items %}
+                                    <div class="timetable-cell-inner rounded-md bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 border border-brand-primary/20 px-2 py-1.5 mb-1 last:mb-0">
+                                        <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ item.primary }}</div>
+                                        {% if item.secondary %}<div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">{{ item.secondary }}</div>{% endif %}
+                                        {% if item.badge %}<span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">{{ item.badge }}</span>{% endif %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for slot in timetable.slots %}
-                    <tr>
-                        <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap">{{ slot }}</td>
-                        {% for day in timetable.days %}
-                        <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[4rem]">
-                            {% set cell_items = timetable.cells[day][slot] %}
-                            {% if cell_items %}
-                                {% for item in cell_items %}
-                                <div class="timetable-cell-inner rounded-md bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 border border-brand-primary/20 px-2 py-1.5 mb-1 last:mb-0">
-                                    <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ item.primary }}</div>
-                                    {% if item.secondary %}<div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5 leading-tight">{{ item.secondary }}</div>{% endif %}
-                                    {% if item.badge %}<span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200">{{ item.badge }}</span>{% endif %}
-                                </div>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="p-8 text-center text-gray-500 text-sm">No slots for this class.</p>
+            {% endif %}
         </div>
+        {% endfor %}
         {% endif %}
     </div>
 
-    {# ——— Exam timetable grid (sessions × dates) ——— #}
+    {# ——— Exam timetable grid — one card per class ——— #}
     {% elif layout == 'exam_timetable' %}
-    <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
-            <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200 uppercase tracking-widest">Examination timetable</h2>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Rows are time sessions; columns are exam dates. Empty cells mean no paper at that time.</p>
+    <div class="space-y-8">
+        <div class="no-print px-1 text-xs text-gray-500 dark:text-gray-400">
+            <p><i class="fas fa-layer-group mr-1"></i>Exam sessions are grouped by class so each timetable stands alone.</p>
         </div>
-        {% if not exam_timetable_grid or not exam_timetable_grid.dates %}
-        <div class="p-12 text-center text-gray-500">
+        {% if not exam_timetable_sections or exam_timetable_sections|length == 0 %}
+        <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center text-gray-500">
             <i class="fas fa-calendar-times text-4xl mb-3 text-gray-300 dark:text-gray-600"></i>
             <p class="font-medium">No exams in this period.</p>
         </div>
         {% else %}
-        <div class="overflow-x-auto">
-            <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
-                <thead>
-                    <tr>
-                        <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-32 sm:w-36">Session</th>
-                        {% for dh in exam_timetable_grid.date_headers %}
-                        <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[150px]">
-                            <span class="block leading-tight">{{ dh.label }}</span>
-                        </th>
+        {% for esec in exam_timetable_sections %}
+        {% set exam_timetable_grid = esec.exam_timetable_grid %}
+        <div class="preview-card bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden {% if not loop.last %}print:break-after-page{% endif %}">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
+                <h2 class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ esec.level_name }}</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Examination timetable · sessions as rows · dates as columns</p>
+            </div>
+            {% if exam_timetable_grid and exam_timetable_grid.dates %}
+            <div class="overflow-x-auto">
+                <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
+                    <thead>
+                        <tr>
+                            <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-32 sm:w-36">Session</th>
+                            {% for dh in exam_timetable_grid.date_headers %}
+                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[150px]">
+                                <span class="block leading-tight">{{ dh.label }}</span>
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for lbl in exam_timetable_grid.time_labels %}
+                        <tr>
+                            <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap align-top">
+                                <i class="fas fa-clock text-amber-600 mr-1 text-[10px]"></i>{{ lbl }}
+                            </td>
+                            {% for dh in exam_timetable_grid.date_headers %}
+                            {% set d = dh.iso %}
+                            {% set cell_exams = exam_timetable_grid.cells[d][lbl] %}
+                            <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[3.5rem]">
+                                {% if cell_exams %}
+                                    {% for ex in cell_exams %}
+                                    <div class="rounded-md border border-gray-200 dark:border-gray-600 bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 px-2 py-1.5 mb-1 last:mb-0">
+                                        <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ ex.exam_name }}</div>
+                                        <div class="text-[11px] text-brand-primary dark:text-brand-secondary font-medium mt-0.5">{{ ex.subject_name }}</div>
+                                        {% if ex.venue %}
+                                        <div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5"><i class="fas fa-map-marker-alt mr-0.5 text-red-500/80"></i>{{ ex.venue }}</div>
+                                        {% endif %}
+                                        {% if ex.status %}
+                                        <span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
+                                            {% if ex.status == 'completed' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
+                                            {% elif ex.status == 'scheduled' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+                                            {% else %}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200{% endif %}">{{ ex.status }}</span>
+                                        {% endif %}
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
                         {% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for lbl in exam_timetable_grid.time_labels %}
-                    <tr>
-                        <td class="sticky left-0 z-10 bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-600 px-2 py-2 font-medium text-gray-800 dark:text-gray-200 whitespace-nowrap align-top">
-                            <i class="fas fa-clock text-amber-600 mr-1 text-[10px]"></i>{{ lbl }}
-                        </td>
-                        {% for dh in exam_timetable_grid.date_headers %}
-                        {% set d = dh.iso %}
-                        {% set cell_exams = exam_timetable_grid.cells[d][lbl] %}
-                        <td class="border border-gray-200 dark:border-gray-600 align-top p-1.5 bg-white dark:bg-gray-800/80 min-h-[3.5rem]">
-                            {% if cell_exams %}
-                                {% for ex in cell_exams %}
-                                <div class="rounded-md border border-gray-200 dark:border-gray-600 bg-gradient-to-br from-brand-primary/8 to-brand-secondary/5 dark:from-brand-primary/15 dark:to-brand-secondary/10 px-2 py-1.5 mb-1 last:mb-0">
-                                    <div class="font-semibold text-gray-900 dark:text-white leading-tight">{{ ex.exam_name }}</div>
-                                    <div class="text-[11px] text-brand-primary dark:text-brand-secondary font-medium mt-0.5">{{ ex.subject_name }}</div>
-                                    <div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5"><i class="fas fa-school mr-0.5 opacity-70"></i>{{ ex.level_name }}</div>
-                                    {% if ex.venue %}
-                                    <div class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5"><i class="fas fa-map-marker-alt mr-0.5 text-red-500/80"></i>{{ ex.venue }}</div>
-                                    {% endif %}
-                                    {% if ex.status %}
-                                    <span class="inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded font-semibold uppercase
-                                        {% if ex.status == 'completed' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
-                                        {% elif ex.status == 'scheduled' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
-                                        {% else %}bg-gray-100 text-gray-700 dark:bg-gray-600 dark:text-gray-200{% endif %}">{{ ex.status }}</span>
-                                    {% endif %}
-                                </div>
-                                {% endfor %}
-                            {% else %}
-                                <span class="text-gray-300 dark:text-gray-600 select-none">—</span>
-                            {% endif %}
-                        </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="p-8 text-center text-gray-500 text-sm">No exam dates for this class in the selected range.</p>
+            {% endif %}
         </div>
+        {% endfor %}
         {% endif %}
     </div>
 
@@ -343,47 +370,341 @@
         {% endfor %}
     </div>
 
-    {# ——— Exam individual (by student cards) ——— #}
+    {# ——— Exam individual (parent-friendly report card) ——— #}
     {% elif layout == 'exam_marks' %}
     {% if not exam_by_student %}
     <div class="preview-card rounded-xl border-2 border-dashed p-12 text-center text-gray-500">No individual exam marks found.</div>
     {% else %}
     <div class="space-y-8">
         {% for st in exam_by_student %}
-        <div class="preview-card rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-lg shadow-gray-200/50 dark:shadow-none">
-            <div class="px-5 py-4 bg-gradient-to-r from-slate-800 to-slate-900 text-white">
-                <p class="text-xs uppercase tracking-wider text-white/70">Student</p>
-                <p class="text-xl font-bold">{{ st.full_name }}</p>
-                <p class="text-sm text-white/80 mt-1">{{ st.student_id }} · {{ st.level_name }}</p>
+        {% set ns = namespace(subject_map={}, all_marks=[], exam_label='-') %}
+        {% set default_grade_bands = meta.grade_bands if meta and meta.grade_bands else [] %}
+        {% set subject_grade_bands = meta.subject_grade_bands if meta and meta.subject_grade_bands else {} %}
+        {% for m in st.marks %}
+            {% set subj = (m.subject_name or 'Subject') %}
+            {% if subj not in ns.subject_map %}
+                {% set _ = ns.subject_map.update({subj: {'marks': [], 'subject_id': m.subject_id, 'history': []}}) %}
+            {% endif %}
+            {% set markv = m.marks|float if m.marks is not none and m.marks != '' else none %}
+            {% if markv is not none %}
+                {% set _ = ns.subject_map[subj]['marks'].append(markv) %}
+                {% set _ = ns.subject_map[subj]['history'].append({'mark': markv, 'exam_name': m.exam_name, 'exam_date': m.exam_date}) %}
+                {% set _ = ns.all_marks.append(markv) %}
+            {% endif %}
+            {% if ns.exam_label == '-' and m.exam_name %}
+                {% set ns.exam_label = m.exam_name %}
+            {% endif %}
+        {% endfor %}
+
+        {% set overall_avg = ((ns.all_marks|sum) / (ns.all_marks|length)) if ns.all_marks|length else none %}
+        {% set overall_grade = '-' %}
+        {% if overall_avg is not none %}
+            {% for gb in default_grade_bands %}
+                {% set gb_start = gb.start|float if gb.start is not none else none %}
+                {% set gb_end = gb.end|float if gb.end is not none else none %}
+                {% if gb_start is not none and gb_end is not none and overall_avg >= gb_start and overall_avg <= gb_end %}
+                    {% set overall_grade = gb.code or gb.label or '-' %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        {% set subjects_passed = namespace(count=0) %}
+        {% for subject_name, subdata in ns.subject_map|dictsort %}
+            {% set marks = subdata['marks'] %}
+            {% if marks|length %}
+                {% set avg = (marks|sum) / (marks|length) %}
+                {% set subject_grade = '-' %}
+                {% set sid_key = (subdata['subject_id'] ~ '') if subdata['subject_id'] is not none else '' %}
+                {% set bands = subject_grade_bands[sid_key] if sid_key and subject_grade_bands and sid_key in subject_grade_bands else default_grade_bands %}
+                {% for gb in bands %}
+                    {% set gb_start = gb.start|float if gb.start is not none else none %}
+                    {% set gb_end = gb.end|float if gb.end is not none else none %}
+                    {% if gb_start is not none and gb_end is not none and avg >= gb_start and avg <= gb_end %}
+                        {% set subject_grade = gb.code or gb.label or '-' %}
+                    {% endif %}
+                {% endfor %}
+                {% if subject_grade != 'F' and subject_grade != '-' %}{% set subjects_passed.count = subjects_passed.count + 1 %}{% endif %}
+            {% endif %}
+        {% endfor %}
+
+        <div class="preview-card rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800">
+            <div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-bold">{{ school_settings.school_name or 'School' }}</h3>
+                        <p class="text-xs opacity-90">{{ school_settings.school_address or school_settings.address or 'Address not set' }}</p>
+                        <p class="text-xs opacity-90">
+                            {{ school_settings.phone or school_settings.phone_number or '' }}
+                            {% if school_settings.email or school_settings.school_email %} | {{ school_settings.email or school_settings.school_email }}{% endif %}
+                        </p>
+                    </div>
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">
+                    {% else %}
+                    <div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>
+                    {% endif %}
+                </div>
             </div>
-            <div class="p-4 sm:p-5">
-                <table class="w-full text-sm exam-marks-table">
-                    <thead>
-                        <tr class="text-left border-b-2 border-gray-200 dark:border-gray-600">
-                            <th class="pb-2 pr-3 font-semibold text-gray-700 dark:text-gray-300">Subject</th>
-                            <th class="pb-2 pr-3 font-semibold text-gray-700 dark:text-gray-300">Exam</th>
-                            <th class="pb-2 pr-3 font-semibold text-gray-700 dark:text-gray-300">Date</th>
-                            <th class="pb-2 font-semibold text-gray-700 dark:text-gray-300 text-right w-24">Mark</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for m in st.marks %}
-                        <tr class="border-b border-gray-100 dark:border-gray-700/80">
-                            <td class="py-2.5 pr-3 font-medium text-gray-900 dark:text-white">{{ m.subject_name }}</td>
-                            <td class="py-2.5 pr-3 text-gray-600 dark:text-gray-400">{{ m.exam_name }}</td>
-                            <td class="py-2.5 pr-3 text-gray-500 text-xs">{{ m.exam_date }}</td>
-                            <td class="py-2.5 text-right">
-                                {% set markv = m.marks|float if m.marks is not none and m.marks != '' else none %}
-                                <span class="inline-block min-w-[2.5rem] px-2 py-1 rounded-lg font-bold text-sm
-                                    {% if markv is not none and markv >= 70 %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
-                                    {% elif markv is not none and markv >= 50 %}bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300
-                                    {% elif markv is not none %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
-                                    {% else %}bg-gray-100 text-gray-700 dark:bg-gray-300{% endif %}">{{ m.marks }}</span>
-                            </td>
-                        </tr>
+
+            <div class="p-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Student</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ st.full_name }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">ID: {{ st.student_id }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: {{ st.level_name }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">
+                        {% set photo_src = '' %}
+                        {% if st.marks and st.marks[0].student_photo %}
+                            {% set photo_src = st.marks[0].student_photo %}
+                        {% endif %}
+                        {% if photo_src %}
+                        <img src="{{ photo_src }}" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">
+                        {% else %}
+                        <div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">
+                            <span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Year: {{ meta.applied_filters.academic_year }} | Term: {{ meta.applied_filters.term }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Exam: {{ meta.applied_filters.exam_name if meta and meta.applied_filters and meta.applied_filters.exam_name else ns.exam_label }}</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall average</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{% if overall_avg is not none %}{{ '%.2f'|format(overall_avg)|replace('.00','') }}{% else %}-{% endif %}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall grade</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ overall_grade }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Subjects passed</p>
+                        <p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">{{ subjects_passed.count }}</p>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="w-full min-w-[560px]">
+                        <thead class="bg-gray-50 dark:bg-gray-900/40">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Trend</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Grade</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for subject_name, subdata in ns.subject_map|dictsort %}
+                            {% set marks = subdata['marks'] %}
+                            {% set avg = ((marks|sum) / (marks|length)) if marks|length else none %}
+                            {% set grade = '-' %}
+                            {% if avg is not none %}
+                                {% set sid_key = (subdata['subject_id'] ~ '') if subdata['subject_id'] is not none else '' %}
+                                {% set bands = subject_grade_bands[sid_key] if sid_key and subject_grade_bands and sid_key in subject_grade_bands else default_grade_bands %}
+                                {% for gb in bands %}
+                                    {% set gb_start = gb.start|float if gb.start is not none else none %}
+                                    {% set gb_end = gb.end|float if gb.end is not none else none %}
+                                    {% if gb_start is not none and gb_end is not none and avg >= gb_start and avg <= gb_end %}
+                                        {% set grade = gb.code or gb.label or '-' %}
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                            {% set trend_marks = subdata['history'] | sort(attribute='exam_date') %}
+                            <tr class="border-b border-gray-100 dark:border-gray-700">
+                                <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ loop.index }}</td>
+                                <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">{{ subject_name }}</td>
+                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{% if avg is not none %}{{ '%.2f'|format(avg)|replace('.00','') }}{% else %}-{% endif %}</td>
+                                <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                                    {% if trend_marks and trend_marks|length > 0 %}
+                                        {% for t in trend_marks %}{% if not loop.first %} -> {% endif %}{{ t.mark }}{% endfor %}
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td class="px-3 py-2 text-sm">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold
+                                        {% if grade == 'A' %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300
+                                        {% elif grade == 'B' %}bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300
+                                        {% elif grade == 'C' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
+                                        {% elif grade == 'D' %}bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300
+                                        {% elif grade == 'F' %}bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300
+                                        {% else %}bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300{% endif %}">{{ grade }}</span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 text-xs text-gray-600 dark:text-gray-400">
+                    <span class="font-semibold">Grade scale:</span>
+                    {% if default_grade_bands and default_grade_bands|length %}
+                        {% for gb in default_grade_bands %}
+                            {{ (gb.code or gb.label or '-') }}: {{ gb.start }}-{{ gb.end }}{% if not loop.last %}, {% endif %}
                         {% endfor %}
-                    </tbody>
-                </table>
+                    {% else %}
+                        Configured grade settings
+                    {% endif %}
+                </div>
+                <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                    <p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>
+                </div>
+                <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Parent acknowledgement</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Class teacher</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Principal signature / stamp</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ——— All students as individual report papers ——— #}
+    {% elif layout == 'exam_all_student_cards' %}
+    {% if not rows %}
+    <div class="preview-card rounded-xl border-2 border-dashed p-12 text-center text-gray-500">No student exam results found.</div>
+    {% else %}
+    {% set subject_columns = meta.subject_columns if meta and meta.subject_columns else [] %}
+    <div class="space-y-8">
+        {% for row in rows %}
+        {% set grade = row.grade or '-' %}
+        <div class="preview-card rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 {% if not loop.last %}print:break-after-page{% endif %}">
+            <div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-base font-bold">{{ school_settings.school_name or 'School' }}</h3>
+                        <p class="text-xs opacity-90">{{ school_settings.school_address or school_settings.address or 'Address not set' }}</p>
+                        <p class="text-xs opacity-90">
+                            {{ school_settings.phone or school_settings.phone_number or '' }}
+                            {% if school_settings.email or school_settings.school_email %} | {{ school_settings.email or school_settings.school_email }}{% endif %}
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        {% if school_settings.school_logo %}
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">
+                        {% else %}
+                        <div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>
+                        {% endif %}
+                        <span class="text-xs font-semibold px-2 py-1 rounded bg-white/20">Position #{{ row.position }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4">
+                {% set af = meta.applied_filters if meta and meta.applied_filters else {} %}
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Student</p>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ row.full_name }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Admission No: {{ row.admission_number }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: {{ row.level_name or af.class_level or '-' }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">
+                        {% if row.student_photo %}
+                        <img src="{{ row.student_photo }}" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">
+                        {% else %}
+                        <div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">
+                            <span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Year: {{ af.academic_year or '-' }} | Term: {{ af.term or '-' }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Exam: {{ af.exam_name or '-' }}</p>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: {% if meta and meta.exam_window and meta.exam_window.exam_count is defined and meta.exam_window.exam_count is not none %}{{ meta.exam_window.exam_count }}{% else %}-{% endif %}</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
+                    <table class="w-full min-w-[480px]">
+                        <thead class="bg-gray-50 dark:bg-gray-900/40">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject Code</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for sc in subject_columns %}
+                            <tr class="border-b border-gray-100 dark:border-gray-700">
+                                <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ loop.index }}</td>
+                                <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">{{ sc }}</td>
+                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{{ row.get(sc) if row.get(sc) not in (None, '') else '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Total Marks</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.total_marks }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Mean</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.mean }}</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
+                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Grade</p>
+                        <p>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold
+                                {% if grade == 'A' %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300
+                                {% elif grade == 'B' %}bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300
+                                {% elif grade == 'C' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300
+                                {% elif grade == 'D' %}bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300
+                                {% elif grade == 'F' %}bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300
+                                {% else %}bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300{% endif %}">{{ grade }}</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-4 text-xs text-gray-600 dark:text-gray-400">
+                    <span class="font-semibold">Grade scale:</span>
+                    {% if meta and meta.grade_bands and meta.grade_bands|length %}
+                        {% for gb in meta.grade_bands %}
+                            {{ (gb.code or gb.label or '-') }}: {{ gb.start }}-{{ gb.end }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    {% else %}
+                        Configured grade settings
+                    {% endif %}
+                </div>
+                <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                    <p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>
+                </div>
+                <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Parent acknowledgement</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Class teacher</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                        <p class="font-semibold uppercase mb-6">Principal signature / stamp</p>
+                        <p>Signature: ____________________</p>
+                        <p class="mt-2">Date: ____________________</p>
+                    </div>
+                </div>
             </div>
         </div>
         {% endfor %}
@@ -491,9 +812,59 @@
 
 <style>
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
   .no-print { display: none !important; }
-  body { background: white !important; }
-  .preview-card { break-inside: avoid; box-shadow: none !important; }
+  html, body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .max-w-\[1600px\],
+  .mx-auto,
+  .p-4,
+  .lg\:p-6 {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .preview-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    width: 100% !important;
+    margin-bottom: 6mm !important;
+  }
+  .print\:break-after-page {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+  }
+  th, td {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+    padding: 4px 5px !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .grid {
+    gap: 2mm !important;
+  }
+  .text-lg { font-size: 14px !important; }
+  .text-base, .text-sm { font-size: 11px !important; }
+  .text-xs { font-size: 9px !important; }
+  .w-16 { width: 52px !important; }
+  .h-20 { height: 64px !important; }
+  .w-14 { width: 46px !important; }
+  .h-14 { height: 46px !important; }
   .timetable-grid { font-size: 10px; }
 }
 </style>

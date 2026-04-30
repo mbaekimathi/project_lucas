@@ -3,6 +3,10 @@
 {% block title %}Register Timetable{% endblock %}
 
 {% block sidebar_content %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
 <a href="{{ employee_dash_url('timetable-management') }}" class="sidebar-item">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Timetable Home</span>
@@ -184,8 +188,8 @@
                                                 <template x-if="getSlot(day, slot.time)">
                                                     <div class="text-xs p-1">
                                                         <i class="fas fa-book text-green-600 dark:text-green-400"></i>
-                                                        <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).subject_name || 'Subject'"></div>
-                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="getSlot(day, slot.time).subject_code || '— — — — — —'"></div>
+                                                        <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).subject_code || '— — —'"></div>
+                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="getSlot(day, slot.time).employee_id || '— — — —'"></div>
                                                     </div>
                                                 </template>
                                                 <template x-if="!getSlot(day, slot.time)">
@@ -268,6 +272,70 @@
             </div>
         </div>
     </div>
+
+    <!-- Auto Generate Overwrite Confirmation Modal -->
+    <div x-show="autoGenConfirmModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="closeAutoGenerateConfirmModal()">
+        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700" @click.stop>
+            <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="font-semibold text-gray-900 dark:text-white">
+                        <i class="fas fa-exclamation-triangle text-amber-500 mr-2"></i>Confirm Timetable Overwrite
+                    </h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Security confirmation is required before replacing existing timetable entries.</p>
+                </div>
+                <button @click="closeAutoGenerateConfirmModal()" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div class="p-4 space-y-3">
+                <div class="text-sm text-gray-700 dark:text-gray-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-3">
+                    <p x-text="autoGenWarningMessage || 'Existing timetable detected.'"></p>
+                    <p class="mt-2 font-medium">Repercussion: current timetable entries for this selection will be replaced.</p>
+                </div>
+
+                <template x-if="autoGenStep === 'password'">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter current account password</label>
+                        <input type="password"
+                               x-model="autoGenCurrentPassword"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                               placeholder="Current password">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">We will send a 6-digit confirmation code to your account email.</p>
+                    </div>
+                </template>
+
+                <template x-if="autoGenStep === 'code'">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Enter 6-digit confirmation code</label>
+                        <input type="text"
+                               x-model="autoGenCode"
+                               maxlength="6"
+                               inputmode="numeric"
+                               class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white tracking-[0.2em]"
+                               placeholder="123456">
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Use the code sent to your email to continue.</p>
+                    </div>
+                </template>
+
+                <p x-show="autoGenErrorMessage" x-text="autoGenErrorMessage" class="text-sm text-red-600 dark:text-red-400"></p>
+            </div>
+
+            <div class="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-b-xl flex items-center justify-end gap-2">
+                <button @click="closeAutoGenerateConfirmModal()" class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg">Cancel</button>
+                <button x-show="autoGenStep === 'password'"
+                        @click="requestAutoGenerateCode()"
+                        :disabled="autoGenSubmitting || !autoGenCurrentPassword"
+                        class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span x-text="autoGenSubmitting ? 'Sending...' : 'Send 6-digit code'"></span>
+                </button>
+                <button x-show="autoGenStep === 'code'"
+                        @click="confirmAutoGenerateWithCode()"
+                        :disabled="autoGenSubmitting || !/^\d{6}$/.test((autoGenCode || '').trim())"
+                        class="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span x-text="autoGenSubmitting ? 'Confirming...' : 'Confirm & Auto Generate'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -283,6 +351,15 @@ function timetableApp() {
         modalTeacher: '',
         modalSubject: '',
         slots: [],
+        autoGenConfirmModal: false,
+        autoGenStep: 'password',
+        autoGenWarningMessage: '',
+        autoGenCurrentPassword: '',
+        autoGenCode: '',
+        autoGenDevCode: '',
+        autoGenErrorMessage: '',
+        autoGenSubmitting: false,
+        autoGenPendingPayload: null,
         settingsProfileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
         
         days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
@@ -292,8 +369,8 @@ function timetableApp() {
         
         terms: [{% for term in terms %}{id:{{ term.id }},term_name:'{{ term.term_name }}',academic_year_id:{{ term.academic_year_id }}}{% if not loop.last %},{% endif %}{% endfor %}],
         
-        teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}',employee_id:'{{ (t.employee_id or "")|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
-        teacherSubjectPairs: [{% for p in teacher_subject_pairs %}{academic_level_id:{{ p.academic_level_id }},teacher_id:{{ p.teacher_id }},subject_id:{{ p.subject_id }},teacher_name:{{ p.teacher_name|tojson|safe }},employee_id:{{ (p.employee_id or '')|tojson|safe }},subject_name:{{ p.subject_name|tojson|safe }},subject_code:{{ (p.subject_code or '')|tojson|safe }}}{% if not loop.last %},{% endif %}{% endfor %}],
+        teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}',employee_id:'{{ (t.employee_id or "")|replace("'", "") }}',portal_employee_number:'{{ (t.portal_employee_number or "")|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
+        teacherSubjectPairs: [{% for p in teacher_subject_pairs %}{academic_level_id:{{ p.academic_level_id }},teacher_id:{{ p.teacher_id }},subject_id:{{ p.subject_id }},teacher_name:{{ p.teacher_name|tojson|safe }},employee_id:{{ (p.employee_id or '')|tojson|safe }},portal_employee_number:{{ (p.portal_employee_number or '')|tojson|safe }},subject_name:{{ p.subject_name|tojson|safe }},subject_code:{{ (p.subject_code or '')|tojson|safe }}}{% if not loop.last %},{% endif %}{% endfor %}],
 
         get levelPairs() {
             if (!this.levelId) return [];
@@ -307,7 +384,7 @@ function timetableApp() {
                 if (!byTeacher[p.teacher_id]) {
                     byTeacher[p.teacher_id] = {
                         id: p.teacher_id,
-                        label: `${p.teacher_name}${p.employee_id ? ' (' + p.employee_id + ')' : ''}`
+                        label: `${p.teacher_name}${p.employee_id != null && String(p.employee_id).trim() !== '' ? ' (' + p.employee_id + ')' : ''}`
                     };
                 }
             });
@@ -475,7 +552,7 @@ function timetableApp() {
             if (!this.modalTeacher || !this.modalSubject || !this.levelId) return;
             const pair = this.levelPairs.find(p => p.teacher_id == this.modalTeacher && p.subject_id == this.modalSubject);
             const teacherName = pair ? pair.teacher_name : '';
-            const teacherCode = pair ? (pair.employee_id || '') : '';
+            const teacherCode = pair ? String(pair.employee_id != null ? pair.employee_id : '').trim() : '';
             const subject = this.modalSubjects.find(s => s.id == this.modalSubject);
             const existing = this.slots.findIndex(s => s.day === this.modalDay && s.time === this.modalTime);
             
@@ -545,26 +622,113 @@ function timetableApp() {
             }
 
             try {
+                const payload = {
+                    academic_year_id: parseInt(this.yearId),
+                    term_id: parseInt(this.termId),
+                    academic_level_id: parseInt(this.levelId)
+                };
+
                 const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/auto-generate') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        academic_year_id: parseInt(this.yearId),
-                        term_id: parseInt(this.termId),
-                        academic_level_id: parseInt(this.levelId)
-                    })
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
+
+                if (data && data.requires_confirmation) {
+                    this.autoGenPendingPayload = payload;
+                    this.autoGenWarningMessage = data.message || 'Existing timetable detected.';
+                    this.autoGenCurrentPassword = '';
+                    this.autoGenCode = '';
+                    this.autoGenDevCode = '';
+                    this.autoGenErrorMessage = '';
+                    this.autoGenStep = 'password';
+                    this.autoGenConfirmModal = true;
+                    return;
+                }
+
                 if (data.success) {
                     await this.loadLevelSettings();
                     await this.loadGrid();
                     alert(`Auto generation complete for this level.\nAssigned: ${data.assigned_count}\nLeft blank (conflicts/unassigned): ${data.blank_count}\nTotal class slots: ${data.total_slots}`);
-                } else {
-                    alert(data.message || 'Failed to auto generate timetable.');
+                    return;
                 }
+                alert(data.message || 'Failed to auto generate timetable.');
             } catch (e) {
                 console.error(e);
                 alert('Error auto-generating timetable.');
+            }
+        },
+        closeAutoGenerateConfirmModal() {
+            this.autoGenConfirmModal = false;
+            this.autoGenStep = 'password';
+            this.autoGenErrorMessage = '';
+            this.autoGenDevCode = '';
+            this.autoGenSubmitting = false;
+        },
+        async requestAutoGenerateCode() {
+            if (!this.autoGenPendingPayload || !this.autoGenCurrentPassword) return;
+            this.autoGenSubmitting = true;
+            this.autoGenErrorMessage = '';
+            try {
+                const codeRes = await fetch('{{ employee_dash_url('timetable-management/register-timetable/auto-generate/request-code') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...this.autoGenPendingPayload,
+                        current_password: this.autoGenCurrentPassword
+                    })
+                });
+                const codeData = await codeRes.json();
+                if (!codeRes.ok || !codeData.success) {
+                    this.autoGenErrorMessage = codeData.message || 'Failed to request confirmation code.';
+                    return;
+                }
+                this.autoGenDevCode = codeData.dev_code ? String(codeData.dev_code) : '';
+                if (this.autoGenDevCode) {
+                    this.autoGenCode = this.autoGenDevCode;
+                    this.autoGenErrorMessage = `Temporary mode: use this 6-digit code ${this.autoGenDevCode} to continue.`;
+                }
+                this.autoGenStep = 'code';
+            } catch (e) {
+                console.error(e);
+                this.autoGenErrorMessage = 'Failed to request confirmation code.';
+            } finally {
+                this.autoGenSubmitting = false;
+            }
+        },
+        async confirmAutoGenerateWithCode() {
+            if (!this.autoGenPendingPayload) return;
+            const code = (this.autoGenCode || '').trim();
+            if (!/^\d{6}$/.test(code)) {
+                this.autoGenErrorMessage = 'Please enter a valid 6-digit code.';
+                return;
+            }
+            this.autoGenSubmitting = true;
+            this.autoGenErrorMessage = '';
+            try {
+                const confirmRes = await fetch('{{ employee_dash_url('timetable-management/register-timetable/auto-generate') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...this.autoGenPendingPayload,
+                        confirmation_code: code
+                    })
+                });
+                const confirmData = await confirmRes.json();
+                if (confirmData.success) {
+                    this.closeAutoGenerateConfirmModal();
+                    await this.loadLevelSettings();
+                    await this.loadGrid();
+                    alert(`Auto generation complete for this level.\nAssigned: ${confirmData.assigned_count}\nLeft blank (conflicts/unassigned): ${confirmData.blank_count}\nTotal class slots: ${confirmData.total_slots}`);
+                    return;
+                }
+                this.autoGenErrorMessage = confirmData.message || 'Failed to auto generate timetable.';
+            } catch (e) {
+                console.error(e);
+                this.autoGenErrorMessage = 'Error confirming auto generation.';
+            } finally {
+                this.autoGenSubmitting = false;
             }
         }
     };

@@ -78,28 +78,6 @@
         </p>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Academic performance reports</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3" id="ar-exam-quick-links">
-            <button type="button" data-report-type="exam_all_students_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
-                <div class="text-sm font-semibold text-gray-900 dark:text-white">All students performance</div>
-                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class-wide performance summary</div>
-            </button>
-            <button type="button" data-report-type="exam_individual_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
-                <div class="text-sm font-semibold text-gray-900 dark:text-white">Individual student performance</div>
-                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">One learner's report by student ID</div>
-            </button>
-            <button type="button" data-report-type="exam_subject_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
-                <div class="text-sm font-semibold text-gray-900 dark:text-white">Subject performance</div>
-                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Performance grouped by subject</div>
-            </button>
-            <button type="button" data-report-type="exam_teacher_performance" class="ar-quick-btn text-left rounded-lg border border-gray-300 dark:border-gray-600 p-3 hover:border-brand-primary hover:bg-brand-primary/5 transition-colors">
-                <div class="text-sm font-semibold text-gray-900 dark:text-white">Teacher performance</div>
-                <div class="text-xs text-gray-600 dark:text-gray-400 mt-1">Performance grouped by teacher</div>
-            </button>
-        </div>
-    </div>
-
     <!-- 1) Report to view -->
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">What do you want to view?</h2>
@@ -109,6 +87,7 @@
                 <select id="ar-section" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
                     <option value="class_list">Class lists</option>
                     <option value="exams">Exams</option>
+                    <option value="timetables">Timetables</option>
                 </select>
             </div>
             <div>
@@ -176,6 +155,13 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For individual reports only</p>
                 <input type="text" id="gf-student" placeholder="e.g. STU001" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
             </div>
+            <div id="ar-wrap-exam-name" class="hidden">
+                <label for="gf-exam-name" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Exam name</label>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Used for exam section reports</p>
+                <select id="gf-exam-name" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    <option value="">All exams</option>
+                </select>
+            </div>
             <div id="ar-wrap-register-date" class="hidden">
                 <label for="gf-register-date" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Attendance date</label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Used for attendance register generation</p>
@@ -237,6 +223,13 @@
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
   const PREVIEW_BASE = {{ employee_dash_url('academic-reports/preview')|tojson }};
+  const SCHOOL_INFO = {
+    name: {{ (school_settings.school_name or 'School')|tojson }},
+    address: {{ (school_settings.school_address or school_settings.address or '')|tojson }},
+    phone: {{ (school_settings.phone or school_settings.phone_number or '')|tojson }},
+    email: {{ (school_settings.email or school_settings.school_email or '')|tojson }},
+    logo: {% if school_settings.school_logo %}{{ url_for('static', filename=school_settings.school_logo)|tojson }}{% else %}''{% endif %}
+  };
 
   const CATALOG = {
     class_list: {
@@ -257,6 +250,14 @@
         { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher (exam supervisor or subject teacher): stats per subject in the class.' },
       ],
     },
+    timetables: {
+      label: 'Timetables',
+      hint: 'Class timetable needs a term. Exam timetable uses term, academic year, and/or class filters to narrow sessions.',
+      reports: [
+        { id: 'timetable_subject', label: 'Class timetable', desc: 'Weekly teaching timetable: periods, subjects, and teachers by class.' },
+        { id: 'timetable_exam', label: 'Exam timetable', desc: 'Scheduled exam sessions by date, class, subject, and venue.' },
+      ],
+    },
   };
 
   const sectionEl = document.getElementById('ar-section');
@@ -266,12 +267,14 @@
   const extraWrap = document.getElementById('ar-extra-filters');
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
+  const wrapExamName = document.getElementById('ar-wrap-exam-name');
   const wrapRegisterDate = document.getElementById('ar-wrap-register-date');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
+  const examNameEl = document.getElementById('gf-exam-name');
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
-  const quickReportButtons = Array.from(document.querySelectorAll('#ar-exam-quick-links [data-report-type]'));
+  const examOptions = {{ (exam_names or [])|tojson|safe }};
 
   function setGeneratedNow() {
     if (!generatedAtEl) return;
@@ -296,7 +299,6 @@
     updateReportDescription();
     updateExtraFilters();
     loadDetails();
-    syncQuickButtons();
   }
 
   function updateReportDescription() {
@@ -308,30 +310,58 @@
     hintEl.textContent = cat ? cat.hint : '';
   }
 
-  function syncQuickButtons() {
-    const rid = currentReportId();
-    quickReportButtons.forEach(function(btn) {
-      const selected = btn.getAttribute('data-report-type') === rid;
-      btn.classList.toggle('border-brand-primary', selected);
-      btn.classList.toggle('bg-brand-primary/10', selected);
-    });
-  }
-
   function updateExtraFilters() {
     const rid = currentReportId();
-    const needTeacher = false;
-    const needTimetableView = false;
+    const needTeacher = rid === 'timetable_teacher';
+    const needTimetableView = rid === 'timetable_subject';
     const needStudent = rid === 'exam_individual_performance' || rid === 'exam_individual';
+    const needExamName = rid && rid.indexOf('exam_') === 0;
     const needRegisterDate = rid === 'class_list_attendance';
     const needDates = false;
 
-    const anyExtra = needTeacher || needTimetableView || needStudent || needRegisterDate || needDates;
+    const anyExtra = needTeacher || needTimetableView || needStudent || needExamName || needRegisterDate || needDates;
     extraWrap.classList.toggle('hidden', !anyExtra);
     wrapTimetableView.classList.toggle('hidden', !needTimetableView);
     wrapTeacher.classList.toggle('hidden', !needTeacher);
     wrapStudent.classList.toggle('hidden', !needStudent);
+    wrapExamName.classList.toggle('hidden', !needExamName);
     wrapRegisterDate.classList.toggle('hidden', !needRegisterDate);
     wrapDates.classList.toggle('hidden', !needDates);
+    if (needExamName) {
+      syncExamNameOptions();
+    }
+  }
+
+  function syncExamNameOptions() {
+    if (!examNameEl) return;
+    const previous = examNameEl.value || '';
+    const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
+    const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
+    const levelVal = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
+
+    const seen = new Set();
+    const opts = examOptions.filter(function(item) {
+      const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
+      const tOk = !termVal || Number(item.term_id || 0) === termVal;
+      const lOk = !levelVal || Number(item.academic_level_id || 0) === levelVal;
+      return yOk && tOk && lOk;
+    }).filter(function(item) {
+      const key = String(item.exam_name || '').trim();
+      if (!key || seen.has(key.toLowerCase())) return false;
+      seen.add(key.toLowerCase());
+      return true;
+    });
+
+    examNameEl.innerHTML = '<option value="">All exams</option>';
+    opts.forEach(function(item) {
+      const opt = document.createElement('option');
+      opt.value = String(item.exam_name || '');
+      opt.textContent = String(item.exam_name || '');
+      examNameEl.appendChild(opt);
+    });
+    if (previous && Array.from(examNameEl.options).some(function(o) { return o.value === previous; })) {
+      examNameEl.value = previous;
+    }
   }
 
   sectionEl.addEventListener('change', function() {
@@ -341,24 +371,7 @@
   reportEl.addEventListener('change', function() {
     updateReportDescription();
     updateExtraFilters();
-    syncQuickButtons();
     loadDetails();
-  });
-
-  quickReportButtons.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      const targetReport = btn.getAttribute('data-report-type');
-      if (!targetReport) return;
-      if (sectionEl.value !== 'exams') {
-        sectionEl.value = 'exams';
-        fillReportOptions('exams');
-      }
-      reportEl.value = targetReport;
-      updateReportDescription();
-      updateExtraFilters();
-      syncQuickButtons();
-      loadDetails();
-    });
   });
 
   fillReportOptions(sectionEl.value);
@@ -383,6 +396,7 @@
     } else {
       out.student_id = null;
     }
+    out.exam_name = reportType && reportType.indexOf('exam_') === 0 ? (val('gf-exam-name') || null) : null;
     if (reportType === 'class_list_attendance') {
       const registerDate = val('gf-register-date');
       out.date_from = registerDate || null;
@@ -488,6 +502,15 @@
       .replace(/'/g, '&#39;');
   }
 
+  /** Teacher reference on timetable rows: employees.id (auto-generated primary key). */
+  function rowTeacherStaffId(row) {
+    if (!row) return '';
+    var a = row.teacher_id;
+    var b = row.teacher_code;
+    var v = (a !== undefined && a !== null && String(a).trim() !== '') ? a : b;
+    return String(v != null ? v : '').trim();
+  }
+
   function renderTable(bundle) {
     const columns = Array.isArray(bundle.columns) ? bundle.columns : [];
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
@@ -504,6 +527,133 @@
       return '<tr>' + cells + '</tr>';
     }).join('');
     return '<div class="overflow-x-auto"><table class="w-full text-sm min-w-[720px]"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+  }
+
+  function renderAllStudentsPerformance(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No data found for this report and filters.</p>';
+    }
+    const meta = bundle.meta || {};
+    const af = meta.applied_filters || {};
+    const ew = meta.exam_window || {};
+    const examsCovered = (ew.exam_count != null && ew.exam_count !== '') ? String(ew.exam_count) : '-';
+    const bands = Array.isArray(meta.grade_bands) ? meta.grade_bands : [];
+    const gradeLegend = bands.length
+      ? bands.map(function(g) {
+          const code = String(g.code || g.label || '').trim();
+          if (!code) return '';
+          return escapeHtml(code) + ': ' + escapeHtml(g.start) + '-' + escapeHtml(g.end);
+        }).filter(Boolean).join(', ')
+      : 'Configured grade settings';
+
+    const subjectColumns = Array.isArray(meta.subject_columns) ? meta.subject_columns : [];
+    const cards = rows.map(function(row) {
+      const grade = String(row.grade || '-');
+      const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
+      const photoBlock = row.student_photo && String(row.student_photo).trim()
+        ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
+        : '<div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">' +
+            '<span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>' +
+          '</div>';
+      const subjectRows = subjectColumns.map(function(subjectName, idx) {
+        const mark = row[subjectName];
+        return '' +
+          '<tr class="border-b border-gray-100 dark:border-gray-700">' +
+            '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">' + (idx + 1) + '</td>' +
+            '<td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">' + escapeHtml(subjectName) + '</td>' +
+            '<td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">' + (mark === '' || mark === null || mark === undefined ? '-' : escapeHtml(mark)) + '</td>' +
+          '</tr>';
+      }).join('');
+      return '' +
+        '<div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6 bg-white dark:bg-gray-800">' +
+          '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">' +
+            '<div class="flex items-center justify-between gap-3">' +
+              '<div>' +
+                '<h3 class="text-base font-bold">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
+                '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
+                '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.phone || '') + ((SCHOOL_INFO.email ? ' | ' + SCHOOL_INFO.email : '')) + '</p>' +
+              '</div>' +
+              '<div class="flex items-center gap-2">' +
+                (SCHOOL_INFO.logo
+                  ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">'
+                  : '<div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>') +
+                '<span class="text-xs font-semibold px-2 py-1 rounded bg-white/20">Position #' + escapeHtml(row.position || '-') + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="p-4">' +
+            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">' +
+                '<p class="text-xs text-gray-500 dark:text-gray-400">Student</p>' +
+                '<p class="font-semibold text-gray-900 dark:text-white">' + escapeHtml(row.full_name || '-') + '</p>' +
+                '<p class="text-xs text-gray-600 dark:text-gray-400">Admission No: ' + escapeHtml(row.admission_number || '-') + '</p>' +
+                '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: ' + escapeHtml(row.level_name || af.class_level || '-') + '</p>' +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">' +
+                photoBlock +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">' +
+                '<p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>' +
+                '<p class="text-xs text-gray-600 dark:text-gray-400">Year: ' + escapeHtml(af.academic_year || '-') + ' | Term: ' + escapeHtml(af.term || '-') + '</p>' +
+                '<p class="text-xs text-gray-600 dark:text-gray-400">Exam: ' + escapeHtml(af.exam_name || '-') + '</p>' +
+                '<p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: ' + escapeHtml(examsCovered) + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 mb-4">' +
+              '<table class="w-full min-w-[480px]">' +
+                '<thead class="bg-gray-50 dark:bg-gray-900/40">' +
+                  '<tr>' +
+                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>' +
+                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject Code</th>' +
+                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>' +
+                  '</tr>' +
+                '</thead>' +
+                '<tbody>' + subjectRows + '</tbody>' +
+              '</table>' +
+            '</div>' +
+            '<div class="grid grid-cols-3 gap-2">' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Total Marks</p>' +
+                '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(row.total_marks || '-') + '</p>' +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Mean</p>' +
+                '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(row.mean || '-') + '</p>' +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Grade</p>' +
+                '<p><span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold ' + gradePill + '">' + escapeHtml(grade) + '</span></p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="mt-4 text-xs text-gray-600 dark:text-gray-400">' +
+              '<span class="font-semibold">Grade scale:</span> ' + gradeLegend +
+            '</div>' +
+            '<div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+              '<p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>' +
+              '<p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>' +
+            '</div>' +
+            '<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+                '<p class="font-semibold uppercase mb-6">Parent acknowledgement</p>' +
+                '<p>Signature: ____________________</p>' +
+                '<p class="mt-2">Date: ____________________</p>' +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+                '<p class="font-semibold uppercase mb-6">Class teacher</p>' +
+                '<p>Signature: ____________________</p>' +
+                '<p class="mt-2">Date: ____________________</p>' +
+              '</div>' +
+              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+                '<p class="font-semibold uppercase mb-6">Principal signature / stamp</p>' +
+                '<p>Signature: ____________________</p>' +
+                '<p class="mt-2">Date: ____________________</p>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }).join('');
+    return '<div class="space-y-6">' + cards + '</div>';
   }
 
   function renderAttendanceRegister(bundle) {
@@ -623,7 +773,7 @@
       var subjectCode = pick(r, ['subject_code']);
       var venue = pick(r, ['venue', 'room', 'exam_room', 'location']);
       var invigilator = pick(r, ['invigilator_name', 'teacher_name', 'supervisor', 'invigilator']);
-      var invigilatorCode = pick(r, ['invigilator_code', 'supervisor_employee_id', 'teacher_code']);
+      var invigilatorCode = pick(r, ['invigilator_employee_id', 'invigilator_code', 'supervisor_employee_id', 'teacher_code']);
       return {
         examName: examName || 'Exam',
         dateText: dateText || '-',
@@ -651,88 +801,121 @@
     normalized.forEach(function(n) {
       if (n.examName && names.indexOf(n.examName) === -1) names.push(n.examName);
     });
-    var heading = names.length === 1 ? names[0] : 'Exam Timetable';
+    var heading = names.length === 1 ? names[0] : 'Exam timetable';
     var namesMeta = names.length > 1
-      ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Exams: ' + escapeHtml(names.join(', ')) + '</p>'
-      : '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Structured timetable view</p>';
+      ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Exams included: ' + escapeHtml(names.join(', ')) + '</p>'
+      : '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Separate grid per class — dates as rows · session times as columns</p>';
 
-    var grouped = {};
-    var order = [];
-    normalized.forEach(function(item) {
-      var key = item.dateText;
-      if (!grouped[key]) {
-        grouped[key] = [];
-        order.push(key);
-      }
-      grouped[key].push(item);
-    });
-
-    var allTimesSet = new Set();
-    normalized.forEach(function (n) { if (n.timeText && n.timeText !== '-') allTimesSet.add(n.timeText); });
-    var allTimes = Array.from(allTimesSet).sort(function (a, b) { return parseSortableTime(a) - parseSortableTime(b); });
-    var matrix = {};
     var subjectLegend = {};
     var invigilatorLegend = {};
-    var classNames = Array.from(new Set(normalized.map(function (n) { return String(n.className || '').trim(); }).filter(Boolean))).sort();
-    order.forEach(function (d) { matrix[d] = {}; allTimes.forEach(function (t) { matrix[d][t] = []; }); });
     normalized.forEach(function (n) {
-      if (!matrix[n.dateText]) return;
-      if (!matrix[n.dateText][n.timeText]) matrix[n.dateText][n.timeText] = [];
-      matrix[n.dateText][n.timeText].push(n);
       if (n.subjectCode && n.subject) subjectLegend[n.subjectCode] = n.subject;
       if (n.invigilatorCode && n.invigilator) invigilatorLegend[n.invigilatorCode] = n.invigilator;
     });
 
-    var bodyRows = order.map(function (dateKey) {
-      var day = (grouped[dateKey] && grouped[dateKey][0] && grouped[dateKey][0].dayText) ? grouped[dateKey][0].dayText : '';
-      var rowTitle = escapeHtml(dateKey) + (day ? ' (' + escapeHtml(day) + ')' : '');
-      var cells = allTimes.map(function (slot) {
-        var entries = (matrix[dateKey] && matrix[dateKey][slot]) ? matrix[dateKey][slot] : [];
-        if (!entries.length) {
-          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
-                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
-                 '</td>';
+    function buildExamSubsetTable(normSubset) {
+      if (!normSubset.length) return '';
+      var grouped = {};
+      var order = [];
+      normSubset.forEach(function(item) {
+        var key = item.dateText;
+        if (!grouped[key]) {
+          grouped[key] = [];
+          order.push(key);
         }
-        var lines = entries.map(function (item) {
-          var subjectLabel = item.subjectCode || item.subject || '-';
-          var invLabel = item.invigilatorCode || item.invigilator || '-';
-          return '<div class="mb-1 last:mb-0 leading-tight">' +
-                   '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
-                   '<div class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(invLabel) + ' • ' + escapeHtml(item.venue) + '</div>' +
-                 '</div>';
+        grouped[key].push(item);
+      });
+      var allTimesSet = new Set();
+      normSubset.forEach(function (n) {
+        if (n.timeText && n.timeText !== '-') allTimesSet.add(n.timeText);
+      });
+      var allTimes = Array.from(allTimesSet).sort(function (a, b) { return parseSortableTime(a) - parseSortableTime(b); });
+      var matrix = {};
+      order.forEach(function (d) { matrix[d] = {}; allTimes.forEach(function (t) { matrix[d][t] = []; }); });
+      normSubset.forEach(function (n) {
+        if (!matrix[n.dateText]) return;
+        if (!matrix[n.dateText][n.timeText]) matrix[n.dateText][n.timeText] = [];
+        matrix[n.dateText][n.timeText].push(n);
+      });
+      var bodyRows = order.map(function (dateKey) {
+        var day = (grouped[dateKey] && grouped[dateKey][0] && grouped[dateKey][0].dayText) ? grouped[dateKey][0].dayText : '';
+        var rowTitle = escapeHtml(dateKey) + (day ? ' (' + escapeHtml(day) + ')' : '');
+        var cells = allTimes.map(function (slot) {
+          var entries = (matrix[dateKey] && matrix[dateKey][slot]) ? matrix[dateKey][slot] : [];
+          if (!entries.length) {
+            return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                     '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                   '</td>';
+          }
+          var lines = entries.map(function (item) {
+            var subjectLabel = item.subjectCode || item.subject || '-';
+            var invLabel = item.invigilatorCode || item.invigilator || '-';
+            return '<div class="mb-1 last:mb-0 leading-tight">' +
+                     '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
+                     '<div class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(invLabel) + ' • ' + escapeHtml(item.venue) + '</div>' +
+                   '</div>';
+          }).join('');
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
-        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
+        return '<tr>' +
+                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[120px]">' + rowTitle + '</td>' +
+                 cells +
+               '</tr>';
       }).join('');
-      return '<tr>' +
-               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[120px]">' + rowTitle + '</td>' +
-               cells +
-             '</tr>';
-    }).join('');
+      return '' +
+        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+            '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Date</th>' +
+              allTimes.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+            '</tr></thead>' +
+            '<tbody>' + bodyRows + '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
 
-    return '' +
-      '<div class="mb-3">' +
+    var byClass = {};
+    normalized.forEach(function (n) {
+      var ck = String(n.className || '').trim() || '—';
+      if (!byClass[ck]) byClass[ck] = [];
+      byClass[ck].push(n);
+    });
+    var classKeys = Object.keys(byClass).sort(function (a, b) {
+      if (a === '—' && b !== '—') return 1;
+      if (b === '—' && a !== '—') return -1;
+      return a.localeCompare(b, undefined, { sensitivity: 'base' });
+    });
+
+    var overview = '' +
+      '<div class="mb-4">' +
         '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-calendar-alt text-brand-primary"></i>' + escapeHtml(heading) + '</h3>' +
         namesMeta +
-        (classNames.length
-          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(classNames.join(', ')) + '</p>'
-          : '') +
-      '</div>' +
-      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
-          '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-            '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Date</th>' +
-            allTimes.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
-          '</tr></thead>' +
-          '<tbody>' + bodyRows + '</tbody>' +
-        '</table>' +
-      '</div>' +
+      '</div>';
+
+    var sectionsHtml = classKeys.map(function (ck, idx) {
+      var inner = buildExamSubsetTable(byClass[ck]);
+      if (!inner) {
+        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(ck) + '</p>' +
+          '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No grid data for this class.</p>' +
+        '</div>';
+      }
+      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+        '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-user-graduate mr-1 text-brand-primary"></i>' + escapeHtml(ck) + '</p>' +
+        '</div>' +
+        inner +
+      '</div>';
+    }).join('');
+
+    return overview + sectionsHtml +
       '<div class="mt-4 space-y-3">' +
         (Object.keys(subjectLegend).length
           ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
             Object.keys(subjectLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(subjectLegend[c]) + '</div>'; }).join('') +
           '</div></div>' : '') +
         (Object.keys(invigilatorLegend).length
-          ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Invigilator code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+          ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Invigilator reference ID</p><p class="text-[11px] text-gray-500 dark:text-gray-400 mb-2">Each value is the staff record’s auto-generated database ID (<span class="font-semibold">employees.id</span>)—not the portal login code, not the profile ID number field.</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
             Object.keys(invigilatorLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(invigilatorLegend[c]) + '</div>'; }).join('') +
           '</div></div>' : '') +
       '</div>';
@@ -747,11 +930,13 @@
     }
 
     const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const daySet = new Set();
-    const timeSet = new Set();
-    const matrix = {};
     const subjectLegend = {};
     const teacherLegend = {};
+    rows.forEach(function (r) {
+      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
+      var tid = rowTeacherStaffId(r);
+      if (tid && r.teacher_name) teacherLegend[tid] = String(r.teacher_name);
+    });
 
     function timeSortKey(v) {
       const m = String(v || '').match(/^(\d{1,2}):(\d{2})/);
@@ -759,89 +944,115 @@
       return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
     }
 
-    rows.forEach(function (r) {
-      const day = String(r.day_of_week || '').trim();
-      const slot = String(r.time_slot || '').trim();
-      if (!day || !slot) return;
-      daySet.add(day);
-      timeSet.add(slot);
-      if (!matrix[slot]) matrix[slot] = {};
-      if (!matrix[slot][day]) matrix[slot][day] = [];
-      matrix[slot][day].push({
-        level: String(r.level_name || '-'),
-        teacher: String(r.teacher_name || '-'),
-        teacherCode: String(r.teacher_code || ''),
-        subject: String(r.subject_name || '-'),
-        code: String(r.subject_code || ''),
+    function groupRowsByLevel(all) {
+      const m = {};
+      all.forEach(function (r) {
+        const k = String(r.level_name || '').trim() || '—';
+        if (!m[k]) m[k] = [];
+        m[k].push(r);
       });
-      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
-      if (r.teacher_code && r.teacher_name) teacherLegend[String(r.teacher_code)] = String(r.teacher_name);
-    });
-
-    const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
-    const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
-    const days = orderedDays.concat(extraDays);
-    const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
-    const levelNames = Array.from(new Set(rows.map(function (r) { return String(r.level_name || '').trim(); }).filter(Boolean))).sort();
-
-    if (!days.length || !times.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No timetable entries found for these filters.</p>';
+      return Object.keys(m).sort(function (a, b) {
+        if (a === '—' && b !== '—') return 1;
+        if (b === '—' && a !== '—') return -1;
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      }).map(function (k) {
+        return { level: k, rows: m[k] };
+      });
     }
 
-    const header = '' +
-      '<div class="mb-3">' +
-        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">' +
-          '<i class="fas fa-table-cells-large text-brand-primary"></i>Subject / Class Timetable' +
-        '</h3>' +
-        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Designed timetable grid view (' + escapeHtml(timetableView) + ' mode)</p>' +
-        (levelNames.length
-          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(levelNames.join(', ')) + '</p>'
-          : '') +
-      '</div>';
+    function buildTableForRows(subRows) {
+      const daySet = new Set();
+      const timeSet = new Set();
+      const matrix = {};
+      subRows.forEach(function (r) {
+        const day = String(r.day_of_week || '').trim();
+        const slot = String(r.time_slot || '').trim();
+        if (!day || !slot) return;
+        daySet.add(day);
+        timeSet.add(slot);
+        if (!matrix[slot]) matrix[slot] = {};
+        if (!matrix[slot][day]) matrix[slot][day] = [];
+        matrix[slot][day].push({
+          teacher: String(r.teacher_name || '-'),
+          teacherStaffId: rowTeacherStaffId(r) || '-',
+          subject: String(r.subject_name || '-'),
+          code: String(r.subject_code || ''),
+        });
+      });
+      const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
+      const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
+      const days = orderedDays.concat(extraDays);
+      const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
+      if (!days.length || !times.length) return '';
 
-    const bodyRows = days.map(function (day) {
+      const bodyRows = days.map(function (day) {
         const cells = times.map(function (slot) {
-        const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
-        if (!entries.length) {
-          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
-                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
-                 '</td>';
-        }
-        const lines = entries.map(function (e) {
-          const subjectLabel = e.code || '-';
-          const teacherLabel = e.teacherCode || '-';
-          const topLine = timetableView === 'teacher'
-            ? ('<span class="font-semibold">' + escapeHtml(teacherLabel) + '</span>')
-            : ('<span class="font-semibold">' + escapeHtml(subjectLabel) + '</span>');
-          const subLine = timetableView === 'teacher'
-            ? ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(subjectLabel) + '</span>')
-            : ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(teacherLabel) + '</span>');
-          return '<div class="mb-1 last:mb-0 leading-tight">' +
-                   '<div class="text-[11px] text-gray-900 dark:text-white">' + topLine + '</div>' +
-                   '<div class="text-[10px]">' + subLine + '</div>' +
-                 '</div>';
+          const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
+          if (!entries.length) {
+            return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                     '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                   '</td>';
+          }
+          const lines = entries.map(function (e) {
+            const subjectLabel = e.code || '-';
+            const teacherLabel = e.teacherStaffId || '-';
+            const topLine = timetableView === 'teacher'
+              ? ('<span class="font-semibold">' + escapeHtml(teacherLabel) + '</span>')
+              : ('<span class="font-semibold">' + escapeHtml(subjectLabel) + '</span>');
+            const subLine = timetableView === 'teacher'
+              ? ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(subjectLabel) + '</span>')
+              : ('<span class="text-[10px] text-gray-700 dark:text-gray-300">' + escapeHtml(teacherLabel) + '</span>');
+            return '<div class="mb-1 last:mb-0 leading-tight">' +
+                     '<div class="text-[11px] text-gray-900 dark:text-white">' + topLine + '</div>' +
+                     '<div class="text-[10px]">' + subLine + '</div>' +
+                   '</div>';
+          }).join('');
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
-        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
+        return '<tr>' +
+                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+                 cells +
+               '</tr>';
       }).join('');
+      return '' +
+        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+            '<thead>' +
+              '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+                '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+                times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + bodyRows + '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
 
-      return '<tr>' +
-               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
-               cells +
-             '</tr>';
-    }).join('');
-
-    const table = '' +
-      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
-          '<thead>' +
-            '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
-              times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
-            '</tr>' +
-          '</thead>' +
-          '<tbody>' + bodyRows + '</tbody>' +
-        '</table>' +
+    const groups = groupRowsByLevel(rows);
+    const overview = '' +
+      '<div class="mb-4">' +
+        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">' +
+          '<i class="fas fa-table-cells-large text-brand-primary"></i>Subject / class timetable' +
+        '</h3>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">One timetable per class (' + escapeHtml(timetableView) + ' mode)</p>' +
       '</div>';
+
+    const sections = groups.map(function (g, idx) {
+      const inner = buildTableForRows(g.rows);
+      if (!inner) {
+        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(g.level) + '</p>' +
+          '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No valid day/slot rows for this class.</p>' +
+        '</div>';
+      }
+      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+        '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-chalkboard mr-1 text-brand-primary"></i>' + escapeHtml(g.level) + '</p>' +
+          '<p class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5">Days as rows · periods as columns</p>' +
+        '</div>' +
+        inner +
+      '</div>';
+    }).join('');
 
     const subjectCodes = Object.keys(subjectLegend).sort();
     const teacherCodes = Object.keys(teacherLegend).sort();
@@ -857,7 +1068,8 @@
       : '';
     const legendTeacher = teacherCodes.length
       ? '<div class="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60">' +
-          '<p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">T-code legend</p>' +
+          '<p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Teacher reference ID</p>' +
+          '<p class="text-[11px] text-gray-500 dark:text-gray-400 mb-2">Each code is the teacher’s auto-generated database ID (<span class="font-semibold">employees.id</span>), not the six-digit portal code or the ID number typed on the profile.</p>' +
           '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
             teacherCodes.map(function (c) {
               return '<div class="text-gray-800 dark:text-gray-200"><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(teacherLegend[c]) + '</div>';
@@ -866,7 +1078,7 @@
         '</div>'
       : '';
 
-    return header + table + '<div class="mt-4 space-y-3">' + legendSubject + legendTeacher + '</div>';
+    return overview + sections + '<div class="mt-4 space-y-3">' + legendSubject + legendTeacher + '</div>';
   }
 
   function renderTeacherTimetable(bundle) {
@@ -876,13 +1088,16 @@
     }
 
     const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    const daySet = new Set();
-    const timeSet = new Set();
-    const matrix = {};
     const subjectLegend = {};
-    let teacherCode = '';
+    rows.forEach(function (r) {
+      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
+    });
+    let teacherStaffId = '';
     let teacherName = '';
-    const classNames = Array.from(new Set(rows.map(function (r) { return String(r.level_name || '').trim(); }).filter(Boolean))).sort();
+    rows.forEach(function (r) {
+      if (!teacherStaffId) teacherStaffId = rowTeacherStaffId(r);
+      if (!teacherName && r.teacher_name) teacherName = String(r.teacher_name);
+    });
 
     function timeSortKey(v) {
       const m = String(v || '').match(/^(\d{1,2}):(\d{2})/);
@@ -890,81 +1105,312 @@
       return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
     }
 
-    rows.forEach(function (r) {
-      const day = String(r.day_of_week || '').trim();
-      const slot = String(r.time_slot || '').trim();
-      if (!day || !slot) return;
-      daySet.add(day);
-      timeSet.add(slot);
-      if (!matrix[slot]) matrix[slot] = {};
-      if (!matrix[slot][day]) matrix[slot][day] = [];
-      matrix[slot][day].push({
-        level: String(r.level_name || '-'),
-        subject: String(r.subject_name || '-'),
-        code: String(r.subject_code || ''),
+    function groupRowsByLevel(all) {
+      const m = {};
+      all.forEach(function (r) {
+        const k = String(r.level_name || '').trim() || '—';
+        if (!m[k]) m[k] = [];
+        m[k].push(r);
       });
-      if (!teacherCode && r.teacher_code) teacherCode = String(r.teacher_code);
-      if (!teacherName && r.teacher_name) teacherName = String(r.teacher_name);
-      if (r.subject_code && r.subject_name) subjectLegend[String(r.subject_code)] = String(r.subject_name);
-    });
+      return Object.keys(m).sort(function (a, b) {
+        if (a === '—' && b !== '—') return 1;
+        if (b === '—' && a !== '—') return -1;
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      }).map(function (k) {
+        return { level: k, rows: m[k] };
+      });
+    }
 
-    const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
-    const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
-    const days = orderedDays.concat(extraDays);
-    const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
-
-    const bodyRows = days.map(function (day) {
-      const cells = times.map(function (slot) {
-        const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
-        if (!entries.length) {
-          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
-                   '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
-                 '</td>';
-        }
-        const lines = entries.map(function (e) {
-          const subjectLabel = e.code || '-';
-          return '<div class="mb-1 last:mb-0 leading-tight">' +
-                   '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
-                 '</div>';
+    function buildTableForRows(subRows) {
+      const daySet = new Set();
+      const timeSet = new Set();
+      const matrix = {};
+      subRows.forEach(function (r) {
+        const day = String(r.day_of_week || '').trim();
+        const slot = String(r.time_slot || '').trim();
+        if (!day || !slot) return;
+        daySet.add(day);
+        timeSet.add(slot);
+        if (!matrix[slot]) matrix[slot] = {};
+        if (!matrix[slot][day]) matrix[slot][day] = [];
+        matrix[slot][day].push({
+          subject: String(r.subject_name || '-'),
+          code: String(r.subject_code || ''),
+        });
+      });
+      const orderedDays = dayOrder.filter(function (d) { return daySet.has(d); });
+      const extraDays = Array.from(daySet).filter(function (d) { return orderedDays.indexOf(d) === -1; }).sort();
+      const days = orderedDays.concat(extraDays);
+      const times = Array.from(timeSet).sort(function (a, b) { return timeSortKey(a) - timeSortKey(b); });
+      if (!days.length || !times.length) return '';
+      const bodyRows = days.map(function (day) {
+        const cells = times.map(function (slot) {
+          const entries = (matrix[slot] && matrix[slot][day]) ? matrix[slot][day] : [];
+          if (!entries.length) {
+            return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 text-center bg-amber-50 dark:bg-amber-900/30">' +
+                     '<span class="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-700/60 text-amber-900 dark:text-amber-100">B</span>' +
+                   '</td>';
+          }
+          const lines = entries.map(function (e) {
+            const subjectLabel = e.code || '-';
+            return '<div class="mb-1 last:mb-0 leading-tight">' +
+                     '<div class="text-[11px] font-semibold text-gray-900 dark:text-white">' + escapeHtml(subjectLabel) + '</div>' +
+                   '</div>';
+          }).join('');
+          return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
-        return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
+        return '<tr>' +
+                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+                 cells +
+               '</tr>';
       }).join('');
+      return '' +
+        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+            '<thead>' +
+              '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
+                '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+                times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+              '</tr>' +
+            '</thead>' +
+            '<tbody>' + bodyRows + '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
 
-      return '<tr>' +
-               '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
-               cells +
-             '</tr>';
+    const groups = groupRowsByLevel(rows);
+    const head = '' +
+      '<div class="mb-4">' +
+        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-user-clock text-brand-primary"></i>Teacher timetable</h3>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' +
+          (teacherName ? '<span class="font-semibold">Name:</span> ' + escapeHtml(teacherName) + '<br>' : '') +
+          '<span class="font-semibold">Staff ID (employee ID):</span> ' + escapeHtml(teacherStaffId || '—') +
+          ' <span class="text-[11px] text-gray-500">— text ID from Staff, not numeric DB id</span>' +
+        '</p>' +
+        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Shown as one grid per class this teacher teaches.</p>' +
+      '</div>';
+
+    const sections = groups.map(function (g, idx) {
+      const inner = buildTableForRows(g.rows);
+      if (!inner) {
+        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(g.level) + '</p>' +
+          '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No valid rows for this class.</p>' +
+        '</div>';
+      }
+      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+        '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
+          '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-chalkboard mr-1 text-brand-primary"></i>' + escapeHtml(g.level) + '</p>' +
+        '</div>' +
+        inner +
+      '</div>';
     }).join('');
 
-    return '' +
-      '<div class="mb-3">' +
-        '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-user-clock text-brand-primary"></i>Teacher Timetable</h3>' +
-        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Teacher:</span> ' + escapeHtml(teacherCode || '-') + (teacherName ? ' (' + escapeHtml(teacherName) + ')' : '') + '</p>' +
-        (classNames.length
-          ? '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1"><span class="font-semibold">Class:</span> ' + escapeHtml(classNames.join(', ')) + '</p>'
-          : '') +
-      '</div>' +
-      '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-        '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
-          '<thead>' +
-            '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
-              times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
-            '</tr>' +
-          '</thead>' +
-          '<tbody>' + bodyRows + '</tbody>' +
-        '</table>' +
-      '</div>' +
-      (Object.keys(subjectLegend).length
-        ? '<div class="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
+    const legend = Object.keys(subjectLegend).length
+      ? '<div class="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800/60"><p class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-2">Subject code legend</p><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">' +
           Object.keys(subjectLegend).sort().map(function (c) { return '<div><span class="font-bold text-brand-primary">' + escapeHtml(c) + '</span> — ' + escapeHtml(subjectLegend[c]) + '</div>'; }).join('') +
         '</div></div>'
-        : '');
+      : '';
+    return head + sections + legend;
+  }
+
+  function gradePillClass(grade) {
+    if (grade === 'A') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300';
+    if (grade === 'B') return 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+    if (grade === 'C') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+    if (grade === 'D') return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300';
+    return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300';
+  }
+
+  function renderIndividualStudentPerformanceForm(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-gray-500 dark:text-gray-400">No student marks found for the selected filters.</p>';
+    }
+
+    const first = rows[0] || {};
+    const meta = bundle.meta || {};
+    const af = meta.applied_filters || {};
+    const bySubject = {};
+    const allMarks = [];
+    const defaultBands = Array.isArray((bundle.meta || {}).grade_bands) ? (bundle.meta || {}).grade_bands : [];
+    const subjectBands = ((bundle.meta || {}).subject_grade_bands && typeof (bundle.meta || {}).subject_grade_bands === 'object')
+      ? (bundle.meta || {}).subject_grade_bands
+      : {};
+    function gradeFromSettings(subjectId, mark) {
+      const n = Number(mark);
+      if (!Number.isFinite(n)) return '-';
+      const perSubject = subjectId != null ? (subjectBands[String(subjectId)] || subjectBands[Number(subjectId)] || []) : [];
+      const bands = Array.isArray(perSubject) && perSubject.length ? perSubject : defaultBands;
+      for (let i = 0; i < bands.length; i++) {
+        const b = bands[i] || {};
+        const start = Number(b.start);
+        const end = Number(b.end);
+        if (Number.isFinite(start) && Number.isFinite(end) && n >= start && n <= end) {
+          const code = String(b.code || b.label || '').trim();
+          if (code) return code;
+        }
+      }
+      return '-';
+    }
+    rows.forEach(function(r) {
+      const subject = String(r.subject_name || '').trim() || 'Subject';
+      const mark = Number(r.marks);
+      if (!bySubject[subject]) bySubject[subject] = { marks: [], subjectId: (r.subject_id == null ? null : r.subject_id), history: [] };
+      if (Number.isFinite(mark)) {
+        bySubject[subject].marks.push(mark);
+        bySubject[subject].history.push({
+          examName: String(r.exam_name || '').trim(),
+          examDate: String(r.exam_date || '').trim(),
+          mark: mark
+        });
+        allMarks.push(mark);
+      }
+    });
+
+    const subjects = Object.keys(bySubject).sort().map(function(subject) {
+      const marks = bySubject[subject].marks;
+      const subjectId = bySubject[subject].subjectId;
+      const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
+      const markVal = avg === null ? '-' : (Math.round(avg * 100) / 100).toFixed(2).replace(/\.00$/, '');
+      const grade = avg === null ? '-' : gradeFromSettings(subjectId, avg);
+      const trendValues = bySubject[subject].history
+        .slice()
+        .sort(function(a, b) { return String(a.examDate || '').localeCompare(String(b.examDate || '')); })
+        .map(function(item) { return String(item.mark); });
+      const trendText = trendValues.length > 1 ? trendValues.join(' -> ') : (trendValues[0] || '-');
+      return {
+        subject,
+        markVal,
+        grade,
+        trendText
+      };
+    });
+
+    const overallAvg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : null;
+    const overallGrade = overallAvg === null ? '-' : gradeFromSettings(null, overallAvg);
+    const overallAvgText = overallAvg === null ? '-' : (Math.round(overallAvg * 100) / 100).toFixed(2).replace(/\.00$/, '');
+    const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
+
+    const tableRows = subjects.map(function(item, idx) {
+      const pill = item.grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(item.grade);
+      return '' +
+        '<tr class="border-b border-gray-100 dark:border-gray-700">' +
+          '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">' + (idx + 1) + '</td>' +
+          '<td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">' + escapeHtml(item.subject) + '</td>' +
+          '<td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">' + escapeHtml(item.markVal) + '</td>' +
+          '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">' + escapeHtml(item.trendText) + '</td>' +
+          '<td class="px-3 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold ' + pill + '">' + escapeHtml(item.grade) + '</span></td>' +
+        '</tr>';
+    }).join('');
+
+    const logoHtml = SCHOOL_INFO.logo
+      ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
+      : '<div class="w-14 h-14 rounded-md border border-dashed border-gray-300 dark:border-gray-600"></div>';
+    const studentPhotoPlaceholder = (first.student_photo && String(first.student_photo).trim())
+      ? '<img src="' + escapeHtml(first.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
+      : '<div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">' +
+          '<span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>' +
+        '</div>';
+
+    return '' +
+      '<div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">' +
+        '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">' +
+          '<div class="flex items-center justify-between gap-4">' +
+            '<div>' +
+              '<h3 class="text-lg font-bold">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
+              '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
+              '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.phone || '') + (SCHOOL_INFO.email ? ' | ' + escapeHtml(SCHOOL_INFO.email) : '') + '</p>' +
+            '</div>' +
+            logoHtml +
+          '</div>' +
+        '</div>' +
+        '<div class="p-4 bg-white dark:bg-gray-800">' +
+          '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">' +
+              '<p class="text-xs text-gray-500 dark:text-gray-400">Student</p>' +
+              '<p class="font-semibold text-gray-900 dark:text-white">' + escapeHtml(first.full_name || '-') + '</p>' +
+              '<p class="text-xs text-gray-600 dark:text-gray-400">ID: ' + escapeHtml(first.student_id || '-') + '</p>' +
+              '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: ' + escapeHtml(first.level_name || '-') + '</p>' +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">' +
+              studentPhotoPlaceholder +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">' +
+              '<p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>' +
+              '<p class="text-xs text-gray-600 dark:text-gray-400">Year: ' + escapeHtml(af.academic_year || '-') + ' | Term: ' + escapeHtml(af.term || '-') + '</p>' +
+              '<p class="text-xs text-gray-600 dark:text-gray-400">Exam: ' + escapeHtml(af.exam_name || '-') + '</p>' +
+              '<p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: ' + escapeHtml((((bundle.meta || {}).exam_window || {}).exam_count != null) ? String((bundle.meta || {}).exam_window.exam_count) : '-') + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall average</p>' +
+              '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(overallAvgText) + '</p>' +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall grade</p>' +
+              '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(overallGrade) + '</p>' +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
+              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Subjects passed</p>' +
+              '<p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">' + escapeHtml(String(passCount)) + '</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">' +
+            '<table class="w-full min-w-[560px]">' +
+              '<thead class="bg-gray-50 dark:bg-gray-900/40">' +
+                '<tr>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject</th>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Trend</th>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Grade</th>' +
+                '</tr>' +
+              '</thead>' +
+              '<tbody>' + tableRows + '</tbody>' +
+            '</table>' +
+          '</div>' +
+          '<div class="mt-4 text-xs text-gray-600 dark:text-gray-400">' +
+            '<span class="font-semibold">Grade scale:</span> ' +
+            (
+              Array.isArray((bundle.meta || {}).grade_bands) && (bundle.meta || {}).grade_bands.length
+                ? (bundle.meta || {}).grade_bands.map(function(g) {
+                    const code = String(g.code || g.label || '').trim();
+                    const start = g.start;
+                    const end = g.end;
+                    return code ? (escapeHtml(code) + ': ' + escapeHtml(start) + '-' + escapeHtml(end)) : '';
+                  }).filter(Boolean).join(', ')
+                : 'Configured grade settings'
+            ) +
+          '</div>' +
+          '<div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+            '<p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>' +
+            '<p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>' +
+          '</div>' +
+          '<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+              '<p class="font-semibold uppercase mb-6">Parent acknowledgement</p>' +
+              '<p>Signature: ____________________</p>' +
+              '<p class="mt-2">Date: ____________________</p>' +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+              '<p class="font-semibold uppercase mb-6">Class teacher</p>' +
+              '<p>Signature: ____________________</p>' +
+              '<p class="mt-2">Date: ____________________</p>' +
+            '</div>' +
+            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
+              '<p class="font-semibold uppercase mb-6">Principal signature / stamp</p>' +
+              '<p>Signature: ____________________</p>' +
+              '<p class="mt-2">Date: ____________________</p>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
   }
 
   async function loadDetails() {
     const reportType = currentReportId();
-    const selected = ((CATALOG[sectionEl.value] || {}).reports || []).find(function(r) { return r.id === reportType; });
     if (!reportType || !detailsListEl) return;
     detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>';
     try {
@@ -986,19 +1432,20 @@
         meta: data.meta || {},
       };
       detailsListEl.innerHTML =
-        '<div class="mb-3">' +
-          '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(selected ? selected.label : (bundle.title || reportType)) + '</p>' +
-          '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' + escapeHtml(selected ? selected.desc : '') + '</p>' +
-        '</div>' +
+        (reportType === 'exam_all_students_performance'
+          ? renderAllStudentsPerformance(bundle)
+          :
         (reportType === 'class_list_attendance'
           ? renderAttendanceRegister(bundle)
           : (reportType === 'class_list_exam'
               ? renderExamEntryRegister(bundle)
+          : (reportType === 'exam_individual_performance'
+              ? renderIndividualStudentPerformanceForm(bundle)
           : (reportType === 'timetable_exam'
           ? renderExamTimetable(bundle)
           : (reportType === 'timetable_subject'
               ? renderSubjectClassTimetable(bundle)
-              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))))));
+              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))))))));
       setGeneratedNow();
     } catch (e) {
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
@@ -1021,9 +1468,13 @@
     }
     loadDetails();
   });
-  ['gf-year', 'gf-level', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
+  ['gf-year', 'gf-level', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', loadDetails);
+  });
+  ['gf-year', 'gf-level', 'gf-term'].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', syncExamNameOptions);
   });
   const studentInput = document.getElementById('gf-student');
   if (studentInput) {
@@ -1059,6 +1510,7 @@
   if (registerDateEl && !registerDateEl.value) {
     registerDateEl.value = new Date().toISOString().slice(0, 10);
   }
+  syncExamNameOptions();
   loadDetails();
 })();
 </script>
