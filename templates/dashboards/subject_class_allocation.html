@@ -189,6 +189,9 @@
                         <div class="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400" x-show="autoSavingSubjectId === String(subject.id)">
                             <i class="fas fa-spinner fa-spin mr-1"></i>Saving...
                         </div>
+                        <div class="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400" x-show="wasRecentlySaved(subject.id)">
+                            <i class="fas fa-check-circle mr-1"></i>Saved
+                        </div>
                     </div>
                 </button>
             </template>
@@ -470,6 +473,7 @@ function subjectAllocation() {
         },
         saving: false,
         autoSavingSubjectId: '',
+        recentlySavedSubjects: {},
         showTeacherPickerModal: false,
         activeSubject: null,
         showAddSubjectModal: false,
@@ -587,8 +591,8 @@ function subjectAllocation() {
             if (!this.activeSubject || !this.formData.academic_level_id) return;
             const subjectId = String(this.activeSubject.id);
             this.selectedTeachersBySubject[subjectId] = teacherId ? [String(teacherId)] : [];
-            await this.saveSingleSubjectAllocation(subjectId);
             this.closeTeacherPicker();
+            this.saveSingleSubjectAllocation(subjectId);
         },
 
         async saveSingleSubjectAllocation(subjectId) {
@@ -618,9 +622,9 @@ function subjectAllocation() {
                 const result = await response.json();
                 if (result.success) {
                     this.successMessage = 'Allocation auto-saved.';
+                    this.markSubjectSaved(subjectId);
+                    this.syncAllocationsForCurrentLevel();
                     window.setTimeout(() => { this.successMessage = ''; }, 2000);
-                    // Sync existing allocations table quickly.
-                    window.setTimeout(() => window.location.reload(), 500);
                 } else {
                     this.errorMessage = result.message || 'Auto-save failed. Please try again.';
                     window.setTimeout(() => { this.errorMessage = ''; }, 5000);
@@ -648,6 +652,53 @@ function subjectAllocation() {
 
         isSubjectAllocated(subjectId) {
             return this.getSelectedTeacherCountForSubject(subjectId) > 0;
+        },
+
+        markSubjectSaved(subjectId) {
+            const sid = String(subjectId);
+            this.recentlySavedSubjects[sid] = true;
+            window.setTimeout(() => {
+                if (this.recentlySavedSubjects[sid]) {
+                    delete this.recentlySavedSubjects[sid];
+                }
+            }, 1800);
+        },
+
+        wasRecentlySaved(subjectId) {
+            return !!this.recentlySavedSubjects[String(subjectId)];
+        },
+
+        syncAllocationsForCurrentLevel() {
+            const levelId = String(this.formData.academic_level_id || '');
+            if (!levelId) return;
+
+            const level = this.academicLevels.find(l => String(l.id) === levelId) || {};
+            const preserved = this.allocations.filter(a => String(a.academic_level_id) !== levelId);
+            const rebuilt = [];
+
+            this.availableSubjects.forEach(subject => {
+                const subjectId = String(subject.id);
+                const teacherIds = this.getSelectedTeacherValuesForSubject(subjectId);
+                teacherIds.forEach(tid => {
+                    const teacher = this.teachers.find(t => String(t.id) === String(tid));
+                    if (!teacher) return;
+                    rebuilt.push({
+                        id: `temp-${levelId}-${subjectId}-${tid}`,
+                        academic_level_id: parseInt(levelId),
+                        level_name: level.level_name || '',
+                        level_category: level.level_category || '',
+                        subject_id: parseInt(subjectId),
+                        subject_name: subject.subject_name || '',
+                        subject_code: subject.subject_code || '',
+                        teacher_id: parseInt(tid),
+                        teacher_name: teacher.full_name || '',
+                        employee_id: teacher.employee_id || ''
+                    });
+                });
+            });
+
+            this.allocations = [...preserved, ...rebuilt];
+            this.existingAllocationsLevelId = levelId;
         },
         
         async saveLevelAllocations() {
