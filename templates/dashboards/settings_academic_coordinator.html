@@ -183,6 +183,13 @@
             <div class="p-5 max-h-[75vh] overflow-y-auto">
                 <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Profile Name</label>
+                        <input type="text"
+                               x-model="registerProfileName"
+                               placeholder="e.g. Secondary Term 2"
+                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                    </div>
+                    <div>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Days of the Week for Studying</label>
                         <div class="grid grid-cols-2 gap-2">
                             <template x-for="day in weekDays" :key="'reg-day-' + day.value">
@@ -262,7 +269,7 @@
                     </button>
                     <button type="button"
                             @click="startRegisterNewProfile()"
-                            :disabled="registeringProfile || !selectedLevelCategory || !selectedDays.length || !selectedLevels.length || !classTimes.length"
+                            :disabled="registeringProfile || !registerProfileName.trim() || !selectedLevelCategory || !selectedDays.length || !selectedLevels.length || !classTimes.length"
                             class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <span x-text="registeringProfile ? 'Registering...' : 'Register Profile'"></span>
                     </button>
@@ -668,6 +675,7 @@ function academicCoordinatorSettings() {
         showTimetableConfiguration: {% if settings and settings.id %}true{% else %}false{% endif %},
         showRegisterProfileModal: false,
         registeringProfile: false,
+        registerProfileName: '',
         profileId: {% if settings and settings.id %}{{ settings.id|tojson|safe }}{% else %}''{% endif %},
         selectedProfileSelector: {% if settings and settings.id %}String({{ settings.id|tojson|safe }}){% else %}''{% endif %},
         profileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
@@ -742,6 +750,9 @@ function academicCoordinatorSettings() {
             const levels = this.getSelectedLevelsForCategory();
             this.selectedLevels = levels.map(level => String(level.id));
             this.profileName = this.selectedLevelCategory || '';
+            if (!String(this.registerProfileName || '').trim() && this.selectedLevelCategory) {
+                this.registerProfileName = this.selectedLevelCategory;
+            }
         },
         getProfileLevelsLabel(profile) {
             if (!profile || !Array.isArray(profile.applicable_levels)) return 'No levels selected';
@@ -924,12 +935,15 @@ function academicCoordinatorSettings() {
         },
         openRegisterProfileModal() {
             this.createNewProfile();
+            this.registerProfileName = '';
             this.showRegisterProfileModal = true;
         },
         startRegisterNewProfile() {
-            const name = (this.selectedLevelCategory || '').trim();
+            const name = (this.registerProfileName || '').trim();
             if (!name) return;
-            this.createNewProfile();
+            // Create a new record while keeping the modal selections as submitted values.
+            this.profileId = '';
+            this.selectedProfileSelector = '';
             this.profileName = name;
             this.showRegisterProfileModal = false;
             this.registeringProfile = true;
