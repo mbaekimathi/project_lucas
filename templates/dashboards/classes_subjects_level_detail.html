@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}{{ level.level_name if level else 'Academic Level' }} - Classes & Subjects{% endblock %}
+
+{% block sidebar_content %}
+<a href="{{ employee_dash_url('classes-subjects') }}"
+   class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book w-5"></i>
+    <span>Classes & Subjects</span>
+</a>
+
+<a href="{{ employee_dash_url('subject-class-allocation') }}"
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject & Class Allocation Panel</span>
+</a>
+
+<a href="{{ employee_dash_url('academic-subject-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Register Subjects</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+        <a href="{{ employee_dash_url('classes-subjects') }}" class="inline-flex items-center text-sm font-medium text-brand-primary hover:underline mb-4">
+            <i class="fas fa-arrow-left mr-2"></i>Back to Classes &amp; Subjects
+        </a>
+
+        {% if level %}
+        <header class="mb-6 pb-5 border-b border-gray-200 dark:border-gray-700">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
+                {{ level.level_name }}
+            </h1>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                {{ level.level_category }}
+            </p>
+            {% if level.level_description %}
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                {{ level.level_description }}
+            </p>
+            {% endif %}
+            <div class="mt-4 flex flex-wrap gap-3 text-sm">
+                <span class="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-3 py-1 text-blue-700 dark:text-blue-300">
+                    <i class="fas fa-book-open mr-2"></i>{{ level_subjects|length }} subject{% if level_subjects|length != 1 %}s{% endif %}
+                </span>
+                <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1 text-emerald-700 dark:text-emerald-300">
+                    <i class="fas fa-chalkboard-teacher mr-2"></i>{{ total_allocated_teachers }} teacher allocation{% if total_allocated_teachers != 1 %}s{% endif %}
+                </span>
+            </div>
+        </header>
+
+        {% if level_subjects %}
+        <div class="mb-4">
+            <label for="allocation-search" class="sr-only">Search subject or teacher</label>
+            <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm"></i>
+                <input
+                    id="allocation-search"
+                    type="text"
+                    placeholder="Search by subject or teacher..."
+                    class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm pl-9 pr-3 py-2 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary"
+                />
+            </div>
+        </div>
+
+        <div class="space-y-4">
+            {% for item in level_subjects %}
+            <section
+                class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 p-4 level-subject-card"
+                data-subject-name="{{ (item.subject_name or '')|lower }}"
+                data-subject-code="{{ (item.subject_code or '')|lower }}"
+                data-teacher-names="{% for t in item.teachers %}{{ (t.teacher_name or '')|lower }} {{ (t.teacher_code or '')|lower }} {% endfor %}"
+            >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                        {{ item.subject_name }}
+                        {% if item.subject_code %}
+                        <span class="text-sm font-normal text-gray-500 dark:text-gray-400">({{ item.subject_code }})</span>
+                        {% endif %}
+                    </h2>
+                    <span class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {{ item.teachers|length }} teacher{% if item.teachers|length != 1 %}s{% endif %}
+                    </span>
+                </div>
+
+                {% if item.teachers %}
+                <ul class="mt-3 divide-y divide-gray-100 dark:divide-gray-700 list-none m-0 p-0">
+                    {% for t in item.teachers %}
+                    <li class="py-2 flex flex-wrap items-center gap-2 text-sm">
+                        <i class="fas fa-user text-gray-400 dark:text-gray-500"></i>
+                        <span class="font-medium text-gray-900 dark:text-white">{{ t.teacher_name }}</span>
+                        {% if t.teacher_code %}
+                        <span class="text-gray-500 dark:text-gray-400">({{ t.teacher_code }})</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="mt-3 text-sm text-amber-700 dark:text-amber-400">
+                    No teacher allocated to this subject yet.
+                </p>
+                {% endif %}
+            </section>
+            {% endfor %}
+        </div>
+        <p id="allocation-no-results" class="hidden mt-5 text-sm text-gray-500 dark:text-gray-400 text-center">
+            No subjects or teachers match your search.
+        </p>
+        {% else %}
+        <div class="py-10 text-center border border-dashed border-gray-300 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400">
+            <i class="fas fa-inbox text-3xl mb-2 opacity-60"></i>
+            <p>No subjects allocated to this academic level yet.</p>
+            <a href="{{ employee_dash_url('subject-class-allocation') }}" class="inline-flex items-center mt-3 text-brand-primary hover:underline dark:text-brand-secondary">
+                <i class="fas fa-tasks mr-1.5 text-xs"></i>Open Subject &amp; Class Allocation Panel
+            </a>
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="py-10 text-center text-gray-500 dark:text-gray-400">
+            Academic level not found.
+        </div>
+        {% endif %}
+    </div>
+</div>
+<script>
+(function() {
+    var input = document.getElementById('allocation-search');
+    if (!input) return;
+
+    var cards = Array.prototype.slice.call(document.querySelectorAll('.level-subject-card'));
+    var noResults = document.getElementById('allocation-no-results');
+
+    function applyFilter() {
+        var query = (input.value || '').toLowerCase().trim();
+        var visible = 0;
+
+        cards.forEach(function(card) {
+            var subjectName = (card.getAttribute('data-subject-name') || '');
+            var subjectCode = (card.getAttribute('data-subject-code') || '');
+            var teacherNames = (card.getAttribute('data-teacher-names') || '');
+            var haystack = [subjectName, subjectCode, teacherNames].join(' ');
+            var show = !query || haystack.indexOf(query) !== -1;
+            card.style.display = show ? '' : 'none';
+            if (show) visible += 1;
+        });
+
+        if (noResults) {
+            noResults.classList.toggle('hidden', visible !== 0);
+        }
+    }
+
+    input.addEventListener('input', applyFilter);
+})();
+</script>
+{% endblock %}

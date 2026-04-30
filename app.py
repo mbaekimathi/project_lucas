@@ -17218,43 +17218,76 @@ def classes_subjects():
                         'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
                     })
 
-                # Per-level: subjects with allocated teachers (subject-class allocation)
+                # Per-level: subjects allocated to each academic level.
+                # Source of truth is subject_academic_levels so the page shows all
+                # registered level subjects, even when a teacher has not been assigned yet.
                 allocations_by_level = {}
                 try:
                     cursor.execute("""
-                        SELECT tsa.id, tsa.academic_level_id, tsa.subject_id, tsa.teacher_id,
-                               s.subject_name, s.subject_code, COALESCE(s.status, 'active') AS subject_status,
-                               e.full_name AS teacher_name, e.employee_id AS teacher_employee_id
-                        FROM teacher_subject_assignments tsa
-                        INNER JOIN academic_levels al ON tsa.academic_level_id = al.id AND al.level_status = 'active'
-                        LEFT JOIN subjects s ON tsa.subject_id = s.id
-                        LEFT JOIN employees e ON tsa.teacher_id = e.id
-                        ORDER BY al.level_name ASC, s.subject_name ASC, e.full_name ASC
+                        SELECT sal.academic_level_id, sal.subject_id,
+                               s.subject_name, s.subject_code,
+                               COALESCE(s.status, 'active') AS subject_status
+                        FROM subject_academic_levels sal
+                        INNER JOIN academic_levels al
+                            ON sal.academic_level_id = al.id
+                           AND COALESCE(al.level_status, 'active') = 'active'
+                        INNER JOIN subjects s ON sal.subject_id = s.id
+                        ORDER BY al.level_name ASC, s.subject_name ASC
                     """)
-                    assign_rows = cursor.fetchall()
+                    assign_rows = cursor.fetchall() or []
                     for arow in assign_rows:
-                        lid = arow.get('academic_level_id') if isinstance(arow, dict) else arow[1]
+                        lid = arow.get('academic_level_id') if isinstance(arow, dict) else arow[0]
                         if lid is None:
                             continue
-                        subj_name = (arow.get('subject_name', '') if isinstance(arow, dict) else arow[4]) or ''
-                        subj_status = (arow.get('subject_status', 'active') if isinstance(arow, dict) else (arow[6] if len(arow) > 6 else 'active'))
+                        subj_name = (arow.get('subject_name', '') if isinstance(arow, dict) else arow[2]) or ''
+                        subj_status = (arow.get('subject_status', 'active') if isinstance(arow, dict) else (arow[4] if len(arow) > 4 else 'active'))
                         if str(subj_status or '').lower() == 'inactive':
                             continue
-                        teach_name = (arow.get('teacher_name', '') if isinstance(arow, dict) else arow[7]) or ''
-                        teach_code = (arow.get('teacher_employee_id', '') if isinstance(arow, dict) else (arow[8] if len(arow) > 8 else '')) or ''
-                        subj_id = arow.get('subject_id') if isinstance(arow, dict) else arow[2]
+                        subj_id = arow.get('subject_id') if isinstance(arow, dict) else arow[1]
                         if subj_id is None:
                             continue
                         level_subjects = allocations_by_level.setdefault(lid, {})
-                        # Keep one record per subject per level (a subject may have multiple teachers).
                         if subj_id not in level_subjects:
                             level_subjects[subj_id] = {
                                 'subject_id': subj_id,
                                 'subject_name': subj_name or 'Subject',
-                                'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[5] if len(arow) > 5 else '')) or '',
+                                'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[3] if len(arow) > 3 else '')) or '',
                             }
                 except Exception as e:
-                    print(f"Note: teacher_subject_assignments for classes-subjects: {e}")
+                    print(f"Note: subject_academic_levels for classes-subjects: {e}")
+
+                # Backward compatibility: if a subject is in teacher assignments but not
+                # in subject_academic_levels, still include it in the list.
+                try:
+                    cursor.execute("""
+                        SELECT tsa.academic_level_id, tsa.subject_id,
+                               s.subject_name, s.subject_code,
+                               COALESCE(s.status, 'active') AS subject_status
+                        FROM teacher_subject_assignments tsa
+                        INNER JOIN academic_levels al
+                            ON tsa.academic_level_id = al.id
+                           AND COALESCE(al.level_status, 'active') = 'active'
+                        LEFT JOIN subjects s ON tsa.subject_id = s.id
+                        ORDER BY al.level_name ASC, s.subject_name ASC
+                    """)
+                    tsa_rows = cursor.fetchall() or []
+                    for trow in tsa_rows:
+                        lid = trow.get('academic_level_id') if isinstance(trow, dict) else trow[0]
+                        subj_id = trow.get('subject_id') if isinstance(trow, dict) else trow[1]
+                        if lid is None or subj_id is None:
+                            continue
+                        subj_status = (trow.get('subject_status', 'active') if isinstance(trow, dict) else (trow[4] if len(trow) > 4 else 'active'))
+                        if str(subj_status or '').lower() == 'inactive':
+                            continue
+                        level_subjects = allocations_by_level.setdefault(lid, {})
+                        if subj_id not in level_subjects:
+                            level_subjects[subj_id] = {
+                                'subject_id': subj_id,
+                                'subject_name': (trow.get('subject_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or 'Subject',
+                                'subject_code': (trow.get('subject_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or '',
+                            }
+                except Exception as e:
+                    print(f"Note: teacher_subject_assignments fallback for classes-subjects: {e}")
 
                 for level in academic_levels:
                     level_subjects = allocations_by_level.get(level['id'], {})
@@ -17267,6 +17300,142 @@ def classes_subjects():
     return render_template('dashboards/classes_subjects.html',
                          academic_levels=academic_levels,
                          role=user_role)
+
+
+@app.route('/dashboard/employee/classes-subjects/level/<int:level_id>')
+@login_required
+def classes_subjects_level_detail(level_id):
+    """Academic level detail: all allocated subjects and assigned teachers."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    level = None
+    level_subjects = []
+    total_allocated_teachers = 0
+
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description
+                    FROM academic_levels
+                    WHERE id = %s AND COALESCE(level_status, 'active') = 'active'
+                    LIMIT 1
+                """, (level_id,))
+                row = cursor.fetchone()
+                if not row:
+                    flash('Academic level not found or inactive.', 'error')
+                    return redirect(employee_dash_url('classes-subjects'))
+
+                level = {
+                    'id': row.get('id') if isinstance(row, dict) else row[0],
+                    'level_category': row.get('level_category', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else ''),
+                    'level_name': row.get('level_name', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                    'level_description': row.get('level_description', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                }
+
+                cursor.execute("""
+                    SELECT sal.subject_id,
+                           s.subject_name,
+                           s.subject_code,
+                           COALESCE(s.status, 'active') AS subject_status
+                    FROM subject_academic_levels sal
+                    INNER JOIN subjects s ON sal.subject_id = s.id
+                    WHERE sal.academic_level_id = %s
+                    ORDER BY s.subject_name ASC
+                """, (level_id,))
+
+                subjects_map = {}
+                for srow in cursor.fetchall() or []:
+                    subject_status = (srow.get('subject_status', 'active') if isinstance(srow, dict) else (srow[3] if len(srow) > 3 else 'active'))
+                    if str(subject_status or '').lower() == 'inactive':
+                        continue
+                    subject_id = srow.get('subject_id') if isinstance(srow, dict) else srow[0]
+                    if subject_id is None:
+                        continue
+                    subjects_map[subject_id] = {
+                        'subject_id': subject_id,
+                        'subject_name': (srow.get('subject_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else '')) or 'Subject',
+                        'subject_code': (srow.get('subject_code', '') if isinstance(srow, dict) else (srow[2] if len(srow) > 2 else '')) or '',
+                        'teachers': [],
+                    }
+
+                cursor.execute("""
+                    SELECT DISTINCT tsa.subject_id, s.subject_name, s.subject_code, COALESCE(s.status, 'active') AS subject_status
+                    FROM teacher_subject_assignments tsa
+                    LEFT JOIN subjects s ON tsa.subject_id = s.id
+                    WHERE tsa.academic_level_id = %s
+                    ORDER BY s.subject_name ASC
+                """, (level_id,))
+                for tsub in cursor.fetchall() or []:
+                    subject_status = (tsub.get('subject_status', 'active') if isinstance(tsub, dict) else (tsub[3] if len(tsub) > 3 else 'active'))
+                    if str(subject_status or '').lower() == 'inactive':
+                        continue
+                    subject_id = tsub.get('subject_id') if isinstance(tsub, dict) else tsub[0]
+                    if subject_id is None or subject_id in subjects_map:
+                        continue
+                    subjects_map[subject_id] = {
+                        'subject_id': subject_id,
+                        'subject_name': (tsub.get('subject_name', '') if isinstance(tsub, dict) else (tsub[1] if len(tsub) > 1 else '')) or 'Subject',
+                        'subject_code': (tsub.get('subject_code', '') if isinstance(tsub, dict) else (tsub[2] if len(tsub) > 2 else '')) or '',
+                        'teachers': [],
+                    }
+
+                cursor.execute("""
+                    SELECT tsa.subject_id, e.id AS teacher_id, e.full_name AS teacher_name, e.employee_id AS teacher_code
+                    FROM teacher_subject_assignments tsa
+                    LEFT JOIN employees e ON tsa.teacher_id = e.id
+                    WHERE tsa.academic_level_id = %s
+                    ORDER BY tsa.subject_id ASC, e.full_name ASC
+                """, (level_id,))
+                for trow in cursor.fetchall() or []:
+                    subject_id = trow.get('subject_id') if isinstance(trow, dict) else trow[0]
+                    if subject_id is None or subject_id not in subjects_map:
+                        continue
+                    teacher_id = trow.get('teacher_id') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else None)
+                    teacher_name = (trow.get('teacher_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or ''
+                    teacher_code = (trow.get('teacher_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or ''
+                    if teacher_id is None and not teacher_name:
+                        continue
+
+                    existing_ids = {x.get('teacher_id') for x in subjects_map[subject_id]['teachers']}
+                    if teacher_id in existing_ids:
+                        continue
+
+                    subjects_map[subject_id]['teachers'].append({
+                        'teacher_id': teacher_id,
+                        'teacher_name': teacher_name or 'Teacher',
+                        'teacher_code': teacher_code,
+                    })
+
+                level_subjects = sorted(subjects_map.values(), key=lambda x: (x.get('subject_name') or '').lower())
+                total_allocated_teachers = sum(len(item.get('teachers') or []) for item in level_subjects)
+        except Exception as e:
+            print(f"Error loading classes-subjects level detail: {e}")
+            import traceback
+            traceback.print_exc()
+            flash('Could not load level allocations right now.', 'error')
+            return redirect(employee_dash_url('classes-subjects'))
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/classes_subjects_level_detail.html',
+        role=user_role,
+        level=level,
+        level_subjects=level_subjects,
+        total_allocated_teachers=total_allocated_teachers,
+    )
+
 
 # Timetable Management Route (for academic coordinators)
 @app.route('/dashboard/employee/timetable-management')
@@ -22435,6 +22604,52 @@ def _make_academic_report_csv_response(bundle, report_type):
     return output
 
 
+def _make_academic_report_excel_response(bundle, report_type):
+    """Build Excel-compatible HTML table download response."""
+    columns = bundle.get('columns') or []
+    rows = bundle.get('rows') or []
+    meta = bundle.get('meta') or {}
+    sections = meta.get('class_sections')
+
+    def esc(v):
+        return (
+            str(v if v is not None else '')
+            .replace('&', '&amp;')
+            .replace('<', '&lt;')
+            .replace('>', '&gt;')
+            .replace('"', '&quot;')
+            .replace("'", '&#39;')
+        )
+
+    head_html = ''.join(f'<th>{esc(c.replace("_", " ").title())}</th>' for c in columns)
+    body_rows = []
+    if sections and report_type in ('class_list_attendance', 'class_list_exam'):
+        for sec in sections:
+            class_title = esc(sec.get('class_name', ''))
+            body_rows.append(f'<tr><td colspan="{max(1, len(columns))}"><strong>Class: {class_title}</strong></td></tr>')
+            for row in sec.get('rows') or []:
+                tds = ''.join(f'<td>{esc(row.get(c, ""))}</td>' for c in columns)
+                body_rows.append(f'<tr>{tds}</tr>')
+    else:
+        for row in rows:
+            tds = ''.join(f'<td>{esc(row.get(c, ""))}</td>' for c in columns)
+            body_rows.append(f'<tr>{tds}</tr>')
+
+    html_doc = (
+        '<html><head><meta charset="utf-8"></head><body>'
+        '<table border="1" cellspacing="0" cellpadding="4">'
+        f'<thead><tr>{head_html}</tr></thead>'
+        f'<tbody>{"".join(body_rows)}</tbody>'
+        '</table></body></html>'
+    )
+
+    output = make_response(html_doc)
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
+    output.headers['Content-Type'] = 'application/vnd.ms-excel; charset=utf-8'
+    output.headers['Content-Disposition'] = f'attachment; filename={safe_name}.xls'
+    return output
+
+
 def _build_timetable_grid(rows, teacher_mode=False):
     """Grid: days x time slots; each cell is a list of entry dicts."""
     day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
@@ -22745,13 +22960,13 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not tid:
             return {
                 'title': 'Subject timetable',
-                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code'],
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code'],
                 'rows': [],
                 'meta': {**meta, 'hint': 'Select a term in Global filters to load timetable rows.'},
             }
-        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'subject_name', 'subject_code']
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code']
         q = """
-            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name,
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, COALESCE(e.employee_id, '') AS teacher_code,
                    COALESCE(sub.subject_name, '-') AS subject_name, COALESCE(sub.subject_code, '') AS subject_code
             FROM timetables t
             JOIN academic_levels al ON t.academic_level_id = al.id
@@ -22778,18 +22993,20 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
-                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[4],
-                'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+                'teacher_code': r.get('teacher_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+                'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+                'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         return {'title': 'Subject timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'timetable_exam':
-        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'invigilator_name', 'status']
+        cols = ['exam_name', 'exam_date', 'start_time', 'end_time', 'level_name', 'subject_name', 'venue', 'invigilator_name', 'invigilator_code', 'status']
         q = """
             SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, al.level_name,
                    COALESCE(sub.subject_name, '-') AS subject_name,
                    COALESCE(e.venue, '') AS venue,
                    COALESCE(sup.full_name, tch.full_name, '') AS invigilator_name,
+                   COALESCE(sup.employee_id, tch.employee_id, '') AS invigilator_code,
                    e.status
             FROM exams e
             JOIN academic_levels al ON e.academic_level_id = al.id
@@ -22827,7 +23044,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else r[5],
                 'venue': r.get('venue') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
                 'invigilator_name': r.get('invigilator_name') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
-                'status': r.get('status') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
+                'invigilator_code': r.get('invigilator_code') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
+                'status': r.get('status') if isinstance(r, dict) else (r[9] if len(r) > 9 else ''),
             })
         return {'title': 'Exam timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -22835,16 +23053,18 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not tid or not teacher_id:
             return {
                 'title': 'Teacher timetable',
-                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name'],
+                'columns': ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code'],
                 'rows': [],
                 'meta': {**meta, 'hint': 'Select both a term and a teacher in Global filters for this report.'},
             }
-        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name']
+        cols = ['day_of_week', 'time_slot', 'level_name', 'teacher_name', 'teacher_code', 'subject_name', 'subject_code']
         cursor.execute("""
-            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name
+            SELECT t.day_of_week, t.time_slot, al.level_name, e.full_name AS teacher_name, COALESCE(e.employee_id, '') AS teacher_code,
+                   COALESCE(s.subject_name, '-') AS subject_name, COALESCE(s.subject_code, '') AS subject_code
             FROM timetables t
             JOIN academic_levels al ON t.academic_level_id = al.id
             JOIN employees e ON t.teacher_id = e.id
+            LEFT JOIN subjects s ON t.subject_id = s.id
             WHERE t.term_id = %s AND t.teacher_id = %s
             ORDER BY FIELD(t.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
                      t.time_slot
@@ -22856,6 +23076,9 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
+                'teacher_code': r.get('teacher_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
+                'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+                'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -23314,6 +23537,8 @@ def academic_report_preview():
 
     if fmt == 'csv':
         return _make_academic_report_csv_response(bundle, report_type)
+    if fmt in ('excel', 'xls', 'xlsx'):
+        return _make_academic_report_excel_response(bundle, report_type)
 
     args_flat = request.args.to_dict(flat=True)
     args_flat['format'] = 'csv'
@@ -23374,6 +23599,8 @@ def api_academic_reports_generate():
 
             if fmt == 'csv':
                 return _make_academic_report_csv_response(bundle, report_type)
+            if fmt in ('excel', 'xls', 'xlsx'):
+                return _make_academic_report_excel_response(bundle, report_type)
 
             return jsonify({
                 'success': True,
