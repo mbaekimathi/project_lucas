@@ -5,8 +5,8 @@
 {% block role_display %}Academic Schedule Management{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('settings/curriculum coordinator') }}"
-   class="sidebar-item {% if request.endpoint == 'settings' and request.view_args.get('role') == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('settings/curriculum-coordinator') }}"
+   class="sidebar-item {% if request.endpoint == 'settings' and request.view_args and request.view_args.get('role') in ['curriculum coordinator', 'curriculum-coordinator'] %}sidebar-item-active{% endif %}">
     <i class="fas fa-sliders-h w-5"></i>
     <span>Curriculum settings</span>
 </a>
@@ -35,6 +35,214 @@
         <p class="text-gray-600 dark:text-gray-400">Configure academic schedule and time allocations</p>
     </div>
 
+    <!-- Saved Profile Preview -->
+    <div class="order-1 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-bold text-gray-900 dark:text-white">Saved Timetable Preview</h3>
+            <span class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                  x-text="settingsProfiles.length + ' profile(s)'"></span>
+        </div>
+
+        <div x-show="settingsProfiles.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+            No saved schedule profiles yet. Create one below.
+        </div>
+
+        <div x-show="settingsProfiles.length > 0">
+            <div class="flex flex-col md:flex-row md:items-end gap-3">
+                <div class="flex-1">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Select Saved Profile</label>
+                    <select x-model="previewProfileId"
+                            class="w-full md:w-[28rem] px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                        <template x-for="profile in settingsProfiles" :key="'preview-profile-' + profile.id">
+                            <option :value="String(profile.id)" x-text="profile.profile_name"></option>
+                        </template>
+                    </select>
+                </div>
+                <div>
+                    <button type="button"
+                            @click="toggleEditSelectedProfile()"
+                            :disabled="!getPreviewProfile()"
+                            class="mr-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-pen mr-2"></i>Edit
+                    </button>
+                    <button type="button"
+                            @click="openRegisterProfileModal()"
+                            class="px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors shadow-sm">
+                        <i class="fas fa-plus mr-2"></i>Register New Profile
+                    </button>
+                </div>
+            </div>
+
+            <div x-show="getPreviewProfile()" class="mt-5 rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-700/30">
+                <p class="font-semibold text-gray-900 dark:text-white" x-text="getPreviewProfile() ? getPreviewProfile().profile_name : ''"></p>
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Study days:
+                    <span x-text="getPreviewProfile() && getPreviewProfile().study_days && getPreviewProfile().study_days.length ? getPreviewProfile().study_days.join(', ') : 'Not set'"></span>
+                </p>
+                <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                    Class duration:
+                    <span x-text="getPreviewProfile() ? ((getPreviewProfile().class_duration || 60) + ' min') : '60 min'"></span>
+                </p>
+
+                <div class="mt-4">
+                    <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">Sample Timetable Layout</h4>
+                    <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                        <table class="w-full min-w-[760px] text-sm">
+                            <thead class="bg-gray-100 dark:bg-gray-700/70">
+                                <tr>
+                                    <th class="px-3 py-2 text-left font-semibold text-gray-700 dark:text-gray-200 min-w-[130px]">Day</th>
+                                    <template x-for="slot in getPreviewRows()" :key="'slot-head-' + slot.key">
+                                        <th class="px-3 py-2 text-center font-semibold text-gray-700 dark:text-gray-200 min-w-[120px]">
+                                            <div class="leading-tight">
+                                                <div x-text="slot.start"></div>
+                                                <div class="text-xs text-gray-500 dark:text-gray-400" x-text="slot.end"></div>
+                                            </div>
+                                        </th>
+                                    </template>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="day in getPreviewDays()" :key="'day-row-' + day">
+                                    <tr class="border-t border-gray-100 dark:border-gray-700">
+                                        <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium" x-text="day"></td>
+                                        <template x-for="slot in getPreviewRows()" :key="'cell-' + day + '-' + slot.key">
+                                            <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
+                                                <template x-if="slot.type === 'Activity'">
+                                                    <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                                                </template>
+                                                <template x-if="slot.type !== 'Activity'">
+                                                    <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
+                                                </template>
+                                            </td>
+                                        </template>
+                                    </tr>
+                                </template>
+                                <tr x-show="getPreviewDays().length === 0 && getPreviewRows().length > 0" class="border-t border-gray-100 dark:border-gray-700">
+                                    <td class="px-3 py-2 text-gray-800 dark:text-gray-200 font-medium">No days</td>
+                                    <template x-for="slot in getPreviewRows()" :key="'no-day-cell-' + slot.key">
+                                        <td class="px-3 py-4 text-center border-l border-gray-100 dark:border-gray-700">
+                                            <template x-if="slot.type === 'Activity'">
+                                                <span class="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" x-text="slot.name"></span>
+                                            </template>
+                                            <template x-if="slot.type !== 'Activity'">
+                                                <span class="text-[11px] text-gray-300 dark:text-gray-600">Empty</span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <tr x-show="getPreviewRows().length === 0">
+                                    <td :colspan="(getPreviewRows().length || 1) + 1" class="px-3 py-4 text-center text-gray-500 dark:text-gray-400">No timetable slots configured in this profile yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Register Profile Popup -->
+    <div x-show="showRegisterProfileModal"
+         x-cloak
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         @click.self="showRegisterProfileModal = false">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full border border-gray-200 dark:border-gray-700" @click.stop>
+            <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Register New Profile</h3>
+                <button @click="showRegisterProfileModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="p-5 max-h-[75vh] overflow-y-auto">
+                <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Days of the Week for Studying</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <template x-for="day in weekDays" :key="'reg-day-' + day.value">
+                                <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <input type="checkbox" :value="day.value" x-model="selectedDays" class="w-4 h-4">
+                                    <span x-text="day.label"></span>
+                                </label>
+                            </template>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic Level Category</label>
+                        <select x-model="selectedLevelCategory"
+                                @change="onLevelCategoryChange()"
+                                class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                            <option value="">Select category</option>
+                            <template x-for="cat in getAvailableLevelCategories()" :key="'reg-cat-' + cat">
+                                <option :value="cat" x-text="cat"></option>
+                            </template>
+                        </select>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            Selecting a category auto-applies all levels in that category.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Duration of Class (minutes)</label>
+                    <input type="number" min="1" x-model="classDuration" @change="recalculateAllClassEndTimes()"
+                           class="w-full md:w-64 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                </div>
+
+                <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Class Time Slots</label>
+                        <button type="button" @click="addClassTime()" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs">Add Slot</button>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(classTime, index) in classTimes" :key="'reg-class-' + classTime.id">
+                            <div class="grid grid-cols-3 gap-2">
+                                <input type="time" x-model="classTime.start_time" @change="validateAndCalculateClassTime(index)" class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                                <input type="text" x-model="classTime.end_time" readonly class="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm">
+                                <button type="button" @click="removeClassTime(index)" class="px-3 py-2 bg-red-600 text-white rounded-lg text-xs">Remove</button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">Activities (Short Breaks, Long Breaks, Preps) *</label>
+                        <button type="button" @click="addActivity()" class="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs">Add Activity</button>
+                    </div>
+                    <div class="space-y-2">
+                        <template x-for="(activity, index) in activities" :key="'reg-activity-' + activity.id">
+                            <div class="grid grid-cols-4 gap-2">
+                                <select x-model="activity.name" @change="calculateEndTime(index)" class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                                    <option value="Short Break">Short Break</option>
+                                    <option value="Long Break">Long Break</option>
+                                    <option value="Prep">Prep</option>
+                                    <option value="Lunch">Lunch</option>
+                                    <option value="Assembly">Assembly</option>
+                                </select>
+                                <input type="time" x-model="activity.start_time" @change="calculateEndTime(index)" class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                                <input type="number" min="5" step="5" x-model="activity.duration" @change="calculateEndTime(index)" class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm">
+                                <input type="text" x-model="activity.end_time" readonly class="px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm">
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="flex items-center justify-end gap-3 mt-5">
+                    <button type="button"
+                            @click="showRegisterProfileModal = false"
+                            class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button"
+                            @click="startRegisterNewProfile()"
+                            :disabled="registeringProfile || !selectedLevelCategory || !selectedDays.length || !selectedLevels.length || !classTimes.length"
+                            class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span x-text="registeringProfile ? 'Registering...' : 'Register Profile'"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="mb-6">
         <button type="button"
                 @click="showTimetableConfiguration = !showTimetableConfiguration"
@@ -53,7 +261,7 @@
             <span x-show="!editingLabel()">Timetable Configuration</span>
         </h3>
         
-        <form method="POST" action="{{ employee_dash_url('settings/curriculum coordinator/save') }}" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
+        <form method="POST" action="{{ employee_dash_url('settings/curriculum-coordinator/save') }}" class="space-y-6" x-ref="settingsForm" @submit.prevent="saveSettings()">
             <input type="hidden" name="profile_id" :value="profileId">
 
             <!-- Settings Profile -->
@@ -74,14 +282,18 @@
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            Profile Name <span class="text-red-500">*</span>
+                            Academic Level Category (Profile Name) <span class="text-red-500">*</span>
                         </label>
-                        <input type="text"
-                               name="profile_name"
-                               x-model="profileName"
-                               placeholder="e.g. Lower Primary Timetable"
-                               required
-                               class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                        <select x-model="selectedLevelCategory"
+                                @change="onLevelCategoryChange()"
+                                required
+                                class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <option value="">Select category</option>
+                            <template x-for="cat in getAvailableLevelCategories()" :key="'head-cat-' + cat">
+                                <option :value="cat" x-text="cat"></option>
+                            </template>
+                        </select>
+                        <input type="hidden" name="profile_name" :value="selectedLevelCategory || ''">
                     </div>
                 </div>
                 <div class="mt-3">
@@ -118,24 +330,31 @@
             <!-- Applicable Academic Levels -->
             <div>
                 <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-                    Applicable Academic Levels <span class="text-red-500">*</span>
+                    Academic Level Category <span class="text-red-500">*</span>
                 </label>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                    Select the academic levels that these schedule settings should apply to.
+                    Select a created category. All levels in that category are applied to this profile.
                 </p>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3" x-show="availableLevels.length > 0">
-                    <template x-for="level in availableLevels" :key="level.id">
-                        <label class="flex items-center space-x-2 p-3 border-2 rounded-lg cursor-pointer transition-all"
-                               :class="selectedLevels.includes(String(level.id))
-                                   ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                                   : 'border-gray-300 dark:border-gray-600 hover:border-green-400'">
-                            <input type="checkbox"
-                                   name="applicable_levels"
-                                   :value="String(level.id)"
-                                   x-model="selectedLevels"
-                                   class="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500">
-                            <span class="text-sm font-medium text-gray-700 dark:text-gray-300" x-text="level.level_name"></span>
-                        </label>
+                <div x-show="availableLevels.length > 0">
+                    <select x-model="selectedLevelCategory"
+                            @change="onLevelCategoryChange()"
+                            class="w-full md:w-96 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                        <option value="">Select category</option>
+                        <template x-for="cat in getAvailableLevelCategories()" :key="'cfg-cat-' + cat">
+                            <option :value="cat" x-text="cat"></option>
+                        </template>
+                    </select>
+                    <div class="mt-3 p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40">
+                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Levels included in selected category:</p>
+                        <div class="flex flex-wrap gap-2" x-show="getSelectedLevelsForCategory().length > 0">
+                            <template x-for="lvl in getSelectedLevelsForCategory()" :key="'sel-lvl-' + lvl.id">
+                                <span class="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" x-text="lvl.level_name"></span>
+                            </template>
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400" x-show="getSelectedLevelsForCategory().length === 0">No levels in this category.</p>
+                    </div>
+                    <template x-for="levelId in selectedLevels" :key="'hidden-level-' + levelId">
+                        <input type="hidden" name="applicable_levels" :value="levelId">
                     </template>
                 </div>
                 <div x-show="availableLevels.length === 0" class="p-3 border border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-700 rounded-lg">
@@ -400,54 +619,6 @@
         </form>
     </div>
 
-    <!-- Saved Schedule Profiles -->
-    <div class="order-1 bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
-        <div class="flex items-center justify-between mb-4">
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white">Saved Schedules</h3>
-            <span class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
-                  x-text="settingsProfiles.length + ' profile(s)'"></span>
-        </div>
-
-        <div x-show="settingsProfiles.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
-            No saved schedule profiles yet.
-        </div>
-
-        <div x-show="settingsProfiles.length > 0" class="space-y-3">
-            <template x-for="profile in settingsProfiles" :key="profile.id">
-                <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40">
-                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div>
-                            <div class="flex items-center gap-2">
-                                <p class="font-semibold text-gray-900 dark:text-white" x-text="profile.profile_name"></p>
-                                <span x-show="Boolean(profile.is_active)"
-                                      class="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
-                                    Active
-                                </span>
-                            </div>
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                Applies to:
-                                <span x-text="getProfileLevelsLabel(profile)"></span>
-                            </p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <a :href="settingsCoordinatorBase + '?profile_id=' + encodeURIComponent(profile.id)"
-                               class="px-3 py-2 text-sm rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">
-                                <i class="fas fa-pen mr-1"></i>Edit
-                            </a>
-                            <form method="POST"
-                                  :action="settingsCoordinatorBase + '/delete/' + profile.id"
-                                  @submit="if(!confirm('Delete this saved schedule profile?')) $event.preventDefault();">
-                                <button type="submit"
-                                        class="px-3 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors">
-                                    <i class="fas fa-trash mr-1"></i>Delete
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </template>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -463,7 +634,10 @@ function academicCoordinatorSettings() {
             { value: 'Sunday', label: 'Sunday' }
         ],
         settingsProfiles: {% if settings_profiles %}{{ settings_profiles|tojson|safe }}{% else %}[]{% endif %},
+        previewProfileId: {% if settings and settings.id %}String({{ settings.id|tojson|safe }}){% elif settings_profiles and settings_profiles|length > 0 %}String({{ settings_profiles[0].id|tojson|safe }}){% else %}''{% endif %},
         showTimetableConfiguration: {% if settings and settings.id %}true{% else %}false{% endif %},
+        showRegisterProfileModal: false,
+        registeringProfile: false,
         profileId: {% if settings and settings.id %}{{ settings.id|tojson|safe }}{% else %}''{% endif %},
         selectedProfileSelector: {% if settings and settings.id %}String({{ settings.id|tojson|safe }}){% else %}''{% endif %},
         profileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
@@ -478,6 +652,7 @@ function academicCoordinatorSettings() {
             return allLevels.map(level => String(level.id));
         })(),
         classDuration: {% if settings and settings.class_duration %}{{ settings.class_duration }}{% else %}60{% endif %},
+        selectedLevelCategory: '',
         classTimes: (function() {
             const classTimes = {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %};
             // Ensure all class times have IDs
@@ -500,7 +675,7 @@ function academicCoordinatorSettings() {
             return activities;
         })(),
         activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
-        settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum coordinator')|tojson }},
+        settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum-coordinator')|tojson }},
         getSelectedDaysLabel() {
             if (this.selectedDays.length === 0) return 'No days selected';
             return this.selectedDays.join(', ');
@@ -513,6 +688,29 @@ function academicCoordinatorSettings() {
             if (selected.length === 0) return 'No levels selected';
             return selected.join(', ');
         },
+        getAvailableLevelCategories() {
+            const seen = new Set();
+            const out = [];
+            (this.availableLevels || []).forEach(level => {
+                const cat = String(level.level_category || '').trim();
+                if (cat && !seen.has(cat)) {
+                    seen.add(cat);
+                    out.push(cat);
+                }
+            });
+            return out.sort((a, b) => a.localeCompare(b));
+        },
+        getSelectedLevelsForCategory() {
+            if (!this.selectedLevelCategory) return [];
+            return (this.availableLevels || []).filter(
+                level => String(level.level_category || '').trim() === String(this.selectedLevelCategory).trim()
+            );
+        },
+        onLevelCategoryChange() {
+            const levels = this.getSelectedLevelsForCategory();
+            this.selectedLevels = levels.map(level => String(level.id));
+            this.profileName = this.selectedLevelCategory || '';
+        },
         getProfileLevelsLabel(profile) {
             if (!profile || !Array.isArray(profile.applicable_levels)) return 'No levels selected';
             const selected = this.availableLevels
@@ -520,6 +718,94 @@ function academicCoordinatorSettings() {
                 .map(level => level.level_name);
             if (selected.length === 0) return 'No levels selected';
             return selected.join(', ');
+        },
+        getPreviewProfile() {
+            if (!this.previewProfileId) return null;
+            return this.settingsProfiles.find(p => String(p.id) === String(this.previewProfileId)) || null;
+        },
+        getPreviewRows() {
+            const profile = this.getPreviewProfile();
+            if (!profile) return [];
+            const rows = [];
+            const classTimes = Array.isArray(profile.class_times) ? profile.class_times : [];
+            const activities = Array.isArray(profile.activities) ? profile.activities : [];
+            classTimes.forEach((slot, idx) => {
+                rows.push({
+                    key: `class-${idx}-${slot.start_time || ''}`,
+                    type: 'Class',
+                    name: `Class Period ${idx + 1}`,
+                    start: slot.start_time || '--:--',
+                    end: slot.end_time || '--:--',
+                });
+            });
+            activities.forEach((act, idx) => {
+                rows.push({
+                    key: `activity-${idx}-${act.start_time || ''}`,
+                    type: 'Activity',
+                    name: act.name || `Activity ${idx + 1}`,
+                    start: act.start_time || '--:--',
+                    end: act.end_time || '--:--',
+                });
+            });
+            rows.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+            return rows;
+        },
+        applyProfileToForm(profile) {
+            if (!profile) return;
+            this.profileId = profile.id ? String(profile.id) : '';
+            this.selectedProfileSelector = this.profileId;
+            this.profileName = profile.profile_name || '';
+            this.selectedDays = Array.isArray(profile.study_days) && profile.study_days.length
+                ? [...profile.study_days]
+                : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            this.selectedLevels = Array.isArray(profile.applicable_levels)
+                ? profile.applicable_levels.map(item => String(item))
+                : [];
+            const selectedLevelObjs = (this.availableLevels || []).filter(level => this.selectedLevels.includes(String(level.id)));
+            const cats = [...new Set(selectedLevelObjs.map(level => String(level.level_category || '').trim()).filter(Boolean))];
+            this.selectedLevelCategory = cats.length === 1 ? cats[0] : '';
+            this.classDuration = Number(profile.class_duration || 60);
+
+            const classTimes = Array.isArray(profile.class_times) ? profile.class_times : [];
+            this.classTimes = classTimes.map((ct, idx) => ({
+                id: ct.id || ('class_time_' + (idx + 1)),
+                start_time: ct.start_time || '',
+                end_time: ct.end_time || ''
+            }));
+
+            const activities = Array.isArray(profile.activities) ? profile.activities : [];
+            this.activities = activities.map((ac, idx) => ({
+                id: ac.id || ('activity_' + (idx + 1)),
+                name: ac.name || 'Activity',
+                start_time: ac.start_time || '',
+                duration: Number(ac.duration || 15),
+                end_time: ac.end_time || ''
+            }));
+
+            this.classTimeCounter = this.classTimes.length;
+            this.activityCounter = this.activities.length;
+        },
+        toggleEditSelectedProfile() {
+            const profile = this.getPreviewProfile();
+            if (!profile) return;
+
+            const sameProfileOpen = this.showTimetableConfiguration && String(this.profileId || '') === String(profile.id || '');
+            if (sameProfileOpen) {
+                this.showTimetableConfiguration = false;
+                return;
+            }
+
+            this.applyProfileToForm(profile);
+            this.showTimetableConfiguration = true;
+            this.$nextTick(() => {
+                window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+            });
+        },
+        getPreviewDays() {
+            const profile = this.getPreviewProfile();
+            const fallback = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+            if (!profile || !Array.isArray(profile.study_days) || !profile.study_days.length) return fallback;
+            return profile.study_days;
         },
         editingLabel() {
             const name = (this.profileName || '').trim();
@@ -541,6 +827,26 @@ function academicCoordinatorSettings() {
             this.profileName = '';
             this.showTimetableConfiguration = true;
             this.resetSettings();
+        },
+        openRegisterProfileModal() {
+            this.createNewProfile();
+            this.showRegisterProfileModal = true;
+        },
+        startRegisterNewProfile() {
+            const name = (this.selectedLevelCategory || '').trim();
+            if (!name) return;
+            this.createNewProfile();
+            this.profileName = name;
+            this.showRegisterProfileModal = false;
+            this.registeringProfile = true;
+            this.$nextTick(() => {
+                try {
+                    // Immediately persist the new profile using current default configuration.
+                    this.$refs.settingsForm.submit();
+                } finally {
+                    this.registeringProfile = false;
+                }
+            });
         },
         addClassTime() {
             // Find the latest end time to suggest next start time
@@ -769,7 +1075,8 @@ function academicCoordinatorSettings() {
         },
         resetSettings() {
             this.selectedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-            this.selectedLevels = this.availableLevels.map(level => String(level.id));
+            this.selectedLevelCategory = '';
+            this.selectedLevels = [];
             this.classDuration = 60;
             this.classTimes = [
                 { id: 'class_time_1', start_time: '08:00', end_time: '09:00' },

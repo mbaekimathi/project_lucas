@@ -109,7 +109,8 @@ def employee_dashboard_path(subpath: str = '') -> str:
 def employee_staff_settings_url(settings_role: str, **query) -> str:
     """Prefixed staff settings URL: /<session-slug>/settings/<encoded role>[?query]."""
     r = (settings_role or 'employee').strip()
-    base = employee_dashboard_path(f'settings/{r}')
+    role_path_segment = role_to_slug(r)
+    base = employee_dashboard_path(f'settings/{role_path_segment}')
     filtered = {k: v for k, v in query.items() if v is not None and str(v) != ''}
     if filtered:
         return base + '?' + urlencode(filtered)
@@ -13215,6 +13216,7 @@ def profile(role):
 @login_required
 def settings(role):
     """Settings page for each role"""
+    role = (role or '').strip().lower().replace('-', ' ')
     user_role = session.get('role', '').lower()
     is_technician = user_role == 'technician'
     
@@ -13252,14 +13254,16 @@ def settings(role):
 
                     try:
                         cursor.execute("""
-                            SELECT id, profile_name, applicable_levels, is_active, updated_at
+                            SELECT id, profile_name, applicable_levels, is_active, updated_at,
+                                   study_days, class_time_allocation, class_duration, activity_time_allocation
                             FROM academic_coordinator_settings
                             ORDER BY is_active DESC, updated_at DESC, id DESC
                         """)
                         has_is_active = True
                     except Exception:
                         cursor.execute("""
-                            SELECT id, profile_name, applicable_levels, updated_at
+                            SELECT id, profile_name, applicable_levels, updated_at,
+                                   study_days, class_time_allocation, class_duration, activity_time_allocation
                             FROM academic_coordinator_settings
                             ORDER BY updated_at DESC, id DESC
                         """)
@@ -13271,22 +13275,44 @@ def settings(role):
                             profile_id = row.get('id')
                             profile_name = row.get('profile_name') or f'Profile {profile_id}'
                             is_active = bool(row.get('is_active')) if has_is_active else False
+                            raw_study_days = row.get('study_days') or ''
+                            raw_class_times = row.get('class_time_allocation') or '[]'
+                            raw_activities = row.get('activity_time_allocation') or '[]'
+                            profile_class_duration = row.get('class_duration') or 60
                         else:
                             raw_profile_levels = row[2] if row[2] else '[]'
                             profile_id = row[0]
                             profile_name = row[1] if row[1] else f'Profile {profile_id}'
                             is_active = bool(row[3]) if has_is_active and len(row) > 3 else False
+                            offset = 5 if has_is_active else 4
+                            raw_study_days = row[offset] if len(row) > offset and row[offset] else ''
+                            raw_class_times = row[offset + 1] if len(row) > (offset + 1) and row[offset + 1] else '[]'
+                            profile_class_duration = row[offset + 2] if len(row) > (offset + 2) and row[offset + 2] else 60
+                            raw_activities = row[offset + 3] if len(row) > (offset + 3) and row[offset + 3] else '[]'
 
                         try:
                             parsed_profile_levels = json.loads(raw_profile_levels)
                         except:
                             parsed_profile_levels = []
+                        try:
+                            parsed_class_times = json.loads(raw_class_times)
+                        except:
+                            parsed_class_times = []
+                        try:
+                            parsed_activities = json.loads(raw_activities)
+                        except:
+                            parsed_activities = []
+                        parsed_days = [d.strip() for d in str(raw_study_days).split(',') if str(d).strip()]
 
                         settings_profiles.append({
                             'id': profile_id,
                             'profile_name': profile_name,
                             'applicable_levels': parsed_profile_levels,
-                            'is_active': is_active
+                            'is_active': is_active,
+                            'study_days': parsed_days,
+                            'class_times': parsed_class_times if isinstance(parsed_class_times, list) else [],
+                            'activities': parsed_activities if isinstance(parsed_activities, list) else [],
+                            'class_duration': int(profile_class_duration) if str(profile_class_duration).isdigit() else 60,
                         })
 
                     # Determine which profile to load (query param, then active, then latest)
@@ -13510,6 +13536,7 @@ def update_employee_profile():
 @login_required
 def update_password(role):
     """Update user password"""
+    role = (role or '').strip().lower().replace('-', ' ')
     user_role = session.get('role', '').lower()
     
     if role in ('head of institution', 'deputy head of institution'):
@@ -13688,6 +13715,7 @@ def update_password(role):
 @login_required
 def update_notifications(role):
     """Update notification preferences"""
+    role = (role or '').strip().lower().replace('-', ' ')
     # This is a placeholder - notification preferences can be stored in a separate table or user preferences
     flash('Notification preferences saved successfully!', 'success')
     if role in ('parent', 'student'):
@@ -13698,6 +13726,7 @@ def update_notifications(role):
 @login_required
 def update_preferences(role):
     """Update account preferences"""
+    role = (role or '').strip().lower().replace('-', ' ')
     # This is a placeholder - preferences can be stored in a separate table or user preferences
     flash('Preferences saved successfully!', 'success')
     if role in ('parent', 'student'):
@@ -13705,6 +13734,7 @@ def update_preferences(role):
     return redirect(employee_staff_settings_url(role))
 
 # Academic Coordinator Settings Save Route
+@app.route('/settings/curriculum-coordinator/save', methods=['POST'])
 @app.route('/settings/curriculum coordinator/save', methods=['POST'])
 @login_required
 def save_academic_coordinator_settings():
@@ -13743,30 +13773,53 @@ def save_academic_coordinator_settings():
     
     try:
         with connection.cursor() as cursor:
+            has_is_active = True
+            try:
+                cursor.execute("SELECT is_active FROM academic_coordinator_settings LIMIT 1")
+            except Exception:
+                has_is_active = False
+
             if profile_id.isdigit():
                 # Update selected profile
-                cursor.execute("""
-                    UPDATE academic_coordinator_settings 
-                    SET profile_name = %s,
-                        is_active = 1,
-                        study_days = %s, 
-                        applicable_levels = %s,
-                        class_time_allocation = %s, 
-                        class_duration = %s,
-                        activity_time_allocation = %s
-                    WHERE id = %s
-                """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json, int(profile_id)))
+                if has_is_active:
+                    cursor.execute("""
+                        UPDATE academic_coordinator_settings 
+                        SET profile_name = %s,
+                            is_active = 1,
+                            study_days = %s, 
+                            applicable_levels = %s,
+                            class_time_allocation = %s, 
+                            class_duration = %s,
+                            activity_time_allocation = %s
+                        WHERE id = %s
+                    """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json, int(profile_id)))
+                else:
+                    cursor.execute("""
+                        UPDATE academic_coordinator_settings 
+                        SET profile_name = %s,
+                            study_days = %s, 
+                            applicable_levels = %s,
+                            class_time_allocation = %s, 
+                            class_duration = %s,
+                            activity_time_allocation = %s
+                        WHERE id = %s
+                    """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json, int(profile_id)))
                 saved_profile_id = int(profile_id)
             else:
                 # Create new profile
-                cursor.execute("""
-                    INSERT INTO academic_coordinator_settings (profile_name, is_active, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation)
-                    VALUES (%s, 1, %s, %s, %s, %s, %s)
-                """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json))
+                if has_is_active:
+                    cursor.execute("""
+                        INSERT INTO academic_coordinator_settings (profile_name, is_active, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation)
+                        VALUES (%s, 1, %s, %s, %s, %s, %s)
+                    """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json))
+                else:
+                    cursor.execute("""
+                        INSERT INTO academic_coordinator_settings (profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (profile_name, study_days, applicable_levels_json, class_times_json, int(class_duration), activities_json))
                 saved_profile_id = cursor.lastrowid
 
-            # Enforce single-active schedule profile per school data set.
-            cursor.execute("UPDATE academic_coordinator_settings SET is_active = 0 WHERE id <> %s", (saved_profile_id,))
+            # Allow multiple profiles to stay active; do not deactivate others.
             
             connection.commit()
             flash('Academic settings profile saved successfully!', 'success')
@@ -13786,6 +13839,7 @@ def save_academic_coordinator_settings():
         return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=saved_profile_id))
     return redirect(employee_staff_settings_url('curriculum coordinator'))
 
+@app.route('/settings/curriculum-coordinator/delete/<int:profile_id>', methods=['POST'])
 @app.route('/settings/curriculum coordinator/delete/<int:profile_id>', methods=['POST'])
 @login_required
 def delete_academic_coordinator_settings(profile_id):
@@ -13827,14 +13881,12 @@ def delete_academic_coordinator_settings(profile_id):
             cursor.execute("""
                 SELECT id
                 FROM academic_coordinator_settings
-                ORDER BY is_active DESC, updated_at DESC, id DESC
+                ORDER BY updated_at DESC, id DESC
                 LIMIT 1
             """)
             next_row = cursor.fetchone()
             if next_row:
                 next_profile_id = next_row.get('id') if isinstance(next_row, dict) else next_row[0]
-                cursor.execute("UPDATE academic_coordinator_settings SET is_active = 0")
-                cursor.execute("UPDATE academic_coordinator_settings SET is_active = 1 WHERE id = %s", (next_profile_id,))
 
             connection.commit()
             flash('Schedule profile deleted successfully.', 'success')
@@ -17697,6 +17749,20 @@ def _get_schedule_settings_for_level(cursor, academic_level_id):
         'activities': []
     }
 
+    level_category = ''
+    try:
+        cursor.execute("""
+            SELECT level_category
+            FROM academic_levels
+            WHERE id = %s
+            LIMIT 1
+        """, (academic_level_id,))
+        lr = cursor.fetchone()
+        if lr:
+            level_category = (lr.get('level_category', '') if isinstance(lr, dict) else (lr[0] if len(lr) > 0 else '')) or ''
+    except Exception:
+        level_category = ''
+
     cursor.execute("""
         SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
         FROM academic_coordinator_settings
@@ -17731,7 +17797,11 @@ def _get_schedule_settings_for_level(cursor, academic_level_id):
             parsed_levels = []
 
         normalized_levels = {str(level_id) for level_id in parsed_levels}
-        if str(academic_level_id) in normalized_levels:
+        profile_name_norm = str(row_profile or '').strip().lower()
+        level_category_norm = str(level_category or '').strip().lower()
+        profile_category_match = bool(level_category_norm and profile_name_norm == level_category_norm)
+
+        if str(academic_level_id) in normalized_levels or profile_category_match:
             selected = {
                 'id': row_id,
                 'profile_name': row_profile,
@@ -17743,26 +17813,8 @@ def _get_schedule_settings_for_level(cursor, academic_level_id):
             break
 
     if selected is None:
-        # fallback to latest profile if no level-targeted profile exists
-        row = rows[0]
-        if isinstance(row, dict):
-            selected = {
-                'id': row.get('id'),
-                'profile_name': row.get('profile_name') or f"Profile {row.get('id')}",
-                'study_days': row.get('study_days') or '',
-                'class_time_allocation': row.get('class_time_allocation') or '[]',
-                'class_duration': row.get('class_duration') or 60,
-                'activity_time_allocation': row.get('activity_time_allocation') or '[]'
-            }
-        else:
-            selected = {
-                'id': row[0],
-                'profile_name': row[1] if row[1] else f'Profile {row[0]}',
-                'study_days': row[2] if row[2] else '',
-                'class_time_allocation': row[4] if row[4] else '[]',
-                'class_duration': row[5] if row[5] else 60,
-                'activity_time_allocation': row[6] if row[6] else '[]'
-            }
+        # No profile targets this level/category; keep safe defaults
+        return default_settings
 
     try:
         selected['class_times'] = json.loads(selected.get('class_time_allocation') or '[]')

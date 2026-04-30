@@ -158,20 +158,19 @@
                 <table class="timetable-grid">
                     <thead>
                         <tr>
-                            <th>Time</th>
-                            <template x-for="day in days" :key="day">
-                                <th x-text="day"></th>
+                            <th>Day</th>
+                            <template x-for="slot in timeSlots" :key="'head-' + slot.time">
+                                <th x-text="slot.label"></th>
                             </template>
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="slot in timeSlots" :key="slot.time">
+                        <template x-for="day in days" :key="'row-' + day">
                             <tr>
                                 <td class="time-cell">
-                                    <div x-text="slot.label"></div>
-                                    <div x-show="slot.isActivity" class="text-xs text-amber-600 dark:text-amber-400" x-text="slot.activity"></div>
+                                    <div x-text="day"></div>
                                 </td>
-                                <template x-for="day in days" :key="day">
+                                <template x-for="slot in timeSlots" :key="'cell-' + day + '-' + slot.time">
                                     <td>
                                         <template x-if="slot.isActivity">
                                             <div class="activity-slot rounded-lg p-2 text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -184,9 +183,9 @@
                                                     :class="getSlot(day, slot.time) ? 'slot-assigned' : ''">
                                                 <template x-if="getSlot(day, slot.time)">
                                                     <div class="text-xs p-1">
-                                                        <i class="fas fa-user text-green-600 dark:text-green-400"></i>
-                                                        <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).teacher_code || getSlot(day, slot.time).employee_id || getSlot(day, slot.time).teacher_name"></div>
-                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="getSlot(day, slot.time).subject_code || '—'"></div>
+                                                        <i class="fas fa-book text-green-600 dark:text-green-400"></i>
+                                                        <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).subject_name || 'Subject'"></div>
+                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="getSlot(day, slot.time).subject_code || '— — — — — —'"></div>
                                                     </div>
                                                 </template>
                                                 <template x-if="!getSlot(day, slot.time)">

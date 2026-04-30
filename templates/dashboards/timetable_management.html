@@ -188,22 +188,22 @@
                             <table class="tt-table">
                                 <thead>
                                     <tr>
-                                        <th>Time</th>
-                                        <template x-for="day in days" :key="day">
-                                            <th x-text="day.substring(0, 3)"></th>
+                                        <th>Day</th>
+                                        <template x-for="time in getTimeSlots({{ level.id }})" :key="'head-' + time">
+                                            <th x-text="formatTimeRange({{ level.id }}, time)"></th>
                                         </template>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <template x-for="time in getTimeSlots({{ level.id }})" :key="time">
+                                    <template x-for="day in days" :key="'row-' + day">
                                         <tr>
-                                            <td x-text="formatTimeRange({{ level.id }}, time)"></td>
-                                            <template x-for="day in days" :key="day">
+                                            <td x-text="day.substring(0, 3)"></td>
+                                            <template x-for="time in getTimeSlots({{ level.id }})" :key="'cell-' + day + '-' + time">
                                                 <td>
                                                     <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
                                                         <div>
-                                                            <div class="teacher-name" x-text="entry.employee_id || entry.teacher_code || entry.teacher_name || '—'"></div>
-                                                            <div x-show="entry.subject_code" class="subject-name" x-text="entry.subject_code"></div>
+                                                            <div class="teacher-name" x-text="entry.subject_name || 'Subject'"></div>
+                                                            <div class="subject-name" x-text="entry.subject_code || '— — — — — —'"></div>
                                                         </div>
                                                     </template>
                                                     <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>

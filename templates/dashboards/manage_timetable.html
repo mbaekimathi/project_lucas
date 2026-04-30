@@ -275,25 +275,25 @@
                 <table class="tt-table">
                             <thead>
                         <tr>
-                            <th>Time</th>
-                            <template x-for="day in days" :key="day">
-                                <th x-text="day.substring(0, 3)"></th>
+                            <th>Day</th>
+                            <template x-for="time in displayTimeSlots" :key="'head-' + time">
+                                <th x-text="getTimeLabel(time)"></th>
                             </template>
                                 </tr>
                             </thead>
                             <tbody>
-                        <template x-for="time in displayTimeSlots" :key="time">
+                        <template x-for="day in days" :key="'row-' + day">
                             <tr>
-                                <td x-text="getTimeLabel(time)"></td>
-                                <template x-for="day in days" :key="day">
+                                <td x-text="day.substring(0, 3)"></td>
+                                <template x-for="time in displayTimeSlots" :key="'cell-' + day + '-' + time">
                                     <td class="editable-cell p-0"
                                         :class="{ 'has-teacher': getSlot(day, time) }"
                                         @click="openModal(day, time)">
                                         <div class="p-2 min-h-[50px] flex flex-col justify-center relative">
                                             <template x-if="getSlot(day, time)">
                                                 <div>
-                                                    <div class="teacher-name" x-text="getTeacherName(getSlot(day, time)?.teacher_id)"></div>
-                                                    <div class="subject-name text-[11px] text-blue-700 dark:text-blue-300 mt-1" x-text="getSlot(day, time)?.subject_code || '—'"></div>
+                                                    <div class="teacher-name" x-text="getSlot(day, time)?.subject_name || 'Subject'"></div>
+                                                    <div class="subject-name text-[11px] text-blue-700 dark:text-blue-300 mt-1" x-text="getSlot(day, time)?.subject_code || '— — — — — —'"></div>
                                                     <button @click.stop="removeSlot(day, time)" 
                                                             class="cell-actions text-red-500 hover:text-red-700 text-xs">
                                                         <i class="fas fa-times"></i>
