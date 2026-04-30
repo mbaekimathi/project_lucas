@@ -14952,6 +14952,87 @@ def delete_teacher_subject_allocation():
         if connection:
             connection.close()
 
+
+@app.route('/dashboard/employee/subject-class-allocation/update', methods=['POST'])
+@login_required
+def update_teacher_subject_allocation():
+    """Update teacher for an existing teacher-subject allocation row."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    try:
+        assignment_id = int(data.get('assignment_id', 0))
+        teacher_id = int(data.get('teacher_id', 0))
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Invalid allocation or teacher ID'}), 400
+
+    if assignment_id <= 0 or teacher_id <= 0:
+        return jsonify({'success': False, 'message': 'Invalid allocation or teacher ID'}), 400
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, academic_level_id, subject_id
+                FROM teacher_subject_assignments
+                WHERE id = %s
+            """, (assignment_id,))
+            existing = cursor.fetchone()
+            if not existing:
+                return jsonify({'success': False, 'message': 'Allocation not found'}), 404
+
+            academic_level_id = existing.get('academic_level_id') if isinstance(existing, dict) else (existing[1] if len(existing) > 1 else None)
+            subject_id = existing.get('subject_id') if isinstance(existing, dict) else (existing[2] if len(existing) > 2 else None)
+            if academic_level_id is None or subject_id is None:
+                return jsonify({'success': False, 'message': 'Invalid allocation record'}), 400
+
+            cursor.execute("""
+                SELECT id FROM employees
+                WHERE id = %s AND status = 'active' AND role = 'teachers'
+            """, (teacher_id,))
+            if not cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Only active employees with role teachers can be assigned.'
+                }), 400
+
+            cursor.execute("""
+                SELECT id FROM teacher_subject_assignments
+                WHERE academic_level_id = %s AND subject_id = %s AND teacher_id = %s AND id != %s
+                LIMIT 1
+            """, (academic_level_id, subject_id, teacher_id, assignment_id))
+            if cursor.fetchone():
+                return jsonify({'success': False, 'message': 'This teacher is already allocated to this subject in this level.'}), 400
+
+            cursor.execute("""
+                UPDATE teacher_subject_assignments
+                SET teacher_id = %s
+                WHERE id = %s
+            """, (teacher_id, assignment_id))
+            connection.commit()
+            return jsonify({'success': True, 'message': 'Allocation updated successfully'})
+    except Exception as e:
+        print(f"Error updating allocation: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error updating allocation: {str(e)}'}), 500
+    finally:
+        if connection:
+            connection.close()
+
 # Create Subject Route
 @app.route('/dashboard/employee/subject-class-allocation/create-subject', methods=['POST'])
 @login_required
@@ -20358,6 +20439,8 @@ def students_by_academic_level(level_id):
     student_marks = {}
     academic_years = []
     terms = []
+    default_grade_bands = []
+    subject_grade_bands = {}
     current_year_id = None
     current_term_id = None
     
@@ -20645,6 +20728,64 @@ def students_by_academic_level(level_id):
                 except Exception as e:
                     print(f"Marks table not found or error fetching marks: {e}")
                     student_marks = {}
+
+                # Load grading bands (default + subject-specific) for column mean grade display.
+                try:
+                    cursor.execute("""
+                        SELECT code, level_label, start_mark, end_mark
+                        FROM grade_registrations
+                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+                        ORDER BY start_mark DESC, end_mark DESC
+                    """)
+                    for grow in (cursor.fetchall() or []):
+                        if isinstance(grow, dict):
+                            default_grade_bands.append({
+                                'code': (grow.get('code') or '').strip(),
+                                'label': (grow.get('level_label') or '').strip(),
+                                'start': float(grow.get('start_mark') or 0),
+                                'end': float(grow.get('end_mark') or 0),
+                            })
+                        else:
+                            default_grade_bands.append({
+                                'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
+                                'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
+                                'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
+                                'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                            })
+                except Exception as ge:
+                    print(f"Note: grade_registrations lookup skipped on students-by-level: {ge}")
+
+                try:
+                    cursor.execute("""
+                        SELECT subject_id, code, start_mark, end_mark
+                        FROM subject_grade_mark_overrides
+                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+                        ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
+                    """)
+                    for srow in (cursor.fetchall() or []):
+                        if isinstance(srow, dict):
+                            sid = int(srow.get('subject_id') or 0)
+                            band = {
+                                'code': (srow.get('code') or '').strip(),
+                                'label': '',
+                                'start': float(srow.get('start_mark') or 0),
+                                'end': float(srow.get('end_mark') or 0),
+                            }
+                        else:
+                            sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                            band = {
+                                'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
+                                'label': '',
+                                'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
+                                'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                            }
+                        if sid <= 0:
+                            continue
+                        if sid not in subject_grade_bands:
+                            subject_grade_bands[sid] = []
+                        subject_grade_bands[sid].append(band)
+                except Exception as se:
+                    print(f"Note: subject_grade_mark_overrides lookup skipped on students-by-level: {se}")
         except Exception as e:
             print(f"Error fetching students by academic level: {e}")
             flash('Error loading students. Please try again.', 'error')
@@ -20706,6 +20847,8 @@ def students_by_academic_level(level_id):
                          selected_term_id=current_term_id,
                          selected_exam_id=selected_exam_id,
                          student_marks=student_marks,
+                         default_grade_bands=default_grade_bands,
+                         subject_grade_bands=subject_grade_bands,
                          can_edit=can_edit)
 
 # API Endpoint to fetch marks filtered by exam

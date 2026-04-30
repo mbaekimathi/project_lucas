@@ -201,6 +201,28 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot class="bg-gray-50 dark:bg-gray-900/40 border-t-2 border-gray-300 dark:border-gray-600">
+                        <tr>
+                            <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">Σ</td>
+                            <td class="sticky-col sticky-col-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200">Subject Mean</td>
+                            {% for subject in subjects %}
+                            <td class="px-1 py-2 text-center text-sm font-bold text-indigo-700 dark:text-indigo-300"
+                                x-text="getSubjectMean({{ subject.id }})"></td>
+                            {% endfor %}
+                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                        </tr>
+                        <tr>
+                            <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">G</td>
+                            <td class="sticky-col sticky-col-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200">Mean Grade</td>
+                            {% for subject in subjects %}
+                            <td class="px-1 py-2 text-center text-sm font-extrabold text-violet-700 dark:text-violet-300"
+                                x-text="getSubjectGrade({{ subject.id }}) || '-'"></td>
+                            {% endfor %}
+                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -260,6 +282,8 @@ function marksSheet() {
         examList: {{ (exams or [])|tojson|safe }},
         academicYears: {{ (academic_years or [])|tojson|safe }},
         terms: {{ (terms or [])|tojson|safe }},
+        defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
+        subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
 
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
         studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
@@ -457,6 +481,43 @@ function marksSheet() {
                 }
             }
             return null;
+        },
+
+        getSubjectMean(subjectId) {
+            if (!this.selectedExam) return '-';
+            let total = 0;
+            let count = 0;
+            for (const studentId of this.studentIds) {
+                const mark = this.getMark(studentId, subjectId);
+                if (mark !== '' && !isNaN(mark)) {
+                    total += Number(mark);
+                    count += 1;
+                }
+            }
+            if (!count) return '-';
+            return (total / count).toFixed(1);
+        },
+
+        gradeForMark(subjectId, marksValue) {
+            if (marksValue === null || marksValue === undefined || marksValue === '' || isNaN(marksValue)) return '';
+            const mv = Number(marksValue);
+            const subjectBands = this.subjectGradeBands[String(subjectId)] || this.subjectGradeBands[subjectId] || [];
+            const bands = subjectBands.length ? subjectBands : this.defaultGradeBands;
+            for (const band of bands) {
+                const start = Number(band.start ?? 0);
+                const end = Number(band.end ?? 0);
+                if (mv >= start && mv <= end) {
+                    return (band.code || band.label || '').toString().trim();
+                }
+            }
+            return '';
+        },
+
+        getSubjectGrade(subjectId) {
+            if (!this.selectedExam) return '';
+            const mean = this.getSubjectMean(subjectId);
+            if (mean === '-') return '';
+            return this.gradeForMark(subjectId, Number(mean));
         },
 
         getStatusClass(studentId, subjectId) {
