@@ -208,7 +208,7 @@
                                                     <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
                                                         <div>
                                                             <div class="teacher-name font-medium" x-text="entry.subject_code || '— — —'"></div>
-                                                            <div class="subject-name" x-text="entry.employee_id || '— — — —'"></div>
+                                                            <div class="subject-name" x-text="entry.staff_employee_number || entry.employee_id || '— — — —'"></div>
                                                         </div>
                                                     </template>
                                                     <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>

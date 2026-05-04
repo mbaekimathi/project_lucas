@@ -502,13 +502,14 @@
       .replace(/'/g, '&#39;');
   }
 
-  /** Teacher reference on timetable rows: employees.id (auto-generated primary key). */
+  /** Display label for teacher on timetable grids: allocated staff number (not portal login, not DB pk). */
   function rowTeacherStaffId(row) {
     if (!row) return '';
-    var a = row.teacher_id;
-    var b = row.teacher_code;
-    var v = (a !== undefined && a !== null && String(a).trim() !== '') ? a : b;
-    return String(v != null ? v : '').trim();
+    var v = row.staff_employee_number || row.employee_id || row.teacher_code;
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    // Subject/teacher timetable reports expose staff identity under legacy column key teacher_id
+    var legacy = row.teacher_id;
+    return String(legacy != null ? legacy : '').trim();
   }
 
   function renderTable(bundle) {
@@ -1184,8 +1185,8 @@
         '<h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><i class="fas fa-user-clock text-brand-primary"></i>Teacher timetable</h3>' +
         '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">' +
           (teacherName ? '<span class="font-semibold">Name:</span> ' + escapeHtml(teacherName) + '<br>' : '') +
-          '<span class="font-semibold">Staff ID (employee ID):</span> ' + escapeHtml(teacherStaffId || '—') +
-          ' <span class="text-[11px] text-gray-500">— text ID from Staff, not numeric DB id</span>' +
+          '<span class="font-semibold">Staff number:</span> ' + escapeHtml(teacherStaffId || '—') +
+          ' <span class="text-[11px] text-gray-500">(allocated staff ID from Staff records)</span>' +
         '</p>' +
         '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Shown as one grid per class this teacher teaches.</p>' +
       '</div>';

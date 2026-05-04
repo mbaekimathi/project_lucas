@@ -5519,6 +5519,8 @@ def teacher_my_classes():
                                  role=user_role,
                                  is_technician=True,
                                  teacher_name=None,
+                                 staff_employee_number=None,
+                                 portal_employee_number=None,
                                  current_term=None,
                                  current_year=None,
                                  timetable_data={},
@@ -5531,6 +5533,8 @@ def teacher_my_classes():
     timetable_data = {}
     assignments = []
     teacher_name = None
+    staff_employee_number = None
+    portal_employee_number = None
     current_term = None
     current_year = None
     
@@ -5541,14 +5545,23 @@ def teacher_my_classes():
         try:
             with connection.cursor() as cursor:
                 # Get teacher info
-                cursor.execute("""
-                    SELECT id, full_name, employee_id
-                    FROM employees
-                    WHERE id = %s
+                cursor.execute(f"""
+                    SELECT emp.id, emp.full_name,
+                           {_employee_staff_identity_sql('emp')} AS staff_employee_number,
+                           emp.employee_id AS portal_employee_number
+                    FROM employees emp
+                    WHERE emp.id = %s
                 """, (teacher_id,))
                 teacher_result = cursor.fetchone()
                 if teacher_result:
-                    teacher_name = teacher_result.get('full_name') if isinstance(teacher_result, dict) else teacher_result[1]
+                    if isinstance(teacher_result, dict):
+                        teacher_name = teacher_result.get('full_name', '')
+                        staff_employee_number = teacher_result.get('staff_employee_number')
+                        portal_employee_number = teacher_result.get('portal_employee_number')
+                    else:
+                        teacher_name = teacher_result[1] if len(teacher_result) > 1 else ''
+                        staff_employee_number = teacher_result[2] if len(teacher_result) > 2 else None
+                        portal_employee_number = teacher_result[3] if len(teacher_result) > 3 else None
                 
                 # Get current academic year
                 cursor.execute("""
@@ -5700,6 +5713,8 @@ def teacher_my_classes():
                          role=user_role,
                          is_technician=is_technician,
                          teacher_name=teacher_name,
+                         staff_employee_number=staff_employee_number,
+                         portal_employee_number=portal_employee_number,
                          current_term=current_term,
                          current_year=current_year,
                          timetable_data=timetable_data,
@@ -11100,12 +11115,11 @@ def staff_management():
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
                            e.profile_picture, e.created_at,
-                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                           {_employee_staff_identity_sql('e')} AS staff_employee_number
                     FROM employees e
-                    LEFT JOIN employee_number en ON en.employee_id = e.id
                     ORDER BY e.created_at DESC
                 """)
                 employees = cursor.fetchall()
@@ -11153,12 +11167,11 @@ def teacher_management():
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
                            e.profile_picture, e.created_at,
-                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                           {_employee_staff_identity_sql('e')} AS staff_employee_number
                     FROM employees e
-                    LEFT JOIN employee_number en ON en.employee_id = e.id
                     WHERE e.role = 'teachers' OR e.role = 'teacher'
                     ORDER BY e.full_name ASC
                 """)
@@ -11197,12 +11210,11 @@ def assign_roles_approve():
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
                            e.profile_picture, e.created_at,
-                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                           {_employee_staff_identity_sql('e')} AS staff_employee_number
                     FROM employees e
-                    LEFT JOIN employee_number en ON en.employee_id = e.id
                     WHERE e.status IN ('pending', 'pending approval')
                     ORDER BY e.created_at DESC
                 """)
@@ -11524,11 +11536,10 @@ def get_employee(employee_id):
     
     try:
         with connection.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
-                       COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                       {_employee_staff_identity_sql('e')} AS staff_employee_number
                 FROM employees e
-                LEFT JOIN employee_number en ON en.employee_id = e.id
                 WHERE e.id = %s
             """, (employee_id,))
             employee = cursor.fetchone()
@@ -18181,10 +18192,10 @@ def register_timetable():
                     SELECT emp.id,
                            emp.full_name,
                            emp.email,
-                           {_employee_staff_identity_sql('emp')} AS employee_id,
+                           {_employee_staff_identity_sql('emp')} AS staff_employee_number,
                            emp.employee_id AS portal_employee_number
                     FROM employees emp
-                    WHERE emp.role = 'teachers' AND emp.status = 'active'
+                    WHERE (emp.role = 'teachers' OR emp.role = 'teacher') AND emp.status = 'active'
                     ORDER BY emp.full_name ASC
                 """)
                 teachers_results = cursor.fetchall()
@@ -18194,7 +18205,7 @@ def register_timetable():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
                         'email': row.get('email', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
-                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+                        'staff_employee_number': row.get('staff_employee_number', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
                         'portal_employee_number': row.get('portal_employee_number', '') if isinstance(row, dict) else (row[4] if len(row) > 4 else ''),
                     })
 
@@ -18202,7 +18213,7 @@ def register_timetable():
                 cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
                            e.full_name,
-                           {_employee_staff_identity_sql('e')} AS employee_id,
+                           {_employee_staff_identity_sql('e')} AS staff_employee_number,
                            e.employee_id AS portal_employee_number,
                            s.subject_name, s.subject_code
                     FROM teacher_subject_assignments tsa
@@ -18222,7 +18233,7 @@ def register_timetable():
                             'teacher_id': int(row.get('teacher_id')),
                             'subject_id': int(row.get('subject_id')),
                             'teacher_name': row.get('full_name', ''),
-                            'employee_id': row.get('employee_id', ''),
+                            'staff_employee_number': row.get('staff_employee_number', ''),
                             'portal_employee_number': row.get('portal_employee_number', '') or '',
                             'subject_name': row.get('subject_name', ''),
                             'subject_code': row.get('subject_code', '') or ''
@@ -18233,7 +18244,7 @@ def register_timetable():
                             'teacher_id': int(row[1]),
                             'subject_id': int(row[2]),
                             'teacher_name': row[3] if len(row) > 3 else '',
-                            'employee_id': row[4] if len(row) > 4 else '',
+                            'staff_employee_number': row[4] if len(row) > 4 else '',
                             'portal_employee_number': row[5] if len(row) > 5 else '',
                             'subject_name': row[6] if len(row) > 6 else '',
                             'subject_code': (row[7] if len(row) > 7 else '') or ''
@@ -18331,7 +18342,7 @@ def load_timetable():
             cursor.execute(f"""
                 SELECT t.day_of_week, t.time_slot, t.teacher_id, t.subject_id,
                        e.full_name as teacher_name,
-                       {_employee_staff_identity_sql('e')} AS employee_id,
+                       {_employee_staff_identity_sql('e')} AS staff_employee_number,
                        s.subject_name, s.subject_code
                 FROM timetables t
                 LEFT JOIN employees e ON t.teacher_id = e.id
@@ -18352,7 +18363,7 @@ def load_timetable():
                         'teacher_id': entry.get('teacher_id'),
                         'subject_id': entry.get('subject_id'),
                         'teacher_name': entry.get('teacher_name', 'Unknown'),
-                        'employee_id': entry.get('employee_id', ''),
+                        'staff_employee_number': entry.get('staff_employee_number', ''),
                         'subject_name': entry.get('subject_name', ''),
                         'subject_code': entry.get('subject_code', '') or ''
                     })
@@ -18363,7 +18374,7 @@ def load_timetable():
                         'teacher_id': entry[2] if len(entry) > 2 else None,
                         'subject_id': entry[3] if len(entry) > 3 else None,
                         'teacher_name': entry[4] if len(entry) > 4 else 'Unknown',
-                        'employee_id': entry[5] if len(entry) > 5 else '',
+                        'staff_employee_number': entry[5] if len(entry) > 5 else '',
                         'subject_name': entry[6] if len(entry) > 6 else '',
                         'subject_code': (entry[7] if len(entry) > 7 else '') or ''
                     })
@@ -19309,7 +19320,7 @@ def manage_timetable():
                 cursor.execute(f"""
                     SELECT emp.id,
                            emp.full_name,
-                           {_employee_staff_identity_sql('emp')} AS employee_id,
+                           {_employee_staff_identity_sql('emp')} AS staff_employee_number,
                            emp.employee_id AS portal_employee_number
                     FROM employees emp
                     WHERE (emp.role = 'teachers' OR emp.role = 'teacher') AND emp.status = 'active'
@@ -19320,7 +19331,7 @@ def manage_timetable():
                     teachers.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'full_name': row.get('full_name', '') if isinstance(row, dict) else row[1],
-                        'employee_id': row.get('employee_id', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+                        'staff_employee_number': row.get('staff_employee_number', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
                         'portal_employee_number': row.get('portal_employee_number', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
                     })
 
@@ -19328,7 +19339,7 @@ def manage_timetable():
                 cursor.execute(f"""
                     SELECT tsa.academic_level_id, tsa.teacher_id, tsa.subject_id,
                            e.full_name,
-                           {_employee_staff_identity_sql('e')} AS employee_id,
+                           {_employee_staff_identity_sql('e')} AS staff_employee_number,
                            e.employee_id AS portal_employee_number,
                            s.subject_name, s.subject_code
                     FROM teacher_subject_assignments tsa
@@ -19347,7 +19358,7 @@ def manage_timetable():
                             'teacher_id': int(row.get('teacher_id')),
                             'subject_id': int(row.get('subject_id')),
                             'teacher_name': row.get('full_name', ''),
-                            'employee_id': row.get('employee_id', ''),
+                            'staff_employee_number': row.get('staff_employee_number', ''),
                             'portal_employee_number': row.get('portal_employee_number', '') or '',
                             'subject_name': row.get('subject_name', ''),
                             'subject_code': row.get('subject_code', '') or ''
@@ -19358,7 +19369,7 @@ def manage_timetable():
                             'teacher_id': int(row[1]),
                             'subject_id': int(row[2]),
                             'teacher_name': row[3] if len(row) > 3 else '',
-                            'employee_id': row[4] if len(row) > 4 else '',
+                            'staff_employee_number': row[4] if len(row) > 4 else '',
                             'portal_employee_number': row[5] if len(row) > 5 else '',
                             'subject_name': row[6] if len(row) > 6 else '',
                             'subject_code': (row[7] if len(row) > 7 else '') or ''
@@ -19416,7 +19427,7 @@ def get_class_timetable():
             # Build query based on provided filters
             query = f"""
                 SELECT t.id, t.day_of_week, t.time_slot, t.teacher_id, t.subject_id, t.term_id, t.academic_level_id,
-                       e.full_name as teacher_name, {_employee_staff_identity_sql('e')} AS employee_id,
+                       e.full_name as teacher_name, {_employee_staff_identity_sql('e')} AS staff_employee_number,
                        al.level_name, al.level_category,
                        tr.term_name, tr.academic_year_id,
                        ay.year_name as academic_year_name,
@@ -19464,7 +19475,7 @@ def get_class_timetable():
                         'teacher_id': entry.get('teacher_id'),
                         'subject_id': entry.get('subject_id'),
                         'teacher_name': entry.get('teacher_name', 'Unknown'),
-                        'employee_id': entry.get('employee_id', ''),
+                        'staff_employee_number': entry.get('staff_employee_number', ''),
                         'subject_name': entry.get('subject_name', ''),
                         'subject_code': entry.get('subject_code', ''),
                         'term_id': entry.get('term_id'),
@@ -19480,7 +19491,7 @@ def get_class_timetable():
                         'teacher_id': entry[3] if len(entry) > 3 else None,
                         'subject_id': entry[4] if len(entry) > 4 else None,
                         'teacher_name': entry[7] if len(entry) > 7 else 'Unknown',
-                        'employee_id': entry[8] if len(entry) > 8 else '',
+                        'staff_employee_number': entry[8] if len(entry) > 8 else '',
                         'subject_name': entry[14] if len(entry) > 14 else '',
                         'subject_code': entry[15] if len(entry) > 15 else '',
                         'term_id': entry[5] if len(entry) > 5 else None,
@@ -19849,7 +19860,7 @@ def timetable_analytics():
                         SELECT
                             e.id AS teacher_id,
                             e.full_name,
-                            {_employee_staff_identity_sql('e')} AS employee_id,
+                            {_employee_staff_identity_sql('e')} AS staff_employee_number,
                             COUNT(DISTINCT tsa.academic_level_id) AS levels_allocated,
                             COUNT(DISTINCT tsa.subject_id) AS subjects_allocated,
                             COUNT(DISTINCT CASE WHEN t.term_id = %s THEN CONCAT(t.academic_level_id, '|', t.day_of_week, '|', t.time_slot) END) AS scheduled_slots
@@ -19858,9 +19869,9 @@ def timetable_analytics():
                         LEFT JOIN timetables t
                                ON t.teacher_id = e.id
                               AND t.term_id = %s
-                        WHERE e.role = 'teachers'
+                        WHERE (e.role = 'teachers' OR e.role = 'teacher')
                           AND COALESCE(e.status, 'active') = 'active'
-                        GROUP BY e.id, e.full_name
+                        GROUP BY e.id, e.full_name, {_employee_staff_identity_sql('e')}
                         HAVING levels_allocated > 0 OR subjects_allocated > 0 OR scheduled_slots > 0
                         ORDER BY e.full_name ASC
                     """, (term_id, term_id))
@@ -19869,7 +19880,7 @@ def timetable_analytics():
                             teacher_analytics.append({
                                 'teacher_id': row.get('teacher_id'),
                                 'full_name': row.get('full_name', ''),
-                                'employee_id': row.get('employee_id', ''),
+                                'staff_employee_number': row.get('staff_employee_number', ''),
                                 'levels_allocated': int(row.get('levels_allocated') or 0),
                                 'subjects_allocated': int(row.get('subjects_allocated') or 0),
                                 'scheduled_slots': int(row.get('scheduled_slots') or 0)
@@ -19878,7 +19889,7 @@ def timetable_analytics():
                             teacher_analytics.append({
                                 'teacher_id': row[0] if len(row) > 0 else None,
                                 'full_name': row[1] if len(row) > 1 else '',
-                                'employee_id': row[2] if len(row) > 2 else '',
+                                'staff_employee_number': row[2] if len(row) > 2 else '',
                                 'levels_allocated': int(row[3] or 0) if len(row) > 3 else 0,
                                 'subjects_allocated': int(row[4] or 0) if len(row) > 4 else 0,
                                 'scheduled_slots': int(row[5] or 0) if len(row) > 5 else 0

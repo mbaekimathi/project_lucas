@@ -42,6 +42,12 @@
                             {% if teacher_name %}
                             <p class="text-emerald-100 text-sm sm:text-base">Welcome back, <span class="font-semibold text-white">{{ teacher_name }}</span></p>
                             {% endif %}
+                            {% if staff_employee_number or portal_employee_number %}
+                            <p class="text-emerald-100/90 text-xs sm:text-sm mt-1 space-x-2">
+                                {% if staff_employee_number %}<span>Staff # <span class="font-semibold text-white">{{ staff_employee_number }}</span></span>{% endif %}
+                                {% if portal_employee_number %}<span class="opacity-90">Portal login <span class="font-medium text-white">{{ portal_employee_number }}</span></span>{% endif %}
+                            </p>
+                            {% endif %}
                         </div>
                     </div>
                     

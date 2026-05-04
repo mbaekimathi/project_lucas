@@ -189,7 +189,7 @@
                                                     <div class="text-xs p-1">
                                                         <i class="fas fa-book text-green-600 dark:text-green-400"></i>
                                                         <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).subject_code || '— — —'"></div>
-                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="getSlot(day, slot.time).employee_id || '— — — —'"></div>
+                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="(getSlot(day, slot.time).staff_employee_number || getSlot(day, slot.time).employee_id) || '— — — —'"></div>
                                                     </div>
                                                 </template>
                                                 <template x-if="!getSlot(day, slot.time)">
@@ -369,8 +369,8 @@ function timetableApp() {
         
         terms: [{% for term in terms %}{id:{{ term.id }},term_name:'{{ term.term_name }}',academic_year_id:{{ term.academic_year_id }}}{% if not loop.last %},{% endif %}{% endfor %}],
         
-        teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}',employee_id:'{{ (t.employee_id or "")|replace("'", "") }}',portal_employee_number:'{{ (t.portal_employee_number or "")|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
-        teacherSubjectPairs: [{% for p in teacher_subject_pairs %}{academic_level_id:{{ p.academic_level_id }},teacher_id:{{ p.teacher_id }},subject_id:{{ p.subject_id }},teacher_name:{{ p.teacher_name|tojson|safe }},employee_id:{{ (p.employee_id or '')|tojson|safe }},portal_employee_number:{{ (p.portal_employee_number or '')|tojson|safe }},subject_name:{{ p.subject_name|tojson|safe }},subject_code:{{ (p.subject_code or '')|tojson|safe }}}{% if not loop.last %},{% endif %}{% endfor %}],
+        teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}',staff_employee_number:'{{ (t.staff_employee_number or "")|replace("'", "") }}',portal_employee_number:'{{ (t.portal_employee_number or "")|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
+        teacherSubjectPairs: [{% for p in teacher_subject_pairs %}{academic_level_id:{{ p.academic_level_id }},teacher_id:{{ p.teacher_id }},subject_id:{{ p.subject_id }},teacher_name:{{ p.teacher_name|tojson|safe }},staff_employee_number:{{ (p.staff_employee_number or '')|tojson|safe }},portal_employee_number:{{ (p.portal_employee_number or '')|tojson|safe }},subject_name:{{ p.subject_name|tojson|safe }},subject_code:{{ (p.subject_code or '')|tojson|safe }}}{% if not loop.last %},{% endif %}{% endfor %}],
 
         get levelPairs() {
             if (!this.levelId) return [];
@@ -384,7 +384,7 @@ function timetableApp() {
                 if (!byTeacher[p.teacher_id]) {
                     byTeacher[p.teacher_id] = {
                         id: p.teacher_id,
-                        label: `${p.teacher_name}${p.employee_id != null && String(p.employee_id).trim() !== '' ? ' (' + p.employee_id + ')' : ''}`
+                        label: `${p.teacher_name}${(p.staff_employee_number != null && String(p.staff_employee_number).trim() !== '') ? ' (' + p.staff_employee_number + ')' : ''}`
                     };
                 }
             });
@@ -479,8 +479,8 @@ function timetableApp() {
                         teacher_id: e.teacher_id,
                         subject_id: e.subject_id,
                         teacher_name: e.teacher_name,
-                        teacher_code: e.employee_id,
-                        employee_id: e.employee_id,
+                        teacher_code: e.staff_employee_number || e.employee_id,
+                        staff_employee_number: e.staff_employee_number || e.employee_id,
                         subject_name: e.subject_name || '',
                         subject_code: e.subject_code || ''
                     }));
@@ -552,7 +552,7 @@ function timetableApp() {
             if (!this.modalTeacher || !this.modalSubject || !this.levelId) return;
             const pair = this.levelPairs.find(p => p.teacher_id == this.modalTeacher && p.subject_id == this.modalSubject);
             const teacherName = pair ? pair.teacher_name : '';
-            const teacherCode = pair ? String(pair.employee_id != null ? pair.employee_id : '').trim() : '';
+            const teacherCode = pair ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.employee_id || '')).trim() : '';
             const subject = this.modalSubjects.find(s => s.id == this.modalSubject);
             const existing = this.slots.findIndex(s => s.day === this.modalDay && s.time === this.modalTime);
             
@@ -561,7 +561,7 @@ function timetableApp() {
                 this.slots[existing].subject_id = this.modalSubject;
                 this.slots[existing].teacher_name = teacherName;
                 this.slots[existing].teacher_code = teacherCode;
-                this.slots[existing].employee_id = teacherCode;
+                this.slots[existing].staff_employee_number = teacherCode;
                 this.slots[existing].subject_name = subject ? subject.subject_name : '';
                 this.slots[existing].subject_code = subject ? subject.subject_code : '';
             } else {
@@ -572,7 +572,7 @@ function timetableApp() {
                     subject_id: this.modalSubject,
                     teacher_name: teacherName,
                     teacher_code: teacherCode,
-                    employee_id: teacherCode,
+                    staff_employee_number: teacherCode,
                     subject_name: subject ? subject.subject_name : '',
                     subject_code: subject ? subject.subject_code : ''
                 });

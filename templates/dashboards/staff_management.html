@@ -118,13 +118,15 @@
                         </div>
                         <div class="flex-1 min-w-0">
                             <p class="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">{{ employee.full_name }}</p>
+                            <p class="text-xs sm:text-sm text-gray-700 dark:text-gray-300 mt-1 font-medium">
+                                Employee number:
+                                <span class="font-mono text-gray-900 dark:text-white">{{ employee.staff_employee_number | default(employee.id|string, true) }}</span>
+                            </p>
                             <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ employee.email }}</p>
                             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-                                <span class="text-xs text-gray-600 dark:text-gray-400">Portal ID: <span class="font-mono">{{ employee.employee_id }}</span></span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400">Portal login: <span class="font-mono">{{ employee.employee_id or '—' }}</span></span>
                                 <span class="text-xs text-gray-400 hidden sm:inline">•</span>
-                                <span class="text-xs text-gray-600 dark:text-gray-400">Staff #: <span class="font-mono">{{ employee.staff_employee_number | default(employee.id|string, true) }}</span></span>
-                                <span class="text-xs text-gray-400 hidden sm:inline">•</span>
-                                <span class="text-xs text-gray-600 dark:text-gray-400 break-all">{{ employee.phone }}</span>
+                                <span class="text-xs text-gray-500 dark:text-gray-400 break-all">{{ employee.phone or '—' }}</span>
                             </div>
                         </div>
                     </div>
