@@ -88,6 +88,25 @@
     .timetable-grid th, .timetable-grid td { padding: 6px 4px; font-size: 11px; }
     .slot-btn { min-height: 50px; }
 }
+
+.teacher-view-tabs {
+    width: 100%;
+}
+.teacher-view-tabs button {
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    min-height: 44px;
+    touch-action: manipulation;
+}
+.teacher-view-tabs button.active {
+    border-bottom-color: #2563eb;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+.dark .teacher-view-tabs button.active {
+    border-bottom-color: #60a5fa;
+    color: #93c5fd;
+}
 </style>
 {% endblock %}
 
@@ -115,16 +134,16 @@
                         <option value="{{ year.id }}">{{ year.year_name }}{% if year.is_current %} (Current){% endif %}</option>
                         {% endfor %}
                     </select>
-                    <select x-model="termId" @change="loadGrid()" :disabled="!yearId"
+                    <select :key="'register-term-' + (yearId || '')" x-model="termId" @change="onTermChange()" :disabled="!yearId"
                             class="min-w-[140px] px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
                         <option value="">Term</option>
-                        <template x-for="t in terms.filter(t => t.academic_year_id == yearId)" :key="t.id">
-                            <option :value="t.id" x-text="t.term_name + (t.is_current ? ' (Current)' : '')"></option>
+                        <template x-for="t in terms.filter(t => String(t.academic_year_id) === String(yearId))" :key="t.id">
+                            <option :value="String(t.id)" x-text="(t.term_name || '') + (t.is_current ? ' (Current)' : '')"></option>
                         </template>
                     </select>
                     <select x-model="levelId" @change="onLevelChange()"
                             class="min-w-[170px] px-3 py-2 text-sm border border-blue-200 dark:border-blue-700 rounded-xl bg-blue-50/70 dark:bg-blue-900/20 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
-                        <option value="">Class/Level</option>
+                        <option value="">All classes</option>
                         {% for level in academic_levels %}
                         <option value="{{ level.id }}">{{ level.level_name }}</option>
                         {% endfor %}
@@ -143,6 +162,32 @@
     </div>
 
     <div class="p-4">
+        <!-- All classes overview (same year + term) -->
+        <div x-show="yearId && termId && !levelId" class="mb-6">
+            <div class="modern-card p-4 sm:p-5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800">
+                <h2 class="text-sm font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                    <i class="fas fa-th-large text-blue-600"></i> All classes (this term)
+                </h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Slot counts load from saved timetables. Choose <strong>Edit</strong> to open the full grid for one class.</p>
+                <div x-show="loadingSummaries" class="text-sm text-gray-500 py-6 text-center">
+                    <i class="fas fa-spinner fa-spin mr-2"></i>Loading class summaries…
+                </div>
+                <div x-show="!loadingSummaries && (!classSummaries || classSummaries.length === 0)" class="text-sm text-gray-500 py-4">No classes configured.</div>
+                <div x-show="!loadingSummaries && classSummaries && classSummaries.length" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    <template x-for="row in classSummaries" :key="'sum-' + row.id">
+                        <div class="border border-gray-200 dark:border-gray-600 rounded-xl p-4 flex flex-col">
+                            <h3 class="font-semibold text-gray-900 dark:text-white text-sm" x-text="row.level_name"></h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="row.slotCount + ' slot(s) assigned'"></p>
+                            <button type="button" @click="selectClassForEdit(row.id)"
+                                    class="mt-3 touch-btn px-3 py-2 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white self-start">
+                                <i class="fas fa-edit mr-1"></i>Edit timetable
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
         <!-- No Settings Warning -->
         <div x-show="!hasSettings" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-lg p-4 mb-4">
             <p class="text-sm text-amber-700 dark:text-amber-300">
@@ -158,6 +203,18 @@
 
         <!-- Timetable Grid -->
         <div x-show="showGrid && hasSettings" class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="teacher-view-tabs flex flex-wrap gap-2 px-4 pt-3 pb-0 border-b border-gray-200 dark:border-gray-700">
+                <button type="button"
+                        @click="teacherDisplayMode = 'numbers'"
+                        :class="teacherDisplayMode === 'numbers' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                    <i class="fas fa-id-badge mr-1.5"></i>Employee numbers
+                </button>
+                <button type="button"
+                        @click="teacherDisplayMode = 'names'"
+                        :class="teacherDisplayMode === 'names' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                    <i class="fas fa-user mr-1.5"></i>Teacher names
+                </button>
+            </div>
             <div class="overflow-x-auto">
                 <table class="timetable-grid">
                     <thead>
@@ -189,7 +246,8 @@
                                                     <div class="text-xs p-1">
                                                         <i class="fas fa-book text-green-600 dark:text-green-400"></i>
                                                         <div class="font-medium text-green-700 dark:text-green-300 mt-1" x-text="getSlot(day, slot.time).subject_code || '— — —'"></div>
-                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1" x-text="(getSlot(day, slot.time).staff_employee_number || getSlot(day, slot.time).employee_id) || '— — — —'"></div>
+                                                        <div class="text-[11px] text-green-700/90 dark:text-green-300/90 mt-1"
+                                                             x-text="teacherDisplayMode === 'names' ? (getSlot(day, slot.time).teacher_name || '—') : formatTeacherStaffNumber(getSlot(day, slot.time))"></div>
                                                     </div>
                                                 </template>
                                                 <template x-if="!getSlot(day, slot.time)">
@@ -224,10 +282,14 @@
             </div>
         </div>
 
-        <!-- Empty State -->
-        <div x-show="!showGrid && hasSettings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+        <!-- Empty State (pick a class to edit single grid) -->
+        <div x-show="!showGrid && hasSettings && levelId" class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
             <i class="fas fa-calendar-alt text-4xl text-gray-300 dark:text-gray-600 mb-3"></i>
-            <p class="text-gray-500 dark:text-gray-400">Select Year, Term, and Class to view the timetable grid</p>
+            <p class="text-gray-500 dark:text-gray-400">Loading timetable… or no slots yet for this class.</p>
+        </div>
+        <div x-show="(!yearId || !termId) && hasSettings" class="bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center border border-dashed border-gray-200 dark:border-gray-600">
+            <i class="fas fa-filter text-4xl text-gray-300 dark:text-gray-600 mb-3"></i>
+            <p class="text-gray-500 dark:text-gray-400 text-sm">Select <strong>Academic year</strong> and <strong>Term</strong> above. Use <strong>All classes</strong> for an overview, or pick one class to edit.</p>
         </div>
     </div>
 
@@ -360,17 +422,23 @@ function timetableApp() {
         autoGenErrorMessage: '',
         autoGenSubmitting: false,
         autoGenPendingPayload: null,
+        /** 'numbers' = staff / portal id; 'names' = full name */
+        teacherDisplayMode: 'numbers',
         settingsProfileName: {% if settings and settings.profile_name %}{{ settings.profile_name|tojson|safe }}{% else %}''{% endif %},
         
-        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').map((d) => d.trim()).filter(Boolean){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
         activities: {% if settings and settings.activities %}{{ settings.activities|tojson|safe }}{% else %}[]{% endif %},
         
-        terms: [{% for term in terms %}{id:{{ term.id }},term_name:'{{ term.term_name }}',academic_year_id:{{ term.academic_year_id }}}{% if not loop.last %},{% endif %}{% endfor %}],
+        terms: [{% for term in terms %}{id:{{ term.id }},term_name:{{ (term.term_name or '')|tojson }},academic_year_id:{{ term.academic_year_id }},is_current:{{ term.is_current|default(false)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}],
         
         teachers: [{% for t in teachers %}{id:{{ t.id }},name:'{{ t.full_name|replace("'", "") }}',staff_employee_number:'{{ (t.staff_employee_number or "")|replace("'", "") }}',portal_employee_number:'{{ (t.portal_employee_number or "")|replace("'", "") }}'}{% if not loop.last %},{% endif %}{% endfor %}],
         teacherSubjectPairs: [{% for p in teacher_subject_pairs %}{academic_level_id:{{ p.academic_level_id }},teacher_id:{{ p.teacher_id }},subject_id:{{ p.subject_id }},teacher_name:{{ p.teacher_name|tojson|safe }},staff_employee_number:{{ (p.staff_employee_number or '')|tojson|safe }},portal_employee_number:{{ (p.portal_employee_number or '')|tojson|safe }},subject_name:{{ p.subject_name|tojson|safe }},subject_code:{{ (p.subject_code or '')|tojson|safe }}}{% if not loop.last %},{% endif %}{% endfor %}],
+
+        academicLevels: {{ (academic_levels or [])|tojson|safe }},
+        classSummaries: [],
+        loadingSummaries: false,
 
         get levelPairs() {
             if (!this.levelId) return [];
@@ -409,19 +477,11 @@ function timetableApp() {
             return this.classTimes.length > 0;
         },
 
-        init() {
-            const years = {{ (academic_years or [])|tojson|safe }};
-            const currentYear = years.find(y => y && y.is_current);
-            if (currentYear && currentYear.id) {
-                this.yearId = String(currentYear.id);
-            } else if (years.length > 0) {
-                this.yearId = String(years[0].id);
-            }
-
+        applyDefaultTermForYear() {
             const yearTerms = this.terms.filter(t => String(t.academic_year_id) === String(this.yearId));
-            const currentYearTerm = yearTerms.find(t => t && t.is_current);
-            if (currentYearTerm && currentYearTerm.id) {
-                this.termId = String(currentYearTerm.id);
+            const cur = yearTerms.find(t => t && (t.is_current === true || t.is_current === 1));
+            if (cur && cur.id != null) {
+                this.termId = String(cur.id);
             } else if (yearTerms.length > 0) {
                 this.termId = String(yearTerms[0].id);
             } else {
@@ -429,16 +489,87 @@ function timetableApp() {
             }
         },
 
+        init() {
+            const years = {{ (academic_years or [])|tojson|safe }};
+            const currentYear = years.find(y => y && y.is_current);
+            if (currentYear && currentYear.id) {
+                this.yearId = String(currentYear.id);
+            } else if (years.length > 0) {
+                this.yearId = String(years[0].id);
+            } else {
+                this.yearId = '';
+            }
+            this.applyDefaultTermForYear();
+            Promise.resolve().then(() => {
+                if (this.levelId) {
+                    this.onLevelChange();
+                } else {
+                    this.loadAllClassSummaries();
+                }
+            });
+        },
+
         onYearChange() {
             this.showGrid = false;
-            const yearTerms = this.terms.filter(t => String(t.academic_year_id) === String(this.yearId));
-            const currentYearTerm = yearTerms.find(t => t && t.is_current);
-            if (currentYearTerm && currentYearTerm.id) {
-                this.termId = String(currentYearTerm.id);
-            } else if (yearTerms.length > 0) {
-                this.termId = String(yearTerms[0].id);
+            this.applyDefaultTermForYear();
+            Promise.resolve().then(() => {
+                if (this.levelId) {
+                    this.onLevelChange();
+                } else {
+                    this.loadAllClassSummaries();
+                }
+            });
+        },
+
+        async onTermChange() {
+            if (this.levelId) {
+                await this.onLevelChange();
             } else {
-                this.termId = '';
+                await this.loadAllClassSummaries();
+            }
+        },
+
+        async selectClassForEdit(id) {
+            this.levelId = String(id);
+            await this.onLevelChange();
+        },
+
+        async loadAllClassSummaries() {
+            if (!this.termId || this.levelId) {
+                this.classSummaries = [];
+                this.loadingSummaries = false;
+                return;
+            }
+            this.loadingSummaries = true;
+            this.classSummaries = [];
+            const tid = parseInt(this.termId, 10);
+            const levels = this.academicLevels || [];
+            if (!levels.length) {
+                this.loadingSummaries = false;
+                return;
+            }
+            try {
+                const rows = await Promise.all(levels.map(async (lvl) => {
+                    try {
+                        const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/load') }}', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ term_id: tid, academic_level_id: parseInt(lvl.id, 10) })
+                        });
+                        const data = await res.json();
+                        const entries = data.success && data.entries ? data.entries : [];
+                        return {
+                            id: lvl.id,
+                            level_name: lvl.level_name || '',
+                            slotCount: entries.length
+                        };
+                    } catch (e) {
+                        return { id: lvl.id, level_name: lvl.level_name || '', slotCount: 0 };
+                    }
+                }));
+                this.classSummaries = rows;
+            } finally {
+                this.loadingSummaries = false;
             }
         },
         
@@ -464,12 +595,12 @@ function timetableApp() {
             }
             this.showGrid = true;
             this.slots = [];
-            
+
             try {
                 const res = await fetch('{{ employee_dash_url('timetable-management/register-timetable/load') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ term_id: parseInt(this.termId), academic_level_id: parseInt(this.levelId) })
+                    body: JSON.stringify({ term_id: parseInt(this.termId, 10), academic_level_id: parseInt(this.levelId, 10) })
                 });
                 const data = await res.json();
                 if (data.success && data.entries) {
@@ -481,6 +612,7 @@ function timetableApp() {
                         teacher_name: e.teacher_name,
                         teacher_code: e.staff_employee_number || e.employee_id,
                         staff_employee_number: e.staff_employee_number || e.employee_id,
+                        portal_employee_id: String(e.portal_employee_id || '').trim(),
                         subject_name: e.subject_name || '',
                         subject_code: e.subject_code || ''
                     }));
@@ -495,10 +627,11 @@ function timetableApp() {
                 this.activities = [];
                 this.days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
                 this.settingsProfileName = '';
+                await this.loadAllClassSummaries();
                 return;
             }
             await this.loadLevelSettings();
-            this.loadGrid();
+            await this.loadGrid();
         },
 
         async loadLevelSettings() {
@@ -533,6 +666,23 @@ function timetableApp() {
         getSlot(day, time) {
             return this.slots.find(s => s.day === day && s.time === time);
         },
+
+        _isSixDigitPortalId(s) {
+            return /^\d{6}$/.test(String(s || '').trim());
+        },
+
+        formatTeacherStaffNumber(slot) {
+            if (!slot) return '—';
+            const staff = String(slot.staff_employee_number || slot.teacher_code || '').trim();
+            const portal = String(slot.portal_employee_id || slot.portal_employee_number || '').trim();
+            if (this._isSixDigitPortalId(portal)) {
+                return staff || '—';
+            }
+            if (staff && portal && staff !== portal) {
+                return `${staff} · ${portal}`;
+            }
+            return staff || portal || '—';
+        },
         
         getTimeLabel(time) {
             const slot = this.timeSlots.find(s => s.time === time);
@@ -552,7 +702,14 @@ function timetableApp() {
             if (!this.modalTeacher || !this.modalSubject || !this.levelId) return;
             const pair = this.levelPairs.find(p => p.teacher_id == this.modalTeacher && p.subject_id == this.modalSubject);
             const teacherName = pair ? pair.teacher_name : '';
-            const teacherCode = pair ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.employee_id || '')).trim() : '';
+            const teacherCode = pair
+                ? String(
+                      pair.staff_employee_number != null && String(pair.staff_employee_number).trim() !== ''
+                          ? pair.staff_employee_number
+                          : (pair.portal_employee_number || '')
+                  ).trim()
+                : '';
+            const portalId = pair ? String(pair.portal_employee_number || '').trim() : '';
             const subject = this.modalSubjects.find(s => s.id == this.modalSubject);
             const existing = this.slots.findIndex(s => s.day === this.modalDay && s.time === this.modalTime);
             
@@ -562,6 +719,7 @@ function timetableApp() {
                 this.slots[existing].teacher_name = teacherName;
                 this.slots[existing].teacher_code = teacherCode;
                 this.slots[existing].staff_employee_number = teacherCode;
+                this.slots[existing].portal_employee_id = portalId;
                 this.slots[existing].subject_name = subject ? subject.subject_name : '';
                 this.slots[existing].subject_code = subject ? subject.subject_code : '';
             } else {
@@ -573,6 +731,7 @@ function timetableApp() {
                     teacher_name: teacherName,
                     teacher_code: teacherCode,
                     staff_employee_number: teacherCode,
+                    portal_employee_id: portalId,
                     subject_name: subject ? subject.subject_name : '',
                     subject_code: subject ? subject.subject_code : ''
                 });

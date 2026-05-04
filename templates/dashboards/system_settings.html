@@ -4,7 +4,7 @@
 
 {% block sidebar_content %}
 <div class="space-y-1" x-data="{ currentHash: window.location.hash || '' }" @hashchange.window="currentHash = window.location.hash || ''">
-    {% if is_technician %}
+    {% if is_technician or is_accountant %}
     <a href="{{ dashboard_home_url() }}"
         class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
         <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
@@ -12,7 +12,27 @@
     </a>
 
     <div class="px-4 py-2">
-        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System Configuration</h3>
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Academic</h3>
+    </div>
+
+    {% if is_accountant %}
+    <a href="{{ employee_dash_url('student-fees') }}"
+        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800 {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-money-check-alt w-5 text-center" aria-hidden="true"></i>
+        <span>Student Fees</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
+    </a>
+    {% endif %}
+
+    <a href="{{ employee_dash_url('academic-settings') }}"
+        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800 {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-calendar-alt w-5 text-center" aria-hidden="true"></i>
+        <span>Academic Settings</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
+    </a>
+
+    <div class="px-4 py-2 pt-4">
+        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">System Configuration</h3>
     </div>
 
     <a href="{{ employee_dash_url('system-settings') }}#school-profile"
@@ -73,7 +93,7 @@
     </a>
     {% else %}
     <div class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-        Sidebar links are available for technician role only on this page.
+        Sidebar links are available for users with system settings access.
     </div>
     {% endif %}
 </div>

@@ -3,36 +3,9 @@
 {% block title %}{{ student.full_name }} - Progress Report - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('student-management') }}"
-   class="sidebar-item">
-    <i class="fas fa-user-graduate w-5"></i>
-    <span>Student Management</span>
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
 </a>
-<a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Student Attendance</span>
-</a>
-<a href="{{ employee_dash_url('student-management/students-progress') }}"
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-chart-line w-5"></i>
-    <span>Students Progress</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-<a href="{{ employee_dash_url('admission') }}"
-   class="sidebar-item">
-    <i class="fas fa-user-plus w-5"></i>
-    <span>Register Student</span>
-</a>
-{% set user_role = session.get('role', '')|lower %}
-{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
-{% if user_role == 'head of institution' or viewing_as_role == 'head of institution' %}
-<a href="{{ employee_dash_url('student-fees') }}"
-   class="sidebar-item">
-    <i class="fas fa-money-bill-wave w-5"></i>
-    <span>Fees / Payments</span>
-</a>
-{% endif %}
 {% endblock %}
 
 {% block content %}

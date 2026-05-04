@@ -155,6 +155,25 @@
 .save-status {
     transition: all 0.3s;
 }
+
+.teacher-view-tabs {
+    width: 100%;
+}
+.teacher-view-tabs button {
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    min-height: 44px;
+    touch-action: manipulation;
+}
+.teacher-view-tabs button.active {
+    border-bottom-color: #2563eb;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+.dark .teacher-view-tabs button.active {
+    border-bottom-color: #60a5fa;
+    color: #93c5fd;
+}
 </style>
 {% endblock %}
 
@@ -275,6 +294,19 @@
                 </div>
                     </div>
 
+            <div class="teacher-view-tabs flex flex-wrap gap-2 px-4 pt-3 pb-0 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                <button type="button"
+                        @click="teacherDisplayMode = 'numbers'"
+                        :class="teacherDisplayMode === 'numbers' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                    <i class="fas fa-id-badge mr-1.5"></i>Employee numbers
+                </button>
+                <button type="button"
+                        @click="teacherDisplayMode = 'names'"
+                        :class="teacherDisplayMode === 'names' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-t-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                    <i class="fas fa-user mr-1.5"></i>Teacher names
+                </button>
+            </div>
+
             <!-- Timetable Grid -->
             <div class="p-4 overflow-x-auto">
                 <table class="tt-table">
@@ -298,7 +330,8 @@
                                             <template x-if="getSlot(day, time)">
                                                 <div>
                                                     <div class="teacher-name font-medium" x-text="getSlot(day, time)?.subject_code || '— — —'"></div>
-                                                    <div class="subject-name text-[11px] text-blue-700 dark:text-blue-300 mt-1" x-text="(getSlot(day, time)?.staff_employee_number || getSlot(day, time)?.employee_id) || '— — — —'"></div>
+                                                    <div class="subject-name text-[11px] text-blue-700 dark:text-blue-300 mt-1"
+                                                         x-text="teacherDisplayMode === 'names' ? (getSlot(day, time)?.teacher_name || '—') : formatTeacherStaffNumber(getSlot(day, time))"></div>
                                                     <button @click.stop="removeSlot(day, time)" 
                                                             class="cell-actions text-red-500 hover:text-red-700 text-xs">
                                                         <i class="fas fa-times"></i>
@@ -493,7 +526,9 @@ function manageApp() {
         loadingConflicts: false,
         settingsProfileName: '',
         conflicts: {},  // { teacher_id: class_name }
-        
+        /** 'numbers' = staff / portal id; 'names' = full name */
+        teacherDisplayMode: 'numbers',
+
         toast: {
             show: false,
             hiding: false,
@@ -504,7 +539,7 @@ function manageApp() {
         
         academicYears: {{ academic_years | tojson | safe if academic_years else '[]' }},
         terms: {{ terms | tojson | safe if terms else '[]' }},
-        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').map((d) => d.trim()).filter(Boolean){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         teachers: {{ teachers | tojson | safe if teachers else '[]' }},
         teacherSubjectPairs: {{ teacher_subject_pairs | tojson | safe if teacher_subject_pairs else '[]' }},
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
@@ -704,7 +739,9 @@ function manageApp() {
                             subject_id: entry.subject_id,
                             subject_code: entry.subject_code || '',
                             subject_name: entry.subject_name || '',
-                            staff_employee_number: (entry.staff_employee_number || entry.employee_id || '').trim()
+                            teacher_name: entry.teacher_name || '',
+                            staff_employee_number: (entry.staff_employee_number || entry.employee_id || '').trim(),
+                            portal_employee_id: String(entry.portal_employee_id || '').trim()
                         };
                     });
                 }
@@ -718,7 +755,24 @@ function manageApp() {
         getSlot(day, time) {
             return this.slots[`${day}|${time}`] || null;
         },
-        
+
+        _isSixDigitPortalId(s) {
+            return /^\d{6}$/.test(String(s || '').trim());
+        },
+
+        formatTeacherStaffNumber(slot) {
+            if (!slot) return '—';
+            const staff = String(slot.staff_employee_number || '').trim();
+            const portal = String(slot.portal_employee_id || slot.portal_employee_number || '').trim();
+            if (this._isSixDigitPortalId(portal)) {
+                return staff || '—';
+            }
+            if (staff && portal && staff !== portal) {
+                return `${staff} · ${portal}`;
+            }
+            return staff || portal || '—';
+        },
+
         getTeacherName(teacherId) {
             const teacher = this.teachers.find(t => t.id == teacherId);
             return teacher ? teacher.full_name : 'Unknown';
@@ -783,18 +837,25 @@ function manageApp() {
             const key = `${this.modalDay}|${this.modalTime}`;
             const subject = this.modalSubjects.find(s => s.id == subjectId);
             const pair = this.levelPairs.find(p => String(p.teacher_id) === String(teacherId) && String(p.subject_id) === String(subjectId));
-            const refId = pair ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.employee_id || '')).trim() : '';
+            const teacher = this.teachers.find(t => t.id == teacherId);
+            const refId = pair
+                ? String(pair.staff_employee_number != null ? pair.staff_employee_number : (pair.portal_employee_number || '')).trim()
+                : String(teacher?.staff_employee_number || teacher?.portal_employee_number || '').trim();
+            const portalId = pair
+                ? String(pair.portal_employee_number || '').trim()
+                : String(teacher?.portal_employee_number || '').trim();
             this.slots[key] = {
                 teacher_id: teacherId,
                 subject_id: subjectId,
                 subject_name: subject ? subject.subject_name : '',
                 subject_code: subject ? subject.subject_code : '',
-                staff_employee_number: refId
+                teacher_name: pair ? (pair.teacher_name || '') : (teacher ? teacher.full_name : ''),
+                staff_employee_number: refId,
+                portal_employee_id: portalId
             };
             this.closeModal();
             await this.saveChanges();
-            
-            const teacher = this.teachers.find(t => t.id == teacherId);
+
             this.showToast('success', 'Teacher Assigned', `${teacher?.full_name || 'Teacher'} assigned successfully`);
         },
         

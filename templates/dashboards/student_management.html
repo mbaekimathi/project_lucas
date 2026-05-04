@@ -4,6 +4,10 @@
 
 {% block sidebar_content %}
 <!-- Student Management Links -->
+{% set user_role = session.get('role', '')|lower %}
+{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% set is_curriculum_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator' %}
+{% if not is_curriculum_coordinator %}
 <a href="{{ employee_dash_url('student-management') }}" 
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-graduate w-5"></i>
@@ -16,6 +20,7 @@
     <i class="fas fa-user-plus w-5"></i>
     <span>Register Student</span>
 </a>
+{% endif %}
 
 <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
    class="sidebar-item">
@@ -29,8 +34,6 @@
     <span>Students Progress</span>
 </a>
 
-{% set user_role = session.get('role', '')|lower %}
-{% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
 {% if user_role == 'head of institution' or viewing_as_role == 'head of institution' %}
 <a href="{{ employee_dash_url('student-fees') }}" 
    class="sidebar-item">

@@ -1,9 +1,308 @@
 {% extends "base.html" %}
 
-{% block title %}Exams and Grades - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}My supervised exams - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .exam-eg-sheet {
+        --exam-eg-border: rgb(55 65 81);
+        --exam-eg-head: rgb(6 95 70);
+        --exam-eg-head-text: rgb(255 255 255);
+        --exam-eg-stripe: rgba(16, 185, 129, 0.06);
+    }
+    .dark .exam-eg-sheet {
+        --exam-eg-border: rgb(209 213 219);
+        --exam-eg-head: rgb(4 120 87);
+        --exam-eg-stripe: rgba(16, 185, 129, 0.12);
+    }
+    .exam-eg-banner {
+        background: linear-gradient(135deg, rgb(16 185 129), rgb(4 120 87));
+        color: #fff;
+        border-radius: 0.5rem 0.5rem 0 0;
+        padding: 0.65rem 1rem;
+        border: 2px solid var(--exam-eg-head);
+        border-bottom: none;
+    }
+    @media (max-width: 1023px) {
+        .exam-eg-banner {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.35rem;
+            padding: 0.75rem 0.85rem;
+        }
+        .exam-eg-banner .exam-eg-slot-count {
+            margin-left: 0 !important;
+            margin-top: 0.15rem;
+        }
+    }
+    .exam-eg-table-wrap {
+        border: 2px solid var(--exam-eg-border);
+        border-radius: 0 0 0.5rem 0.5rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        background: rgb(255 255 255);
+    }
+    .dark .exam-eg-table-wrap {
+        background: rgb(17 24 39);
+    }
+    .exam-eg-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+        min-width: 38rem;
+    }
+    .exam-eg-table.exam-eg-table--sessions {
+        min-width: 28rem;
+        font-size: 0.78rem;
+    }
+    .exam-eg-group-wrap {
+        margin-bottom: 1rem;
+    }
+    .exam-eg-group-wrap:last-child {
+        margin-bottom: 0;
+    }
+    .exam-eg-group-title {
+        background: linear-gradient(90deg, rgb(236 253 245), rgb(209 250 229));
+        border: 2px solid var(--exam-eg-border);
+        border-bottom: none;
+        border-radius: 0.35rem 0.35rem 0 0;
+        padding: 0.5rem 0.65rem;
+        font-weight: 800;
+        font-size: 0.875rem;
+        line-height: 1.3;
+        color: rgb(6 78 59);
+        word-break: break-word;
+    }
+    .dark .exam-eg-group-title {
+        background: linear-gradient(90deg, rgb(17 24 39), rgb(6 95 70));
+        color: rgb(209 250 229);
+    }
+    .exam-eg-group-table-wrap {
+        border: 2px solid var(--exam-eg-border);
+        border-radius: 0 0 0.35rem 0.35rem;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        background: rgb(255 255 255);
+    }
+    .dark .exam-eg-group-table-wrap {
+        background: rgb(17 24 39);
+    }
+    .exam-eg-mobile-group {
+        margin-bottom: 0.75rem;
+    }
+    .exam-eg-mobile-group:last-child {
+        margin-bottom: 0;
+    }
+    .exam-eg-tt-name--group {
+        margin-bottom: 0.4rem;
+        padding-bottom: 0.4rem;
+        font-size: 0.875rem;
+    }
+    .exam-eg-mobile-card--session {
+        padding: 0.45rem 0.55rem;
+        margin-bottom: 0.35rem;
+        border-radius: 0.35rem;
+    }
+    .exam-eg-mobile-card--session:last-child {
+        margin-bottom: 0;
+    }
+    .exam-eg-table th {
+        background: var(--exam-eg-head);
+        color: var(--exam-eg-head-text);
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-size: 0.6875rem;
+        padding: 0.65rem 0.5rem;
+        border: 1px solid var(--exam-eg-head);
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .exam-eg-table td {
+        border: 1px solid var(--exam-eg-border);
+        padding: 0.5rem 0.5rem;
+        vertical-align: top;
+    }
+    .exam-eg-table tbody tr:nth-child(even) td {
+        background: var(--exam-eg-stripe);
+    }
+    .exam-eg-period {
+        width: 2.25rem;
+        text-align: center;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        background: rgb(243 244 246) !important;
+        color: rgb(55 65 81);
+        border-right: 2px solid var(--exam-eg-border) !important;
+    }
+    .dark .exam-eg-period {
+        background: rgb(31 41 55) !important;
+        color: rgb(229 231 235);
+    }
+    .exam-eg-time {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+    }
+    .exam-eg-code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-weight: 700;
+        font-size: 0.8125rem;
+    }
+    .exam-eg-muted {
+        color: rgb(107 114 128);
+        font-size: 0.7rem;
+    }
+    .dark .exam-eg-muted {
+        color: rgb(156 163 175);
+    }
+    .exam-eg-mobile-card {
+        border-radius: 0.5rem;
+        border: 1px solid rgb(229 231 235);
+        padding: 0.6rem 0.65rem;
+        background: rgb(255 255 255);
+    }
+    .dark .exam-eg-mobile-card {
+        border-color: rgb(55 65 81);
+        background: rgb(31 41 55);
+    }
+    @media (min-width: 400px) {
+        .exam-eg-mobile-card {
+            padding: 0.65rem 0.75rem;
+        }
+    }
+    .exam-eg-mobile-card .exam-eg-code {
+        font-size: 0.6875rem;
+        font-weight: 600;
+    }
+    .exam-eg-mobile-card .exam-eg-muted {
+        font-size: 0.625rem;
+    }
+    /* Mobile: timetable-style slot (exam title on top) */
+    .exam-eg-tt-name {
+        font-size: 0.9375rem;
+        font-weight: 800;
+        line-height: 1.25;
+        word-break: break-word;
+        margin: 0 0 0.45rem 0;
+        padding: 0 0 0.45rem 0;
+        border-bottom: 2px solid rgba(16, 185, 129, 0.35);
+        color: rgb(17 24 39);
+    }
+    h3.exam-eg-tt-name {
+        font-weight: 800;
+    }
+    .dark .exam-eg-tt-name {
+        color: rgb(243 244 246);
+        border-bottom-color: rgba(52, 211, 153, 0.35);
+    }
+    .exam-eg-tt-slot {
+        display: grid;
+        grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+        gap: 0.4rem 0.5rem;
+        align-items: start;
+        margin-top: 0.35rem;
+    }
+    .exam-eg-tt-time {
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+        font-size: 0.8125rem;
+        line-height: 1.3;
+        color: rgb(4 120 87);
+        border-right: 2px solid rgba(16, 185, 129, 0.45);
+        padding-right: 0.45rem;
+        min-height: 2.5rem;
+    }
+    .dark .exam-eg-tt-time {
+        color: rgb(110 231 183);
+        border-right-color: rgba(52, 211, 153, 0.4);
+    }
+    .exam-eg-tt-main {
+        font-size: 0.75rem;
+        line-height: 1.45;
+        color: rgb(55 65 81);
+        min-width: 0;
+    }
+    .dark .exam-eg-tt-main {
+        color: rgb(209 213 219);
+    }
+    .exam-eg-tt-main .exam-eg-tt-line + .exam-eg-tt-line {
+        margin-top: 0.2rem;
+    }
+    .exam-eg-tt-k {
+        font-size: 0.5625rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: rgb(107 114 128);
+        margin-right: 0.25rem;
+    }
+    .dark .exam-eg-tt-k {
+        color: rgb(156 163 175);
+    }
+    .exam-eg-tt-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.12rem 0.35rem;
+        border-radius: 0.25rem;
+        font-size: 0.5625rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        line-height: 1.15;
+        max-width: 5.5rem;
+        text-align: center;
+        justify-content: center;
+    }
+    .exam-eg-tt-pnum {
+        display: block;
+        font-size: 0.5625rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        opacity: 0.88;
+        margin-bottom: 0.2rem;
+    }
+    .exam-eg-mobile-actions {
+        margin-top: 0.5rem;
+        padding-top: 0.45rem;
+        border-top: 1px solid rgb(229 231 235);
+    }
+    .dark .exam-eg-mobile-actions {
+        border-top-color: rgb(55 65 81);
+    }
+    .exam-eg-touch {
+        min-height: 2.5rem;
+        touch-action: manipulation;
+    }
+    .exam-eg-mobile-card .exam-eg-touch {
+        min-height: 2.4rem;
+        padding-top: 0.45rem;
+        padding-bottom: 0.45rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+    }
+    #exam-eg-root[data-loading="1"] {
+        opacity: 0.72;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+    }
+    .exam-eg-page-shell {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    }
+    @media print {
+        .exam-eg-sheet { break-inside: avoid; page-break-inside: avoid; }
+        .exam-eg-banner, .exam-eg-table th {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('exams-and-grades') }}" 
+<a href="{{ employee_dash_url('exams-and-grades') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exams and Grades</span>
@@ -12,41 +311,41 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto" x-data="{ lockedModal: false }">
-    <!-- Modern Hero Header -->
-    <div class="page-hero mb-6 sm:mb-8">
-        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-6">
-                <div class="flex items-center gap-4">
+<div id="exam-eg-page" class="exam-eg-page-shell p-3 sm:p-5 md:p-6 lg:p-8 page-content max-w-[100rem] mx-auto" x-data="{ lockedModal: false }">
+    <div class="page-hero mb-5 sm:mb-8">
+        <div class="relative px-3 sm:px-6 lg:px-8 py-5 sm:py-8">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6 min-w-0">
+                <div class="flex items-start gap-3 sm:gap-4 min-w-0 flex-1">
                     <div class="page-hero-icon flex-shrink-0">
-                        <i class="fas fa-clipboard-check text-white text-xl sm:text-2xl"></i>
+                        <i class="fas fa-calendar-alt text-white text-xl sm:text-2xl"></i>
                     </div>
-                    <div>
-                        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Exams and Grades</h1>
-                        <p class="text-white/90 text-sm sm:text-base">Manage exams and student grades for your assigned subjects.</p>
+                    <div class="min-w-0 flex-1">
+                        <h1 class="text-lg sm:text-2xl md:text-3xl font-bold text-white mb-1 leading-tight">My supervised exams</h1>
+                        <p class="text-white/90 text-sm sm:text-base leading-relaxed">Sessions where you are assigned as exam supervisor: date, time, class, subject, venue, and status.</p>
                     </div>
+                </div>
+                <div id="exam-eg-summary" class="w-full lg:w-auto shrink-0 px-3 py-2.5 sm:px-4 sm:py-2.5 rounded-xl bg-white/15 text-white text-sm font-semibold border border-white/25 text-center lg:text-left whitespace-normal">
+                    {{ total_slots }} slot{{ '' if total_slots == 1 else 's' }} · {{ timetable_by_date|length }} day{{ '' if timetable_by_date|length == 1 else 's' }}
                 </div>
             </div>
         </div>
     </div>
 
     {% if is_technician and not viewing_as_employee_info|default(none) %}
-    <!-- Message for technician to select employee -->
     <div class="modern-card p-4 sm:p-6 mb-6 border-l-4 border-blue-500">
         <div class="flex items-start gap-4">
             <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
                 <i class="fas fa-info-circle text-blue-600 dark:text-blue-400 text-xl"></i>
             </div>
             <div>
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Select an Employee</h3>
-                <p class="text-gray-600 dark:text-gray-400">Please select an employee from the dropdown in the header to view their assigned academic levels and exams.</p>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Technician view</h3>
+                <p class="text-gray-600 dark:text-gray-400 text-sm">The timetable shows supervised exams for the selected teacher. Pick a teacher in the header to load their slots.</p>
             </div>
         </div>
     </div>
     {% endif %}
 
     {% if is_technician and viewing_as_employee_info|default(none) %}
-    <!-- Selected Employee Info -->
     <div class="modern-card p-4 sm:p-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div class="flex items-center gap-3 sm:gap-4">
             <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
@@ -57,256 +356,569 @@
                 <p class="text-sm text-gray-600 dark:text-gray-400">Employee ID: {{ viewing_as_employee_info.employee_id }}</p>
             </div>
         </div>
-        <a href="/switch-employee/0?redirect={{ request.path }}" 
+        <a href="/switch-employee/0?redirect={{ request.path }}"
            class="touch-btn px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg">
-            <i class="fas fa-times mr-2"></i>
-            Clear Selection
+            <i class="fas fa-times mr-2"></i>Clear selection
         </a>
     </div>
     {% endif %}
 
-    <!-- Academic Levels Assigned -->
-    <div class="modern-card p-4 sm:p-6 mb-6">
-        <div class="section-header mb-4">
-            <div class="section-header-icon bg-emerald-100 dark:bg-emerald-900/30">
-                <i class="fas fa-graduation-cap text-emerald-600 dark:text-emerald-400"></i>
+    <div class="modern-card p-3 sm:p-5 mb-5 sm:mb-6 min-w-0">
+        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3 leading-snug">
+            <i class="fas fa-bolt mr-1 text-green-600 dark:text-green-400"></i>
+            Filters refresh the timetable without reloading the page.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 items-stretch sm:items-end">
+            <div class="min-w-0">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5" for="exam-eg-year">Academic year</label>
+                <select id="exam-eg-year" class="exam-eg-touch w-full max-w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-3 sm:py-2.5 text-base sm:text-sm">
+                    <option value="">All years</option>
+                    {% for year in academic_years %}
+                    <option value="{{ year.id }}" {% if selected_year_id == year.id %}selected{% endif %}>{{ year.year_name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            <div class="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h2 class="text-lg font-bold text-gray-900 dark:text-white">
-                {% if is_technician and viewing_as_employee_info|default(none) %}
-                Academic Levels ({{ viewing_as_employee_info.full_name }})
-                {% else %}
-                My Academic Levels
-                {% endif %}
-                </h2>
-                {% if academic_levels and academic_levels|length > 0 %}
-                <span class="modern-badge bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300">
-                    {{ academic_levels|length }} level{{ 's' if academic_levels|length != 1 else '' }}
-                </span>
-                {% endif %}
+            <div class="min-w-0">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5" for="exam-eg-term">Term</label>
+                <select id="exam-eg-term" class="exam-eg-touch w-full max-w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-3 sm:py-2.5 text-base sm:text-sm">
+                    <option value="">All terms</option>
+                    {% for term in terms %}
+                    <option value="{{ term.id }}" {% if selected_term_id == term.id %}selected{% endif %}>{{ term.term_name }}{% if term.academic_year_name %} — {{ term.academic_year_name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="min-w-0">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5" for="exam-eg-exam">Exam</label>
+                <select id="exam-eg-exam" class="exam-eg-touch w-full max-w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-3 sm:py-2.5 text-base sm:text-sm">
+                    <option value="">All exams</option>
+                    {% for exam_name in exams_for_filter %}
+                    <option value="{{ exam_name }}" {% if selected_exam_name == exam_name %}selected{% endif %}>{{ exam_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="min-w-0">
+                <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5" for="exam-eg-class">Class</label>
+                <select id="exam-eg-class" class="exam-eg-touch w-full max-w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 px-3 py-3 sm:py-2.5 text-base sm:text-sm">
+                    <option value="">All classes</option>
+                    {% for c in classes_for_filter %}
+                    <option value="{{ c.id }}" {% if selected_class_id == c.id %}selected{% endif %}>{{ c.level_name }}{% if c.level_category %} ({{ c.level_category }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="xl:col-span-2 flex flex-col sm:flex-row gap-2 lg:justify-end sm:items-end">
+                <button type="button" id="exam-eg-reset"
+                        class="exam-eg-touch inline-flex items-center justify-center px-4 py-3 sm:py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-base sm:text-sm font-semibold w-full sm:w-auto">
+                    <i class="fas fa-undo mr-2"></i>Clear filters
+                </button>
             </div>
         </div>
-        
-        {% if academic_levels and academic_levels|length > 0 %}
-        <!-- Desktop Grid View -->
-        <div class="responsive-grid-2 hidden md:grid">
-            {% for level in academic_levels %}
-            <div class="modern-card p-5 border-l-4 border-emerald-500 hover:border-emerald-600">
-                <div class="mb-4">
-                    <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mb-3">
-                        <i class="fas fa-graduation-cap text-white text-xl"></i>
-                    </div>
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">{{ level.level_name }}</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">{{ level.level_category }}</p>
+    </div>
+
+    <div id="exam-eg-root" data-loading="0">
+        {% if not timetable_by_date %}
+        <div class="modern-card p-6 sm:p-10 px-4 text-center text-gray-600 dark:text-gray-400 rounded-2xl text-sm sm:text-base leading-relaxed">
+            No exam timetables match this filter.
+        </div>
+        {% else %}
+        <div class="space-y-8 exam-eg-sheet">
+            {% for day in timetable_by_date %}
+            <section aria-labelledby="exam-eg-{{ loop.index }}-title">
+                <div id="exam-eg-{{ loop.index }}-title" class="exam-eg-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    {% if day.weekday %}
+                    <span class="text-base sm:text-lg font-extrabold tracking-tight">{{ day.weekday }}</span>
+                    <span class="text-xs sm:text-sm font-semibold opacity-95 break-words">{{ day.date_heading }}</span>
+                    {% else %}
+                    <span class="text-base sm:text-lg font-extrabold tracking-tight break-words">{{ day.date_heading }}</span>
+                    {% endif %}
+                    <span class="exam-eg-slot-count text-xs opacity-90 lg:ml-auto font-medium">{{ day.slots|length }} period{{ '' if day.slots|length == 1 else 's' }}</span>
                 </div>
-                <div class="mb-4">
-                    <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">Subjects ({{ level.subjects|length }})</p>
-                    <div class="flex flex-wrap gap-2">
-                        {% for subject in level.subjects %}
-                        <span class="px-2 py-1 bg-white dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-600">
-                            {{ subject.subject_name }}
-                        </span>
+
+                <div class="hidden lg:block space-y-0">
+                    {% for group in day.exam_groups %}
+                    <div class="exam-eg-group-wrap">
+                        <div class="exam-eg-group-title flex flex-wrap items-center gap-2">
+                            <span>{{ group.exam_name }}</span>
+                            {% if group.exam_is_locked %}
+                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100"><i class="fas fa-lock mr-0.5"></i>Locked</span>
+                            {% endif %}
+                        </div>
+                        <div class="exam-eg-group-table-wrap shadow-inner">
+                            <table class="exam-eg-table exam-eg-table--sessions">
+                                <thead>
+                                    <tr>
+                                        <th class="exam-eg-period">#</th>
+                                        <th>Time</th>
+                                        <th>Class</th>
+                                        <th>Subject</th>
+                                        <th>Venue</th>
+                                        <th>Status</th>
+                                        <th>Grades</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for slot in group.slots %}
+                                    <tr>
+                                        <td class="exam-eg-period">{{ slot.day_period }}</td>
+                                        <td class="exam-eg-time text-gray-900 dark:text-gray-100">
+                                            {% if slot.start_time or slot.end_time %}
+                                            {{ slot.start_time or '—' }}–{{ slot.end_time or '—' }}
+                                            {% endif %}
+                                            {% if slot.session_type %}
+                                            {% if slot.start_time or slot.end_time %}<br>{% endif %}
+                                            <span class="exam-eg-muted font-semibold">{{ slot.session_type }}</span>
+                                            {% elif not slot.start_time and not slot.end_time %}
+                                            <span class="exam-eg-muted">—</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-gray-900 dark:text-gray-100">
+                                            <span class="font-semibold">{{ slot.level_name or '—' }}</span>
+                                            {% if slot.level_category %}<br><span class="exam-eg-muted">{{ slot.level_category }}</span>{% endif %}
+                                        </td>
+                                        <td class="text-gray-900 dark:text-gray-100">
+                                            {% if slot.subject_code %}
+                                            <span class="exam-eg-code text-emerald-800 dark:text-emerald-300">{{ slot.subject_code }}</span>
+                                            {% if slot.subject_name %}<br><span class="exam-eg-muted">{{ slot.subject_name }}</span>{% endif %}
+                                            {% elif slot.subject_name %}{{ slot.subject_name }}
+                                            {% else %}<span class="exam-eg-muted">—</span>{% endif %}
+                                        </td>
+                                        <td class="exam-eg-code text-gray-800 dark:text-gray-200 font-semibold">{{ slot.venue or '—' }}</td>
+                                        <td>
+                                            {% set st = (slot.status or 'scheduled')|lower %}
+                                            <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase
+                                                {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
+                                                {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+                                                {% elif st == 'completed' %}bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200
+                                                {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
+                                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                                                {{ slot.status or 'scheduled' }}
+                                            </span>
+                                        </td>
+                                        <td class="whitespace-nowrap">
+                                            {% if slot.exam_is_locked %}
+                                            <button type="button" @click="lockedModal = true" class="touch-btn inline-flex items-center px-3 py-2 bg-gray-400 dark:bg-gray-600 text-white rounded-lg text-xs font-semibold">Locked</button>
+                                            {% elif slot.level_id %}
+                                            <a href="{{ employee_dash_url('exams-assessments/level/' ~ slot.level_id ~ '/students') }}" class="touch-btn inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold">Open</a>
+                                            {% else %}<span class="exam-eg-muted">—</span>{% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="lg:hidden space-y-2 p-2 sm:p-2.5 border-x-2 border-b-2 rounded-b-lg min-w-0" style="border-color: var(--exam-eg-border); background: rgba(16,185,129,0.04);">
+                    {% for group in day.exam_groups %}
+                    <div class="exam-eg-mobile-group">
+                        <h3 class="exam-eg-tt-name exam-eg-tt-name--group">{{ group.exam_name }}{% if group.exam_is_locked %} <span class="text-amber-600 dark:text-amber-400 align-middle" title="Locked"><i class="fas fa-lock text-[0.65rem]" aria-hidden="true"></i></span>{% endif %}</h3>
+                        {% for slot in group.slots %}
+                        {% set st = (slot.status or 'scheduled')|lower %}
+                        <article class="exam-eg-mobile-card exam-eg-mobile-card--session shadow-sm min-w-0">
+                            <div class="exam-eg-tt-slot">
+                                <div class="exam-eg-tt-time">
+                                    <span class="exam-eg-tt-pnum">#{{ slot.day_period }}</span>
+                                    {% if slot.start_time or slot.end_time %}{{ slot.start_time or '—' }}–{{ slot.end_time or '—' }}{% else %}—{% endif %}
+                                </div>
+                                <div class="exam-eg-tt-main">
+                                    {% if slot.session_type %}<div class="exam-eg-tt-line exam-eg-muted font-semibold">{{ slot.session_type }}</div>{% endif %}
+                                    <div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Class</span>{{ slot.level_name or '—' }}{% if slot.level_category %} <span class="exam-eg-muted">({{ slot.level_category }})</span>{% endif %}</div>
+                                    <div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Subject</span>{% if slot.subject_code %}<span class="exam-eg-code text-emerald-800 dark:text-emerald-300">{{ slot.subject_code }}</span>{% if slot.subject_name %} {% endif %}{% endif %}{{ slot.subject_name or '—' }}</div>
+                                    <div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Venue</span><span class="exam-eg-code font-semibold">{{ slot.venue or '—' }}</span></div>
+                                </div>
+                                <span class="exam-eg-tt-badge
+                                    {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300
+                                    {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300
+                                    {% elif st == 'completed' %}bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200
+                                    {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300
+                                    {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                                    {{ slot.status or 'scheduled' }}
+                                </span>
+                            </div>
+                            <div class="exam-eg-mobile-actions">
+                                {% if slot.exam_is_locked %}
+                                <button type="button" @click="lockedModal = true" class="exam-eg-touch w-full touch-btn rounded-lg bg-gray-500 text-white font-semibold">Locked</button>
+                                {% elif slot.level_id %}
+                                <a href="{{ employee_dash_url('exams-assessments/level/' ~ slot.level_id ~ '/students') }}" class="exam-eg-touch block w-full text-center touch-btn rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">Grades</a>
+                                {% endif %}
+                            </div>
+                        </article>
                         {% endfor %}
                     </div>
-                </div>
-                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
-                   class="w-full touch-btn mt-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md hover:shadow-lg">
-                    <i class="fas fa-users mr-2"></i>
-                    View Students & Grades
-                </a>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <!-- Mobile Card View -->
-        <div class="md:hidden space-y-4">
-            {% for level in academic_levels %}
-            <div class="modern-card p-5 border-l-4 border-emerald-500">
-                <div class="mb-4">
-                    <div class="flex items-center mb-3">
-                        <div class="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center mr-3">
-                            <i class="fas fa-graduation-cap text-white"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-lg font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h3>
-                            <p class="text-sm text-gray-600 dark:text-gray-400">{{ level.level_category }}</p>
-                        </div>
-                    </div>
-                    <div class="mb-4">
-                        <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wide">Subjects ({{ level.subjects|length }})</p>
-                        <div class="flex flex-wrap gap-2">
-                            {% for subject in level.subjects %}
-                            <span class="px-2 py-1 bg-white dark:bg-gray-700 text-xs font-medium text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-gray-600">
-                                {{ subject.subject_name }}
-                            </span>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
-                   class="w-full touch-btn mt-4 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white rounded-xl text-sm font-semibold transition-all">
-                    <i class="fas fa-users mr-2"></i>
-                    View Students & Grades
-                </a>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <div class="empty-state-icon">
-                <i class="fas fa-graduation-cap text-gray-400 dark:text-gray-500 text-3xl"></i>
-            </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">No Academic Levels Assigned</h3>
-            <p class="text-gray-600 dark:text-gray-400">You don't have any academic level assignments yet.</p>
-        </div>
-        {% endif %}
-    </div>
-
-    <!-- My Exams -->
-    <div class="modern-card p-4 sm:p-6">
-        <div class="section-header mb-4">
-            <div class="section-header-icon bg-amber-100 dark:bg-amber-900/30">
-                <i class="fas fa-file-alt text-amber-600 dark:text-amber-400"></i>
-            </div>
-            <div class="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <h2 class="text-lg font-bold text-gray-900 dark:text-white">My Exams</h2>
-                {% if exams and exams|length > 0 %}
-                <span class="modern-badge bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300">
-                    Total: {{ exams|length }} exam{{ 's' if exams|length != 1 else '' }}
-                </span>
-                {% endif %}
-            </div>
-        </div>
-        
-        {% if exams and exams|length > 0 %}
-        <!-- Desktop Table View -->
-        <div class="table-responsive-wrapper hidden md:block">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gradient-to-r from-green-50 to-green-100 dark:from-gray-700 dark:to-gray-800">
-                    <tr>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Exam Name</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Type</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Level</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Year / Term</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Action</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {% for exam in exams %}
-                    <tr class="transition-colors {% if exam.is_locked %}bg-amber-50/50 dark:bg-amber-900/10{% else %}hover:bg-gray-50 dark:hover:bg-gray-700/50{% endif %}">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">
-                            <span class="inline-flex items-center gap-2 flex-wrap">
-                                {{ exam.exam_name }}
-                                {% if exam.is_locked %}
-                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
-                                    <i class="fas fa-lock mr-0.5"></i>Locked
-                                </span>
-                                {% endif %}
-                            </span>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {{ exam.exam_type or '-' }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                            {{ exam.level_name }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            <div>{{ exam.year_name or '-' }}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">{{ exam.term_name or '-' }}</div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {{ exam.exam_date or '-' }}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            {% if exam.is_locked %}
-                            <button type="button"
-                                    @click="lockedModal = true"
-                                    class="touch-btn inline-flex items-center px-3 py-2 bg-gray-400 dark:bg-gray-600 text-white rounded-xl text-xs font-semibold cursor-pointer hover:bg-gray-500 dark:hover:bg-gray-500 transition-all">
-                                <i class="fas fa-lock mr-1"></i>
-                                Locked
-                            </button>
-                            {% else %}
-                            <a href="{{ employee_dash_url('exams-assessments/level/' ~ exam.academic_level_id ~ '/students') }}" 
-                               class="touch-btn inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition-all">
-                                <i class="fas fa-users mr-1"></i>
-                                View Students
-                            </a>
-                            {% endif %}
-                        </td>
-                    </tr>
                     {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Mobile Card View -->
-        <div class="md:hidden space-y-4">
-            {% for exam in exams %}
-            <div class="modern-card p-5 {% if exam.is_locked %}border-2 border-amber-300/70 dark:border-amber-700/50{% endif %}">
-                <div class="mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
-                    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2 inline-flex items-center gap-2 flex-wrap">
-                        {{ exam.exam_name }}
-                        {% if exam.is_locked %}
-                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100">
-                            <i class="fas fa-lock mr-0.5"></i>Locked
-                        </span>
-                        {% endif %}
-                    </h3>
-                    <div class="space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                        <p><span class="font-semibold">Type:</span> {{ exam.exam_type or '-' }}</p>
-                        <p><span class="font-semibold">Level:</span> {{ exam.level_name }}</p>
-                        <p><span class="font-semibold">Year:</span> {{ exam.year_name or '-' }}</p>
-                        <p><span class="font-semibold">Term:</span> {{ exam.term_name or '-' }}</p>
-                        <p><span class="font-semibold">Date:</span> {{ exam.exam_date or '-' }}</p>
-                    </div>
                 </div>
-                {% if exam.is_locked %}
-                <button type="button" @click="lockedModal = true"
-                        class="w-full touch-btn mt-4 bg-gray-500 hover:bg-gray-600 text-white rounded-xl text-sm font-semibold transition-all">
-                    <i class="fas fa-lock mr-2"></i>
-                    Exam locked
-                </button>
-                {% else %}
-                <a href="{{ employee_dash_url('exams-assessments/level/' ~ exam.academic_level_id ~ '/students') }}" 
-                   class="w-full touch-btn mt-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-semibold transition-all">
-                    <i class="fas fa-users mr-2"></i>
-                    View Students
-                </a>
-                {% endif %}
-            </div>
+            </section>
             {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state py-8">
-            <div class="empty-state-icon w-16 h-16 mb-4">
-                <i class="fas fa-file-alt text-gray-400 text-2xl"></i>
-            </div>
-            <p class="text-gray-600 dark:text-gray-400">No exams found for your assigned subjects.</p>
         </div>
         {% endif %}
     </div>
 
-    <!-- Locked exam notice (teachers cannot open marks) -->
-    <div x-show="lockedModal"
-         x-cloak
-         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+    <div x-show="lockedModal" x-cloak
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
          @click.self="lockedModal = false">
-        <div class="modern-card max-w-md w-full p-8 text-center shadow-2xl border border-amber-200 dark:border-amber-800" @click.stop role="alertdialog" aria-modal="true">
-            <div class="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto mb-5 ring-4 ring-amber-200/60 dark:ring-amber-800/50">
-                <i class="fas fa-lock text-4xl text-amber-700 dark:text-amber-300" aria-hidden="true"></i>
+        <div class="modern-card max-w-md w-full max-h-[min(90vh,32rem)] overflow-y-auto overscroll-contain p-6 sm:p-8 text-center shadow-2xl border border-amber-200 dark:border-amber-800 rounded-t-2xl sm:rounded-2xl mb-0 sm:mb-0" @click.stop role="alertdialog" aria-modal="true">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto mb-4 sm:mb-5">
+                <i class="fas fa-lock text-3xl sm:text-4xl text-amber-700 dark:text-amber-300" aria-hidden="true"></i>
             </div>
-            <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam is locked</h3>
-            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
-                This exam has been locked by administration. Student marks cannot be opened or edited until the exam is unlocked in Exam Registration.
-            </p>
+            <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-2">Exam is locked</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-5 sm:mb-6">This exam has been locked by administration. Student marks cannot be opened or edited until it is unlocked in Exam Registration.</p>
             <button type="button" @click="lockedModal = false"
-                    class="touch-btn w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
-                OK
-            </button>
+                    class="exam-eg-touch touch-btn w-full px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 text-white font-semibold text-base">OK</button>
         </div>
     </div>
 </div>
 
-{% endblock %}
+<script type="application/json" id="exam-eg-bootstrap">{{ {
+    'api_url': employee_dash_url('exams-assessments/timetable/api'),
+    'level_students_url_tmpl': level_students_url_tmpl,
+    'timetable_by_date': timetable_by_date,
+    'total_slots': total_slots
+}|tojson|safe }}</script>
+<script>
+(function () {
+    const boot = JSON.parse(document.getElementById('exam-eg-bootstrap').textContent || '{}');
+    const API_URL = boot.api_url || '';
+    const LEVEL_TMPL = boot.level_students_url_tmpl || '';
 
+    function levelStudentsUrl(levelId) {
+        if (!LEVEL_TMPL || !levelId) return '#';
+        return LEVEL_TMPL.replace('__LEVEL__', String(levelId));
+    }
+
+    function escHtml(s) {
+        if (s == null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function escAttr(s) {
+        return escHtml(s).replace(/`/g, '&#096;');
+    }
+
+    function statusBadgeClasses(stRaw) {
+        const st = (stRaw || 'scheduled').toLowerCase();
+        if (st === 'scheduled') return 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300';
+        if (st === 'ongoing') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300';
+        if (st === 'completed') return 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-200';
+        if (st === 'cancelled') return 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300';
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    }
+
+    function cmpStr(a, b) {
+        const sa = a == null ? '' : String(a);
+        const sb = b == null ? '' : String(b);
+        if (sa < sb) return -1;
+        if (sa > sb) return 1;
+        return 0;
+    }
+
+    function timeSortKey(t) {
+        if (!t) return '99:99';
+        const s = String(t);
+        return s.length >= 5 ? s.slice(0, 5) : s;
+    }
+
+    /**
+     * Match server _enrich_timetable_days_exam_groups: day_period + exam_groups.
+     * If API omits exam_groups (or sends [] while slots exist), rebuild so timetable rows render after filter refresh.
+     */
+    function normalizeDayForClient(day) {
+        if (!day || typeof day !== 'object') return day;
+        const slots = day.slots;
+        if (!Array.isArray(slots) || !slots.length) {
+            if (!Array.isArray(day.exam_groups)) day.exam_groups = [];
+            return day;
+        }
+        if (Array.isArray(day.exam_groups) && day.exam_groups.length) return day;
+
+        const sorted = slots.slice().sort(function (a, b) {
+            let c = cmpStr(timeSortKey(a.start_time), timeSortKey(b.start_time));
+            if (c !== 0) return c;
+            c = cmpStr(a.session_type, b.session_type);
+            if (c !== 0) return c;
+            c = cmpStr(a.level_name, b.level_name);
+            if (c !== 0) return c;
+            const ida = a.id != null ? Number(a.id) : 0;
+            const idb = b.id != null ? Number(b.id) : 0;
+            return ida - idb;
+        });
+        sorted.forEach(function (s, i) {
+            s.day_period = i + 1;
+        });
+        day.slots = sorted;
+
+        const groupsMap = {};
+        const order = [];
+        sorted.forEach(function (s) {
+            const raw = (s.exam_name != null ? String(s.exam_name) : '').trim();
+            const key = raw || '—';
+            if (groupsMap[key] === undefined) {
+                groupsMap[key] = {
+                    exam_name: (s.exam_name != null && String(s.exam_name).trim()) ? String(s.exam_name).trim() : '—',
+                    exam_is_locked: !!s.exam_is_locked,
+                    slots: [],
+                };
+                order.push(key);
+            } else if (s.exam_is_locked) {
+                groupsMap[key].exam_is_locked = true;
+            }
+            groupsMap[key].slots.push(s);
+        });
+        day.exam_groups = order.map(function (k) { return groupsMap[k]; });
+        return day;
+    }
+
+    function slotTimeCell(slot) {
+        let html = '';
+        if (slot.start_time || slot.end_time) {
+            html += escHtml(slot.start_time || '—') + '–' + escHtml(slot.end_time || '—');
+        }
+        if (slot.session_type) {
+            if (html) html += '<br>';
+            html += '<span class="exam-eg-muted font-semibold">' + escHtml(slot.session_type) + '</span>';
+        }
+        if (!html) html = '<span class="exam-eg-muted">—</span>';
+        return html;
+    }
+
+    function slotSubjectCell(slot) {
+        if (slot.subject_code) {
+            let h = '<span class="exam-eg-code text-emerald-800 dark:text-emerald-300">' + escHtml(slot.subject_code) + '</span>';
+            if (slot.subject_name) h += '<br><span class="exam-eg-muted">' + escHtml(slot.subject_name) + '</span>';
+            return h;
+        }
+        if (slot.subject_name) return escHtml(slot.subject_name);
+        return '<span class="exam-eg-muted">—</span>';
+    }
+
+    function actionCell(slot) {
+        if (slot.exam_is_locked) {
+            return '<button type="button" data-eg-lock="1" class="touch-btn inline-flex items-center px-3 py-2 bg-gray-400 dark:bg-gray-600 text-white rounded-lg text-xs font-semibold">Locked</button>';
+        }
+        if (slot.level_id) {
+            const u = escAttr(levelStudentsUrl(slot.level_id));
+            return '<a href="' + u + '" class="touch-btn inline-flex items-center px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold">Open</a>';
+        }
+        return '<span class="exam-eg-muted">—</span>';
+    }
+
+    function renderMobileSessionRow(slot) {
+        const stCls = statusBadgeClasses(slot.status);
+        let timeStr = '';
+        if (slot.start_time || slot.end_time) timeStr = escHtml(slot.start_time || '—') + '–' + escHtml(slot.end_time || '—');
+        else timeStr = '—';
+        const subj = (slot.subject_code ? '<span class="exam-eg-code text-emerald-800 dark:text-emerald-300">' + escHtml(slot.subject_code) + '</span> ' : '') + escHtml(slot.subject_name || '—');
+        const pnum = slot.day_period != null ? String(slot.day_period) : '—';
+        let btn = '';
+        if (slot.exam_is_locked) {
+            btn = '<button type="button" data-eg-lock="1" class="exam-eg-touch w-full touch-btn rounded-lg bg-gray-500 text-white font-semibold">Locked</button>';
+        } else if (slot.level_id) {
+            const u = escAttr(levelStudentsUrl(slot.level_id));
+            btn = '<a href="' + u + '" class="exam-eg-touch block w-full text-center touch-btn rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">Grades</a>';
+        }
+        let main = '';
+        if (slot.session_type) {
+            main += '<div class="exam-eg-tt-line exam-eg-muted font-semibold">' + escHtml(slot.session_type) + '</div>';
+        }
+        main += '<div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Class</span>' + escHtml(slot.level_name || '—') +
+            (slot.level_category ? ' <span class="exam-eg-muted">(' + escHtml(slot.level_category) + ')</span>' : '') + '</div>';
+        main += '<div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Subject</span>' + subj + '</div>';
+        main += '<div class="exam-eg-tt-line"><span class="exam-eg-tt-k">Venue</span><span class="exam-eg-code font-semibold">' + escHtml(slot.venue || '—') + '</span></div>';
+        return '<article class="exam-eg-mobile-card exam-eg-mobile-card--session shadow-sm min-w-0">' +
+            '<div class="exam-eg-tt-slot">' +
+            '<div class="exam-eg-tt-time"><span class="exam-eg-tt-pnum">#' + escHtml(pnum) + '</span>' + timeStr + '</div>' +
+            '<div class="exam-eg-tt-main">' + main + '</div>' +
+            '<span class="exam-eg-tt-badge ' + stCls + '">' + escHtml(slot.status || 'scheduled') + '</span></div>' +
+            (btn ? '<div class="exam-eg-mobile-actions">' + btn + '</div>' : '') + '</article>';
+    }
+
+    function renderMobileExamGroup(group) {
+        const lockIcon = group.exam_is_locked
+            ? ' <span class="text-amber-600 dark:text-amber-400 align-middle" title="Locked"><i class="fas fa-lock text-[0.65rem]" aria-hidden="true"></i></span>'
+            : '';
+        let inner = '';
+        (group.slots || []).forEach(function (slot) {
+            inner += renderMobileSessionRow(slot);
+        });
+        return '<div class="exam-eg-mobile-group">' +
+            '<h3 class="exam-eg-tt-name exam-eg-tt-name--group">' + escHtml(group.exam_name || '—') + lockIcon + '</h3>' +
+            inner + '</div>';
+    }
+
+    function renderDaySection(day, sectionIndex) {
+        normalizeDayForClient(day);
+        const bannerId = 'exam-eg-js-' + sectionIndex + '-title';
+        let ban = '';
+        if (day.weekday) {
+            ban = '<span class="text-base sm:text-lg font-extrabold tracking-tight">' + escHtml(day.weekday) + '</span>' +
+                  '<span class="text-xs sm:text-sm font-semibold opacity-95 break-words">' + escHtml(day.date_heading) + '</span>';
+        } else {
+            ban = '<span class="text-base sm:text-lg font-extrabold tracking-tight break-words">' + escHtml(day.date_heading) + '</span>';
+        }
+        const n = day.slots ? day.slots.length : 0;
+        ban += '<span class="exam-eg-slot-count text-xs opacity-90 lg:ml-auto font-medium">' + n + ' period' + (n === 1 ? '' : 's') + '</span>';
+
+        const groupLockHtml = function (locked) {
+            if (!locked) return '';
+            return '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100"><i class="fas fa-lock mr-0.5"></i>Locked</span>';
+        };
+
+        let desktop = '';
+        (day.exam_groups || []).forEach(function (group) {
+            let rows = '';
+            (group.slots || []).forEach(function (slot) {
+                const stCls = statusBadgeClasses(slot.status);
+                const dp = slot.day_period != null ? String(slot.day_period) : '';
+                rows += '<tr>' +
+                    '<td class="exam-eg-period">' + escHtml(dp) + '</td>' +
+                    '<td class="exam-eg-time text-gray-900 dark:text-gray-100">' + slotTimeCell(slot) + '</td>' +
+                    '<td class="text-gray-900 dark:text-gray-100"><span class="font-semibold">' + escHtml(slot.level_name || '—') + '</span>' +
+                    (slot.level_category ? '<br><span class="exam-eg-muted">' + escHtml(slot.level_category) + '</span>' : '') + '</td>' +
+                    '<td class="text-gray-900 dark:text-gray-100">' + slotSubjectCell(slot) + '</td>' +
+                    '<td class="exam-eg-code text-gray-800 dark:text-gray-200 font-semibold">' + escHtml(slot.venue || '—') + '</td>' +
+                    '<td><span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase ' + stCls + '">' + escHtml(slot.status || 'scheduled') + '</span></td>' +
+                    '<td class="whitespace-nowrap">' + actionCell(slot) + '</td></tr>';
+            });
+            desktop += '<div class="exam-eg-group-wrap">' +
+                '<div class="exam-eg-group-title flex flex-wrap items-center gap-2"><span>' + escHtml(group.exam_name || '—') + '</span>' + groupLockHtml(group.exam_is_locked) + '</div>' +
+                '<div class="exam-eg-group-table-wrap shadow-inner">' +
+                '<table class="exam-eg-table exam-eg-table--sessions"><thead><tr>' +
+                '<th class="exam-eg-period">#</th><th>Time</th><th>Class</th><th>Subject</th><th>Venue</th><th>Status</th><th>Grades</th>' +
+                '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+        });
+
+        let mobile = '';
+        (day.exam_groups || []).forEach(function (group) {
+            mobile += renderMobileExamGroup(group);
+        });
+
+        return '<section aria-labelledby="' + bannerId + '">' +
+            '<div id="' + bannerId + '" class="exam-eg-banner flex flex-wrap items-baseline gap-x-3 gap-y-1">' + ban + '</div>' +
+            '<div class="hidden lg:block space-y-0">' + desktop + '</div>' +
+            '<div class="lg:hidden space-y-2 p-2 sm:p-2.5 border-x-2 border-b-2 rounded-b-lg min-w-0" style="border-color: var(--exam-eg-border); background: rgba(16,185,129,0.04);">' + mobile + '</div></section>';
+    }
+
+    function wireLockButtons(root) {
+        if (!root || !root.querySelectorAll) return;
+        root.querySelectorAll('[data-eg-lock="1"]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var page = document.getElementById('exam-eg-page');
+                if (page && window.Alpine && typeof Alpine.$data === 'function') {
+                    try { Alpine.$data(page).lockedModal = true; } catch (e) {}
+                }
+            });
+        });
+    }
+
+    function renderTimetableRoot(timetableByDate, totalSlots) {
+        const root = document.getElementById('exam-eg-root');
+        const summary = document.getElementById('exam-eg-summary');
+        if (!root) return;
+
+        const days = timetableByDate && timetableByDate.length ? timetableByDate.length : 0;
+        if (summary) {
+            summary.textContent = String(totalSlots) + ' slot' + (totalSlots === 1 ? '' : 's') +
+                ' · ' + String(days) + ' day' + (days === 1 ? '' : 's');
+        }
+
+        if (!timetableByDate || timetableByDate.length === 0) {
+            root.innerHTML = '<div class="modern-card p-6 sm:p-10 px-4 text-center text-gray-600 dark:text-gray-400 rounded-2xl text-sm sm:text-base leading-relaxed">No exam timetables match this filter.</div>';
+            return;
+        }
+
+        let html = '<div class="space-y-8 exam-eg-sheet">';
+        timetableByDate.forEach(function (day, idx) {
+            html += renderDaySection(day, idx + 1);
+        });
+        html += '</div>';
+        root.innerHTML = html;
+        wireLockButtons(root);
+    }
+
+    function updateExamDropdown(exams) {
+        const examSel = document.getElementById('exam-eg-exam');
+        if (!examSel) return;
+        const cur = examSel.value || '';
+        let opts = '<option value="">All exams</option>';
+        (exams || []).forEach(function (name) {
+            opts += '<option value="' + escAttr(name) + '">' + escHtml(name) + '</option>';
+        });
+        examSel.innerHTML = opts;
+        let found = false;
+        Array.prototype.forEach.call(examSel.options, function (o) {
+            if (o.value === cur) found = true;
+        });
+        if (found) examSel.value = cur;
+        else examSel.value = '';
+    }
+
+    async function reloadTimetable() {
+        const root = document.getElementById('exam-eg-root');
+        if (!API_URL || !root) return;
+        root.setAttribute('data-loading', '1');
+
+        const y = document.getElementById('exam-eg-year');
+        const t = document.getElementById('exam-eg-term');
+        const e = document.getElementById('exam-eg-exam');
+        const c = document.getElementById('exam-eg-class');
+
+        const params = new URLSearchParams({ live: '1' });
+        const yv = (y && y.value) ? String(y.value).trim() : '';
+        const tv = (t && t.value) ? String(t.value).trim() : '';
+        if (!yv && !tv) params.set('show_all', '1');
+        else params.set('show_all', '0');
+        params.set('academic_year_id', yv);
+        params.set('term_id', tv);
+        params.set('exam_name', e && e.value ? e.value.trim() : '');
+        params.set('class_id', c && c.value ? c.value.trim() : '');
+
+        try {
+            const res = await fetch(API_URL + '?' + params.toString(), {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' }
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'Request failed');
+            renderTimetableRoot(data.timetable_by_date, data.total_slots || 0);
+            if (Array.isArray(data.exams_for_filter)) {
+                updateExamDropdown(data.exams_for_filter);
+            }
+        } catch (err) {
+            console.error(err);
+            renderTimetableRoot([], 0);
+            const summary = document.getElementById('exam-eg-summary');
+            if (summary) summary.textContent = 'Could not refresh timetable';
+        } finally {
+            root.setAttribute('data-loading', '0');
+        }
+    }
+
+    let debounceTimer;
+    function scheduleReload() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(function () { reloadTimetable(); }, 180);
+    }
+
+    ['exam-eg-year', 'exam-eg-term', 'exam-eg-exam', 'exam-eg-class'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', scheduleReload);
+    });
+
+    var resetBtn = document.getElementById('exam-eg-reset');
+    if (resetBtn) resetBtn.addEventListener('click', function () {
+        ['exam-eg-year', 'exam-eg-term', 'exam-eg-exam', 'exam-eg-class'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        scheduleReload();
+    });
+
+    wireLockButtons(document.getElementById('exam-eg-root'));
+})();
+</script>
+{% endblock %}

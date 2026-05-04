@@ -31,13 +31,7 @@
     <i class="fas fa-check-circle w-5"></i>
     <span>Attendance</span>
 </a>
-{% elif is_teacher_view|default(false) %}
-<a href="{{ url_for('teacher_my_classes') }}"
-   class="sidebar-item">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>My Classes</span>
-</a>
-{% else %}
+{% elif not is_teacher_view|default(false) %}
 <a href="{{ employee_dash_url('student-management') }}"
    class="sidebar-item">
     <i class="fas fa-user-graduate w-5"></i>
@@ -45,22 +39,6 @@
 </a>
 {% endif %}
 {% if not is_parent_view|default(false) %}
-<a href="{{ employee_dash_url('admission') }}"
-   class="sidebar-item">
-    <i class="fas fa-user-plus w-5"></i>
-    <span>Register Student</span>
-</a>
-<a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Student Attendance</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-<a href="{{ employee_dash_url('student-management/students-progress') }}"
-   class="sidebar-item">
-    <i class="fas fa-chart-line w-5"></i>
-    <span>Students Progress</span>
-</a>
 {% set user_role = session.get('role', '')|lower %}
 {% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
 {% if user_role == 'head of institution' or viewing_as_role == 'head of institution' %}
@@ -201,6 +179,15 @@
         </div>
     </form>
 
+    {% if not is_parent_view|default(false) %}
+    <div id="attendance-save-float" class="attendance-save-float" role="status" aria-live="polite" aria-hidden="true">
+        <span class="attendance-save-float__pill">
+            <i class="fas fa-check-circle attendance-save-float__icon" aria-hidden="true"></i>
+            <span class="attendance-save-float__text">Saved</span>
+        </span>
+    </div>
+    {% endif %}
+
     <div id="attendance-live-shell">
 {% include 'dashboards/_student_attendance_live_block.html' %}
     </div>
@@ -215,6 +202,54 @@
     .att-pct-poor { background: rgba(239, 68, 68, 0.06); }
     .att-pct-poor:hover { background: rgba(239, 68, 68, 0.1); }
     .attendance-cb { transition: accent-color 0.2s; }
+    {% if not is_parent_view|default(false) %}
+    .attendance-save-float {
+        position: fixed;
+        left: 50%;
+        top: calc(var(--app-header-offset, 4.5rem) + 10px);
+        z-index: 95;
+        transform: translateX(-50%) translateY(-6px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.28s ease, transform 0.28s ease;
+    }
+    .attendance-save-float.attendance-save-float--visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+    .attendance-save-float__pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.45rem 0.95rem 0.45rem 0.65rem;
+        border-radius: 9999px;
+        background: rgb(255 255 255);
+        border: 1px solid rgb(167 243 208);
+        box-shadow: 0 10px 28px -8px rgba(16, 185, 129, 0.35), 0 4px 12px rgba(15, 23, 42, 0.08);
+    }
+    .dark .attendance-save-float__pill {
+        background: rgb(17 24 39);
+        border-color: rgb(6 95 70);
+        box-shadow: 0 10px 28px -8px rgba(16, 185, 129, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35);
+    }
+    .attendance-save-float__icon {
+        color: rgb(22 163 74);
+        font-size: 1.125rem;
+        line-height: 1;
+    }
+    .dark .attendance-save-float__icon {
+        color: rgb(74 222 128);
+    }
+    .attendance-save-float__text {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: rgb(21 128 61);
+    }
+    .dark .attendance-save-float__text {
+        color: rgb(134 239 172);
+    }
+    {% endif %}
     </style>
 
     {% if not is_parent_view|default(false) %}
@@ -312,7 +347,12 @@
         window.__initStudentAttendanceRegister = function() {
             const form = document.getElementById('attendance-form');
             const statusEl = document.getElementById('save-status');
+            const saveFloatEl = document.getElementById('attendance-save-float');
+            let saveFloatHideTimer = null;
             if (!form) return;
+            if (form.tagName === 'FORM' && typeof attendanceLiveEndpoint === 'function') {
+                form.action = attendanceLiveEndpoint();
+            }
             let saveTimeout = null;
             let saveSeq = 0;
 
@@ -346,6 +386,28 @@
                 cbs.forEach(function(cb) { cb.style.accentColor = color; });
             }
 
+            function hideSaveFloat() {
+                if (!saveFloatEl) return;
+                if (saveFloatHideTimer) {
+                    clearTimeout(saveFloatHideTimer);
+                    saveFloatHideTimer = null;
+                }
+                saveFloatEl.classList.remove('attendance-save-float--visible');
+                saveFloatEl.setAttribute('aria-hidden', 'true');
+            }
+
+            function flashSaveFloat() {
+                if (!saveFloatEl) return;
+                if (saveFloatHideTimer) clearTimeout(saveFloatHideTimer);
+                saveFloatEl.setAttribute('aria-hidden', 'false');
+                requestAnimationFrame(function() {
+                    saveFloatEl.classList.add('attendance-save-float--visible');
+                });
+                saveFloatHideTimer = setTimeout(function() {
+                    hideSaveFloat();
+                }, 2400);
+            }
+
             function showStatus(msg, isError) {
                 if (!statusEl) return;
                 statusEl.classList.remove('hidden');
@@ -361,39 +423,57 @@
             function saveAttendance() {
                 var mySeq = ++saveSeq;
                 const formData = new FormData(form);
+                hideSaveFloat();
                 showStatus('Saving…', false);
+                form.setAttribute('data-attendance-saving', '1');
                 fetch(form.action, {
                     method: 'POST',
                     body: formData,
                     credentials: 'same-origin',
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    redirect: 'manual',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
                 })
                 .then(function(r) {
-                    if (r.redirected) {
-                        window.location.href = r.url;
-                        return null;
+                    if (r.status === 301 || r.status === 302) {
+                        var loc = r.headers.get('Location');
+                        if (loc) window.location.href = loc;
+                        return Promise.reject(new Error('redirect'));
                     }
                     if (!r.ok) return Promise.reject(new Error('Save failed'));
-                    return r.json ? r.json() : r.text();
+                    return r.json();
                 })
-                .then(function() {
+                .then(function(data) {
                     if (mySeq !== saveSeq) return;
-                    showStatus('Saved successfully.', false);
+                    if (!data || data.ok !== true) {
+                        hideSaveFloat();
+                        showStatus((data && data.message) ? String(data.message) : 'Could not save changes.', true);
+                        return;
+                    }
+                    showStatus('All changes saved', false);
+                    flashSaveFloat();
                     setTimeout(function() {
-                        if (statusEl && statusEl.textContent === 'Saved successfully.') {
+                        if (statusEl && statusEl.textContent === 'All changes saved') {
                             statusEl.classList.add('hidden');
                         }
-                    }, 2000);
+                    }, 2200);
                 })
-                .catch(function() {
+                .catch(function(err) {
                     if (mySeq !== saveSeq) return;
+                    if (err && err.message === 'redirect') return;
+                    hideSaveFloat();
                     showStatus('Error saving. Please try again.', true);
+                })
+                .finally(function() {
+                    form.removeAttribute('data-attendance-saving');
                 });
             }
 
             function scheduleSave() {
                 if (saveTimeout) clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(saveAttendance, 600);
+                saveTimeout = setTimeout(saveAttendance, 450);
             }
 
             function allAttendanceCheckboxes() {
@@ -446,17 +526,6 @@
                     setAllPresent(false);
                     return;
                 }
-                var saveBtn = e.target.closest('#att-save-now');
-                if (saveBtn) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (saveTimeout) {
-                        clearTimeout(saveTimeout);
-                        saveTimeout = null;
-                    }
-                    saveAttendance();
-                    return;
-                }
                 var dayP = t && t.closest ? t.closest('.att-day-all-present') : null;
                 var dayA = t && t.closest ? t.closest('.att-day-all-absent') : null;
                 if (dayP) {
@@ -467,16 +536,6 @@
                     setColumnForDate(dayA.getAttribute('data-date'), false);
                 }
             });
-
-            var saveFoot = document.getElementById('att-save-footer');
-            function saveNowClick() {
-                if (saveTimeout) {
-                    clearTimeout(saveTimeout);
-                    saveTimeout = null;
-                }
-                saveAttendance();
-            }
-            if (saveFoot) saveFoot.addEventListener('click', saveNowClick);
 
             form.addEventListener('change', function(e) {
                 if (e.target && e.target.classList.contains('attendance-cb')) {

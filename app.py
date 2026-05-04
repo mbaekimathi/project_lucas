@@ -107,6 +107,7 @@ def employee_dashboard_path(subpath: str = '') -> str:
     return base + ('/' + tail if tail else '')
 
 
+@app.template_global()
 def employee_staff_settings_url(settings_role: str, **query) -> str:
     """Prefixed staff settings URL: /<session-slug>/settings/<encoded role>[?query]."""
     r = (settings_role or 'employee').strip()
@@ -4808,6 +4809,293 @@ def student_fees_view():
     """Student fees view page - redirects to dashboard with fees"""
     return redirect(student_dashboard_path())
 
+
+def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
+    """KPIs for the teacher home dashboard for the current term (marks, attendance, exams)."""
+    empty = {
+        'student_count': 0,
+        'timetable_slot_count': 0,
+        'distinct_class_group_count': 0,
+        'attendance_present_cohort': 0,
+        'attendance_entries_you_recorded': 0,
+        'exams_supervise_duty_count': 0,
+        'subject_rows': [],
+        'class_rank_rows': [],
+        'overall_mean': None,
+        'overall_rank': None,
+        'overall_teachers_count': 0,
+    }
+    try:
+        teacher_id = int(teacher_id)
+        term_id = int(term_id)
+    except (TypeError, ValueError):
+        return empty
+    if not teacher_id or not term_id:
+        return empty
+    out = dict(empty)
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT academic_level_id AS lid FROM teacher_subject_assignments WHERE teacher_id = %s
+            UNION
+            SELECT DISTINCT academic_level_id AS lid FROM timetables WHERE teacher_id = %s AND term_id = %s
+            """,
+            (teacher_id, teacher_id, term_id),
+        )
+        level_ids = []
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                lid = r.get('lid') if r.get('lid') is not None else r.get('academic_level_id')
+            else:
+                lid = r[0] if r else None
+            if lid is not None:
+                try:
+                    level_ids.append(int(lid))
+                except (TypeError, ValueError):
+                    continue
+        level_ids = list(dict.fromkeys(level_ids))
+
+        if level_ids:
+            ph = ','.join(['%s'] * len(level_ids))
+            cursor.execute(
+                f"""
+                SELECT COUNT(DISTINCT s.student_id) AS c
+                FROM students s
+                WHERE s.status = 'in session' AND s.academic_level_id IN ({ph})
+                """,
+                level_ids,
+            )
+            rr = cursor.fetchone()
+            if rr:
+                out['student_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*) AS c FROM student_attendance_records sar
+                INNER JOIN students s ON s.student_id = sar.student_id AND s.status = 'in session'
+                WHERE sar.term_id = %s AND sar.present = 1 AND s.academic_level_id IN ({ph})
+                """,
+                [term_id] + level_ids,
+            )
+            rr = cursor.fetchone()
+            if rr:
+                out['attendance_present_cohort'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS c FROM student_attendance_records
+            WHERE term_id = %s AND recorded_by_employee_id = %s
+            """,
+            (term_id, teacher_id),
+        )
+        rr = cursor.fetchone()
+        if rr:
+            out['attendance_entries_you_recorded'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT CONCAT(day_of_week,'|',time_slot,'|',academic_level_id,'|',IFNULL(subject_id,0))) AS c
+            FROM timetables WHERE teacher_id = %s AND term_id = %s
+            """,
+            (teacher_id, term_id),
+        )
+        rr = cursor.fetchone()
+        if rr:
+            out['timetable_slot_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT CONCAT(academic_level_id,'|',IFNULL(subject_id,0))) AS c
+            FROM timetables WHERE teacher_id = %s AND term_id = %s
+            """,
+            (teacher_id, term_id),
+        )
+        rr = cursor.fetchone()
+        if rr:
+            out['distinct_class_group_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+
+        sup_count = 0
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(DISTINCT e.id) AS c FROM exams e
+                WHERE e.term_id = %s
+                  AND (e.status IS NULL OR e.status != 'cancelled')
+                  AND (
+                        e.supervisor_id = %s
+                        OR EXISTS (
+                            SELECT 1 FROM exam_supervisors es
+                            WHERE es.exam_id = e.id AND es.supervisor_id = %s
+                        )
+                      )
+                """,
+                (term_id, teacher_id, teacher_id),
+            )
+            rr = cursor.fetchone()
+            if rr:
+                sup_count = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+        except Exception as sup_e:
+            try:
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT e.id) AS c FROM exams e
+                    WHERE e.term_id = %s
+                      AND (e.status IS NULL OR e.status != 'cancelled')
+                      AND e.supervisor_id = %s
+                    """,
+                    (term_id, teacher_id),
+                )
+                rr = cursor.fetchone()
+                if rr:
+                    sup_count = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+            except Exception as sup_e2:
+                print(f"Teacher dashboard exam supervisor count skipped: {sup_e} / {sup_e2}")
+        out['exams_supervise_duty_count'] = sup_count
+
+        cursor.execute(
+            """
+            SELECT sub.subject_name, sub.subject_code,
+                   AVG(sm.marks) AS mean_marks,
+                   COUNT(sm.marks) AS mark_count
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+            INNER JOIN subjects sub ON sm.subject_id = sub.id
+            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+            INNER JOIN teacher_subject_assignments tsa
+              ON tsa.teacher_id = %s
+             AND tsa.subject_id = sm.subject_id
+             AND tsa.academic_level_id = st.academic_level_id
+            WHERE sm.marks IS NOT NULL
+            GROUP BY sub.id, sub.subject_name, sub.subject_code
+            ORDER BY sub.subject_name
+            """,
+            (term_id, teacher_id),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                mean_m = r.get('mean_marks')
+                cnt = r.get('mark_count')
+                sn = r.get('subject_name') or ''
+                sc = r.get('subject_code') or ''
+            else:
+                mean_m = r[2] if len(r) > 2 else None
+                cnt = r[3] if len(r) > 3 else 0
+                sn = r[0] if len(r) > 0 else ''
+                sc = r[1] if len(r) > 1 else ''
+            try:
+                mean_f = round(float(mean_m), 2) if mean_m is not None else None
+            except (TypeError, ValueError):
+                mean_f = None
+            out['subject_rows'].append({
+                'subject_name': sn,
+                'subject_code': sc,
+                'mean_marks': mean_f,
+                'mark_count': int(cnt or 0),
+            })
+
+        cursor.execute(
+            """
+            SELECT st.academic_level_id, al.level_name, AVG(sm.marks) AS avg_m, COUNT(*) AS cnt
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+            INNER JOIN academic_levels al ON al.id = st.academic_level_id
+            WHERE sm.marks IS NOT NULL
+            GROUP BY st.academic_level_id, al.level_name
+            """,
+            (term_id,),
+        )
+        level_avgs = []
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                lid = r.get('academic_level_id')
+                lname = r.get('level_name') or ''
+                avg_m = r.get('avg_m')
+                cnt = r.get('cnt')
+            else:
+                lid = r[0] if len(r) > 0 else None
+                lname = r[1] if len(r) > 1 else ''
+                avg_m = r[2] if len(r) > 2 else None
+                cnt = r[3] if len(r) > 3 else 0
+            try:
+                avg_f = float(avg_m) if avg_m is not None else None
+            except (TypeError, ValueError):
+                avg_f = None
+            if lid is not None and avg_f is not None:
+                level_avgs.append({
+                    'academic_level_id': int(lid),
+                    'level_name': lname,
+                    'avg_m': avg_f,
+                    'cnt': int(cnt or 0),
+                })
+
+        level_avgs.sort(key=lambda x: x['avg_m'], reverse=True)
+        total_levels = len(level_avgs)
+        last_avg = None
+        rank_i = 0
+        for idx, row in enumerate(level_avgs):
+            if last_avg is None or row['avg_m'] < last_avg:
+                rank_i = idx + 1
+            row['school_rank'] = rank_i
+            last_avg = row['avg_m']
+
+        taught_set = set(level_ids)
+        for row in level_avgs:
+            if row['academic_level_id'] in taught_set:
+                out['class_rank_rows'].append({
+                    'level_name': row['level_name'],
+                    'avg_m': round(row['avg_m'], 2),
+                    'mark_count': row['cnt'],
+                    'school_rank': row['school_rank'],
+                    'levels_compared': total_levels,
+                })
+
+        cursor.execute(
+            """
+            SELECT tsa.teacher_id, AVG(sm.marks) AS avg_m
+            FROM student_marks sm
+            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+            INNER JOIN teacher_subject_assignments tsa
+              ON tsa.subject_id = sm.subject_id AND tsa.academic_level_id = st.academic_level_id
+            WHERE sm.marks IS NOT NULL
+            GROUP BY tsa.teacher_id
+            """,
+            (term_id,),
+        )
+        teacher_avgs = []
+        for r in cursor.fetchall() or []:
+            tid = r.get('teacher_id') if isinstance(r, dict) else (r[0] if r else None)
+            avg_m = r.get('avg_m') if isinstance(r, dict) else (r[1] if len(r) > 1 else None)
+            if tid is None:
+                continue
+            try:
+                teacher_avgs.append({'teacher_id': int(tid), 'avg_m': float(avg_m)})
+            except (TypeError, ValueError):
+                continue
+        teacher_avgs.sort(key=lambda x: x['avg_m'], reverse=True)
+        out['overall_teachers_count'] = len(teacher_avgs)
+        last_t = None
+        trank = 0
+        for idx, row in enumerate(teacher_avgs):
+            if last_t is None or row['avg_m'] < last_t:
+                trank = idx + 1
+            row['rank'] = trank
+            last_t = row['avg_m']
+        for row in teacher_avgs:
+            if row['teacher_id'] == teacher_id:
+                out['overall_mean'] = round(row['avg_m'], 2)
+                out['overall_rank'] = row['rank']
+                break
+    except Exception as e:
+        import traceback
+        print(f"Error computing teacher dashboard analytics: {e}")
+        print(traceback.format_exc())
+        # Return partial metrics if some queries succeeded before the failure
+        return out
+    return out
+
+
 @app.route('/dashboard/employee')
 @login_required
 def dashboard_employee():
@@ -4852,23 +5140,59 @@ def dashboard_employee():
     teacher_dashboard_term = None
     teacher_dashboard_year = None
     teacher_class_timetable = []
+    teacher_timetable_grid = {}
     teacher_exam_timetable = []
+    teacher_dashboard_analytics = {}
+    timetable_days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
     if is_teacher_view:
-        teacher_id = session.get('viewing_as_employee_id') if is_technician else session.get('user_id')
-        if teacher_id:
+        sess_teacher_ref = session.get('viewing_as_employee_id') if is_technician else session.get('user_id')
+        portal_employee_code = session.get('employee_id')
+        if sess_teacher_ref or portal_employee_code:
             teacher_conn = get_db_connection()
             if teacher_conn:
                 try:
                     with teacher_conn.cursor() as cursor:
                         cursor.execute("""
-                            SELECT full_name
+                            SELECT id, full_name
                             FROM employees
-                            WHERE id = %s
-                        """, (teacher_id,))
+                            WHERE id = %s OR employee_id = %s
+                            LIMIT 1
+                        """, (sess_teacher_ref, portal_employee_code or sess_teacher_ref))
                         teacher_row = cursor.fetchone()
+                        if not teacher_row and portal_employee_code:
+                            cursor.execute("""
+                                SELECT id, full_name
+                                FROM employees
+                                WHERE employee_id = %s
+                                LIMIT 1
+                            """, (str(portal_employee_code).strip(),))
+                            teacher_row = cursor.fetchone()
+                        if not teacher_row and sess_teacher_ref is not None:
+                            sid = str(sess_teacher_ref).strip()
+                            cursor.execute("""
+                                SELECT id, full_name
+                                FROM employees
+                                WHERE CAST(id AS CHAR) = %s OR employee_id = %s
+                                LIMIT 1
+                            """, (sid, sid))
+                            teacher_row = cursor.fetchone()
+                        teacher_id = None
+                        teacher_dashboard_name = None
                         if teacher_row:
-                            teacher_dashboard_name = teacher_row.get('full_name') if isinstance(teacher_row, dict) else teacher_row[0]
+                            pk = teacher_row.get('id') if isinstance(teacher_row, dict) else teacher_row[0]
+                            try:
+                                teacher_id = int(pk)
+                            except (TypeError, ValueError):
+                                teacher_id = None
+                            teacher_dashboard_name = (
+                                teacher_row.get('full_name') if isinstance(teacher_row, dict) else teacher_row[1]
+                            )
+                        if teacher_id is None and sess_teacher_ref is not None:
+                            try:
+                                teacher_id = int(sess_teacher_ref)
+                            except (TypeError, ValueError):
+                                teacher_id = None
 
                         current_academic_year_id = None
                         current_term_id = None
@@ -4892,9 +5216,39 @@ def dashboard_employee():
                                 LIMIT 1
                             """, (current_academic_year_id,))
                             term_row = cursor.fetchone()
+                            if not term_row:
+                                cursor.execute("""
+                                    SELECT id, term_name FROM terms
+                                    WHERE status = 'active' AND academic_year_id = %s
+                                    ORDER BY id DESC
+                                    LIMIT 1
+                                """, (current_academic_year_id,))
+                                term_row = cursor.fetchone()
                             if term_row:
                                 current_term_id = term_row.get('id') if isinstance(term_row, dict) else term_row[0]
                                 teacher_dashboard_term = term_row.get('term_name') if isinstance(term_row, dict) else term_row[1]
+
+                        if not current_term_id:
+                            cursor.execute("""
+                                SELECT t.id, t.term_name, ay.year_name
+                                FROM terms t
+                                JOIN academic_years ay ON t.academic_year_id = ay.id
+                                WHERE t.status = 'active' AND ay.status = 'active'
+                                ORDER BY ay.is_current DESC, t.is_current DESC, t.id DESC
+                                LIMIT 1
+                            """)
+                            any_term = cursor.fetchone()
+                            if any_term:
+                                if isinstance(any_term, dict):
+                                    current_term_id = any_term.get('id')
+                                    teacher_dashboard_term = any_term.get('term_name')
+                                    if not teacher_dashboard_year:
+                                        teacher_dashboard_year = any_term.get('year_name')
+                                else:
+                                    current_term_id = any_term[0] if len(any_term) > 0 else None
+                                    teacher_dashboard_term = any_term[1] if len(any_term) > 1 else None
+                                    if not teacher_dashboard_year and len(any_term) > 2:
+                                        teacher_dashboard_year = any_term[2]
 
                         in_session_by_level = {}
                         cursor.execute("""
@@ -4909,9 +5263,19 @@ def dashboard_employee():
                             if level_id is not None:
                                 in_session_by_level[level_id] = int(count_val or 0)
 
-                        if current_term_id:
+                        if current_term_id and teacher_id:
+                            try:
+                                teacher_dashboard_analytics = _compute_teacher_dashboard_analytics(
+                                    cursor, teacher_id, current_term_id
+                                )
+                            except Exception as ae:
+                                import traceback
+                                print(f"Error computing teacher dashboard analytics (early): {ae}")
+                                print(traceback.format_exc())
+                                teacher_dashboard_analytics = {}
+
                             cursor.execute("""
-                                SELECT t.day_of_week, t.time_slot, al.level_name,
+                                SELECT DISTINCT t.id, t.day_of_week, t.time_slot, al.level_name,
                                        t.academic_level_id, s.subject_name, s.subject_code
                                 FROM timetables t
                                 LEFT JOIN academic_levels al ON t.academic_level_id = al.id
@@ -4930,33 +5294,65 @@ def dashboard_employee():
                                     subject_name = row.get('subject_name') or 'No Subject Assigned'
                                     subject_code = row.get('subject_code') or ''
                                 else:
-                                    day = row[0] if len(row) > 0 else ''
-                                    time = row[1] if len(row) > 1 else ''
-                                    level_name = row[2] if len(row) > 2 else ''
-                                    level_id = row[3] if len(row) > 3 else None
-                                    subject_name = (row[4] if len(row) > 4 and row[4] else 'No Subject Assigned')
-                                    subject_code = row[5] if len(row) > 5 and row[5] else ''
+                                    day = row[1] if len(row) > 1 else ''
+                                    time = row[2] if len(row) > 2 else ''
+                                    level_name = row[3] if len(row) > 3 else ''
+                                    level_id = row[4] if len(row) > 4 else None
+                                    subject_name = (row[5] if len(row) > 5 and row[5] else 'No Subject Assigned')
+                                    subject_code = row[6] if len(row) > 6 and row[6] else ''
 
+                                in_cnt = in_session_by_level.get(level_id, 0)
+                                slot = {
+                                    'level_name': level_name,
+                                    'subject_name': subject_name,
+                                    'subject_code': subject_code,
+                                    'academic_level_id': level_id,
+                                    'in_session_count': in_cnt,
+                                }
                                 teacher_class_timetable.append({
                                     'day': day,
                                     'time': time,
                                     'level_name': level_name,
                                     'subject_name': subject_name,
                                     'subject_code': subject_code,
-                                    'in_session_count': in_session_by_level.get(level_id, 0),
+                                    'in_session_count': in_cnt,
                                 })
+                                if day and time:
+                                    teacher_timetable_grid.setdefault(day, {}).setdefault(time, []).append(slot)
 
                             cursor.execute("""
                                 SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, e.session_type,
-                                       al.level_name, s.subject_name, s.subject_code, ay.year_name, tm.term_name
+                                       al.level_name, s.subject_name, s.subject_code, ay.year_name, tm.term_name,
+                                       (CASE
+                                         WHEN e.supervisor_id = %s THEN 'Supervisor'
+                                         WHEN EXISTS (
+                                           SELECT 1 FROM exam_supervisors es
+                                           WHERE es.exam_id = e.id AND es.supervisor_id = %s
+                                         ) THEN 'Exam duty'
+                                         ELSE 'Your class'
+                                       END) AS involvement
                                 FROM exams e
                                 LEFT JOIN academic_levels al ON e.academic_level_id = al.id
                                 LEFT JOIN subjects s ON e.subject_id = s.id
                                 LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
                                 LEFT JOIN terms tm ON e.term_id = tm.id
-                                WHERE e.supervisor_id = %s AND e.term_id = %s
+                                WHERE e.term_id = %s
+                                  AND (e.status IS NULL OR e.status != 'cancelled')
+                                  AND (
+                                        e.supervisor_id = %s
+                                        OR EXISTS (
+                                            SELECT 1 FROM exam_supervisors es
+                                            WHERE es.exam_id = e.id AND es.supervisor_id = %s
+                                        )
+                                        OR EXISTS (
+                                            SELECT 1 FROM teacher_subject_assignments tsa
+                                            WHERE tsa.teacher_id = %s
+                                              AND tsa.academic_level_id = e.academic_level_id
+                                              AND (e.subject_id IS NULL OR tsa.subject_id = e.subject_id)
+                                        )
+                                      )
                                 ORDER BY e.exam_date ASC, e.start_time ASC
-                            """, (teacher_id, current_term_id))
+                            """, (teacher_id, teacher_id, current_term_id, teacher_id, teacher_id, teacher_id))
                             for row in (cursor.fetchall() or []):
                                 if isinstance(row, dict):
                                     exam_date = row.get('exam_date')
@@ -4972,6 +5368,7 @@ def dashboard_employee():
                                         'subject_code': row.get('subject_code', ''),
                                         'year_name': row.get('year_name', ''),
                                         'term_name': row.get('term_name', ''),
+                                        'involvement': row.get('involvement', ''),
                                     })
                                 else:
                                     exam_date = row[1] if len(row) > 1 else None
@@ -4987,9 +5384,12 @@ def dashboard_employee():
                                         'subject_code': row[7] if len(row) > 7 else '',
                                         'year_name': row[8] if len(row) > 8 else '',
                                         'term_name': row[9] if len(row) > 9 else '',
+                                        'involvement': row[10] if len(row) > 10 else '',
                                     })
                 except Exception as e:
+                    import traceback
                     print(f"Error loading teacher dashboard timetable data: {e}")
+                    print(traceback.format_exc())
                 finally:
                     teacher_conn.close()
     
@@ -5004,139 +5404,41 @@ def dashboard_employee():
                          teacher_dashboard_term=teacher_dashboard_term,
                          teacher_dashboard_year=teacher_dashboard_year,
                          teacher_class_timetable=teacher_class_timetable,
-                         teacher_exam_timetable=teacher_exam_timetable)
+                         teacher_timetable_grid=teacher_timetable_grid,
+                         timetable_days_order=timetable_days_order,
+                         teacher_exam_timetable=teacher_exam_timetable,
+                         teacher_dashboard_analytics=teacher_dashboard_analytics)
 
 # Exams and Grades Route (for teachers)
 @app.route('/dashboard/employee/exams-and-grades')
 @login_required
 def exams_and_grades():
-    """Exams and Grades page for teachers"""
+    """Teacher-facing full exam timetable (filters + day sections), same data as coordinator timetable."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    
-    # Check if user is a teacher or technician
-    is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_technician = user_role == 'technician'
-    
+
     if not (is_teacher or is_technician):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Get teacher's assigned subjects and academic levels
-    connection = get_db_connection()
-    
-    # For technicians, get selected employee ID from session (set via header dropdown)
-    # For actual teachers, use their own user_id (database primary key)
-    # Note: session['user_id'] = employees.id (INT), session['employee_id'] = employees.employee_id (STRING like "333333")
-    # The teacher_subject_assignments.teacher_id is a foreign key to employees.id, so we must use user_id
-    if is_technician:
-        teacher_id = session.get('viewing_as_employee_id')
-        if not teacher_id:
-            # If no employee selected, show message
-            return render_template('dashboards/exams_and_grades.html',
-                                 role=user_role,
-                                 is_technician=True,
-                                 academic_levels=[],
-                                 exams=[])
+
+    if user_role in ('teachers', 'teacher'):
+        sup_for_page = session.get('user_id')
+    elif is_technician and viewing_as_role in ('teachers', 'teacher'):
+        sup_for_page = session.get('viewing_as_employee_id')
     else:
-        teacher_id = session.get('user_id')
-    assigned_subjects = []
-    academic_levels = []
-    
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                # Get teacher's assigned subjects and academic levels
-                cursor.execute("""
-                    SELECT DISTINCT 
-                        tsa.academic_level_id,
-                        tsa.subject_id,
-                        al.level_name,
-                        al.level_category,
-                        s.subject_name,
-                        s.subject_code
-                    FROM teacher_subject_assignments tsa
-                    INNER JOIN academic_levels al ON tsa.academic_level_id = al.id
-                    INNER JOIN subjects s ON tsa.subject_id = s.id
-                    WHERE tsa.teacher_id = %s
-                    ORDER BY al.level_name, s.subject_name ASC
-                """, (teacher_id,))
-                assignments = cursor.fetchall()
-                
-                # Organize by academic level
-                levels_dict = {}
-                for row in assignments:
-                    level_id = row.get('academic_level_id') if isinstance(row, dict) else row[0]
-                    subject_id = row.get('subject_id') if isinstance(row, dict) else row[1]
-                    level_name = row.get('level_name') if isinstance(row, dict) else row[2]
-                    level_category = row.get('level_category') if isinstance(row, dict) else row[3]
-                    subject_name = row.get('subject_name') if isinstance(row, dict) else row[4]
-                    subject_code = row.get('subject_code') if isinstance(row, dict) else row[5]
-                    
-                    if level_id not in levels_dict:
-                        levels_dict[level_id] = {
-                            'id': level_id,
-                            'level_name': level_name,
-                            'level_category': level_category,
-                            'subjects': []
-                        }
-                    
-                    levels_dict[level_id]['subjects'].append({
-                        'id': subject_id,
-                        'subject_name': subject_name,
-                        'subject_code': subject_code
-                    })
-                
-                academic_levels = list(levels_dict.values())
-                
-                # Get exams for this teacher's subjects (one row per subject slot; is_locked matches exam-evaluation lock)
-                cursor.execute("""
-                    SELECT DISTINCT e.id, e.exam_name, e.exam_type, e.exam_date, e.academic_level_id,
-                           al.level_name, ay.year_name, t.term_name,
-                           COALESCE(e.is_locked, 0) AS is_locked
-                    FROM exams e
-                    INNER JOIN academic_levels al ON e.academic_level_id = al.id
-                    INNER JOIN academic_years ay ON e.academic_year_id = ay.id
-                    INNER JOIN terms t ON e.term_id = t.id
-                    INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
-                        AND e.subject_id = tsa.subject_id
-                    WHERE tsa.teacher_id = %s
-                    ORDER BY e.exam_date DESC, e.exam_name ASC
-                """, (teacher_id,))
-                exams_results = cursor.fetchall()
-                
-                exams = []
-                for row in exams_results:
-                    exam_date = row.get('exam_date') if isinstance(row, dict) else row[3]
-                    # Convert date to string if it's a date object
-                    if exam_date and hasattr(exam_date, 'strftime'):
-                        exam_date_str = exam_date.strftime('%Y-%m-%d')
-                    else:
-                        exam_date_str = str(exam_date) if exam_date else '-'
-                    il = row.get('is_locked', 0) if isinstance(row, dict) else (row[8] if len(row) > 8 else 0)
-                    
-                    exams.append({
-                        'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'exam_name': row.get('exam_name') if isinstance(row, dict) else row[1],
-                        'exam_type': row.get('exam_type') if isinstance(row, dict) else row[2],
-                        'exam_date': exam_date_str,
-                        'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else row[4],
-                        'level_name': row.get('level_name') if isinstance(row, dict) else row[5],
-                        'year_name': row.get('year_name') if isinstance(row, dict) else row[6],
-                        'term_name': row.get('term_name') if isinstance(row, dict) else row[7],
-                        'is_locked': bool(il) if not isinstance(il, bool) else il
-                    })
-        except Exception as e:
-            print(f"Error fetching teacher assignments: {e}")
-            flash('Error loading your assignments. Please try again.', 'error')
-        finally:
-            connection.close()
-    
-    return render_template('dashboards/exams_and_grades.html',
-                         role=user_role,
-                         is_technician=is_technician,
-                         academic_levels=academic_levels,
-                         exams=exams)
+        sup_for_page = None
+    tt_ctx = _compute_exams_assessments_timetable_bundle(
+        supervisor_employee_id=sup_for_page,
+        restrict_to_supervisor=True,
+    )
+    tt_ctx['role'] = user_role
+    tt_ctx['is_technician'] = is_technician
+    tt_ctx['level_students_url_tmpl'] = employee_dashboard_path('exams-assessments/level/__LEVEL__/students')
+    tt_ctx['teacher_supervised_timetable_only'] = True
+    return render_template('dashboards/exams_and_grades.html', **tt_ctx)
 
 
 @app.route('/dashboard/employee/grades-registration')
@@ -12050,24 +12352,49 @@ def _build_weeks_and_days(term_start, term_end, selected_week_index=1):
 
 
 def _get_teacher_level_ids(teacher_user_id):
-    """Get academic level IDs (level_name) the teacher is assigned to."""
+    """Distinct academic level names this teacher teaches (subject allocations + timetable)."""
     level_names = set()
+    if not teacher_user_id:
+        return level_names
     conn = get_db_connection()
     if conn:
         try:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT DISTINCT al.level_name FROM teacher_subject_assignments tsa
+                    SELECT DISTINCT al.level_name
+                    FROM teacher_subject_assignments tsa
                     INNER JOIN academic_levels al ON tsa.academic_level_id = al.id
                     WHERE tsa.teacher_id = %s
-                """, (teacher_user_id,))
+                    UNION
+                    SELECT DISTINCT al.level_name
+                    FROM timetables tt
+                    INNER JOIN academic_levels al ON tt.academic_level_id = al.id
+                    WHERE tt.teacher_id = %s
+                """, (teacher_user_id, teacher_user_id))
                 for r in cur.fetchall() or []:
                     ln = r.get('level_name') if isinstance(r, dict) else r[0]
                     if ln:
-                        level_names.add(ln)
+                        level_names.add(str(ln).strip())
+        except Exception as e:
+            print(f"Note: _get_teacher_level_ids union query: {e}")
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT DISTINCT al.level_name FROM teacher_subject_assignments tsa
+                        INNER JOIN academic_levels al ON tsa.academic_level_id = al.id
+                        WHERE tsa.teacher_id = %s
+                    """, (teacher_user_id,))
+                    for r in cur.fetchall() or []:
+                        ln = r.get('level_name') if isinstance(r, dict) else r[0]
+                        if ln:
+                            level_names.add(str(ln).strip())
+            except Exception as e2:
+                print(f"Error in _get_teacher_level_ids fallback: {e2}")
         finally:
-            try: conn.close()
-            except: pass
+            try:
+                conn.close()
+            except Exception:
+                pass
     return level_names
 
 
@@ -12104,7 +12431,7 @@ def _coerce_date_only(val):
         return None
 
 
-def _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, req_args):
+def _attendance_register_get_context(students_by_level, is_teacher, req_args):
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
     academic_year_id = req_args.get('academic_year_id', type=int)
@@ -12311,21 +12638,11 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                                         })
                                     cur_date += timedelta(days=1)
 
-                    if is_academic_coordinator:
-                        cursor.execute("""
-                            SELECT sar.student_id, sar.attendance_date, sar.present
-                            FROM student_attendance_records sar
-                            LEFT JOIN employees e
-                                ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
-                            WHERE sar.term_id = %s
-                              AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
-                        """, (term_id,))
-                    else:
-                        cursor.execute("""
-                            SELECT sar.student_id, sar.attendance_date, sar.present
-                            FROM student_attendance_records sar
-                            WHERE sar.term_id = %s
-                        """, (term_id,))
+                    cursor.execute("""
+                        SELECT sar.student_id, sar.attendance_date, sar.present
+                        FROM student_attendance_records sar
+                        WHERE sar.term_id = %s
+                    """, (term_id,))
                     for r in cursor.fetchall() or []:
                         sid = r.get('student_id') if isinstance(r, dict) else r[0]
                         dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
@@ -12336,42 +12653,19 @@ def _attendance_register_get_context(students_by_level, is_teacher, is_academic_
                     if selected_week_days:
                         date_list = [d['date_str'] for d in selected_week_days]
                         placeholders = ",".join(["%s"] * len(date_list))
-                        if is_academic_coordinator:
-                            cursor.execute(f"""
-                                SELECT sar.student_id, SUM(sar.present) as present_days, COUNT(*) as total_days
-                                FROM student_attendance_records sar
-                                LEFT JOIN employees e
-                                    ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
-                                WHERE sar.term_id = %s
-                                  AND sar.attendance_date IN ({placeholders})
-                                  AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
-                                GROUP BY sar.student_id
-                            """, tuple([term_id] + date_list))
-                        else:
-                            cursor.execute(f"""
-                                SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
-                                FROM student_attendance_records
-                                WHERE term_id = %s AND attendance_date IN ({placeholders})
-                                GROUP BY student_id
-                            """, tuple([term_id] + date_list))
+                        cursor.execute(f"""
+                            SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                            FROM student_attendance_records
+                            WHERE term_id = %s AND attendance_date IN ({placeholders})
+                            GROUP BY student_id
+                        """, tuple([term_id] + date_list))
                     else:
-                        if is_academic_coordinator:
-                            cursor.execute("""
-                                SELECT sar.student_id, SUM(sar.present) as present_days, COUNT(*) as total_days
-                                FROM student_attendance_records sar
-                                LEFT JOIN employees e
-                                    ON (e.id = sar.recorded_by_employee_id OR e.employee_id = sar.recorded_by_employee_id)
-                                WHERE sar.term_id = %s
-                                  AND (e.role IN ('teachers', 'teacher') OR sar.recorded_by_employee_id IS NULL)
-                                GROUP BY sar.student_id
-                            """, (term_id,))
-                        else:
-                            cursor.execute("""
-                                SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
-                                FROM student_attendance_records
-                                WHERE term_id = %s
-                                GROUP BY student_id
-                            """, (term_id,))
+                        cursor.execute("""
+                            SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                            FROM student_attendance_records
+                            WHERE term_id = %s
+                            GROUP BY student_id
+                        """, (term_id,))
                     for r in cursor.fetchall() or []:
                         sid = r.get('student_id') if isinstance(r, dict) else r[0]
                         pres = int(r.get('present_days') or 0) if isinstance(r, dict) else int(r[1] or 0)
@@ -12646,15 +12940,26 @@ def student_attendance():
     user_role = session.get('role', '').lower()
     viewing_as = session.get('viewing_as_employee_role', '').lower()
     is_teacher = user_role in ('teachers', 'teacher') or viewing_as in ('teachers', 'teacher')
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as == 'curriculum coordinator'
-    teacher_id = session.get('user_id') if is_teacher else None
+    is_technician = user_role == 'technician'
+    if is_teacher:
+        if is_technician and viewing_as in ('teachers', 'teacher'):
+            teacher_id = session.get('viewing_as_employee_id')
+        else:
+            teacher_id = session.get('user_id')
+    else:
+        teacher_id = None
 
-    # Build visible classes first (teacher sees only assigned classes)
+    # Build visible classes first (teacher sees levels from subject allocation and/or timetable)
     students_by_level_all = _get_students_by_level()
     if is_teacher and teacher_id:
         teacher_levels = _get_teacher_level_ids(teacher_id)
         # Strictly show only teacher-assigned levels (empty list if none assigned)
-        students_by_level_all = [lg for lg in students_by_level_all if lg['level_name'] in teacher_levels]
+        students_by_level_all = [
+            lg for lg in students_by_level_all
+            if str(lg.get('level_name') or '').strip() in teacher_levels
+        ]
+    elif is_teacher and is_technician and viewing_as in ('teachers', 'teacher') and not teacher_id:
+        students_by_level_all = []
 
     class_level_options = [str((lg.get('level_name') or '')).strip() for lg in students_by_level_all if str((lg.get('level_name') or '')).strip()]
     selected_class_level = (request.values.get('class_level') or '').strip()
@@ -12664,6 +12969,9 @@ def student_attendance():
         students_by_level = students_by_level_all
 
     if request.method == 'POST':
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+        xhr_saved = False
+        xhr_error = None
         term_id = request.form.get('term_id', type=int)
         week_dates_str = request.form.get('week_dates', '')
         student_ids_str = request.form.get('student_ids', '')
@@ -12690,7 +12998,11 @@ def student_attendance():
 
         if term_id and week_dates_str and student_ids:
             conn = get_db_connection()
-            if conn:
+            if not conn:
+                xhr_error = 'Database connection failed.'
+                if not is_ajax:
+                    flash('Database connection error.', 'error')
+            else:
                 try:
                     with conn.cursor() as cur:
                         cur.execute("SELECT id, level_name FROM academic_levels")
@@ -12716,7 +13028,19 @@ def student_attendance():
                                 return level_id_by_name[gn]
                             return level_id_by_lower.get(gn.lower())
 
-                        emp_id = session.get('user_id') or session.get('employee_id')
+                        rrole = (session.get('role') or '').lower().strip()
+                        view_emp_role = (session.get('viewing_as_employee_role') or '').lower().strip()
+                        emp_id = None
+                        if rrole == 'technician' and view_emp_role in ('teachers', 'teacher') and session.get('viewing_as_employee_id'):
+                            try:
+                                emp_id = int(session.get('viewing_as_employee_id'))
+                            except (TypeError, ValueError):
+                                emp_id = None
+                        elif session.get('user_id') is not None:
+                            try:
+                                emp_id = int(session.get('user_id'))
+                            except (TypeError, ValueError):
+                                emp_id = None
                         checked = set()
                         student_id_set_for_form = set(student_ids)
                         for key in request.form:
@@ -12745,18 +13069,27 @@ def student_attendance():
                                     ON DUPLICATE KEY UPDATE present = VALUES(present), recorded_by_employee_id = VALUES(recorded_by_employee_id)
                                 """, (sid, date_str, lid, term_id, 1 if is_present else 0, emp_id))
                         conn.commit()
-                    flash('Attendance saved successfully.', 'success')
+                    xhr_saved = True
+                    if not is_ajax:
+                        flash('Attendance saved successfully.', 'success')
                 except Exception as e:
                     print(f"Error saving attendance: {e}")
                     if conn:
                         conn.rollback()
-                    flash('Error saving attendance.', 'error')
+                    xhr_error = 'Error saving attendance.'
+                    if not is_ajax:
+                        flash('Error saving attendance.', 'error')
                 finally:
                     try: conn.close()
                     except: pass
+        elif is_ajax:
+            xhr_error = 'Choose a term and ensure the register shows students and dates before saving.'
+
         from urllib.parse import urlencode
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'ok': True})
+        if is_ajax:
+            if xhr_saved:
+                return jsonify({'ok': True})
+            return jsonify({'ok': False, 'message': xhr_error or 'Save failed.'})
         params = {}
         if request.form.get('term_id'):
             params['term_id'] = request.form.get('term_id')
@@ -12776,7 +13109,7 @@ def student_attendance():
             params['class_level'] = request.form.get('class_level')
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
-    ctx = _attendance_register_get_context(students_by_level, is_teacher, is_academic_coordinator, request.args)
+    ctx = _attendance_register_get_context(students_by_level, is_teacher, request.args)
     merged = {
         **ctx,
         'is_teacher_view': is_teacher,
@@ -14657,6 +14990,7 @@ def system_settings():
                          terms=terms,
                          current_academic_year=current_academic_year,
                          today=today,
+                         is_technician=is_technician,
                          is_accountant=is_accountant,
                          theme_settings=theme_settings,
                          login_settings=login_settings,
@@ -14675,12 +15009,25 @@ def academic_settings():
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
     
-    # Check permission-based access
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    # Check permission-based access (deputy head: view_student_fees role in permission catalog)
+    has_view_fees_permission = check_permission_or_role(
+        'view_student_fees',
+        ['accountant', 'head of institution', 'deputy head of institution'],
+    )
     has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
+    # Curriculum coordinators use Academic Settings sidebar link; permission catalog includes view_academic_levels
+    has_coordinator_academic_access = check_permission_or_role(
+        'view_academic_levels',
+        ['curriculum coordinator'],
+    )
     
     # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
+    if not (
+        is_technician
+        or has_view_fees_permission
+        or has_manage_fees_permission
+        or has_coordinator_academic_access
+    ):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
@@ -17917,15 +18264,16 @@ def timetable_management():
                     current_year_id = academic_years[0].get('id')
                     current_year_name = academic_years[0].get('year_name', '')
 
-                # Get active terms
+                # Get active terms (current term first within each year)
                 cursor.execute("""
                     SELECT t.id, t.term_name, t.academic_year_id, t.start_date, t.end_date, t.status, t.is_current
                     FROM terms t
                     WHERE t.status = 'active'
-                    ORDER BY t.academic_year_id DESC, t.start_date ASC
+                    ORDER BY t.academic_year_id DESC, t.is_current DESC, t.start_date ASC
                 """)
                 terms_results = cursor.fetchall()
                 for row in terms_results:
+                    ic = row.get('is_current', False) if isinstance(row, dict) else (row[6] if len(row) > 6 else False)
                     terms.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'term_name': row.get('term_name', '') if isinstance(row, dict) else row[1],
@@ -17933,7 +18281,7 @@ def timetable_management():
                         'start_date': row.get('start_date') if isinstance(row, dict) else row[3],
                         'end_date': row.get('end_date') if isinstance(row, dict) else row[4],
                         'status': row.get('status', 'active') if isinstance(row, dict) else row[5],
-                        'is_current': row.get('is_current', False) if isinstance(row, dict) else (row[6] if len(row) > 6 else False),
+                        'is_current': bool(ic) if ic is not None else False,
                     })
 
                 # Determine current term from settings; prefer current term within current year.
@@ -18343,6 +18691,7 @@ def load_timetable():
                 SELECT t.day_of_week, t.time_slot, t.teacher_id, t.subject_id,
                        e.full_name as teacher_name,
                        {_employee_staff_identity_sql('e')} AS staff_employee_number,
+                       e.employee_id AS portal_employee_id,
                        s.subject_name, s.subject_code
                 FROM timetables t
                 LEFT JOIN employees e ON t.teacher_id = e.id
@@ -18364,6 +18713,7 @@ def load_timetable():
                         'subject_id': entry.get('subject_id'),
                         'teacher_name': entry.get('teacher_name', 'Unknown'),
                         'staff_employee_number': entry.get('staff_employee_number', ''),
+                        'portal_employee_id': entry.get('portal_employee_id', ''),
                         'subject_name': entry.get('subject_name', ''),
                         'subject_code': entry.get('subject_code', '') or ''
                     })
@@ -18375,8 +18725,9 @@ def load_timetable():
                         'subject_id': entry[3] if len(entry) > 3 else None,
                         'teacher_name': entry[4] if len(entry) > 4 else 'Unknown',
                         'staff_employee_number': entry[5] if len(entry) > 5 else '',
-                        'subject_name': entry[6] if len(entry) > 6 else '',
-                        'subject_code': (entry[7] if len(entry) > 7 else '') or ''
+                        'portal_employee_id': entry[6] if len(entry) > 6 else '',
+                        'subject_name': entry[7] if len(entry) > 7 else '',
+                        'subject_code': (entry[8] if len(entry) > 8 else '') or ''
                     })
             
             return jsonify({
@@ -19428,6 +19779,7 @@ def get_class_timetable():
             query = f"""
                 SELECT t.id, t.day_of_week, t.time_slot, t.teacher_id, t.subject_id, t.term_id, t.academic_level_id,
                        e.full_name as teacher_name, {_employee_staff_identity_sql('e')} AS staff_employee_number,
+                       e.employee_id AS portal_employee_id,
                        al.level_name, al.level_category,
                        tr.term_name, tr.academic_year_id,
                        ay.year_name as academic_year_name,
@@ -19476,6 +19828,7 @@ def get_class_timetable():
                         'subject_id': entry.get('subject_id'),
                         'teacher_name': entry.get('teacher_name', 'Unknown'),
                         'staff_employee_number': entry.get('staff_employee_number', ''),
+                        'portal_employee_id': entry.get('portal_employee_id', ''),
                         'subject_name': entry.get('subject_name', ''),
                         'subject_code': entry.get('subject_code', ''),
                         'term_id': entry.get('term_id'),
@@ -19492,12 +19845,13 @@ def get_class_timetable():
                         'subject_id': entry[4] if len(entry) > 4 else None,
                         'teacher_name': entry[7] if len(entry) > 7 else 'Unknown',
                         'staff_employee_number': entry[8] if len(entry) > 8 else '',
-                        'subject_name': entry[14] if len(entry) > 14 else '',
-                        'subject_code': entry[15] if len(entry) > 15 else '',
+                        'portal_employee_id': entry[9] if len(entry) > 9 else '',
+                        'subject_name': entry[15] if len(entry) > 15 else '',
+                        'subject_code': entry[16] if len(entry) > 16 else '',
                         'term_id': entry[5] if len(entry) > 5 else None,
-                        'term_name': entry[11] if len(entry) > 11 else '',
-                        'academic_year_id': entry[12] if len(entry) > 12 else None,
-                        'academic_year_name': entry[13] if len(entry) > 13 else ''
+                        'term_name': entry[12] if len(entry) > 12 else '',
+                        'academic_year_id': entry[13] if len(entry) > 13 else None,
+                        'academic_year_name': entry[14] if len(entry) > 14 else ''
                     })
             
             level_data = None
@@ -19976,9 +20330,95 @@ def exams_assessments():
     return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
 
 
-def _compute_exams_assessments_timetable_bundle():
-    """Build exams timetable data from ``request.args`` (full page or ``live=1`` AJAX)."""
+def _enrich_timetable_days_exam_groups(timetable_by_date):
+    """Add ``day_period`` on each slot and ``exam_groups``: slots with the same ``exam_name`` grouped per day."""
+    from collections import OrderedDict
+
+    if not timetable_by_date:
+        return timetable_by_date
+    enriched = []
+    for day in timetable_by_date:
+        raw_slots = list(day.get('slots') or [])
+        slots_sorted = sorted(
+            raw_slots,
+            key=lambda s: (
+                s.get('start_time') or '99:99',
+                s.get('session_type') or '',
+                s.get('level_name') or '',
+                s.get('id') or 0,
+            ),
+        )
+        slots_with_period = []
+        for i, s in enumerate(slots_sorted, start=1):
+            sc = dict(s) if isinstance(s, dict) else s
+            if isinstance(sc, dict):
+                sc['day_period'] = i
+            slots_with_period.append(sc)
+        od = OrderedDict()
+        for s in slots_with_period:
+            key = (s.get('exam_name') or '').strip() or '—'
+            if key not in od:
+                od[key] = {
+                    'exam_name': s.get('exam_name') or '—',
+                    'exam_is_locked': bool(s.get('exam_is_locked')),
+                    'slots': [],
+                }
+            if s.get('exam_is_locked'):
+                od[key]['exam_is_locked'] = True
+            od[key]['slots'].append(s)
+        enriched.append({
+            **day,
+            'slots': slots_with_period,
+            'exam_groups': list(od.values()),
+        })
+    return enriched
+
+
+def _session_exam_timetable_supervisor_scope():
+    """If True, timetable rows are limited to ``exams.supervisor_id`` matching the signed-in teacher.
+
+    Returns (restrict_to_supervisor: bool, supervisor_employees_id: int|None).
+    ``supervisor_employees_id`` is ``employees.id`` (same as ``session['user_id']`` for teachers).
+    """
+    ur = (session.get('role') or '').lower()
+    var = (session.get('viewing_as_employee_role') or '').lower()
+    if ur in ('teachers', 'teacher'):
+        uid = session.get('user_id')
+        try:
+            return True, int(uid) if uid is not None else None
+        except (TypeError, ValueError):
+            return True, None
+    if ur == 'technician' and var in ('teachers', 'teacher'):
+        vid = session.get('viewing_as_employee_id')
+        try:
+            return True, int(vid) if vid is not None else None
+        except (TypeError, ValueError):
+            return True, None
+    return False, None
+
+
+def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, restrict_to_supervisor=False):
+    """Build exams timetable data from ``request.args`` (full page or ``live=1`` AJAX).
+
+    When ``restrict_to_supervisor`` is True, only rows with ``e.supervisor_id = supervisor_employee_id`` are
+    included (used for teachers on exams-and-grades and their timetable API calls).
+    """
+    def _coerce_str(v):
+        if v is None:
+            return ''
+        if isinstance(v, (bytes, bytearray)):
+            return v.decode('utf-8', errors='replace').strip()
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(v)
+        return (str(v) or '').strip()
+
     def _format_time_value(raw_value):
+        if raw_value is None:
+            return ''
+        if isinstance(raw_value, (bytes, bytearray)):
+            raw_value = raw_value.decode('utf-8', errors='replace').strip()
+            if not raw_value:
+                return ''
         if not raw_value:
             return ''
         if isinstance(raw_value, timedelta):
@@ -19986,14 +20426,22 @@ def _compute_exams_assessments_timetable_bundle():
             return f"{seconds // 3600:02d}:{(seconds % 3600) // 60:02d}"
         if hasattr(raw_value, 'strftime'):
             return raw_value.strftime('%H:%M')
-        return str(raw_value)[:5]
+        s = str(raw_value).strip()
+        return s[:5] if len(s) >= 5 else s
 
     def _format_date_value(raw_value):
+        if raw_value is None:
+            return ''
+        if isinstance(raw_value, (bytes, bytearray)):
+            raw_value = raw_value.decode('utf-8', errors='replace').strip()
+            if not raw_value:
+                return ''
         if not raw_value:
             return ''
         if hasattr(raw_value, 'strftime'):
             return raw_value.strftime('%Y-%m-%d')
-        return str(raw_value)
+        s = str(raw_value).strip()
+        return s[:10] if len(s) >= 10 else s
 
     selected_exam_name = (request.args.get('exam_name') or '').strip()
     explicit_live = str(request.args.get('live', '')).lower() in ('1', 'true', 'yes')
@@ -20090,6 +20538,12 @@ def _compute_exams_assessments_timetable_bundle():
     terms = []
     exams_for_filter = []
     classes_for_filter = []
+    sup_filter_id = None
+    if restrict_to_supervisor:
+        try:
+            sup_filter_id = int(supervisor_employee_id) if supervisor_employee_id is not None else None
+        except (TypeError, ValueError):
+            sup_filter_id = None
     connection = get_db_connection()
     if connection:
         try:
@@ -20265,6 +20719,12 @@ def _compute_exams_assessments_timetable_bundle():
                 if selected_term_id > 0:
                     exam_filter_query += " AND e.term_id = %s"
                     exam_filter_params.append(selected_term_id)
+                if restrict_to_supervisor:
+                    if sup_filter_id:
+                        exam_filter_query += " AND e.supervisor_id = %s"
+                        exam_filter_params.append(sup_filter_id)
+                    else:
+                        exam_filter_query += " AND 1 = 0"
                 exam_filter_query += " ORDER BY e.exam_name ASC"
                 cursor.execute(exam_filter_query, tuple(exam_filter_params))
                 for row in cursor.fetchall() or []:
@@ -20272,12 +20732,24 @@ def _compute_exams_assessments_timetable_bundle():
                     if exam_name_value:
                         exams_for_filter.append(exam_name_value)
 
-                cursor.execute("""
-                    SELECT id, level_name, level_category
-                    FROM academic_levels
-                    WHERE level_status = 'active'
-                    ORDER BY level_category ASC, level_name ASC
-                """)
+                if restrict_to_supervisor and sup_filter_id:
+                    cursor.execute("""
+                        SELECT DISTINCT al.id, al.level_name, al.level_category
+                        FROM exams e
+                        INNER JOIN academic_levels al ON e.academic_level_id = al.id
+                        WHERE e.supervisor_id = %s
+                          AND COALESCE(al.level_status, 'active') = 'active'
+                        ORDER BY al.level_category ASC, al.level_name ASC
+                    """, (sup_filter_id,))
+                elif restrict_to_supervisor:
+                    cursor.execute("SELECT 1 WHERE 1 = 0")
+                else:
+                    cursor.execute("""
+                        SELECT id, level_name, level_category
+                        FROM academic_levels
+                        WHERE level_status = 'active'
+                        ORDER BY level_category ASC, level_name ASC
+                    """)
                 for row in cursor.fetchall() or []:
                     classes_for_filter.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
@@ -20304,7 +20776,8 @@ def _compute_exams_assessments_timetable_bundle():
                         emp.full_name AS teacher_name,
                         {_employee_staff_identity_sql('emp')} AS teacher_employee_id,
                         ay.year_name,
-                        t.term_name
+                        t.term_name,
+                        COALESCE(e.is_locked, 0) AS exam_is_locked
                     FROM exams e
                     LEFT JOIN academic_levels al ON e.academic_level_id = al.id
                     LEFT JOIN subjects s ON e.subject_id = s.id
@@ -20326,6 +20799,12 @@ def _compute_exams_assessments_timetable_bundle():
                 if selected_class_id > 0:
                     timetable_query += " AND e.academic_level_id = %s"
                     timetable_params.append(selected_class_id)
+                if restrict_to_supervisor:
+                    if sup_filter_id:
+                        timetable_query += " AND e.supervisor_id = %s"
+                        timetable_params.append(sup_filter_id)
+                    else:
+                        timetable_query += " AND 1 = 0"
                 timetable_query += """
                     ORDER BY
                         e.exam_date ASC,
@@ -20334,28 +20813,45 @@ def _compute_exams_assessments_timetable_bundle():
                         e.start_time ASC,
                         e.id ASC
                 """
-                cursor.execute(timetable_query, tuple(timetable_params))
-                rows = cursor.fetchall() or []
+                lock_col_sql = ",\n                        COALESCE(e.is_locked, 0) AS exam_is_locked"
+                rows = []
+                include_exam_lock = True
+                try:
+                    cursor.execute(timetable_query, tuple(timetable_params))
+                    rows = cursor.fetchall() or []
+                except Exception as exec_err:
+                    err_s = str(exec_err).lower()
+                    if 'is_locked' in err_s or 'unknown column' in err_s:
+                        include_exam_lock = False
+                        q2 = timetable_query.replace(lock_col_sql, "")
+                        cursor.execute(q2, tuple(timetable_params))
+                        rows = cursor.fetchall() or []
+                    else:
+                        raise
                 for row in rows:
                     timetable_rows.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
-                        'exam_name': (row.get('exam_name', '') if isinstance(row, dict) else row[1]) or '',
-                        'exam_type': (row.get('exam_type', '') if isinstance(row, dict) else row[2]) or '',
+                        'exam_name': _coerce_str(row.get('exam_name', '') if isinstance(row, dict) else row[1]),
+                        'exam_type': _coerce_str(row.get('exam_type', '') if isinstance(row, dict) else row[2]),
                         'exam_date': _format_date_value(row.get('exam_date') if isinstance(row, dict) else row[3]),
-                        'session_type': (row.get('session_type', '') if isinstance(row, dict) else row[4]) or '',
+                        'session_type': _coerce_str(row.get('session_type', '') if isinstance(row, dict) else row[4]),
                         'start_time': _format_time_value(row.get('start_time') if isinstance(row, dict) else row[5]),
                         'end_time': _format_time_value(row.get('end_time') if isinstance(row, dict) else row[6]),
-                        'venue': (row.get('venue', '') if isinstance(row, dict) else row[7]) or '',
-                        'status': (row.get('status', 'scheduled') if isinstance(row, dict) else (row[8] if len(row) > 8 else 'scheduled')) or 'scheduled',
+                        'venue': _coerce_str(row.get('venue', '') if isinstance(row, dict) else row[7]),
+                        'status': _coerce_str(row.get('status', 'scheduled') if isinstance(row, dict) else (row[8] if len(row) > 8 else 'scheduled')) or 'scheduled',
                         'level_id': row.get('level_id') if isinstance(row, dict) else row[9],
-                        'level_name': (row.get('level_name', '') if isinstance(row, dict) else (row[10] if len(row) > 10 else '')) or '',
-                        'level_category': (row.get('level_category', '') if isinstance(row, dict) else (row[11] if len(row) > 11 else '')) or '',
-                        'subject_name': (row.get('subject_name', '') if isinstance(row, dict) else (row[12] if len(row) > 12 else '')) or '',
-                        'subject_code': (row.get('subject_code', '') if isinstance(row, dict) else (row[13] if len(row) > 13 else '')) or '',
-                        'teacher_name': (row.get('teacher_name', '') if isinstance(row, dict) else (row[14] if len(row) > 14 else '')) or '',
-                        'teacher_employee_id': (row.get('teacher_employee_id', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else '')) or '',
-                        'year_name': (row.get('year_name', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else '')) or '',
-                        'term_name': (row.get('term_name', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else '')) or '',
+                        'level_name': _coerce_str(row.get('level_name', '') if isinstance(row, dict) else (row[10] if len(row) > 10 else '')),
+                        'level_category': _coerce_str(row.get('level_category', '') if isinstance(row, dict) else (row[11] if len(row) > 11 else '')),
+                        'subject_name': _coerce_str(row.get('subject_name', '') if isinstance(row, dict) else (row[12] if len(row) > 12 else '')),
+                        'subject_code': _coerce_str(row.get('subject_code', '') if isinstance(row, dict) else (row[13] if len(row) > 13 else '')),
+                        'teacher_name': _coerce_str(row.get('teacher_name', '') if isinstance(row, dict) else (row[14] if len(row) > 14 else '')),
+                        'teacher_employee_id': _coerce_str(row.get('teacher_employee_id', '') if isinstance(row, dict) else (row[15] if len(row) > 15 else '')),
+                        'year_name': _coerce_str(row.get('year_name', '') if isinstance(row, dict) else (row[16] if len(row) > 16 else '')),
+                        'term_name': _coerce_str(row.get('term_name', '') if isinstance(row, dict) else (row[17] if len(row) > 17 else '')),
+                        'exam_is_locked': (
+                            bool(row.get('exam_is_locked', 0) if isinstance(row, dict) else (row[18] if len(row) > 18 else 0))
+                            if include_exam_lock else False
+                        ),
                     })
         except Exception as e:
             print(f"Error fetching all exam timetables: {e}")
@@ -20408,6 +20904,8 @@ def _compute_exams_assessments_timetable_bundle():
                 'slots': slots,
             })
 
+    timetable_by_date = _enrich_timetable_days_exam_groups(timetable_by_date)
+
     return {
         'timetable_rows': timetable_rows,
         'timetable_by_date': timetable_by_date,
@@ -20433,12 +20931,17 @@ def exams_assessments_timetable():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
 
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
-    ctx = _compute_exams_assessments_timetable_bundle()
+    restrict_sup, sup_id = _session_exam_timetable_supervisor_scope()
+    ctx = _compute_exams_assessments_timetable_bundle(
+        supervisor_employee_id=sup_id,
+        restrict_to_supervisor=restrict_sup,
+    )
     ctx['role'] = user_role
     return render_template('dashboards/exams_timetable_all.html', **ctx)
 
@@ -20453,14 +20956,19 @@ def exams_assessments_timetable_api():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
 
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
         return jsonify({'success': False, 'message': 'Permission denied'}), 403
 
     if str(request.args.get('live', '')).lower() not in ('1', 'true', 'yes'):
         return jsonify({'success': False, 'message': 'Missing live=1'}), 400
 
-    ctx = _compute_exams_assessments_timetable_bundle()
+    restrict_sup, sup_id = _session_exam_timetable_supervisor_scope()
+    ctx = _compute_exams_assessments_timetable_bundle(
+        supervisor_employee_id=sup_id,
+        restrict_to_supervisor=restrict_sup,
+    )
     return jsonify({
         'success': True,
         'timetable_by_date': ctx.get('timetable_by_date') or [],

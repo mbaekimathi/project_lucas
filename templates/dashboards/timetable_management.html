@@ -40,52 +40,130 @@
 
 {% block extra_head %}
 <style>
-/* Timetable Table */
-.tt-table { 
-    border-collapse: collapse; 
-    width: 100%; 
-    font-size: 11px;
+/* Page shell — do not use overflow-x: hidden here; it can clip nested horizontal scroll with sticky tables in some browsers */
+.tt-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
-.tt-table th, .tt-table td { 
-    border: 1px solid #d1d5db; 
-    padding: 6px 4px; 
-    text-align: center; 
-    min-width: 65px;
+
+/* Horizontally scrollable timetable region (slots live here) */
+.tt-scroll {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    border-radius: 0.375rem;
 }
-.dark .tt-table th, .dark .tt-table td { border-color: #4b5563; }
-.tt-table th { 
-    background: #2563eb; 
-    color: white; 
-    font-weight: 600; 
-    font-size: 10px;
+
+.tt-table {
+    border-collapse: collapse;
+    /* Wider than viewport when needed; parent .tt-scroll scrolls horizontally */
+    width: max-content;
+    min-width: 100%;
+    font-size: clamp(9px, 2.4vw, 11px);
+    table-layout: auto;
+}
+
+.tt-table th,
+.tt-table td {
+    border: 1px solid #d1d5db;
+    padding: clamp(4px, 1.2vw, 8px) clamp(3px, 1vw, 6px);
+    text-align: center;
+    vertical-align: middle;
+    min-width: 3.25rem;
+    word-break: break-word;
+}
+
+.dark .tt-table th,
+.dark .tt-table td {
+    border-color: #4b5563;
+}
+
+.tt-table th {
+    background: #2563eb;
+    color: white;
+    font-weight: 600;
+    font-size: clamp(9px, 2.2vw, 10px);
     text-transform: uppercase;
+    letter-spacing: 0.02em;
 }
-.tt-table th:first-child { 
-    background: #1e40af; 
-    min-width: 70px; 
+
+/* Day column — keep static; position:sticky on <th>/<td> inside scroll containers breaks layout in Safari/WebKit */
+.tt-table th:first-child {
+    background: #1e40af;
+    min-width: 3.5rem;
 }
-.tt-table td:first-child { 
-    background: #f3f4f6; 
-    font-weight: 600; 
+
+.tt-table td:first-child {
+    background: #f3f4f6;
+    font-weight: 600;
     color: #374151;
-    font-size: 10px;
+    min-width: 3.5rem;
 }
-.dark .tt-table td:first-child { 
-    background: #374151; 
+
+.dark .tt-table td:first-child {
+    background: #374151;
     color: #e5e7eb;
 }
-.tt-table tbody tr:nth-child(even) { background: #f9fafb; }
-.dark .tt-table tbody tr:nth-child(even) { background: #1f2937; }
 
-.teacher-name { 
-    font-weight: 600; 
-    color: #1e40af; 
-    font-size: 10px;
+.tt-table tbody tr:nth-child(even) {
+    background: #f9fafb;
 }
-.dark .teacher-name { color: #93c5fd; }
-.subject-name {
-    font-size: 9px;
+
+.dark .tt-table tbody tr:nth-child(even) {
+    background: #1f2937;
+}
+
+.tt-cell-subject {
+    font-weight: 600;
+    color: #1e40af;
+    font-size: clamp(9px, 2.3vw, 11px);
+    line-height: 1.2;
+}
+
+.dark .tt-cell-subject {
+    color: #93c5fd;
+}
+
+.tt-cell-teacher {
+    font-size: clamp(8px, 2.1vw, 10px);
     color: #6b7280;
+    line-height: 1.3;
+}
+
+.dark .tt-cell-teacher {
+    color: #9ca3af;
+}
+
+.teacher-view-tabs {
+    width: 100%;
+}
+
+.teacher-view-tabs button {
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    min-height: 44px;
+    touch-action: manipulation;
+}
+
+.teacher-view-tabs button.active {
+    border-bottom-color: #2563eb;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+.dark .teacher-view-tabs button.active {
+    border-bottom-color: #60a5fa;
+    color: #93c5fd;
+}
+
+.tt-header-actions .tt-chip {
+    min-width: 0;
 }
 
 .class-header {
@@ -93,58 +171,105 @@
 }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
 }
-.loading-pulse { animation: pulse 1.5s infinite; }
+
+.loading-pulse {
+    animation: pulse 1.5s infinite;
+}
 
 @media print {
-    .no-print { display: none !important; }
-    .timetable-card { page-break-inside: avoid; }
+    .no-print {
+        display: none !important;
+    }
+    .timetable-card {
+        page-break-inside: avoid;
+    }
+    .tt-scroll {
+        overflow: visible;
+    }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<div x-data="timetablesApp()" x-init="initDefaults(); loadAllTimetables()" class="min-h-screen bg-gray-100 dark:bg-gray-900">
+<div x-data="timetablesApp()" x-init="initDefaults(); loadAllTimetables()" class="tt-page min-h-screen bg-gray-100 dark:bg-gray-900">
     
     <!-- Header -->
-    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3 no-print">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-                <h1 class="text-lg font-bold text-gray-900 dark:text-white">
-                    <i class="fas fa-table text-blue-600 mr-2"></i>All Class Timetables
+    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 sm:px-4 lg:px-6 py-3 sm:py-4 no-print">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+            <div class="min-w-0 flex-1">
+                <h1 class="text-base sm:text-lg lg:text-xl font-bold text-gray-900 dark:text-white leading-tight">
+                    <i class="fas fa-table text-blue-600 mr-2 shrink-0"></i>All Class Timetables
                 </h1>
-                <p class="text-sm text-gray-500">
-                    <span x-show="!loading" x-text="classesWithSchedule + ' of ' + Object.keys(timetables).length + ' classes have schedules'"></span>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
+                    <span x-show="!loading" x-text="classesWithSchedule + ' of ' + visibleLevelCount + ' shown class(es) have schedules'"></span>
                     <span x-show="loading" class="loading-pulse">Loading timetables...</span>
                 </p>
             </div>
-            <div class="flex items-center gap-2">
-                <span class="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white no-print">
-                    <i class="fas fa-calendar-alt mr-1 text-brand-primary"></i>
-                    <strong>Year:</strong> {{ current_year_name or 'Not set' }}
-                </span>
-                <span class="px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white no-print">
-                    <i class="fas fa-clock mr-1 text-brand-primary"></i>
-                    <strong>Term:</strong> {{ current_term_name or 'Not set' }}
-                </span>
-                <button @click="window.print()" class="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200">
-                    <i class="fas fa-print mr-1"></i>Print
-                </button>
-                <button @click="autoGenerateAllLevels()"
-                        :disabled="generatingAll || !yearId || !termId"
-                        class="px-3 py-1.5 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed no-print">
-                    <i class="fas" :class="generatingAll ? 'fa-spinner fa-spin mr-1' : 'fa-magic mr-1'"></i>
-                    <span x-text="generatingAll ? 'Generating...' : 'Auto Generate All Levels'"></span>
-                </button>
+            <div class="tt-header-actions flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 shrink-0 w-full lg:w-auto lg:max-w-[min(100%,36rem)]">
+                <div class="flex flex-wrap gap-2 min-w-0 items-center">
+                    <label class="sr-only" for="tt-filter-year">Academic year</label>
+                    <select id="tt-filter-year" x-model="yearId" @change="onYearFilterChange()"
+                            class="min-w-[10.5rem] px-2.5 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Academic year</option>
+                        {% for y in academic_years %}
+                        <option value="{{ y.id }}">{{ y.year_name }}{% if y.is_current %} (Current){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <label class="sr-only" for="tt-filter-term">Term</label>
+                    <select id="tt-filter-term" x-model="termId" @change="loadAllTimetables()" :disabled="!yearId"
+                            class="min-w-[9rem] px-2.5 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                        <option value="">Term</option>
+                        <template x-for="t in terms.filter(t => String(t.academic_year_id) === String(yearId))" :key="t.id">
+                            <option :value="t.id" x-text="(t.term_name || '') + (t.is_current ? ' (Current)' : '')"></option>
+                        </template>
+                    </select>
+                    <label class="sr-only" for="tt-filter-class">Class</label>
+                    <select id="tt-filter-class" x-model="levelId" @change="loadAllTimetables()"
+                            class="min-w-[10rem] px-2.5 sm:px-3 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">All classes</option>
+                        {% for level in academic_levels %}
+                        <option value="{{ level.id }}">{{ level.level_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" @click="window.print()" class="inline-flex justify-center items-center gap-2 min-h-[44px] px-3 sm:px-4 py-2 text-xs sm:text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 touch-manipulation flex-1 sm:flex-none">
+                        <i class="fas fa-print" aria-hidden="true"></i><span>Print</span>
+                    </button>
+                    <button type="button" @click="autoGenerateAllLevels()"
+                            :disabled="generatingAll || !yearId || !termId"
+                            class="inline-flex justify-center items-center gap-1.5 min-h-[44px] px-3 sm:px-4 py-2 text-xs sm:text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed no-print touch-manipulation flex-1 sm:flex-none min-w-0">
+                        <i class="fas shrink-0" :class="generatingAll ? 'fa-spinner fa-spin' : 'fa-magic'"></i>
+                        <span class="truncate text-left sm:text-center" x-text="generatingAll ? 'Generating…' : 'Auto generate all'"></span>
+                    </button>
+                </div>
             </div>
+        </div>
+        <div class="teacher-view-tabs flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+            <button type="button"
+                    @click="teacherDisplayMode = 'numbers'"
+                    :class="teacherDisplayMode === 'numbers' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                <i class="fas fa-id-badge mr-1.5"></i>Employee numbers
+            </button>
+            <button type="button"
+                    @click="teacherDisplayMode = 'names'"
+                    :class="teacherDisplayMode === 'names' ? 'active flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' : 'flex-1 sm:flex-none px-4 py-2.5 text-sm rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'">
+                <i class="fas fa-user mr-1.5"></i>Teacher names
+            </button>
         </div>
     </div>
 
     <!-- Loading State -->
-    <div x-show="loading" class="p-4">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div x-show="loading" class="p-3 sm:p-4 lg:p-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             <template x-for="i in 4" :key="i">
                 <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
                     <div class="h-14 bg-blue-500 loading-pulse"></div>
@@ -158,16 +283,17 @@
     </div>
 
     <!-- Timetables Grid -->
-    <div x-show="!loading" class="p-4">
+    <div x-show="!loading" class="p-3 sm:p-4 lg:p-6 max-w-[100%]">
         {% if academic_levels and academic_levels|length > 0 %}
-        <div class="space-y-4">
+        <div class="space-y-4 sm:space-y-5 max-w-[min(100%,1600px)] mx-auto">
             {% for level in academic_levels %}
-            <div class="timetable-card bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="timetable-card bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow border border-gray-100 dark:border-gray-700/80 min-w-0"
+                 x-show="levelId === '' || levelId === null || levelId === undefined || String(levelId) === '{{ level.id }}'">
                 <!-- Class Header -->
-                <div class="class-header px-4 py-2 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-graduation-cap text-white"></i>
-                        <h2 class="font-bold text-white">{{ level.level_name }}</h2>
+                <div class="class-header px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <i class="fas fa-graduation-cap text-white shrink-0"></i>
+                        <h2 class="font-bold text-white text-sm sm:text-base truncate">{{ level.level_name }}</h2>
                     </div>
                     <template x-if="timetables[{{ level.id }}] && timetables[{{ level.id }}].length > 0">
                         <span class="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full" x-text="timetables[{{ level.id }}].length + ' slots'"></span>
@@ -178,46 +304,50 @@
                 </div>
 
                 <!-- Timetable Content -->
-                <div class="p-2">
+                <div class="p-2 sm:p-3">
                     <!-- Empty State -->
                     <template x-if="!timetables[{{ level.id }}] || timetables[{{ level.id }}].length === 0">
-                        <div class="text-center py-6 text-gray-400">
-                            <i class="fas fa-calendar-times text-2xl mb-1"></i>
-                            <p class="text-xs">No timetable</p>
+                        <div class="text-center py-8 sm:py-10 text-gray-400 px-2">
+                            <i class="fas fa-calendar-times text-3xl sm:text-4xl mb-2 opacity-80"></i>
+                            <p class="text-xs sm:text-sm">No timetable</p>
                         </div>
                     </template>
 
-                    <!-- Timetable Table -->
+                    <!-- Timetable Table (single root inside x-if — Alpine requires one element) -->
                     <template x-if="timetables[{{ level.id }}] && timetables[{{ level.id }}].length > 0">
-                        <div class="overflow-x-auto">
-                            <table class="tt-table">
-                                <thead>
-                                    <tr>
-                                        <th>Day</th>
-                                        <template x-for="time in getTimeSlots({{ level.id }})" :key="'head-' + time">
-                                            <th x-text="formatTimeRange({{ level.id }}, time)"></th>
-                                        </template>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <template x-for="day in days" :key="'row-' + day">
+                        <div class="min-w-0">
+                            <p class="sr-only">Scroll horizontally to see all time slots.</p>
+                            <div class="tt-scroll" role="region" aria-label="Timetable for {{ level.level_name|e }}">
+                                <table class="tt-table">
+                                    <thead>
                                         <tr>
-                                            <td x-text="day.substring(0, 3)"></td>
-                                            <template x-for="time in getTimeSlots({{ level.id }})" :key="'cell-' + day + '-' + time">
-                                                <td>
-                                                    <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
-                                                        <div>
-                                                            <div class="teacher-name font-medium" x-text="entry.subject_code || '— — —'"></div>
-                                                            <div class="subject-name" x-text="entry.staff_employee_number || entry.employee_id || '— — — —'"></div>
-                                                        </div>
-                                                    </template>
-                                                    <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>
-                                                </td>
+                                            <th>Day</th>
+                                            <template x-for="time in getTimeSlots({{ level.id }})" :key="'head-' + time">
+                                                <th x-text="formatTimeRange({{ level.id }}, time)"></th>
                                             </template>
                                         </tr>
-                                    </template>
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="day in days" :key="'row-' + day">
+                                            <tr>
+                                                <td x-text="day.substring(0, 3)"></td>
+                                                <template x-for="time in getTimeSlots({{ level.id }})" :key="'cell-' + day + '-' + time">
+                                                    <td>
+                                                        <template x-for="entry in getEntry({{ level.id }}, day, time)" :key="entry.id || Math.random()">
+                                                            <div>
+                                                                <div class="tt-cell-subject" x-text="entry.subject_code || entry.subject_name || '—'"></div>
+                                                                <div class="tt-cell-teacher"
+                                                                     x-text="teacherDisplayMode === 'names' ? (entry.teacher_name || '—') : formatTeacherStaffNumber(entry)"></div>
+                                                            </div>
+                                                        </template>
+                                                        <span x-show="getEntry({{ level.id }}, day, time).length === 0" class="text-gray-300">—</span>
+                                                    </td>
+                                                </template>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -226,17 +356,17 @@
         </div>
         {% else %}
         <!-- No Classes -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
-            <i class="fas fa-school text-gray-300 text-5xl mb-4"></i>
-            <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">No Classes Found</h3>
-            <p class="text-gray-500 text-sm">No academic levels/classes configured yet.</p>
+        <div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow border border-gray-100 dark:border-gray-700 px-4 py-12 sm:p-16 text-center max-w-lg mx-auto">
+            <i class="fas fa-school text-gray-300 dark:text-gray-600 text-4xl sm:text-5xl mb-4"></i>
+            <h3 class="text-base sm:text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">No Classes Found</h3>
+            <p class="text-gray-500 dark:text-gray-400 text-sm">No academic levels/classes configured yet.</p>
         </div>
         {% endif %}
     </div>
 
     <!-- Auto Generate Overwrite Confirmation Modal -->
-    <div x-show="autoGenConfirmModal" x-cloak class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" @click.self="closeAutoGenerateConfirmModal()">
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md border border-gray-200 dark:border-gray-700" @click.stop>
+    <div x-show="autoGenConfirmModal" x-cloak class="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" @click.self="closeAutoGenerateConfirmModal()">
+        <div class="bg-white dark:bg-gray-800 rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-md max-h-[min(92dvh,36rem)] overflow-y-auto border border-gray-200 dark:border-gray-700 sm:m-auto" @click.stop>
             <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
                 <div>
                     <h3 class="font-semibold text-gray-900 dark:text-white">
@@ -279,19 +409,19 @@
                 <p x-show="autoGenErrorMessage" x-text="autoGenErrorMessage" class="text-sm text-red-600 dark:text-red-400"></p>
             </div>
 
-            <div class="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-b-xl flex items-center justify-end gap-2">
-                <button @click="closeAutoGenerateConfirmModal()" class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg">Cancel</button>
-                <button x-show="autoGenStep === 'password'"
+            <div class="p-4 bg-gray-50 dark:bg-gray-700/40 rounded-b-2xl sm:rounded-b-xl flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <button type="button" @click="closeAutoGenerateConfirmModal()" class="min-h-[44px] px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-lg touch-manipulation">Cancel</button>
+                <button type="button" x-show="autoGenStep === 'password'"
                         @click="requestAutoGenerateCode()"
                         :disabled="autoGenSubmitting || !autoGenCurrentPassword"
-                        class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                        class="min-h-[44px] px-4 py-2.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation">
                     <span x-text="autoGenSubmitting ? 'Sending...' : 'Send 6-digit code'"></span>
                 </button>
-                <button x-show="autoGenStep === 'code'"
+                <button type="button" x-show="autoGenStep === 'code'"
                         @click="confirmAutoGenerateWithCode()"
                         :disabled="autoGenSubmitting || !/^\d{6}$/.test((autoGenCode || '').trim())"
-                        class="px-4 py-2 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                    <span x-text="autoGenSubmitting ? 'Confirming...' : 'Confirm & Auto Generate'"></span>
+                        class="min-h-[44px] px-4 py-2.5 text-sm bg-purple-600 hover:bg-purple-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation">
+                    <span x-text="autoGenSubmitting ? 'Confirming...' : 'Confirm & generate'"></span>
                 </button>
             </div>
         </div>
@@ -307,8 +437,9 @@ function timetablesApp() {
         academicLevels: {{ academic_levels | tojson | safe if academic_levels else '[]' }},
         academicYears: {{ academic_years | tojson | safe if academic_years else '[]' }},
         terms: {{ terms | tojson | safe if terms else '[]' }},
-        yearId: {% if current_year_id %}{{ current_year_id }}{% else %}null{% endif %},
-        termId: {% if current_term_id %}{{ current_term_id }}{% else %}null{% endif %},
+        yearId: {{ current_year_id | tojson }},
+        termId: {{ current_term_id | tojson }},
+        levelId: '',
         generatingAll: false,
         autoGenConfirmModal: false,
         autoGenStep: 'password',
@@ -319,21 +450,49 @@ function timetablesApp() {
         autoGenErrorMessage: '',
         autoGenSubmitting: false,
         autoGenPendingPayload: null,
-        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').filter(d => d.trim()){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
+        /** 'numbers' = staff / portal employee number; 'names' = full name */
+        teacherDisplayMode: 'numbers',
+        days: {% if settings and settings.study_days %}{{ settings.study_days|tojson|safe }}.split(',').map((d) => d.trim()).filter(Boolean){% else %}['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']{% endif %},
         classTimes: {% if settings and settings.class_times %}{{ settings.class_times|tojson|safe }}{% else %}[]{% endif %},
         
+        get visibleLevels() {
+            const levels = this.academicLevels || [];
+            if (this.levelId === '' || this.levelId === null || this.levelId === undefined) return levels;
+            return levels.filter(l => String(l.id) === String(this.levelId));
+        },
+
+        get visibleLevelCount() {
+            return this.visibleLevels.length;
+        },
+
         get classesWithSchedule() {
             let count = 0;
-            for (const key in this.timetables) {
+            this.visibleLevels.forEach((level) => {
+                const key = level.id;
                 if (this.timetables[key] && this.timetables[key].length > 0) count++;
-            }
+            });
             return count;
         },
 
         async loadAllTimetables() {
             this.loading = true;
-            
-            const promises = this.academicLevels.map(async (level) => {
+            if (!this.yearId || !this.termId) {
+                (this.academicLevels || []).forEach((level) => {
+                    this.timetables[level.id] = [];
+                    this.levelSettings[level.id] = {};
+                });
+                this.loading = false;
+                return;
+            }
+            /* Always load every level when year/term are set; class filter is display-only. Otherwise clearing all
+               but fetching only visibleLevels leaves other cards empty while headers would still show stale counts. */
+            const levels = this.academicLevels || [];
+            levels.forEach((level) => {
+                this.timetables[level.id] = [];
+                this.levelSettings[level.id] = {};
+            });
+
+            const promises = levels.map(async (level) => {
                 try {
                     const res = await fetch('{{ employee_dash_url('timetable-management/manage-timetable/get-timetable') }}', {
                         method: 'POST',
@@ -505,26 +664,48 @@ function timetablesApp() {
             }
         },
         
+        _timeKey(t) {
+            const s = String(t || '').trim();
+            if (!s) return '';
+            const m = s.match(/^(\d{1,2}:\d{2})/);
+            return m ? m[1] : s;
+        },
+
         getTimeSlots(levelId) {
             const levelCfg = this.levelSettings[levelId] || {};
             const configured = Array.isArray(levelCfg.class_times) ? levelCfg.class_times : [];
             const configuredStartTimes = configured
-                .map(t => (t && t.start_time ? String(t.start_time) : ''))
+                .map((t) => (t && t.start_time ? String(t.start_time).trim() : ''))
                 .filter(Boolean);
-            if (configuredStartTimes.length > 0) {
-                return [...new Set(configuredStartTimes)].sort((a, b) => a.localeCompare(b));
-            }
-
-            const data = this.timetables[levelId];
-            if (!data || !data.length) return [];
-            const times = [...new Set(data.map(e => e.time).filter(t => t))];
-            return times.sort((a, b) => String(a).localeCompare(String(b)));
+            const data = this.timetables[levelId] || [];
+            const fromData = data.map((e) => (e && e.time ? String(e.time).trim() : '')).filter(Boolean);
+            const raw = [...configuredStartTimes, ...fromData];
+            const byKey = new Map();
+            raw.forEach((t) => {
+                const k = this._timeKey(t);
+                if (!k) return;
+                if (!byKey.has(k)) {
+                    byKey.set(k, t);
+                    return;
+                }
+                const cur = byKey.get(k);
+                const prefer = String(t).length >= String(cur).length ? t : cur;
+                byKey.set(k, prefer);
+            });
+            return [...byKey.values()].sort((a, b) =>
+                this._timeKey(a).localeCompare(this._timeKey(b), undefined, { numeric: true })
+            );
         },
-        
+
         getEntry(levelId, day, time) {
             const data = this.timetables[levelId];
             if (!data) return [];
-            return data.filter(e => e.day === day && e.time === time);
+            const tk = this._timeKey(time);
+            return data.filter((e) => {
+                if (!e) return false;
+                if (String(e.day || '').trim() !== String(day || '').trim()) return false;
+                return this._timeKey(e.time) === tk || String(e.time || '').trim() === String(time || '').trim();
+            });
         },
         
         formatTimeRange(levelId, time) {
@@ -533,7 +714,11 @@ function timetablesApp() {
             const levelCfg = this.levelSettings[levelId] || {};
             const levelClassTimes = Array.isArray(levelCfg.class_times) ? levelCfg.class_times : [];
             if (levelClassTimes.length > 0) {
-                const match = levelClassTimes.find(t => String((t || {}).start_time || '') === start);
+                const sk = this._timeKey(start);
+                const match = levelClassTimes.find((t) => {
+                    const st = String((t || {}).start_time || '').trim();
+                    return st === start || this._timeKey(st) === sk;
+                });
                 if (match && match.end_time) {
                     return `${start} - ${match.end_time}`;
                 }
@@ -541,9 +726,50 @@ function timetablesApp() {
             return start;
         },
 
+        _isSixDigitPortalId(s) {
+            return /^\d{6}$/.test(String(s || '').trim());
+        },
+
+        /** Employee numbers tab: staff id only; do not show a bare 6-digit portal id next to it (or alone). */
+        formatTeacherStaffNumber(entry) {
+            if (!entry) return '—';
+            const staff = String(entry.staff_employee_number || '').trim();
+            const portal = String(entry.portal_employee_id || '').trim();
+            if (this._isSixDigitPortalId(portal)) {
+                return staff || '—';
+            }
+            if (staff && portal && staff !== portal) {
+                return `${staff} · ${portal}`;
+            }
+            return staff || portal || '—';
+        },
+
         initDefaults() {
-            // Uses current year/term from backend settings context.
-        }
+            const years = this.academicYears || [];
+            if (this.yearId === null || this.yearId === undefined || this.yearId === '') {
+                const cy = years.find(y => y && y.is_current);
+                this.yearId = cy && cy.id != null ? cy.id : (years[0] && years[0].id != null ? years[0].id : '');
+            }
+            this.applyDefaultTermForYear();
+            if (this.levelId === null || this.levelId === undefined) this.levelId = '';
+        },
+
+        applyDefaultTermForYear() {
+            const yearTerms = (this.terms || []).filter(t => String(t.academic_year_id) === String(this.yearId));
+            if (!yearTerms.length) {
+                this.termId = '';
+                return;
+            }
+            const stillValid = yearTerms.some(t => String(t.id) === String(this.termId));
+            if (stillValid) return;
+            const ct = yearTerms.find(t => t && t.is_current);
+            this.termId = ct && ct.id != null ? ct.id : yearTerms[0].id;
+        },
+
+        onYearFilterChange() {
+            this.applyDefaultTermForYear();
+            this.loadAllTimetables();
+        },
     };
 }
 </script>

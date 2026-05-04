@@ -70,7 +70,7 @@
                         <i class="fas fa-users-cog text-brand-primary"></i>
                         Bulk attendance
                     </h3>
-                    <p class="text-xs text-gray-600 dark:text-gray-400 max-w-xl">Mark every visible cell at once, then save. Single-day and period views work the same: all students × all dates in the table.</p>
+                    <p class="text-xs text-gray-600 dark:text-gray-400 max-w-xl">Edits save automatically shortly after you change checkboxes (no page refresh). Bulk buttons apply to the whole grid; Save still forces an immediate sync.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <button type="button" id="att-mark-all-present"
@@ -80,10 +80,6 @@
                     <button type="button" id="att-mark-all-absent"
                             class="touch-btn px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white transition-all pointer-events-auto">
                         <i class="fas fa-times mr-2 pointer-events-none" aria-hidden="true"></i>Mark all absent
-                    </button>
-                    <button type="button" id="att-save-now"
-                            class="touch-btn px-4 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 transition-all pointer-events-auto">
-                        <i class="fas fa-save mr-2 pointer-events-none" aria-hidden="true"></i>Save now
                     </button>
                 </div>
             </div>
@@ -160,13 +156,10 @@
         {% endfor %}
     </div>
         {% if not is_parent_view|default(false) %}
-        <div class="mt-6 flex flex-wrap items-center gap-3">
+        <div class="mt-6">
             <p class="text-xs text-gray-500 dark:text-gray-400">
-                <i class="fas fa-info-circle mr-1"></i>Changes also auto-save shortly after you edit checkboxes.
+                <i class="fas fa-bolt mr-1 text-amber-500 dark:text-amber-400" aria-hidden="true"></i>Live save: changes persist automatically after each edit (see the status line above).
             </p>
-            <button type="button" id="att-save-footer" class="touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold shadow-md hover:opacity-95">
-                <i class="fas fa-save mr-2"></i>Save attendance
-            </button>
         </div>
         {% endif %}
     {% if is_parent_view|default(false) %}
