@@ -72,7 +72,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="staffManagement()">
+<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="staffManagement()" x-init="init()">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">{{ page_title|default('Staff Management') }}</h1>
@@ -120,7 +120,9 @@
                             <p class="text-sm sm:text-base font-semibold text-gray-900 dark:text-white truncate">{{ employee.full_name }}</p>
                             <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ employee.email }}</p>
                             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5 sm:mt-2">
-                                <span class="text-xs text-gray-600 dark:text-gray-400">ID: <span class="font-mono">{{ employee.employee_id }}</span></span>
+                                <span class="text-xs text-gray-600 dark:text-gray-400">Portal ID: <span class="font-mono">{{ employee.employee_id }}</span></span>
+                                <span class="text-xs text-gray-400 hidden sm:inline">•</span>
+                                <span class="text-xs text-gray-600 dark:text-gray-400">Staff #: <span class="font-mono">{{ employee.staff_employee_number | default(employee.id|string, true) }}</span></span>
                                 <span class="text-xs text-gray-400 hidden sm:inline">•</span>
                                 <span class="text-xs text-gray-600 dark:text-gray-400 break-all">{{ employee.phone }}</span>
                             </div>
@@ -250,6 +252,28 @@
                                required
                                class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
                     </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Staff number</label>
+                        <input type="text"
+                               x-model="editModal.data.staff_employee_number"
+                               @input="checkStaffNumberAvailability(false)"
+                               @blur="checkStaffNumberAvailability(true)"
+                               required
+                               maxlength="50"
+                               :class="{
+                                   'border-red-500 dark:border-red-500 ring-1 ring-red-500': staffNumberCheck.status === 'taken' || staffNumberCheck.status === 'error',
+                                   'border-green-500 dark:border-green-600 ring-1 ring-green-500': staffNumberCheck.status === 'available',
+                                   'border-gray-300 dark:border-gray-600': staffNumberCheck.status === 'idle' || staffNumberCheck.status === 'checking'
+                               }"
+                               class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all">
+                        <p x-show="staffNumberCheck.status === 'idle'" class="mt-1 text-xs text-gray-500 dark:text-gray-400">Assigned when a pending employee is approved as a teacher (defaults to internal ID); editable here. Others keep the internal ID until set. Shown on timetables and reports (distinct from portal ID).</p>
+                        <p x-show="staffNumberCheck.status === 'checking'" x-cloak class="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                            <i class="fas fa-spinner fa-spin"></i><span x-text="staffNumberCheck.message"></span>
+                        </p>
+                        <p x-show="staffNumberCheck.status === 'available'" x-cloak class="mt-1 text-xs text-green-600 dark:text-green-400" x-text="staffNumberCheck.message"></p>
+                        <p x-show="staffNumberCheck.status === 'taken' || staffNumberCheck.status === 'error'" x-cloak class="mt-1 text-xs text-red-600 dark:text-red-400" x-text="staffNumberCheck.message"></p>
+                    </div>
                     
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 sm:mb-2">Role</label>
@@ -283,7 +307,7 @@
                     
                     <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 sm:pt-6">
                         <button type="submit" 
-                                :disabled="editModal.loading"
+                                :disabled="editModal.loading || staffNumberCheck.status === 'checking' || staffNumberCheck.status === 'taken' || staffNumberCheck.status === 'error'"
                                 class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center justify-center text-sm sm:text-base">
                             <span x-show="!editModal.loading">Update</span>
                             <span x-show="editModal.loading" class="flex items-center gap-2">
@@ -312,6 +336,11 @@ function staffManagement() {
             text: '',
             type: 'success'
         },
+        staffNumberCheck: {
+            status: 'idle',
+            message: ''
+        },
+        _staffNumberDebounce: null,
         editModal: {
             open: false,
             loading: false,
@@ -321,8 +350,91 @@ function staffManagement() {
                 email: '',
                 phone: '',
                 id_number: '',
+                staff_employee_number: '',
                 role: '',
                 new_password: ''
+            }
+        },
+
+        init() {
+            this.$watch('editModal.open', (open) => {
+                if (!open) {
+                    clearTimeout(this._staffNumberDebounce);
+                    this._staffNumberDebounce = null;
+                    this.staffNumberCheck = { status: 'idle', message: '' };
+                }
+            });
+        },
+
+        resetStaffNumberCheck() {
+            clearTimeout(this._staffNumberDebounce);
+            this._staffNumberDebounce = null;
+            this.staffNumberCheck = { status: 'idle', message: '' };
+        },
+
+        async checkStaffNumberAvailability(immediate = false) {
+            clearTimeout(this._staffNumberDebounce);
+            const sn = (this.editModal.data.staff_employee_number || '').trim();
+            const excludeId = this.editModal.data.id;
+
+            if (!sn) {
+                this.staffNumberCheck = { status: 'idle', message: '' };
+                return;
+            }
+
+            const run = async () => {
+                this.staffNumberCheck = { status: 'checking', message: 'Checking availability…' };
+                try {
+                    const response = await fetch(`${_staffEmpPrefix}/check-staff-number`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            staff_number: sn,
+                            exclude_employee_id: excludeId,
+                        }),
+                    });
+                    let result = {};
+                    try {
+                        result = await response.json();
+                    } catch (e) {
+                        result = {};
+                    }
+                    const stillCurrent = (this.editModal.data.staff_employee_number || '').trim() === sn;
+                    if (!stillCurrent) {
+                        return;
+                    }
+                    if (!response.ok) {
+                        this.staffNumberCheck = {
+                            status: 'error',
+                            message: result.message || 'Could not verify availability. Try again.',
+                        };
+                        return;
+                    }
+                    if (result.available) {
+                        this.staffNumberCheck = {
+                            status: 'available',
+                            message: result.message || 'This staff number is available.',
+                        };
+                    } else {
+                        this.staffNumberCheck = {
+                            status: 'taken',
+                            message: result.message || 'This staff number is already in use. Please choose another.',
+                        };
+                    }
+                } catch (error) {
+                    console.error('checkStaffNumberAvailability:', error);
+                    this.staffNumberCheck = {
+                        status: 'error',
+                        message: 'Could not verify availability. Try again.',
+                    };
+                }
+            };
+
+            if (immediate) {
+                await run();
+            } else {
+                this.staffNumberCheck = { status: 'checking', message: 'Checking availability…' };
+                this._staffNumberDebounce = setTimeout(run, 400);
             }
         },
         
@@ -337,6 +449,7 @@ function staffManagement() {
         
         async openEditModal(employeeId) {
             try {
+                this.resetStaffNumberCheck();
                 const response = await fetch(`${_staffEmpPrefix}/get-employee/${employeeId}`);
                 const result = await response.json();
                 
@@ -347,10 +460,14 @@ function staffManagement() {
                         email: result.employee.email,
                         phone: result.employee.phone,
                         id_number: result.employee.id_number || '',
+                        staff_employee_number: result.employee.staff_employee_number != null && result.employee.staff_employee_number !== ''
+                            ? String(result.employee.staff_employee_number)
+                            : String(result.employee.id),
                         role: result.employee.role,
                         new_password: ''
                     };
                     this.editModal.open = true;
+                    await this.checkStaffNumberAvailability(true);
                 } else {
                     this.showMessage(result.message || 'Failed to load employee details', 'error');
                 }
@@ -361,6 +478,18 @@ function staffManagement() {
         },
         
         async updateEmployee() {
+            await this.checkStaffNumberAvailability(true);
+            const sn = (this.editModal.data.staff_employee_number || '').trim();
+            if (!sn) {
+                return;
+            }
+            if (this.staffNumberCheck.status !== 'available') {
+                this.showMessage(
+                    this.staffNumberCheck.message || 'Please choose an available staff number before saving.',
+                    'error'
+                );
+                return;
+            }
             this.editModal.loading = true;
             try {
                 const response = await fetch(`${_staffEmpPrefix}/update-employee/${this.editModal.data.id}`, {

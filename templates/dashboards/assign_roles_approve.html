@@ -110,6 +110,8 @@
                                 Assign Role:
                             </label>
                             <select :id="'role-select-' + {{ employee.id }}"
+                                    data-emp-id="{{ employee.id }}"
+                                    @change="onApproveRoleChange({{ employee.id }}, $event.target.value)"
                                     class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
                                 <option value="">Select a role...</option>
                                 <option value="employee">Employee</option>
@@ -125,6 +127,31 @@
                                 <option value="transport manager">Transport Manager</option>
                                 <option value="technician">Technician</option>
                             </select>
+                            <div id="teacher-staff-row-{{ employee.id }}" class="hidden space-y-1.5 pt-1">
+                                <label for="teacher-staff-number-{{ employee.id }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Allocate staff number <span class="text-gray-500 dark:text-gray-400 font-normal">(teacher)</span>
+                                </label>
+                                <input type="text"
+                                       id="teacher-staff-number-{{ employee.id }}"
+                                       maxlength="50"
+                                       autocomplete="off"
+                                       placeholder="Blank uses internal ID {{ employee.id }}"
+                                       @input="checkApproveStaffNumber({{ employee.id }}, false)"
+                                       @blur="checkApproveStaffNumber({{ employee.id }}, true)"
+                                       :class="{
+                                           'border-red-500 dark:border-red-500 ring-1 ring-red-500': (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'taken' || (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'error',
+                                           'border-green-500 dark:border-green-600 ring-1 ring-green-500': (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'available',
+                                           'border-gray-300 dark:border-gray-600': !approveStaffCheckById['{{ employee.id }}'] || (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'idle' || (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'checking'
+                                       }"
+                                       class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px] font-mono">
+                                <p x-show="!approveStaffCheckById['{{ employee.id }}'] || !(approveStaffCheckById['{{ employee.id }}'].status) || approveStaffCheckById['{{ employee.id }}'].status === 'idle'"
+                                   class="text-xs text-gray-500 dark:text-gray-400">Shown on timetables and reports. Must be unique across staff.</p>
+                                <p x-show="(approveStaffCheckById['{{ employee.id }}'] || {}).status === 'checking'" x-cloak class="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                                    <i class="fas fa-spinner fa-spin"></i><span x-text="(approveStaffCheckById['{{ employee.id }}'] || {}).message"></span>
+                                </p>
+                                <p x-show="(approveStaffCheckById['{{ employee.id }}'] || {}).status === 'available'" x-cloak class="text-xs text-green-600 dark:text-green-400" x-text="(approveStaffCheckById['{{ employee.id }}'] || {}).message"></p>
+                                <p x-show="(approveStaffCheckById['{{ employee.id }}'] || {}).status === 'taken' || (approveStaffCheckById['{{ employee.id }}'] || {}).status === 'error'" x-cloak class="text-xs text-red-600 dark:text-red-400" x-text="(approveStaffCheckById['{{ employee.id }}'] || {}).message"></p>
+                            </div>
                             <button @click="approveEmployee({{ employee.id }}, '{{ employee.full_name }}')" 
                                     class="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-all flex items-center justify-center gap-2 sm:gap-2.5 min-h-[44px] text-sm sm:text-base shadow-sm hover:shadow-md">
                                 <i class="fas fa-check-circle text-base sm:text-lg"></i>
@@ -406,6 +433,8 @@ function assignRolesApprove() {
             text: '',
             type: 'success'
         },
+        approveStaffCheckById: {},
+        _approveStaffDebounceById: {},
         payrollModal: {
             open: false,
             employeeId: null,
@@ -477,6 +506,95 @@ function assignRolesApprove() {
             setTimeout(() => {
                 this.message.show = false;
             }, 5000);
+        },
+
+        onApproveRoleChange(employeeId, value) {
+            const row = document.getElementById('teacher-staff-row-' + employeeId);
+            if (!row) return;
+            const isTeacher = value === 'teachers' || value === 'teacher';
+            row.classList.toggle('hidden', !isTeacher);
+            if (!isTeacher) {
+                this.resetApproveStaffCheck(employeeId);
+                return;
+            }
+            const inp = document.getElementById('teacher-staff-number-' + employeeId);
+            if (inp && inp.value.trim()) {
+                this.checkApproveStaffNumber(employeeId, true);
+            } else {
+                this.resetApproveStaffCheck(employeeId);
+            }
+        },
+
+        resetApproveStaffCheck(employeeId) {
+            const k = String(employeeId);
+            if (this._approveStaffDebounceById[k]) {
+                clearTimeout(this._approveStaffDebounceById[k]);
+                delete this._approveStaffDebounceById[k];
+            }
+            this.approveStaffCheckById[k] = { status: 'idle', message: '' };
+        },
+
+        async checkApproveStaffNumber(employeeId, immediate = false) {
+            const k = String(employeeId);
+            clearTimeout(this._approveStaffDebounceById[k]);
+            const inp = document.getElementById('teacher-staff-number-' + employeeId);
+            const sn = inp ? inp.value.trim() : '';
+            if (!sn) {
+                this.approveStaffCheckById[k] = { status: 'idle', message: '' };
+                return;
+            }
+            const run = async () => {
+                this.approveStaffCheckById[k] = { status: 'checking', message: 'Checking availability…' };
+                try {
+                    const response = await fetch(`${_approveEmpPrefix}/check-staff-number`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            staff_number: sn,
+                            exclude_employee_id: employeeId,
+                        }),
+                    });
+                    let result = {};
+                    try {
+                        result = await response.json();
+                    } catch (e) {
+                        result = {};
+                    }
+                    const inp2 = document.getElementById('teacher-staff-number-' + employeeId);
+                    const stillCurrent = inp2 && inp2.value.trim() === sn;
+                    if (!stillCurrent) return;
+                    if (!response.ok) {
+                        this.approveStaffCheckById[k] = {
+                            status: 'error',
+                            message: result.message || 'Could not verify availability. Try again.',
+                        };
+                        return;
+                    }
+                    if (result.available) {
+                        this.approveStaffCheckById[k] = {
+                            status: 'available',
+                            message: result.message || 'This staff number is available.',
+                        };
+                    } else {
+                        this.approveStaffCheckById[k] = {
+                            status: 'taken',
+                            message: result.message || 'This staff number is already in use. Choose another.',
+                        };
+                    }
+                } catch (error) {
+                    console.error('checkApproveStaffNumber:', error);
+                    this.approveStaffCheckById[k] = {
+                        status: 'error',
+                        message: 'Could not verify availability. Try again.',
+                    };
+                }
+            };
+            if (immediate) {
+                await run();
+            } else {
+                this.approveStaffCheckById[k] = { status: 'checking', message: 'Checking availability…' };
+                this._approveStaffDebounceById[k] = setTimeout(run, 400);
+            }
         },
         
         openPayrollModal(employeeId, employeeName) {
@@ -564,6 +682,23 @@ function assignRolesApprove() {
                 roleSelect.focus();
                 return;
             }
+
+            if (selectedRole === 'teachers' || selectedRole === 'teacher') {
+                const staffEl = document.getElementById('teacher-staff-number-' + employeeId);
+                const sn = staffEl ? staffEl.value.trim() : '';
+                if (sn) {
+                    await this.checkApproveStaffNumber(employeeId, true);
+                    const st = this.approveStaffCheckById[String(employeeId)];
+                    if (!st || st.status !== 'available') {
+                        this.showMessage(
+                            st?.message || 'Please choose an available staff number before approving.',
+                            'error'
+                        );
+                        if (staffEl) staffEl.focus();
+                        return;
+                    }
+                }
+            }
             
             const roleTitle = this.toTitleCase(selectedRole);
             if (!confirm(`Are you sure you want to approve ${employeeName} and assign them the role of ${roleTitle}? An email notification will be sent to their email address.`)) {
@@ -571,12 +706,17 @@ function assignRolesApprove() {
             }
             
             try {
+                const payload = { role: selectedRole };
+                if (selectedRole === 'teachers' || selectedRole === 'teacher') {
+                    const staffEl = document.getElementById('teacher-staff-number-' + employeeId);
+                    payload.staff_employee_number = staffEl ? staffEl.value.trim() : '';
+                }
                 const response = await fetch(`${_approveEmpPrefix}/approve-employee/${employeeId}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ role: selectedRole })
+                    body: JSON.stringify(payload)
                 });
                 
                 const result = await response.json();

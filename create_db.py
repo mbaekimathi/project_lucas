@@ -204,6 +204,17 @@ def create_tables():
                 )
             """)
             print("Employees table created.")
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS employee_number (
+                    employee_id INT NOT NULL PRIMARY KEY,
+                    staff_number VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                    UNIQUE KEY uq_employee_number_staff_number (staff_number)
+                )
+            """)
+            print("employee_number table created.")
             
             connection.commit()
             return True

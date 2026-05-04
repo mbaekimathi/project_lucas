@@ -378,6 +378,35 @@
 
 {% if admission_open %}
 <script>
+(function() {
+    var admForm = document.querySelector('form[action="/admission"]');
+    if (!admForm) return;
+    admForm.querySelectorAll('input, textarea').forEach(function(el) {
+        var t = (el.type || 'text').toLowerCase();
+        if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset') return;
+        if (t === 'email' || t === 'password' || t === 'file' || t === 'date' || t === 'checkbox' || t === 'radio') return;
+        el.addEventListener('input', function() {
+            var s = this.selectionStart, e = this.selectionEnd;
+            var v = this.value.toUpperCase();
+            if (this.value !== v) {
+                this.value = v;
+                try { this.setSelectionRange(s, e); } catch (err) {}
+            }
+        });
+        el.addEventListener('blur', function() {
+            this.value = this.value.toUpperCase().replace(/\s+/g, ' ').trim();
+        });
+    });
+    admForm.querySelectorAll('input[type="email"]').forEach(function(el) {
+        el.addEventListener('input', function() {
+            var v = this.value.toLowerCase();
+            if (this.value !== v) this.value = v;
+        });
+        el.addEventListener('blur', function() {
+            this.value = this.value.toLowerCase().trim();
+        });
+    });
+})();
 function toggleSponsorFields(category) {
     const sponsorFields = document.getElementById('sponsor_fields');
     const sponsorName = document.getElementById('sponsor_name');

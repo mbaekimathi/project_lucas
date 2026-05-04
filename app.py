@@ -3,6 +3,7 @@ from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import pymysql
+from pymysql.err import IntegrityError
 from datetime import datetime, timedelta, date as date_cls
 import os
 import re
@@ -195,6 +196,7 @@ EMPLOYEE_SCOPED_ROOT_SEGMENTS = frozenset({
     'staff-management', 'student-management', 'users-roles', 'system-settings', 'database',
     'assign-roles-approve', 'approve-employee', 'update-employee', 'delete-employee',
     'toggle-suspend-employee', 'get-employee', 'get-student', 'check-student-id',
+    'check-staff-number',
     'update-student', 'delete-student', 'approve-student', 'profile', 'settings',
     'switch-role', 'role-switch', 'switch-employee', 'admission', 'register-employee',
     'check-employee-id', 'login', 'logout', 'terms-and-conditions', 'api',
@@ -911,6 +913,32 @@ def init_db():
                 """)
             except Exception:
                 pass
+
+            # Editable staff-facing number for teachers (defaults to employees.id string when approved as teacher; distinct from portal employee_id code)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS employee_number (
+                    employee_id INT NOT NULL PRIMARY KEY,
+                    staff_number VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                    UNIQUE KEY uq_employee_number_staff_number (staff_number)
+                )
+            """)
+            try:
+                cursor.execute("""
+                    ALTER TABLE employee_number MODIFY COLUMN staff_number VARCHAR(50)
+                    CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL
+                """)
+            except Exception:
+                pass
+            try:
+                cursor.execute("""
+                    INSERT IGNORE INTO employee_number (employee_id, staff_number)
+                    SELECT id, CAST(id AS CHAR) FROM employees
+                    WHERE role IN ('teachers', 'teacher')
+                """)
+            except Exception as en_backfill_err:
+                print(f"Note: employee_number backfill: {en_backfill_err}")
             
             # Create employee_salaries table
             cursor.execute("""
@@ -2041,8 +2069,32 @@ def role_required(role):
     return decorator
 
 def _employee_staff_identity_sql(alias='e'):
-    """SQL expression: employees.id (auto-generated DB primary key) for timetables/reports—not portal login code or id_number."""
-    return f"CAST({alias}.id AS CHAR)"
+    """SQL expression: employee_number.staff_number when present (teachers get a row on approval), else employees.id—used in timetables/reports (not portal login code)."""
+    return (
+        f"COALESCE((SELECT en.staff_number FROM employee_number en WHERE en.employee_id = {alias}.id LIMIT 1), "
+        f"CAST({alias}.id AS CHAR))"
+    )
+
+
+def _staff_number_is_taken(cursor, staff_number: str, exclude_employee_id=None) -> bool:
+    """Return True if another employee already uses this effective staff number (utf8mb4 collation-safe)."""
+    cursor.execute(
+        """
+        SELECT e.id FROM employees e
+        LEFT JOIN employee_number en ON en.employee_id = e.id
+        WHERE (
+            CAST(COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS CHAR CHARACTER SET utf8mb4)
+            COLLATE utf8mb4_general_ci
+        ) = (
+            CAST(%s AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_general_ci
+        )
+          AND (%s IS NULL OR e.id != %s)
+        LIMIT 1
+        """,
+        (staff_number, exclude_employee_id, exclude_employee_id),
+    )
+    return bool(cursor.fetchone())
+
 
 def has_permission(employee_id, permission_key):
     """Check if an employee has a specific permission"""
@@ -2159,23 +2211,21 @@ def check_permission_or_role(permission_key, allowed_roles=None):
         
         # Check if employee has ever had any permissions (by checking if they exist in the table at all)
         # Actually, we can't easily check "ever had" without an audit table
-        # So for now: if accountant/principal with 0 permissions, deny access (require explicit permissions)
-        if user_role in ['accountant', 'head of institution'] and total_permissions == 0:
-            # For accountants/principals, require explicit permissions - no role fallback
-            print(f"  - RESULT: DENIED (accountant/principal with no permissions - requires explicit permission)")
+        # Accountants with no permission rows use explicit grants only (no role fallback below).
+        # Head of institution uses normal role fallback so staff-management APIs work without permission-matrix setup.
+        if user_role == 'accountant' and total_permissions == 0:
+            print(f"  - RESULT: DENIED (accountant with no permissions - requires explicit permission)")
             return False
     
     # Fall back to role-based access only if:
     # 1. No permissions are assigned AND
-    # 2. User is not an accountant/principal (they require explicit permissions)
+    # 2. User is not an accountant (accountants require explicit permission rows)
     if allowed_roles and user_role in allowed_roles:
-        # Only allow role fallback for non-accountant/principal roles
-        if user_role not in ['accountant', 'head of institution']:
+        if user_role != 'accountant':
             print(f"  - RESULT: GRANTED (role-based fallback: {user_role} in {allowed_roles})")
             return True
-        else:
-            print(f"  - RESULT: DENIED (accountant/principal requires explicit permission, no role fallback)")
-            return False
+        print(f"  - RESULT: DENIED (accountant requires explicit permission, no role fallback)")
+        return False
     
     print(f"  - RESULT: DENIED (no permission, no role match)")
     return False
@@ -3548,6 +3598,63 @@ def check_employee_id():
     except Exception as e:
         print(f"Error in check_employee_id: {e}")
         return jsonify({'available': False, 'message': 'An error occurred. Please try again.'}), 500
+
+
+@app.route('/check-staff-number', methods=['POST'])
+@app.route('/dashboard/employee/check-staff-number', methods=['POST'])
+@login_required
+def check_staff_number():
+    """Live availability check for editable staff number (Staff Management edit)."""
+    has_access = check_permission_or_role(
+        'edit_staff',
+        allowed_roles=[
+            'employee', 'super admin', 'head of institution', 'deputy head of institution',
+            'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+            'warden', 'transport manager', 'technician',
+        ],
+    )
+    if not has_access:
+        return jsonify({'available': False, 'message': 'You do not have permission to check staff numbers.'}), 403
+
+    data = request.get_json(silent=True) or {}
+    staff_number = str(data.get('staff_number', '')).strip()
+    exclude_raw = data.get('exclude_employee_id')
+
+    exclude_id = None
+    if exclude_raw is not None and str(exclude_raw).strip() != '':
+        try:
+            exclude_id = int(exclude_raw)
+        except (TypeError, ValueError):
+            return jsonify({'available': False, 'message': 'Invalid employee reference.'}), 400
+
+    if not staff_number:
+        return jsonify({'available': False, 'message': 'Enter a staff number.'}), 200
+
+    if len(staff_number) > 50:
+        return jsonify({'available': False, 'message': 'Staff number is too long (max 50 characters).'}), 200
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'available': False, 'message': 'Database connection error.'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            if _staff_number_is_taken(cursor, staff_number, exclude_id):
+                return jsonify({
+                    'available': False,
+                    'message': 'This staff number is already assigned to another employee. Please choose a different one.',
+                }), 200
+            return jsonify({'available': True, 'message': 'This staff number is available.'}), 200
+    except Exception as e:
+        print(f"Error checking staff number: {e}")
+        return jsonify({'available': False, 'message': 'Could not verify availability. Please try again.'}), 500
+    finally:
+        if connection:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -10994,10 +11101,12 @@ def staff_management():
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, employee_id, full_name, email, phone, id_number, role, status, 
-                           profile_picture, created_at
-                    FROM employees 
-                    ORDER BY created_at DESC
+                    SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
+                           e.profile_picture, e.created_at,
+                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                    FROM employees e
+                    LEFT JOIN employee_number en ON en.employee_id = e.id
+                    ORDER BY e.created_at DESC
                 """)
                 employees = cursor.fetchall()
         except Exception as e:
@@ -11045,11 +11154,13 @@ def teacher_management():
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, employee_id, full_name, email, phone, id_number, role, status, 
-                           profile_picture, created_at
-                    FROM employees 
-                    WHERE role = 'teachers' OR role = 'teacher'
-                    ORDER BY full_name ASC
+                    SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
+                           e.profile_picture, e.created_at,
+                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                    FROM employees e
+                    LEFT JOIN employee_number en ON en.employee_id = e.id
+                    WHERE e.role = 'teachers' OR e.role = 'teacher'
+                    ORDER BY e.full_name ASC
                 """)
                 teachers = cursor.fetchall()
         except Exception as e:
@@ -11087,11 +11198,13 @@ def assign_roles_approve():
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id, employee_id, full_name, email, phone, id_number, role, status, 
-                           profile_picture, created_at
-                    FROM employees 
-                    WHERE status IN ('pending', 'pending approval')
-                    ORDER BY created_at DESC
+                    SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
+                           e.profile_picture, e.created_at,
+                           COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                    FROM employees e
+                    LEFT JOIN employee_number en ON en.employee_id = e.id
+                    WHERE e.status IN ('pending', 'pending approval')
+                    ORDER BY e.created_at DESC
                 """)
                 employees = cursor.fetchall()
         except Exception as e:
@@ -11115,7 +11228,7 @@ def approve_employee(employee_id):
     if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'success': False, 'message': 'You do not have permission to approve employees.'}), 403
     
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     role = data.get('role', '').strip() if data else request.form.get('role', '').strip()
     
     if not role:
@@ -11148,6 +11261,33 @@ def approve_employee(employee_id):
                 SET status = 'active', role = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
             """, (role, employee_id))
+
+            role_lc = (role or '').strip().lower()
+            if role_lc in ('teachers', 'teacher'):
+                raw_staff = data.get('staff_employee_number')
+                staff_num = str(raw_staff).strip() if raw_staff is not None else ''
+                if not staff_num:
+                    staff_num = str(employee_id)
+                elif len(staff_num) > 50:
+                    connection.rollback()
+                    return jsonify({'success': False, 'message': 'Staff number is too long (max 50 characters).'}), 400
+                if _staff_number_is_taken(cursor, staff_num, employee_id):
+                    connection.rollback()
+                    return jsonify({
+                        'success': False,
+                        'message': 'This staff number is already assigned to another employee. Choose a different staff number.',
+                    }), 400
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO employee_number (employee_id, staff_number)
+                        VALUES (%s, %s)
+                        """,
+                        (employee_id, staff_num),
+                    )
+                except IntegrityError:
+                    connection.rollback()
+                    return jsonify({'success': False, 'message': 'This staff number is already in use.'}), 400
             
             connection.commit()
             
@@ -11197,6 +11337,12 @@ def update_employee(employee_id):
     id_number = str(data.get('id_number', '')).strip().upper()
     role = str(data.get('role', '')).strip()
     new_password = str(data.get('new_password', ''))
+    staff_employee_number_raw = data.get('staff_employee_number')
+    staff_num = None
+    if staff_employee_number_raw is not None:
+        staff_num = str(staff_employee_number_raw).strip()
+        if not staff_num:
+            return jsonify({'success': False, 'message': 'Staff number cannot be empty.'}), 400
     
     if not all([full_name, email, phone, role]):
         return jsonify({'success': False, 'message': 'Please fill in all required fields.'}), 400
@@ -11244,12 +11390,29 @@ def update_employee(employee_id):
                     SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (full_name, email, phone, id_number, role, employee_id))
+
+            if staff_num is not None:
+                cursor.execute(
+                    """
+                    INSERT INTO employee_number (employee_id, staff_number)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE staff_number = VALUES(staff_number), updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (employee_id, staff_num),
+                )
             
             connection.commit()
             if new_password.strip():
                 return jsonify({'success': True, 'message': 'Employee updated successfully. Password changed.'})
             return jsonify({'success': True, 'message': 'Employee updated successfully.'})
             
+    except IntegrityError as ie:
+        print(f"Error updating employee (integrity): {ie}")
+        connection.rollback()
+        err_msg = str(ie).lower()
+        if 'staff_number' in err_msg or 'duplicate' in err_msg:
+            return jsonify({'success': False, 'message': 'This staff number is already assigned to another employee.'}), 400
+        return jsonify({'success': False, 'message': 'Could not save staff number. Please try a different value.'}), 400
     except Exception as e:
         print(f"Error updating employee: {e}")
         connection.rollback()
@@ -11362,9 +11525,11 @@ def get_employee(employee_id):
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT id, employee_id, full_name, email, phone, id_number, role, status
-                FROM employees 
-                WHERE id = %s
+                SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
+                       COALESCE(en.staff_number, CAST(e.id AS CHAR)) AS staff_employee_number
+                FROM employees e
+                LEFT JOIN employee_number en ON en.employee_id = e.id
+                WHERE e.id = %s
             """, (employee_id,))
             employee = cursor.fetchone()
             

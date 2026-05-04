@@ -210,6 +210,39 @@
 {% block extra_scripts %}
 <script>
 (function() {
+    const regForm = document.querySelector('form[action="/register-employee"]');
+    if (regForm) {
+        const skipUpperNames = new Set(['email', 'password', 'confirm_password', 'profile_picture', 'employee_id']);
+        regForm.querySelectorAll('input, textarea').forEach(function(el) {
+            const t = (el.type || 'text').toLowerCase();
+            if (t === 'hidden' || t === 'submit' || t === 'button' || t === 'reset') return;
+            if (t === 'email' || t === 'password' || t === 'file') return;
+            if (skipUpperNames.has(el.name)) return;
+            el.addEventListener('input', function() {
+                var s = this.selectionStart, e = this.selectionEnd;
+                var v = this.value.toUpperCase();
+                if (this.value !== v) {
+                    this.value = v;
+                    try { this.setSelectionRange(s, e); } catch (err) {}
+                }
+            });
+            el.addEventListener('blur', function() {
+                this.value = this.value.toUpperCase().replace(/\s+/g, ' ').trim();
+            });
+        });
+        var emailEl = regForm.querySelector('#email');
+        if (emailEl) {
+            emailEl.addEventListener('input', function() {
+                var v = this.value.toLowerCase();
+                if (this.value !== v) this.value = v;
+            });
+            emailEl.addEventListener('blur', function() {
+                this.value = this.value.toLowerCase().trim();
+            });
+        }
+    }
+})();
+(function() {
     const input = document.getElementById('employee_id');
     const statusIcon = document.getElementById('employee_id_status');
     const feedback = document.getElementById('employee_id_feedback');
