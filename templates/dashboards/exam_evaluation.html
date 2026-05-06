@@ -330,7 +330,7 @@
                                     </button>
                                 </div>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-44 overflow-y-auto p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30">
-                                    <template x-for="level in academicLevels.filter(l => selectedLevelIds.includes(String(l.id)))" :key="'grp-' + g.id + '-' + level.id">
+                                    <template x-for="level in availableLevelsForShareGroup(g.id)" :key="'grp-' + g.id + '-' + level.id">
                                         <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
                                             <input type="checkbox"
                                                    class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
@@ -1362,6 +1362,29 @@ function examEvaluation() {
                 }
             });
             grp.levelIds.push(s);
+        },
+
+        _claimedShareLevelIds(exceptGroupId) {
+            const out = new Set();
+            (this.autoShareGroups || []).forEach(g => {
+                if (exceptGroupId != null && String(g.id) === String(exceptGroupId)) return;
+                (g.levelIds || []).forEach(x => out.add(String(x)));
+            });
+            return out;
+        },
+
+        availableLevelsForShareGroup(groupId) {
+            const claimed = this._claimedShareLevelIds(groupId);
+            const selected = new Set(this.selectedLevelIds.map(String));
+            return (this.academicLevels || []).filter(l => {
+                const id = String(l.id);
+                if (!selected.has(id)) return false;
+                // show if not claimed elsewhere
+                if (!claimed.has(id)) return true;
+                // also show if already selected in this group (so it remains visible)
+                const grp = (this.autoShareGroups || []).find(g => String(g.id) === String(groupId));
+                return !!(grp && (grp.levelIds || []).includes(id));
+            });
         },
 
         selectAllLevels() {
