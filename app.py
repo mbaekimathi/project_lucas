@@ -17014,7 +17014,7 @@ def save_exam():
         allocations = data.get('allocations') or []
         auto_generate = bool(data.get('auto_generate'))
         share_timetable = bool(data.get('share_timetable'))
-        share_group_level_ids_raw = data.get('share_group_level_ids')
+        share_groups_raw = data.get('share_groups')
         base_exam_date = (data.get('base_exam_date') or '').strip()
         exam_dates_raw = data.get('exam_dates')
         level_ids_raw = data.get('level_ids')
@@ -17280,26 +17280,36 @@ def save_exam():
                 if not level_ids:
                     return jsonify({'success': False, 'message': 'No active academic levels found.'}), 400
 
-                share_group_level_ids: list[int] = []
+                share_groups: list[list[int]] = []
                 if share_timetable:
-                    if share_group_level_ids_raw is None:
-                        share_group_level_ids = []
-                    elif not isinstance(share_group_level_ids_raw, list):
-                        return jsonify({'success': False, 'message': 'Invalid share_group_level_ids (must be a list).'}), 400
-                    else:
-                        try:
-                            share_group_level_ids = sorted({int(x) for x in share_group_level_ids_raw if int(x) > 0})
-                        except (ValueError, TypeError):
-                            return jsonify({'success': False, 'message': 'Invalid share_group_level_ids values.'}), 400
+                    if share_groups_raw is None:
+                        share_groups_raw = []
+                    if not isinstance(share_groups_raw, list):
+                        return jsonify({'success': False, 'message': 'Invalid share_groups (must be a list).'}), 400
 
-                    # Must be a subset of selected level_ids (after filtering levels later too)
                     level_set = set(int(x) for x in level_ids)
-                    share_group_level_ids = [int(x) for x in share_group_level_ids if int(x) in level_set]
-                    if len(share_group_level_ids) < 2:
-                        return jsonify({
-                            'success': False,
-                            'message': 'Shared timetable requires selecting at least 2 classes in the share group.'
-                        }), 400
+                    claimed = set()
+                    for g in share_groups_raw:
+                        if not isinstance(g, dict):
+                            continue
+                        raw_ids = g.get('level_ids')
+                        if not isinstance(raw_ids, list):
+                            continue
+                        try:
+                            ids = [int(x) for x in raw_ids if int(x) > 0]
+                        except (ValueError, TypeError):
+                            continue
+                        # subset + unique membership (first group wins)
+                        uniq = []
+                        for lid in ids:
+                            if lid not in level_set:
+                                continue
+                            if lid in claimed:
+                                continue
+                            claimed.add(lid)
+                            uniq.append(int(lid))
+                        if len(uniq) >= 2:
+                            share_groups.append(sorted(uniq))
 
                 ph = ','.join(['%s'] * len(level_ids))
                 cursor.execute(f"""
@@ -17357,14 +17367,11 @@ def save_exam():
                             'success': False,
                             'message': f"Auto-register requires subject allocations first. None of the selected classes have active allocated subjects. Missing class IDs: {', '.join(map(str, missing_levels))}."
                         }), 400
-                    # If shared timetable was requested, re-filter the share-group based on the remaining valid classes.
-                    if share_timetable:
-                        share_group_level_ids = [int(x) for x in share_group_level_ids if int(x) in set(int(y) for y in level_ids)]
-                        if len(share_group_level_ids) < 2:
-                            return jsonify({
-                                'success': False,
-                                'message': f"Shared timetable requires at least 2 classes with active allocated subjects. Skipped class IDs with no allocations: {', '.join(map(str, missing_levels))}."
-                            }), 400
+                    # If shared timetable was requested, re-filter share groups after skipping classes.
+                    if share_timetable and share_groups:
+                        lvl_ok = set(int(y) for y in level_ids)
+                        share_groups = [sorted([int(x) for x in grp if int(x) in lvl_ok]) for grp in share_groups]
+                        share_groups = [grp for grp in share_groups if len(grp) >= 2]
 
                 # Load all active teachers once (fallback for missing allocations)
                 cursor.execute("""
@@ -17408,27 +17415,27 @@ def save_exam():
                 # Build tasks (one per class/subject). Supervisor selection happens per-slot to avoid conflicts.
                 # Shared timetable: only the share-group classes share one timetable pattern.
                 task_list = []
-                shared_group = share_group_level_ids[:] if share_timetable else []
-                non_shared_levels = [int(lid) for lid in level_ids if int(lid) not in set(shared_group)]
-
-                if share_timetable:
-                    common = None
-                    for lid in shared_group:
-                        sset = set(subjects_by_level.get(int(lid), set()))
-                        common = sset if common is None else common.intersection(sset)
-                    common = sorted({int(x) for x in (common or set()) if x})
-                    if not common:
-                        return jsonify({
-                            'success': False,
-                            'message': 'Shared timetable requires the chosen share-group classes to have at least one common active allocated subject.'
-                        }), 400
-                    for sid in common:
-                        for lid in shared_group:
-                            task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
+                shared_class_ids = set()
+                if share_timetable and share_groups:
+                    for grp in share_groups:
+                        shared_class_ids.update(int(x) for x in grp)
+                        common = None
+                        for lid in grp:
+                            sset = set(subjects_by_level.get(int(lid), set()))
+                            common = sset if common is None else common.intersection(sset)
+                        common = sorted({int(x) for x in (common or set()) if x})
+                        if not common:
+                            return jsonify({
+                                'success': False,
+                                'message': 'Shared timetable group requires classes to have at least one common active allocated subject.'
+                            }), 400
+                        for sid in common:
+                            for lid in grp:
+                                task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
 
                 # Normal scheduling tasks for the remaining selected levels
                 for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
-                    if int(lid) in set(shared_group):
+                    if int(lid) in shared_class_ids:
                         continue
                     task_list.append({'academic_level_id': lid, 'subject_id': sid})
                 if not task_list:
@@ -17457,83 +17464,83 @@ def save_exam():
                             return True
                     return False
 
-                if share_timetable:
-                    # Shared timetable mode: for each subject index, all classes use same (date, session).
-                    # Supervisors must be different between classes for the same slot.
-                    share_set = set(int(x) for x in shared_group)
-                    common_subjects = sorted({int(t['subject_id']) for t in task_list_sorted if int(t['academic_level_id']) in share_set})
+                if share_timetable and share_groups:
+                    # Shared timetable mode (clusters): each group has its own shared pattern.
                     total_slots = len(schedule_dates) * len(SESSION_ORDER)
-                    if len(common_subjects) > total_slots:
-                        return jsonify({
-                            'success': False,
-                            'message': 'Not enough selected exam days/sessions to schedule all common subjects for a shared timetable.'
-                        }), 400
+                    for grp in share_groups:
+                        grp_set = set(int(x) for x in grp)
+                        common_subjects = sorted({int(t['subject_id']) for t in task_list_sorted if int(t['academic_level_id']) in grp_set})
+                        if len(common_subjects) > total_slots:
+                            return jsonify({
+                                'success': False,
+                                'message': 'Not enough selected exam days/sessions to schedule all common subjects for one of the shared timetable groups.'
+                            }), 400
 
-                    for subj_idx, subject_id in enumerate(common_subjects):
-                        day_offset = subj_idx // len(SESSION_ORDER)
-                        sess_idx = subj_idx % len(SESSION_ORDER)
-                        session_type = SESSION_ORDER[sess_idx]
-                        allocation_exam_date = schedule_dates[day_offset]
-                        start_time_str, end_time_str = session_presets[session_type]
-                        smin = _time_to_minutes(start_time_str)
-                        emin = _time_to_minutes(end_time_str)
-                        if smin is None or emin is None:
-                            return jsonify({'success': False, 'message': 'Invalid session preset times.'}), 500
-                        if emin <= smin:
-                            emin += 24 * 60
+                        for subj_idx, subject_id in enumerate(common_subjects):
+                            day_offset = subj_idx // len(SESSION_ORDER)
+                            sess_idx = subj_idx % len(SESSION_ORDER)
+                            session_type = SESSION_ORDER[sess_idx]
+                            allocation_exam_date = schedule_dates[day_offset]
+                            start_time_str, end_time_str = session_presets[session_type]
+                            smin = _time_to_minutes(start_time_str)
+                            emin = _time_to_minutes(end_time_str)
+                            if smin is None or emin is None:
+                                return jsonify({'success': False, 'message': 'Invalid session preset times.'}), 500
+                            if emin <= smin:
+                                emin += 24 * 60
 
-                        used_in_slot = set()
-                        for level_id in shared_group:
-                            # Enforce one subject per class/session/day
-                            class_slot_key = (int(level_id), allocation_exam_date, session_type)
-                            if class_slot_key in seen_class_session_slots:
-                                return jsonify({
-                                    'success': False,
-                                    'message': 'Internal error: duplicate class slot while building shared timetable.'
-                                }), 500
+                            used_in_slot = set()
+                            for level_id in grp:
+                                class_slot_key = (int(level_id), allocation_exam_date, session_type)
+                                if class_slot_key in seen_class_session_slots:
+                                    return jsonify({
+                                        'success': False,
+                                        'message': 'Internal error: duplicate class slot while building shared timetable.'
+                                    }), 500
 
-                            candidates = sorted({int(x) for x in (candidate_by_ls.get((int(level_id), int(subject_id))) or set()) if x})
-                            free_candidates = [
-                                tid for tid in candidates
-                                if tid not in used_in_slot and not _teacher_conflicts(tid, allocation_exam_date, smin, emin)
-                            ]
-                            if not free_candidates:
-                                return jsonify({
-                                    'success': False,
-                                    'message': 'Shared timetable requires enough available supervisors. Not enough distinct supervisors for one or more slots; try adding more teachers or selecting more days/sessions.'
-                                }), 400
+                                candidates = sorted({int(x) for x in (candidate_by_ls.get((int(level_id), int(subject_id))) or set()) if x})
+                                free_candidates = [
+                                    tid for tid in candidates
+                                    if tid not in used_in_slot and not _teacher_conflicts(tid, allocation_exam_date, smin, emin)
+                                ]
+                                if not free_candidates:
+                                    return jsonify({
+                                        'success': False,
+                                        'message': 'Shared timetable requires enough available supervisors. Not enough distinct supervisors for one or more slots; try adding more teachers or selecting more days/sessions.'
+                                    }), 400
 
-                            teacher_id = random.choice(free_candidates)
-                            used_in_slot.add(int(teacher_id))
-                            seen_class_session_slots.add(class_slot_key)
-                            seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
+                                teacher_id = random.choice(free_candidates)
+                                used_in_slot.add(int(teacher_id))
+                                seen_class_session_slots.add(class_slot_key)
+                                seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
 
-                            smin_dur = _time_to_minutes(start_time_str)
-                            emin_dur = _time_to_minutes(end_time_str)
-                            duration_minutes = (emin_dur - smin_dur) if (
-                                smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
-                            ) else None
+                                smin_dur = _time_to_minutes(start_time_str)
+                                emin_dur = _time_to_minutes(end_time_str)
+                                duration_minutes = (emin_dur - smin_dur) if (
+                                    smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
+                                ) else None
 
-                            normalized_allocations.append({
-                                'academic_level_id': int(level_id),
-                                'subject_id': int(subject_id),
-                                'teacher_id': int(teacher_id),
-                                'exam_date': allocation_exam_date,
-                                'venue': level_venue_by_id.get(
-                                    int(level_id),
-                                    (default_venue or '').strip().upper() or f'LEVEL {int(level_id)}'
-                                ),
-                                'session_type': session_type,
-                                'start_time': start_time_str,
-                                'end_time': end_time_str,
-                                'duration_minutes': duration_minutes,
-                            })
+                                normalized_allocations.append({
+                                    'academic_level_id': int(level_id),
+                                    'subject_id': int(subject_id),
+                                    'teacher_id': int(teacher_id),
+                                    'exam_date': allocation_exam_date,
+                                    'venue': level_venue_by_id.get(
+                                        int(level_id),
+                                        (default_venue or '').strip().upper() or f'LEVEL {int(level_id)}'
+                                    ),
+                                    'session_type': session_type,
+                                    'start_time': start_time_str,
+                                    'end_time': end_time_str,
+                                    'duration_minutes': duration_minutes,
+                                })
                 # Always schedule non-shared levels using normal logic
+                non_shared_levels = [int(lid) for lid in level_ids if int(lid) not in shared_class_ids]
                 if non_shared_levels:
                     total_slots_per_level = len(schedule_dates) * len(SESSION_ORDER)
                     for task in task_list_sorted:
                         level_id = int(task['academic_level_id'])
-                        if share_timetable and level_id in set(shared_group):
+                        if level_id not in set(non_shared_levels):
                             continue
                         subject_id = int(task['subject_id'])
                         candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})

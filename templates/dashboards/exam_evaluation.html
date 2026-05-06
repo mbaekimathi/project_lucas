@@ -302,26 +302,54 @@
                      x-show="autoShareTimetable"
                      x-cloak>
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                            Classes that share one timetable
-                        </p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">
-                            Pick 2+ classes from the selected list.
-                        </p>
+                        <div class="min-w-0">
+                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                Timetable share groups (clusters)
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                Each class can belong to only one group. Groups do not share supervisors with each other.
+                            </p>
+                        </div>
+                        <button type="button"
+                                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:opacity-90"
+                                @click="addShareGroup()">
+                            + Add group
+                        </button>
                     </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-48 overflow-y-auto p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/40">
-                        <template x-for="level in academicLevels.filter(l => selectedLevelIds.includes(String(l.id)))" :key="'share-' + level.id">
-                            <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
-                                <input type="checkbox"
-                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
-                                       :checked="autoShareGroupLevelIds.includes(String(level.id))"
-                                       @change="toggleShareGroup(level.id)">
-                                <span x-text="level.level_name + ' (' + level.level_category + ')'"></span>
-                            </label>
+
+                    <div class="space-y-3">
+                        <template x-for="g in autoShareGroups" :key="'grp-' + g.id">
+                            <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/40 p-3">
+                                <div class="flex items-center justify-between gap-3 mb-2">
+                                    <div class="text-sm font-bold text-gray-900 dark:text-white" x-text="g.name"></div>
+                                    <button type="button"
+                                            class="text-xs font-semibold text-red-600 hover:text-red-700"
+                                            :disabled="autoShareGroups.length <= 1"
+                                            @click="removeShareGroup(g.id)">
+                                        Remove
+                                    </button>
+                                </div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-44 overflow-y-auto p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30">
+                                    <template x-for="level in academicLevels.filter(l => selectedLevelIds.includes(String(l.id)))" :key="'grp-' + g.id + '-' + level.id">
+                                        <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
+                                            <input type="checkbox"
+                                                   class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                                                   :checked="(g.levelIds || []).includes(String(level.id))"
+                                                   @change="toggleShareGroupLevel(g.id, level.id)">
+                                            <span x-text="level.level_name + ' (' + level.level_category + ')'"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                    Selected: <span class="font-semibold" x-text="(g.levelIds || []).length"></span>
+                                    class(es). (Needs 2+ to apply sharing.)
+                                </p>
+                            </div>
                         </template>
                     </div>
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Note: shared mode schedules only the subjects common to the chosen share-group classes.
+
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                        Note: each share group schedules only the subjects common to classes inside that group.
                     </p>
                 </div>
 
@@ -1199,7 +1227,9 @@ function examEvaluation() {
             { value: 'CUSTOM', label: 'Custom' },
         ],
         autoShareTimetable: false,
-        autoShareGroupLevelIds: [],
+        autoShareGroups: [
+            { id: 'A', name: 'Group A', levelIds: [] }
+        ],
 
         init() {
             this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
@@ -1292,20 +1322,46 @@ function examEvaluation() {
             } else {
                 this.selectedLevelIds.push(s);
             }
-
-            // Keep share-group as a subset of selected classes
-            if (this.autoShareGroupLevelIds && this.autoShareGroupLevelIds.length) {
-                const sel = new Set(this.selectedLevelIds.map(String));
-                this.autoShareGroupLevelIds = this.autoShareGroupLevelIds.filter(x => sel.has(String(x)));
-            }
+            this._cleanupShareGroups();
         },
 
-        toggleShareGroup(levelId) {
+        _cleanupShareGroups() {
+            const sel = new Set(this.selectedLevelIds.map(String));
+            (this.autoShareGroups || []).forEach(g => {
+                g.levelIds = (g.levelIds || []).filter(x => sel.has(String(x)));
+            });
+        },
+
+        addShareGroup() {
+            const n = (this.autoShareGroups || []).length;
+            const id = String.fromCharCode('A'.charCodeAt(0) + n);
+            this.autoShareGroups.push({ id, name: `Group ${id}`, levelIds: [] });
+        },
+
+        removeShareGroup(groupId) {
+            if (!this.autoShareGroups || this.autoShareGroups.length <= 1) return;
+            this.autoShareGroups = this.autoShareGroups.filter(g => String(g.id) !== String(groupId));
+        },
+
+        toggleShareGroupLevel(groupId, levelId) {
             const s = String(levelId);
             if (!this.selectedLevelIds.includes(s)) return;
-            const i = this.autoShareGroupLevelIds.indexOf(s);
-            if (i >= 0) this.autoShareGroupLevelIds.splice(i, 1);
-            else this.autoShareGroupLevelIds.push(s);
+            const grp = (this.autoShareGroups || []).find(g => String(g.id) === String(groupId));
+            if (!grp) return;
+            grp.levelIds = grp.levelIds || [];
+            const i = grp.levelIds.indexOf(s);
+            if (i >= 0) {
+                grp.levelIds.splice(i, 1);
+                return;
+            }
+            // Ensure a class is in only one group at a time
+            (this.autoShareGroups || []).forEach(g => {
+                if (!g.levelIds) g.levelIds = [];
+                if (String(g.id) !== String(groupId)) {
+                    g.levelIds = g.levelIds.filter(x => String(x) !== s);
+                }
+            });
+            grp.levelIds.push(s);
         },
 
         selectAllLevels() {
@@ -1791,7 +1847,10 @@ function examEvaluation() {
                     term_id: parseInt(this.examForm.term_id),
                     auto_generate: true,
                     share_timetable: !!this.autoShareTimetable,
-                    share_group_level_ids: (this.autoShareTimetable ? (this.autoShareGroupLevelIds || []).map(x => parseInt(x, 10)) : []),
+                    share_groups: (this.autoShareTimetable ? (this.autoShareGroups || []).map(g => ({
+                        name: String(g.name || ''),
+                        level_ids: (g.levelIds || []).map(x => parseInt(x, 10))
+                    })) : []),
                     base_exam_date: this.autoBaseDate,
                     level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
                     session_types: this.selectedSessionTypes.slice(),
