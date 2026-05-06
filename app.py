@@ -17298,9 +17298,10 @@ def save_exam():
                         label = ' '.join(parts).strip().upper()
                     level_venue_by_id[lid] = label if label else f'LEVEL {lid}'
 
-                # One query: all assignments; only employees with status active + teacher role (see JOIN).
+                # One query: subject-class allocations for selected levels.
+                # Only active subjects + active teacher employees are considered.
                 cursor.execute(f"""
-                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
+                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id, s.subject_name
                     FROM teacher_subject_assignments tsa
                     INNER JOIN subjects s ON s.id = tsa.subject_id AND s.status = 'active'
                     INNER JOIN academic_levels al ON al.id = tsa.academic_level_id AND al.level_status = 'active'
@@ -17310,23 +17311,27 @@ def save_exam():
                     WHERE tsa.academic_level_id IN ({ph})
                 """, tuple(level_ids))
                 assign_rows = cursor.fetchall()
-                # Load active subjects (required for auto-register)
-                cursor.execute("""
-                    SELECT id, subject_name
-                    FROM subjects
-                    WHERE status = 'active'
-                    ORDER BY subject_name ASC
-                """)
-                active_subject_rows = cursor.fetchall() or []
-                active_subject_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in active_subject_rows]
-                subject_name_by_id = {
-                    (r.get('id') if isinstance(r, dict) else r[0]): (r.get('subject_name') if isinstance(r, dict) else r[1])
-                    for r in active_subject_rows
-                }
-                if active_subject_ids:
-                    active_subject_ids = [int(x) for x in active_subject_ids if x]
-                if not active_subject_ids:
-                    return jsonify({'success': False, 'message': 'No active subjects found.'}), 400
+
+                # Build per-class subject list from allocations (subjects allocated to that class only).
+                subjects_by_level = defaultdict(set)  # level_id -> {subject_id}
+                subject_name_by_id = {}
+                if assign_rows:
+                    for row in assign_rows:
+                        lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
+                        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+                        sname = row.get('subject_name', '') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+                        if lid and sid:
+                            subjects_by_level[int(lid)].add(int(sid))
+                            if sid not in subject_name_by_id and sname:
+                                subject_name_by_id[int(sid)] = str(sname)
+
+                # If any selected class has no active allocated subjects, stop early (nothing to schedule).
+                missing_levels = [int(lid) for lid in level_ids if int(lid) not in subjects_by_level or not subjects_by_level[int(lid)]]
+                if missing_levels:
+                    return jsonify({
+                        'success': False,
+                        'message': f"Auto-register requires subject allocations first. These class IDs have no active allocated subjects: {', '.join(map(str, missing_levels))}."
+                    }), 400
 
                 # Load all active teachers once (fallback for missing allocations)
                 cursor.execute("""
@@ -17355,7 +17360,7 @@ def save_exam():
                 all_active_set = set(all_active_teacher_ids)
                 candidate_by_ls = defaultdict(set)
                 for lid in level_ids:
-                    for sid in active_subject_ids:
+                    for sid in sorted(subjects_by_level.get(int(lid), set())):
                         key = (int(lid), int(sid))
                         excluded = excluded_by_ls.get(key) or set()
                         candidates = all_active_set.difference(set(excluded))
