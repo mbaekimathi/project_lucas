@@ -10,6 +10,12 @@
         <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
         <span>Back to dashboard</span>
     </a>
+    <a href="{{ employee_dash_url('exam-timetable-settings') }}"
+       class="w-full sidebar-item"
+       aria-label="Open exam timetable settings">
+        <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
+        <span>Exam timetable settings</span>
+    </a>
 </div>
 {% endblock %}
 
@@ -116,7 +122,7 @@
             </h2>
             <button type="button"
                     @click="showRegisterExamPanel = !showRegisterExamPanel"
-                    class="modern-btn px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg">
+                    class="modern-btn w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg">
                 <i class="fas fa-plus mr-2"></i>
                 <span x-text="showRegisterExamPanel ? 'Hide Register Exam' : 'Register Exam'"></span>
             </button>
@@ -277,15 +283,135 @@
                 <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" x-show="selectedLevelIds.length === 0">
                     Choose at least one class, or use Select all.
                 </p>
+
                 <div class="mt-6">
                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Base start date <span class="text-red-500">*</span></label>
                     <input type="date" x-model="autoBaseDate"
                            class="modern-input w-full max-w-md px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">First papers use Morning → Mid → Afternoon → Evening; further papers for the same teacher move to the next day.</p>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Choose the first day exams begin. The system will continue on following days as needed.
+                    </p>
                     <p class="mt-2 text-xs text-gray-600 dark:text-gray-300">
                         <i class="fas fa-map-marker-alt mr-1 text-brand-primary"></i>
                         Venue uses each academic level’s <strong>class identity</strong>: <strong>level code</strong> when set on the level, otherwise <strong>category + class name</strong> (same label as shown in Classes to include).
                     </p>
+                </div>
+
+                <div class="mt-6">
+                    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                            Sessions to allocate <span class="text-red-500">*</span>
+                        </label>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" @click="selectAllSessions()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white hover:opacity-90">Select all</button>
+                            <button type="button" @click="clearSessions()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90">Clear</button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40">
+                        <template x-for="s in autoSessionOptions" :key="'sess-' + s.value">
+                            <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
+                                <input type="checkbox"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                                       :checked="selectedSessionTypes.includes(s.value)"
+                                       @change="toggleSession(s.value)">
+                                <span x-text="s.label"></span>
+                            </label>
+                        </template>
+                    </div>
+                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" x-show="selectedSessionTypes.length === 0">
+                        Choose at least one session to allocate.
+                    </p>
+
+                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl" x-show="selectedSessionTypes.includes('CUSTOM')" x-cloak>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Custom start time <span class="text-red-500">*</span></label>
+                            <input type="time"
+                                   x-model="autoCustomStartTime"
+                                   @change="autoComputeCustomEnd()"
+                                   class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Duration (minutes) <span class="text-red-500">*</span></label>
+                            <input type="number"
+                                   min="1"
+                                   step="1"
+                                   x-model="autoCustomDurationMinutes"
+                                   @input="autoComputeCustomEnd()"
+                                   class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary"
+                                   placeholder="E.g., 90">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Ends</label>
+                            <input type="time"
+                                   x-model="autoCustomEndTime"
+                                   readonly
+                                   class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed">
+                        </div>
+                    </div>
+
+                    <div class="mt-5 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                Exam days calendar
+                            </div>
+                            <div class="text-sm text-gray-700 dark:text-gray-300">
+                                Need <span class="font-semibold" x-text="autoRequiredDays"></span> day(s) ·
+                                <span class="font-semibold" x-text="autoActiveSubjectCount"></span> active subjects ·
+                                <span class="font-semibold" x-text="autoSessionsPerDay"></span> sessions/day
+                            </div>
+                        </div>
+
+                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            Click a day to exclude/include it (e.g., public holidays). The system will keep selecting future days so the total selected days stays at the required number.
+                        </p>
+
+                    <div class="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <button type="button"
+                                class="text-xs font-semibold w-full sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90"
+                                    @click="autoCalendarPrevMonth()">
+                                <i class="fas fa-chevron-left mr-1"></i>Prev
+                            </button>
+                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200" x-text="autoCalendarTitle"></div>
+                            <button type="button"
+                                class="text-xs font-semibold w-full sm:w-auto px-3 py-2 sm:py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90"
+                                    @click="autoCalendarNextMonth()">
+                                Next<i class="fas fa-chevron-right ml-1"></i>
+                            </button>
+                        </div>
+
+                    <div class="mt-3 grid grid-cols-7 gap-1.5 sm:gap-2 text-center text-[10px] sm:text-[11px] font-semibold text-gray-500 dark:text-gray-400">
+                            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+                        </div>
+
+                    <div class="mt-2 grid grid-cols-7 gap-1.5 sm:gap-2">
+                            <template x-for="cell in autoCalendarCells" :key="cell.key">
+                                <button type="button"
+                                    class="h-9 sm:h-10 rounded-lg border-2 text-xs sm:text-sm font-semibold transition-all"
+                                        :disabled="!cell.inMonth || cell.beforeBase"
+                                        :class="cell.beforeBase
+                                            ? 'border-gray-100 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/30 text-gray-400 cursor-not-allowed'
+                                            : (cell.selected
+                                                ? 'border-brand-primary bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20'
+                                                : (cell.inMonth
+                                                    ? 'border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 hover:border-gray-300'
+                                                    : 'border-transparent bg-transparent text-transparent'))"
+                                        @click="autoToggleDay(cell.dateStr)"
+                                        x-text="cell.day">
+                                </button>
+                            </template>
+                        </div>
+
+                        <div class="mt-4">
+                            <div class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                Selected exam days (<span x-text="autoExamDates.length"></span>/<span x-text="autoRequiredDays"></span>)
+                            </div>
+                        <div class="flex flex-wrap gap-2 max-h-28 overflow-y-auto pr-1">
+                                <template x-for="d in autoExamDates" :key="'sel-' + d">
+                                    <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 text-xs font-semibold" x-text="d"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="mt-6 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -596,31 +722,24 @@
                 <table class="w-full border-collapse">
                     <thead>
                         <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
-                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-14" title="Allocation">
-                                <span class="sr-only">Allocation</span>
-                                <i class="fas fa-calendar-alt" aria-hidden="true"></i>
-                            </th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Exam Name</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Type</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Year</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Term</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-24" title="Allocation">
+                                Allocation
+                            </th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
                             <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Lock</th>
                         </tr>
                     </thead>
                     <tbody>
                         <template x-for="exam in uniqueExams" :key="exam._key">
-                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors">
-                                <td class="p-3 sm:p-4 align-middle text-center">
-                                    <a :href="registeredExamDetailUrl(exam)"
-                                       class="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs font-semibold"
-                                       title="Open allocation timetable page">
-                                        <i class="fas fa-calendar-alt"></i>
-                                        <span>Allocation</span>
-                                    </a>
-                                </td>
+                            <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
+                                @click="window.location.href = registeredExamDetailUrl(exam)">
                                 <td class="p-3 sm:p-4 align-middle">
                                     <a :href="registeredExamDetailUrl(exam)"
+                                       @click.stop
                                        class="text-sm font-semibold text-gray-900 dark:text-white hover:text-brand-primary hover:underline break-words"
                                        x-text="exam.exam_name"></a>
                                     <span x-show="exam.is_locked" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold whitespace-nowrap" title="Locked">
@@ -630,6 +749,14 @@
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.exam_type || '—'"></td>
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.year_name || '—'"></td>
                                 <td class="p-3 sm:p-4 align-middle text-sm text-gray-900 dark:text-white" x-text="exam.term_name || '—'"></td>
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                    <a :href="registeredExamDetailUrl(exam)"
+                                       class="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-brand-primary/10 text-brand-primary hover:bg-brand-primary/20 dark:bg-brand-primary/20 dark:hover:bg-brand-primary/30 text-xs font-semibold w-full sm:w-auto"
+                                       title="Open allocation timetable page">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        <span>Allocation</span>
+                                    </a>
+                                </td>
                                 <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
                                     <div class="inline-flex items-center gap-2">
                                         <button type="button"
@@ -983,6 +1110,7 @@
 <script type="application/json" id="exam-data-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
 <script type="application/json" id="exam-open-edit-id">{{ open_edit_id|default(none)|tojson|safe }}</script>
+<script type="application/json" id="exam-data-session-presets">{{ session_presets|default({})|tojson|safe }}</script>
 
 <script>
 function examEvaluation() {
@@ -1004,12 +1132,7 @@ function examEvaluation() {
         editingExam: null,
         editingRegistration: null,
 
-        sessionPresets: {
-            MORNING: { start: '08:00', end: '11:00' },
-            MIDDAY: { start: '11:30', end: '13:30' },
-            AFTERNOON: { start: '14:00', end: '16:00' },
-            EVENING: { start: '17:00', end: '19:00' },
-        },
+        sessionPresets: {},
 
         examForm: {
             exam_name: '',
@@ -1023,6 +1146,17 @@ function examEvaluation() {
         registrationMode: 'auto',
         selectedLevelIds: [],
         autoBaseDate: '',
+        selectedSessionTypes: [],
+        autoCustomStartTime: '',
+        autoCustomDurationMinutes: '',
+        autoCustomEndTime: '',
+        autoSessionOptions: [
+            { value: 'MORNING', label: 'Morning' },
+            { value: 'MIDDAY', label: 'Midday' },
+            { value: 'AFTERNOON', label: 'Afternoon' },
+            { value: 'EVENING', label: 'Evening' },
+            { value: 'CUSTOM', label: 'Custom' },
+        ],
 
         init() {
             this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
@@ -1032,6 +1166,27 @@ function examEvaluation() {
             this.subjects = JSON.parse(document.getElementById('exam-data-subjects')?.textContent || '[]');
             this.teachers = JSON.parse(document.getElementById('exam-data-teachers')?.textContent || '[]');
             this.exams = JSON.parse(document.getElementById('exam-data-exams')?.textContent || '[]');
+
+            // Load configured session times (fallback to defaults if missing)
+            try {
+                const sp = JSON.parse(document.getElementById('exam-data-session-presets')?.textContent || '{}');
+                this.sessionPresets = sp && typeof sp === 'object' ? sp : {};
+            } catch (e) {
+                this.sessionPresets = {};
+            }
+            if (!this.sessionPresets || !this.sessionPresets.MORNING) {
+                this.sessionPresets = {
+                    MORNING: { start: '08:00', end: '11:00' },
+                    MIDDAY: { start: '11:30', end: '13:30' },
+                    AFTERNOON: { start: '14:00', end: '16:00' },
+                    EVENING: { start: '17:00', end: '19:00' },
+                };
+            }
+
+            // Auto mode: default to all classes selected (user can uncheck)
+            if (this.registrationMode === 'auto' && (!this.selectedLevelIds || this.selectedLevelIds.length === 0)) {
+                this.selectAllLevels();
+            }
 
             const oei = document.getElementById('exam-open-edit-id');
             if (oei) {
@@ -1079,6 +1234,10 @@ function examEvaluation() {
                 } else if (this.allocations.length === 0) {
                     this.addAllocation();
                 }
+            } else if (this.registrationMode === 'auto') {
+                if (!this.selectedLevelIds || this.selectedLevelIds.length === 0) {
+                    this.selectAllLevels();
+                }
             }
         },
 
@@ -1098,6 +1257,189 @@ function examEvaluation() {
 
         clearLevels() {
             this.selectedLevelIds = [];
+        },
+
+        toggleSession(sessionType) {
+            const s = String(sessionType || '').trim().toUpperCase();
+            if (!s) return;
+            const i = this.selectedSessionTypes.indexOf(s);
+            if (i >= 0) {
+                this.selectedSessionTypes.splice(i, 1);
+            } else {
+                this.selectedSessionTypes.push(s);
+            }
+            if (!this.selectedSessionTypes.includes('CUSTOM')) {
+                this.autoCustomStartTime = '';
+                this.autoCustomDurationMinutes = '';
+                this.autoCustomEndTime = '';
+            } else {
+                this.autoCustomStartTime = this.autoCustomStartTime || '';
+                this.autoCustomDurationMinutes = this.autoCustomDurationMinutes || '';
+                this.autoComputeCustomEnd();
+            }
+        },
+
+        selectAllSessions() {
+            this.selectedSessionTypes = this.autoSessionOptions.map(o => o.value);
+        },
+
+        clearSessions() {
+            this.selectedSessionTypes = [];
+            this.autoCustomStartTime = '';
+            this.autoCustomDurationMinutes = '';
+            this.autoCustomEndTime = '';
+        },
+
+        autoComputeCustomEnd() {
+            if (!this.selectedSessionTypes.includes('CUSTOM')) {
+                this.autoCustomEndTime = '';
+                return;
+            }
+            const start = String(this.autoCustomStartTime || '').trim();
+            const dur = parseInt(this.autoCustomDurationMinutes || '');
+            if (!start || isNaN(dur) || dur <= 0) {
+                this.autoCustomEndTime = '';
+                return;
+            }
+            const parts = start.split(':');
+            if (parts.length < 2) {
+                this.autoCustomEndTime = '';
+                return;
+            }
+            const h = parseInt(parts[0]);
+            const m = parseInt(parts[1]);
+            if (isNaN(h) || isNaN(m)) {
+                this.autoCustomEndTime = '';
+                return;
+            }
+            const endTotal = (h * 60 + m + dur) % (24 * 60);
+            const endH = Math.floor(endTotal / 60);
+            const endM = endTotal % 60;
+            this.autoCustomEndTime = String(endH).padStart(2, '0') + ':' + String(endM).padStart(2, '0');
+        },
+
+        // ---------- Auto mode calendar helpers ----------
+        autoCalendarMonthOffset: 0,
+        autoExcludedDates: [],
+
+        _dateObj(dateStr) {
+            if (!dateStr) return null;
+            const s = String(dateStr).trim();
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+            // Use midnight UTC to reduce TZ drift when formatting
+            const d = new Date(s + 'T00:00:00Z');
+            return isNaN(d.getTime()) ? null : d;
+        },
+
+        _dateStrUTC(d) {
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
+        },
+
+        _addDaysUTC(dateStr, days) {
+            const d = this._dateObj(dateStr);
+            if (!d) return null;
+            d.setUTCDate(d.getUTCDate() + days);
+            return this._dateStrUTC(d);
+        },
+
+        get autoSessionsPerDay() {
+            return (this.selectedSessionTypes || []).length;
+        },
+
+        get autoActiveSubjectCount() {
+            return (this.subjects || []).length;
+        },
+
+        get autoRequiredDays() {
+            const sessionsPerDay = this.autoSessionsPerDay;
+            const subjCount = this.autoActiveSubjectCount;
+            if (!sessionsPerDay || sessionsPerDay <= 0 || !subjCount || subjCount <= 0) return 0;
+            return Math.ceil(subjCount / sessionsPerDay);
+        },
+
+        get autoExamDates() {
+            const required = this.autoRequiredDays;
+            const base = String(this.autoBaseDate || '').trim();
+            if (!required || !base) return [];
+            const baseObj = this._dateObj(base);
+            if (!baseObj) return [];
+            const excluded = new Set((this.autoExcludedDates || []).map(x => String(x)));
+            const out = [];
+            let cursor = base;
+            let guard = 0;
+            while (out.length < required && guard < 400) {
+                if (!excluded.has(cursor)) out.push(cursor);
+                cursor = this._addDaysUTC(cursor, 1);
+                if (!cursor) break;
+                guard++;
+            }
+            return out;
+        },
+
+        autoToggleDay(dateStr) {
+            const d = String(dateStr || '').trim();
+            if (!d) return;
+            const baseObj = this._dateObj(this.autoBaseDate);
+            const dObj = this._dateObj(d);
+            if (!baseObj || !dObj) return;
+            if (dObj.getTime() < baseObj.getTime()) return;
+
+            const i = this.autoExcludedDates.indexOf(d);
+            if (i >= 0) this.autoExcludedDates.splice(i, 1);
+            else this.autoExcludedDates.push(d);
+        },
+
+        autoCalendarPrevMonth() {
+            this.autoCalendarMonthOffset -= 1;
+        },
+
+        autoCalendarNextMonth() {
+            this.autoCalendarMonthOffset += 1;
+        },
+
+        get autoCalendarTitle() {
+            const baseObj = this._dateObj(this.autoBaseDate) || new Date();
+            const d = new Date(Date.UTC(baseObj.getUTCFullYear(), baseObj.getUTCMonth(), 1));
+            d.setUTCMonth(d.getUTCMonth() + this.autoCalendarMonthOffset);
+            const month = d.toLocaleString(undefined, { month: 'long', timeZone: 'UTC' });
+            const year = d.getUTCFullYear();
+            return `${month} ${year}`;
+        },
+
+        get autoCalendarCells() {
+            const baseObj = this._dateObj(this.autoBaseDate);
+            const selected = new Set(this.autoExamDates);
+            const excluded = new Set((this.autoExcludedDates || []).map(x => String(x)));
+
+            const anchor = baseObj || new Date();
+            const first = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+            first.setUTCMonth(first.getUTCMonth() + this.autoCalendarMonthOffset);
+
+            const year = first.getUTCFullYear();
+            const month = first.getUTCMonth();
+            const startDow = first.getUTCDay(); // 0 Sun
+            const start = new Date(Date.UTC(year, month, 1 - startDow));
+
+            const cells = [];
+            for (let i = 0; i < 42; i++) {
+                const d = new Date(start.getTime());
+                d.setUTCDate(start.getUTCDate() + i);
+                const inMonth = d.getUTCMonth() === month;
+                const dateStr = this._dateStrUTC(d);
+                const beforeBase = !!(baseObj && d.getTime() < baseObj.getTime());
+                cells.push({
+                    key: dateStr,
+                    day: d.getUTCDate(),
+                    inMonth,
+                    dateStr,
+                    beforeBase,
+                    selected: selected.has(dateStr) && !excluded.has(dateStr),
+                });
+            }
+            return cells;
         },
 
         get uniqueExams() {
@@ -1157,7 +1499,14 @@ function examEvaluation() {
         get isRegisterDisabled() {
             if (this.savingExam || !this.isHeaderValid || !!this.clientConflictMessage) return true;
             if (this.registrationMode === 'auto') {
-                return !this.autoBaseDate || this.selectedLevelIds.length === 0;
+                if (!this.autoBaseDate || this.selectedLevelIds.length === 0 || this.selectedSessionTypes.length === 0) return true;
+                if (this.selectedSessionTypes.includes('CUSTOM')) {
+                    const start = String(this.autoCustomStartTime || '').trim();
+                    const dur = parseInt(this.autoCustomDurationMinutes || '');
+                    if (!start || isNaN(dur) || dur <= 0 || !this.autoCustomEndTime) return true;
+                }
+                if (this.autoRequiredDays > 0 && this.autoExamDates.length !== this.autoRequiredDays) return true;
+                return false;
             }
             return !this.selectedAcademicLevel || !this.areRowsValid;
         },
@@ -1386,6 +1735,12 @@ function examEvaluation() {
                     auto_generate: true,
                     base_exam_date: this.autoBaseDate,
                     level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
+                    session_types: this.selectedSessionTypes.slice(),
+                    exam_dates: this.autoExamDates.slice(),
+                    custom_session: this.selectedSessionTypes.includes('CUSTOM') ? {
+                        start_time: this.autoCustomStartTime,
+                        duration_minutes: parseInt(this.autoCustomDurationMinutes || 0),
+                    } : null,
                     allocations: []
                 };
             } else {
@@ -1415,7 +1770,18 @@ function examEvaluation() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const result = await response.json();
+                const ct = (response.headers.get('content-type') || '').toLowerCase();
+                let result = null;
+                if (ct.includes('application/json')) {
+                    result = await response.json();
+                } else {
+                    const text = await response.text();
+                    this.errorMessage = `Server returned ${response.status} ${response.statusText}. Response was not JSON.`;
+                    if (text) {
+                        this.errorMessage += ` (${text.slice(0, 240)})`;
+                    }
+                    return;
+                }
                 if (result.success) {
                     this.successMessage = result.message || 'Saved successfully.';
                     setTimeout(() => window.location.reload(), 1200);
@@ -1424,7 +1790,7 @@ function examEvaluation() {
                 }
             } catch (e) {
                 console.error(e);
-                this.errorMessage = 'Error saving. Please try again.';
+                this.errorMessage = `Error saving. Please try again. (${String(e && e.message ? e.message : e)})`;
             } finally {
                 this.savingExam = false;
             }
@@ -1443,6 +1809,12 @@ function examEvaluation() {
             this.registrationMode = 'auto';
             this.selectedLevelIds = [];
             this.autoBaseDate = '';
+            this.selectedSessionTypes = [];
+            this.autoCalendarMonthOffset = 0;
+            this.autoExcludedDates = [];
+            this.autoCustomStartTime = '';
+            this.autoCustomDurationMinutes = '';
+            this.autoCustomEndTime = '';
             this.successMessage = '';
             this.errorMessage = '';
             this.clientConflictMessage = '';

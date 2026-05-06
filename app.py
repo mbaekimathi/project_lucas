@@ -672,6 +672,116 @@ def ensure_school_general_settings_columns(cursor):
             print(f"ensure_school_general_settings_columns ({col_name}): {e}")
 
 
+def ensure_exam_timetable_settings_columns(cursor):
+    """
+    Add exam session settings storage to school_settings.
+    Stored as JSON text with structure:
+      { "MORNING": {"start":"08:00","duration_minutes":180}, ... }
+    """
+    cols = [
+        ('exam_session_settings', "LONGTEXT NULL", 'timezone'),
+    ]
+    for col_name, col_def, after_col in cols:
+        try:
+            cursor.execute("SHOW COLUMNS FROM school_settings LIKE %s", (col_name,))
+            if cursor.fetchone():
+                continue
+            cursor.execute(
+                f"ALTER TABLE school_settings ADD COLUMN {col_name} {col_def} AFTER {after_col}"
+            )
+        except Exception as e:
+            print(f"ensure_exam_timetable_settings_columns ({col_name}): {e}")
+
+
+def _default_exam_session_presets():
+    return {
+        'MORNING': ('08:00:00', '11:00:00'),
+        'MIDDAY': ('11:30:00', '13:30:00'),
+        'AFTERNOON': ('14:00:00', '16:00:00'),
+        'EVENING': ('17:00:00', '19:00:00'),
+    }
+
+
+def _parse_exam_session_settings_json(raw_json: str):
+    """
+    Returns dict like { 'MORNING': ('08:00:00','11:00:00'), ... }.
+    Falls back to defaults on any validation failure.
+    """
+    import json
+    presets = _default_exam_session_presets()
+    if not raw_json:
+        return presets
+    try:
+        data = json.loads(raw_json)
+        if not isinstance(data, dict):
+            return presets
+    except Exception:
+        return presets
+
+    def _norm_hm(s):
+        s = (s or '').strip()
+        parts = s.split(':')
+        if len(parts) < 2:
+            return None
+        try:
+            h = int(parts[0]); m = int(parts[1])
+        except Exception:
+            return None
+        if h < 0 or h > 23 or m < 0 or m > 59:
+            return None
+        return f"{h:02d}:{m:02d}:00"
+
+    def _to_minutes(hms):
+        if not hms:
+            return None
+        parts = str(hms).split(':')
+        if len(parts) < 2:
+            return None
+        try:
+            return int(parts[0]) * 60 + int(parts[1])
+        except Exception:
+            return None
+
+    def _from_minutes(total_minutes):
+        total_minutes = total_minutes % (24 * 60)
+        return f"{total_minutes // 60:02d}:{total_minutes % 60:02d}:00"
+
+    for key in ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING']:
+        row = data.get(key)
+        if not isinstance(row, dict):
+            continue
+        st = _norm_hm(row.get('start') or row.get('start_time') or '')
+        try:
+            dur = int(row.get('duration_minutes', 0) or 0)
+        except Exception:
+            dur = 0
+        if not st or dur <= 0:
+            continue
+        sm = _to_minutes(st)
+        if sm is None:
+            continue
+        presets[key] = (st, _from_minutes(sm + dur))
+
+    return presets
+
+
+def _load_exam_session_presets_from_db(cursor):
+    """Load session presets from latest school_settings row (or defaults)."""
+    presets = _default_exam_session_presets()
+    try:
+        cursor.execute("SHOW COLUMNS FROM school_settings LIKE 'exam_session_settings'")
+        if not cursor.fetchone():
+            return presets
+        cursor.execute("SELECT exam_session_settings FROM school_settings ORDER BY id DESC LIMIT 1")
+        row = cursor.fetchone()
+        raw = None
+        if row:
+            raw = row.get('exam_session_settings') if isinstance(row, dict) else row[0]
+        return _parse_exam_session_settings_json(raw or '')
+    except Exception:
+        return presets
+
+
 def ensure_student_marks_foreign_keys(cursor):
     """
     Add InnoDB foreign keys to student_marks if possible.
@@ -1984,6 +2094,11 @@ def init_db():
                 ensure_school_general_settings_columns(cursor)
             except Exception as e:
                 print(f"Migration note for school_settings general columns: {e}")
+
+            try:
+                ensure_exam_timetable_settings_columns(cursor)
+            except Exception as e:
+                print(f"Migration note for school_settings exam timetable columns: {e}")
             
             connection.commit()
             
@@ -16277,6 +16392,22 @@ def exam_evaluation():
 
     open_edit_id = request.args.get('open_edit', type=int)
     
+    # Session presets for UI (timetable settings)
+    session_presets_ui = {
+        k: {'start': v[0][:5], 'end': v[1][:5]}
+        for k, v in _default_exam_session_presets().items()
+    }
+    try:
+        if connection:
+            with connection.cursor() as cursor:
+                p = _load_exam_session_presets_from_db(cursor)
+                session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in p.items()}
+    except Exception:
+        session_presets_ui = {
+            k: {'start': v[0][:5], 'end': v[1][:5]}
+            for k, v in _default_exam_session_presets().items()
+        }
+
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
                          academic_years=academic_years,
@@ -16285,11 +16416,139 @@ def exam_evaluation():
                          subjects=subjects,
                          teachers=teachers,
                          exams=exams,
-                         open_edit_id=open_edit_id)
+                         open_edit_id=open_edit_id,
+                         session_presets=session_presets_ui)
+
+
+@app.route('/dashboard/employee/exam-timetable-settings', methods=['GET', 'POST'])
+@login_required
+def exam_timetable_settings():
+    """Configure exam session start times and durations."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dashboard_path('exam-evaluation'))
+
+    def _current_settings(cursor):
+        presets = _default_exam_session_presets()
+        try:
+            cursor.execute("SELECT exam_session_settings FROM school_settings ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            raw = row.get('exam_session_settings') if (row and isinstance(row, dict)) else (row[0] if row else '')
+            parsed = _parse_exam_session_settings_json(raw or '')
+            # Convert to UI model with duration (minutes) inferred from computed end time.
+            out = {}
+            for k in ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING']:
+                st, et = parsed.get(k, presets[k])
+                try:
+                    sh, sm = [int(x) for x in st.split(':')[:2]]
+                    eh, em = [int(x) for x in et.split(':')[:2]]
+                    smin = sh * 60 + sm
+                    emin = eh * 60 + em
+                    if emin <= smin:
+                        emin += 24 * 60
+                    dur = emin - smin
+                except Exception:
+                    st = presets[k][0]
+                    dur = 180 if k == 'MORNING' else (120 if k in ('MIDDAY', 'AFTERNOON', 'EVENING') else 120)
+                out[k] = {'start': st[:5], 'duration_minutes': int(dur)}
+            return out
+        except Exception:
+            out = {}
+            for k, (st, et) in presets.items():
+                if k == 'CUSTOM':
+                    continue
+                # defaults: infer duration from default preset
+                try:
+                    sh, sm = [int(x) for x in st.split(':')[:2]]
+                    eh, em = [int(x) for x in et.split(':')[:2]]
+                    smin = sh * 60 + sm
+                    emin = eh * 60 + em
+                    if emin <= smin:
+                        emin += 24 * 60
+                    dur = emin - smin
+                except Exception:
+                    dur = 120
+                out[k] = {'start': st[:5], 'duration_minutes': int(dur)}
+            return out
+
+    try:
+        with connection.cursor() as cursor:
+            if request.method == 'POST':
+                import json
+
+                payload = {}
+                for k in ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING']:
+                    start = (request.form.get(f'{k}_start') or '').strip()
+                    dur_raw = (request.form.get(f'{k}_duration') or '').strip()
+                    try:
+                        duration = int(dur_raw)
+                    except Exception:
+                        duration = 0
+                    # Validate HH:MM
+                    parts = start.split(':')
+                    if len(parts) < 2:
+                        flash(f'{k.title()} start time must be HH:MM.', 'error')
+                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                    try:
+                        hh = int(parts[0]); mm = int(parts[1])
+                    except Exception:
+                        flash(f'{k.title()} start time must be HH:MM.', 'error')
+                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                    if hh < 0 or hh > 23 or mm < 0 or mm > 59:
+                        flash(f'{k.title()} start time must be HH:MM.', 'error')
+                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                    if duration <= 0:
+                        flash(f'{k.title()} duration must be greater than 0 minutes.', 'error')
+                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+
+                    payload[k] = {'start': f"{hh:02d}:{mm:02d}", 'duration_minutes': duration}
+
+                cursor.execute("SELECT id FROM school_settings ORDER BY id DESC LIMIT 1")
+                row = cursor.fetchone()
+                sid = row.get('id') if isinstance(row, dict) else (row[0] if row else None)
+                if not sid:
+                    flash('School settings not initialized. Please configure school settings first.', 'error')
+                    return redirect(employee_dashboard_path('exam-evaluation'))
+
+                cursor.execute(
+                    "UPDATE school_settings SET exam_session_settings = %s WHERE id = %s",
+                    (json.dumps(payload), sid)
+                )
+                connection.commit()
+                flash('Exam timetable sessions updated successfully.', 'success')
+                return redirect(employee_dashboard_path('exam-timetable-settings'))
+
+            settings = _current_settings(cursor)
+            return render_template(
+                'dashboards/exam_timetable_settings.html',
+                role=user_role,
+                settings=settings
+            )
+    except Exception as e:
+        print(f"Exam timetable settings error: {e}")
+        flash('Could not load timetable settings.', 'error')
+        return redirect(employee_dashboard_path('exam-evaluation'))
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 def _build_exam_registered_analytics_from_records(records):
-    """Count allocations by academic level, subject, and supervisor (one row per timetable slot)."""
+    """Count allocations by day, academic level, and supervisor (one row per timetable slot)."""
     from collections import defaultdict
 
     empty = {
@@ -16297,6 +16556,8 @@ def _build_exam_registered_analytics_from_records(records):
         'distinct_levels': 0,
         'distinct_subjects': 0,
         'assigned_supervisors': 0,
+        'distinct_days': 0,
+        'day_stats': [],
         'class_stats': [],
         'subject_stats': [],
         'supervisor_stats': [],
@@ -16305,6 +16566,7 @@ def _build_exam_registered_analytics_from_records(records):
         return empty
 
     total_alloc = len(records)
+    by_day = defaultdict(int)
     by_level = defaultdict(int)
     level_labels = {}
     by_subject = defaultdict(int)
@@ -16316,6 +16578,7 @@ def _build_exam_registered_analytics_from_records(records):
         return round(100.0 * n / m, 1) if m else 0.0
 
     for rec in records:
+        day = rec.get('exam_date') or '—'
         lid = rec.get('academic_level_id')
         sid = rec.get('subject_id')
         sup = rec.get('supervisor_id')
@@ -16325,6 +16588,8 @@ def _build_exam_registered_analytics_from_records(records):
         sc = rec.get('subject_code') or ''
         fn = rec.get('supervisor_name') or ''
         eid = rec.get('supervisor_employee_id') or ''
+
+        by_day[str(day)] += 1
 
         lvl_key = int(lid) if lid is not None else -1
         by_level[lvl_key] += 1
@@ -16352,6 +16617,18 @@ def _build_exam_registered_analytics_from_records(records):
     max_class = max(by_level.values()) if by_level else 0
     max_sub = max(by_subject.values()) if by_subject else 0
     max_sup = max(by_super.values()) if by_super else 0
+    max_day = max(by_day.values()) if by_day else 0
+
+    day_stats = []
+    # Sort by date-like string; keep '—' last
+    for k in sorted(by_day.keys(), key=lambda x: (x == '—', x)):
+        c = by_day[k]
+        day_stats.append({
+            'exam_date': k,
+            'exam_count': c,
+            'bar_pct': pct(c, max_day),
+            'share_pct': pct(c, total_alloc),
+        })
 
     class_stats = []
     for k in sorted(by_level.keys(), key=lambda x: (-by_level[x], level_labels.get(x, {}).get('level_name', ''))):
@@ -16395,12 +16672,15 @@ def _build_exam_registered_analytics_from_records(records):
     distinct_levels = sum(1 for k in by_level if k >= 0)
     distinct_subjects = sum(1 for k in by_subject if k >= 0)
     assigned_supervisors = sum(1 for k in by_super if k >= 0)
+    distinct_days = sum(1 for k in by_day if k and k != '—')
 
     return {
         'total_allocations': total_alloc,
         'distinct_levels': distinct_levels,
         'distinct_subjects': distinct_subjects,
         'assigned_supervisors': assigned_supervisors,
+        'distinct_days': distinct_days,
+        'day_stats': day_stats,
         'class_stats': class_stats,
         'subject_stats': subject_stats,
         'supervisor_stats': supervisor_stats,
@@ -16422,9 +16702,9 @@ def exam_evaluation_registered_detail():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
-    erd_tab = (request.args.get('erd_tab') or 'timetable').strip().lower()
-    if erd_tab not in ('timetable', 'analytics'):
-        erd_tab = 'timetable'
+    erd_tab = (request.args.get('erd_tab') or 'timetable_data').strip().lower()
+    if erd_tab not in ('exam_data', 'timetable_data', 'analytics'):
+        erd_tab = 'timetable_data'
 
     exam_name_raw = (request.args.get('exam_name') or '').strip()
     try:
@@ -16448,8 +16728,16 @@ def exam_evaluation_registered_detail():
     academic_levels = []
     subjects = []
     teachers = []
+    session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in _default_exam_session_presets().items()}
     try:
         with connection.cursor() as cursor:
+            # Session presets for timetable headers + modal defaults
+            try:
+                sp = _load_exam_session_presets_from_db(cursor)
+                session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in sp.items()}
+            except Exception:
+                session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in _default_exam_session_presets().items()}
+
             cursor.execute(f"""
                 SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
                        e.duration_minutes, e.venue, e.status,
@@ -16661,6 +16949,7 @@ def exam_evaluation_registered_detail():
         erd_query=erd_query,
         analytics=analytics,
         erd_tab=erd_tab,
+        session_presets=session_presets_ui,
     )
 
 
@@ -16725,7 +17014,10 @@ def save_exam():
         allocations = data.get('allocations') or []
         auto_generate = bool(data.get('auto_generate'))
         base_exam_date = (data.get('base_exam_date') or '').strip()
+        exam_dates_raw = data.get('exam_dates')
         level_ids_raw = data.get('level_ids')
+        session_types_raw = data.get('session_types')
+        custom_session_raw = data.get('custom_session')
         default_venue = (data.get('default_venue') or '').strip().upper()
     except (ValueError, TypeError) as e:
         return jsonify({'success': False, 'message': f'Invalid data: {str(e)}'}), 400
@@ -16744,14 +17036,22 @@ def save_exam():
         except ValueError:
             return jsonify({'success': False, 'message': 'Invalid base exam date. Use YYYY-MM-DD.'}), 400
 
-    # Session presets (school can adjust later)
-    session_presets = {
-        'MORNING': ('08:00:00', '11:00:00'),
-        'MIDDAY': ('11:30:00', '13:30:00'),
-        'AFTERNOON': ('14:00:00', '16:00:00'),
-        'EVENING': ('17:00:00', '19:00:00'),
-    }
-    SESSION_ORDER = ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING']
+        selected_exam_dates: list[str] = []
+        if exam_dates_raw is not None:
+            if not isinstance(exam_dates_raw, list):
+                return jsonify({'success': False, 'message': 'Invalid exam_dates (must be a list).'}), 400
+            for d in exam_dates_raw:
+                ds = str(d or '').strip()
+                if not ds:
+                    continue
+                try:
+                    datetime.strptime(ds, '%Y-%m-%d')
+                except ValueError:
+                    return jsonify({'success': False, 'message': f'Invalid exam date: {ds}. Use YYYY-MM-DD.'}), 400
+                selected_exam_dates.append(ds)
+            selected_exam_dates = sorted(set(selected_exam_dates))
+        if not selected_exam_dates:
+            return jsonify({'success': False, 'message': 'Auto-register requires selecting exam dates from the calendar.'}), 400
 
     def _time_to_minutes(t: str) -> int | None:
         try:
@@ -16776,8 +17076,96 @@ def save_exam():
             raise ValueError("Invalid start time")
         return _minutes_to_time_str(start_min + duration_min)
 
+    # Session presets (configurable via Exam timetable settings)
+    session_presets = _default_exam_session_presets()
+    _tmp_conn = None
+    try:
+        _tmp_conn = get_db_connection()
+        if _tmp_conn:
+            with _tmp_conn.cursor() as _c:
+                session_presets = _load_exam_session_presets_from_db(_c)
+    except Exception:
+        session_presets = _default_exam_session_presets()
+    finally:
+        try:
+            if _tmp_conn:
+                _tmp_conn.close()
+        except Exception:
+            pass
+    CANONICAL_SESSION_ORDER = ['MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING', 'CUSTOM']
+    SESSION_ORDER = CANONICAL_SESSION_ORDER
+
+    if auto_generate:
+        selected_sessions = []
+        if session_types_raw is not None:
+            if not isinstance(session_types_raw, list):
+                return jsonify({'success': False, 'message': 'Invalid session_types (must be a list).'}), 400
+            for s in session_types_raw:
+                st = str(s or '').strip().upper()
+                if st:
+                    selected_sessions.append(st)
+            selected_sessions = sorted(set(selected_sessions), key=lambda x: CANONICAL_SESSION_ORDER.index(x) if x in CANONICAL_SESSION_ORDER else 999)
+
+        # Require explicit session selection in Auto mode
+        if not selected_sessions:
+            return jsonify({'success': False, 'message': 'Auto-register requires selecting at least one session to allocate.'}), 400
+
+        # Handle CUSTOM session (same logic as manual mode: start_time + duration -> end_time)
+        if 'CUSTOM' in selected_sessions:
+            if not custom_session_raw or not isinstance(custom_session_raw, dict):
+                return jsonify({'success': False, 'message': 'Custom session selected but custom_session details are missing.'}), 400
+            start_time = str(custom_session_raw.get('start_time') or '').strip()
+            try:
+                duration_minutes = int(custom_session_raw.get('duration_minutes', 0))
+            except (ValueError, TypeError):
+                duration_minutes = 0
+            if not start_time or duration_minutes <= 0:
+                return jsonify({'success': False, 'message': 'Custom session requires start time and duration (minutes).'}), 400
+            try:
+                end_time_str = _calc_end(start_time, duration_minutes)
+            except Exception:
+                return jsonify({'success': False, 'message': 'Invalid custom session start time.'}), 400
+            start_time_str = (start_time if len(start_time.split(':')) == 3 else f"{start_time}:00")
+            session_presets['CUSTOM'] = (start_time_str, end_time_str)
+
+        invalid = [s for s in selected_sessions if s not in session_presets]
+        if invalid:
+            return jsonify({'success': False, 'message': f"Invalid session type(s): {', '.join(invalid)}"}), 400
+
+        SESSION_ORDER = [s for s in CANONICAL_SESSION_ORDER if s in selected_sessions]
+        if not SESSION_ORDER:
+            return jsonify({'success': False, 'message': 'Auto-register requires selecting at least one valid session to allocate.'}), 400
+
+        # Validate sessions do not overlap (manual presets are non-overlapping; enforce same in auto)
+        def _slot_range_minutes(st: str, et: str) -> tuple[int, int] | None:
+            smin = _time_to_minutes(st)
+            emin = _time_to_minutes(et)
+            if smin is None or emin is None:
+                return None
+            if emin <= smin:
+                emin += 24 * 60
+            return (smin, emin)
+
+        ranges = []
+        for s in SESSION_ORDER:
+            st, et = session_presets[s]
+            r = _slot_range_minutes(st, et)
+            if not r:
+                return jsonify({'success': False, 'message': 'Invalid session time configuration.'}), 500
+            ranges.append((s, r[0], r[1]))
+        for i in range(len(ranges)):
+            for j in range(i + 1, len(ranges)):
+                a = ranges[i]
+                b = ranges[j]
+                if a[1] < b[2] and a[2] > b[1]:
+                    return jsonify({
+                        'success': False,
+                        'message': f"Session times overlap between {a[0]} and {b[0]}. Please adjust Custom session time or unselect one session."
+                    }), 400
+
     normalized_allocations = []
     seen_teacher_slots = []  # for within-request conflicts: list of (teacher_id, exam_date, start_min, end_min)
+    seen_class_session_slots = set()  # (academic_level_id, exam_date, session_type)
 
     # Normalize + validate payload (manual mode only)
     for idx, a in enumerate(allocations if not auto_generate else []):
@@ -16834,6 +17222,15 @@ def save_exam():
 
         venue = (a.get('venue') or '').strip().upper()
         
+        # Enforce: one subject per class/session/day (within submission)
+        slot_key = (int(academic_level_id), str(allocation_exam_date), str(session_type))
+        if slot_key in seen_class_session_slots:
+            return jsonify({
+                'success': False,
+                'message': f"Invalid allocation: a class can only have one subject per session per day. Duplicate session detected in row #{idx + 1}."
+            }), 400
+        seen_class_session_slots.add(slot_key)
+
         normalized_allocations.append({
             'academic_level_id': academic_level_id,
             'subject_id': subject_id,
@@ -16913,54 +17310,121 @@ def save_exam():
                     WHERE tsa.academic_level_id IN ({ph})
                 """, tuple(level_ids))
                 assign_rows = cursor.fetchall()
-                if not assign_rows:
-                    return jsonify({
-                        'success': False,
-                        'message': 'No subject–class allocations with active teachers for the selected levels. Add them in Subject & Class Allocation, or ensure each assigned employee has role Teacher.'
-                    }), 400
+                # Load active subjects (required for auto-register)
+                cursor.execute("""
+                    SELECT id, subject_name
+                    FROM subjects
+                    WHERE status = 'active'
+                    ORDER BY subject_name ASC
+                """)
+                active_subject_rows = cursor.fetchall() or []
+                active_subject_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in active_subject_rows]
+                subject_name_by_id = {
+                    (r.get('id') if isinstance(r, dict) else r[0]): (r.get('subject_name') if isinstance(r, dict) else r[1])
+                    for r in active_subject_rows
+                }
+                if active_subject_ids:
+                    active_subject_ids = [int(x) for x in active_subject_ids if x]
+                if not active_subject_ids:
+                    return jsonify({'success': False, 'message': 'No active subjects found.'}), 400
 
-                # Every (class, subject) may have multiple allocated teachers; pick one active teacher at random per pair.
-                by_ls_teachers = defaultdict(set)
-                for row in assign_rows:
-                    lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
-                    sid = row.get('subject_id') if isinstance(row, dict) else row[1]
-                    tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
-                    if lid and sid and tid:
-                        by_ls_teachers[(lid, sid)].add(int(tid))
+                # Load all active teachers once (fallback for missing allocations)
+                cursor.execute("""
+                    SELECT id
+                    FROM employees
+                    WHERE status = 'active' AND (role = 'teachers' OR role = 'teacher')
+                    ORDER BY id ASC
+                """)
+                all_active_teacher_ids = [r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])]
+                all_active_teacher_ids = [int(x) for x in all_active_teacher_ids if x]
+                if not all_active_teacher_ids:
+                    return jsonify({'success': False, 'message': 'No active teachers found to supervise exams.'}), 400
 
+                # Build mapping: excluded (allocated subject teachers) per (class, subject).
+                # Rule: supervisor must NOT be the allocated subject teacher for that class/subject.
+                excluded_by_ls = defaultdict(set)
+                if assign_rows:
+                    for row in assign_rows:
+                        lid = row.get('academic_level_id') if isinstance(row, dict) else row[0]
+                        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+                        tid = row.get('teacher_id') if isinstance(row, dict) else row[2]
+                        if lid and sid and tid:
+                            excluded_by_ls[(int(lid), int(sid))].add(int(tid))
+
+                # Candidates per (class, subject): any active teacher EXCEPT the allocated subject teacher(s).
+                all_active_set = set(all_active_teacher_ids)
+                candidate_by_ls = defaultdict(set)
+                for lid in level_ids:
+                    for sid in active_subject_ids:
+                        key = (int(lid), int(sid))
+                        excluded = excluded_by_ls.get(key) or set()
+                        candidates = all_active_set.difference(set(excluded))
+                        if not candidates:
+                            subj_name = subject_name_by_id.get(sid) or f"Subject {sid}"
+                            return jsonify({
+                                'success': False,
+                                'message': f'No eligible supervisors for {subj_name} in class {lid}: all active teachers are allocated to teach that subject.'
+                            }), 400
+                        candidate_by_ls[key] = set(candidates)
+
+                # Build tasks (one per class/subject). Supervisor selection happens per-slot to avoid conflicts.
                 task_list = []
-                for (lid, sid) in sorted(by_ls_teachers.keys(), key=lambda k: (k[0], k[1])):
-                    candidates = list(by_ls_teachers[(lid, sid)])
-                    if not candidates:
-                        continue
-                    chosen_teacher_id = random.choice(candidates)
-                    task_list.append({
-                        'academic_level_id': lid,
-                        'subject_id': sid,
-                        'teacher_id': chosen_teacher_id,
-                    })
+                for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
+                    task_list.append({'academic_level_id': lid, 'subject_id': sid})
                 if not task_list:
                     return jsonify({
                         'success': False,
                         'message': 'No valid class/subject/teacher combinations after resolving allocations.'
                     }), 400
 
-                by_teacher = defaultdict(list)
-                for t in task_list:
-                    by_teacher[t['teacher_id']].append(t)
+                # Schedule dates: user-selected calendar days (validated client-side too)
+                schedule_dates: list[str] = selected_exam_dates[:]
 
-                d0 = datetime.strptime(base_exam_date, '%Y-%m-%d').date()
                 normalized_allocations.clear()
                 seen_teacher_slots.clear()
+                seen_class_session_slots.clear()
 
-                for teacher_id in sorted(by_teacher.keys()):
-                    tlist = by_teacher[teacher_id]
-                    for i, task in enumerate(tlist):
-                        day_offset = i // len(SESSION_ORDER)
-                        sess_idx = i % len(SESSION_ORDER)
+                # Enforce: each class has at most one subject per session per day.
+                # Greedy schedule per class: for each class, fill sessions across selected days.
+                next_slot_index_by_level = defaultdict(int)  # academic_level_id -> next slot idx across (days*sessions)
+
+                # Sort tasks by class then subject for deterministic schedules
+                task_list_sorted = sorted(task_list, key=lambda t: (int(t['academic_level_id']), int(t['subject_id'])))
+
+                def _teacher_conflicts(tid: int, ed: str, s: int, e: int) -> bool:
+                    for (t_id, day, os, oe) in seen_teacher_slots:
+                        if int(t_id) == int(tid) and str(day) == str(ed) and (s < oe and e > os):
+                            return True
+                    return False
+
+                total_slots_per_level = len(schedule_dates) * len(SESSION_ORDER)
+                for task in task_list_sorted:
+                    level_id = int(task['academic_level_id'])
+                    subject_id = int(task['subject_id'])
+                    candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})
+                    if not candidates:
+                        return jsonify({
+                            'success': False,
+                            'message': 'No eligible supervisors found for one or more class/subject pairs.'
+                        }), 400
+
+                    placed = False
+                    attempts = 0
+                    # Try successive slots for this class until we find a free eligible supervisor.
+                    while not placed and attempts < total_slots_per_level:
+                        attempts += 1
+                        slot_idx = next_slot_index_by_level[level_id]
+                        day_offset = slot_idx // len(SESSION_ORDER)
+                        sess_idx = slot_idx % len(SESSION_ORDER)
+                        if day_offset >= len(schedule_dates):
+                            break
                         session_type = SESSION_ORDER[sess_idx]
-                        exam_d = d0 + timedelta(days=day_offset)
-                        allocation_exam_date = exam_d.strftime('%Y-%m-%d')
+                        allocation_exam_date = schedule_dates[day_offset]
+                        key = (level_id, allocation_exam_date, session_type)
+                        next_slot_index_by_level[level_id] += 1
+                        if key in seen_class_session_slots:
+                            continue
+
                         start_time_str, end_time_str = session_presets[session_type]
                         smin = _time_to_minutes(start_time_str)
                         emin = _time_to_minutes(end_time_str)
@@ -16968,33 +17432,43 @@ def save_exam():
                             return jsonify({'success': False, 'message': 'Invalid session preset times.'}), 500
                         if emin <= smin:
                             emin += 24 * 60
-                        for (t_id, ed, os, oe) in seen_teacher_slots:
-                            if t_id == teacher_id and ed == allocation_exam_date and (smin < oe and emin > os):
-                                return jsonify({
-                                    'success': False,
-                                    'message': 'Auto-schedule produced an internal teacher time conflict. Contact support.'
-                                }), 500
-                        seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
-                        smin_dur = _time_to_minutes(start_time_str)
-                        emin_dur = _time_to_minutes(end_time_str)
-                        duration_minutes = (emin_dur - smin_dur) if (
-                            smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
-                        ) else None
 
-                        normalized_allocations.append({
-                            'academic_level_id': task['academic_level_id'],
-                            'subject_id': task['subject_id'],
-                            'teacher_id': teacher_id,
-                            'exam_date': allocation_exam_date,
-                            'venue': level_venue_by_id.get(
-                                task['academic_level_id'],
-                                (default_venue or '').strip().upper() or f'LEVEL {task["academic_level_id"]}'
-                            ),
-                            'session_type': session_type,
-                            'start_time': start_time_str,
-                            'end_time': end_time_str,
-                            'duration_minutes': duration_minutes,
-                        })
+                        free_candidates = [tid for tid in candidates if not _teacher_conflicts(tid, allocation_exam_date, smin, emin)]
+                        if not free_candidates:
+                            # Slot exists but no eligible supervisors are free; try the next slot for this class.
+                            continue
+
+                        teacher_id = random.choice(free_candidates)
+                        seen_class_session_slots.add(key)
+                        seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
+                        placed = True
+
+                    smin_dur = _time_to_minutes(start_time_str)
+                    emin_dur = _time_to_minutes(end_time_str)
+                    duration_minutes = (emin_dur - smin_dur) if (
+                        smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
+                    ) else None
+
+                    if not placed:
+                        return jsonify({
+                            'success': False,
+                            'message': 'Could not auto-schedule without supervisor conflicts. Try selecting more exam days or fewer sessions.'
+                        }), 400
+
+                    normalized_allocations.append({
+                        'academic_level_id': level_id,
+                        'subject_id': subject_id,
+                        'teacher_id': int(teacher_id),
+                        'exam_date': allocation_exam_date,
+                        'venue': level_venue_by_id.get(
+                            level_id,
+                            (default_venue or '').strip().upper() or f'LEVEL {level_id}'
+                        ),
+                        'session_type': session_type,
+                        'start_time': start_time_str,
+                        'end_time': end_time_str,
+                        'duration_minutes': duration_minutes,
+                    })
 
             if not normalized_allocations:
                 return jsonify({'success': False, 'message': 'No allocations to save.'}), 400
@@ -17012,6 +17486,40 @@ def save_exam():
                 if invalid:
                     return jsonify({'success': False, 'message': 'One or more selected teachers are invalid or inactive'}), 400
 
+            # Rule: supervisor must not be the allocated subject teacher for that class/subject.
+            # Load exclusions for the involved (level, subject) pairs once.
+            pairs = {(int(na['academic_level_id']), int(na['subject_id'])) for na in normalized_allocations}
+            excluded_by_pair = {}
+            if pairs:
+                level_ids = sorted({p[0] for p in pairs})
+                subj_ids = sorted({p[1] for p in pairs})
+                ph_l = ",".join(["%s"] * len(level_ids))
+                ph_s = ",".join(["%s"] * len(subj_ids))
+                cursor.execute(f"""
+                    SELECT tsa.academic_level_id, tsa.subject_id, tsa.teacher_id
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                      AND emp.status = 'active'
+                      AND (emp.role = 'teachers' OR emp.role = 'teacher')
+                    WHERE tsa.academic_level_id IN ({ph_l})
+                      AND tsa.subject_id IN ({ph_s})
+                """, tuple(level_ids + subj_ids))
+                for r in cursor.fetchall() or []:
+                    lid = r.get('academic_level_id') if isinstance(r, dict) else r[0]
+                    sid = r.get('subject_id') if isinstance(r, dict) else r[1]
+                    tid = r.get('teacher_id') if isinstance(r, dict) else r[2]
+                    if lid and sid and tid:
+                        excluded_by_pair.setdefault((int(lid), int(sid)), set()).add(int(tid))
+
+            for na in normalized_allocations:
+                key = (int(na['academic_level_id']), int(na['subject_id']))
+                excluded = excluded_by_pair.get(key) or set()
+                if excluded and int(na['teacher_id']) in excluded:
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid supervisor: the selected teacher is currently allocated to teach that subject in that class. Pick a different active teacher to supervise.'
+                    }), 400
+
             cursor.execute("""
                 SELECT id FROM exams
                 WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s AND COALESCE(is_locked, 0) = 1
@@ -17027,6 +17535,18 @@ def save_exam():
             inserted_ids = []
             for na in normalized_allocations:
                 allocation_exam_date = na['exam_date']
+
+                # Enforce: one subject per class/session/day (against DB)
+                cursor.execute("""
+                    SELECT id FROM exams
+                    WHERE academic_level_id = %s AND exam_date = %s AND session_type = %s
+                    LIMIT 1
+                """, (na['academic_level_id'], allocation_exam_date, na['session_type']))
+                if cursor.fetchone():
+                    return jsonify({
+                        'success': False,
+                        'message': 'Invalid allocation: this class already has a subject scheduled for that session on that day.'
+                    }), 400
                 
                 # Prevent duplicates for the same exam/level/subject/date
                 cursor.execute("""
@@ -17130,13 +17650,22 @@ def update_exam():
     if not all([exam_id > 0, academic_level_id > 0, subject_id > 0, supervisor_id > 0, exam_date, session_type]):
         return jsonify({'success': False, 'message': 'Missing required fields'}), 400
 
-    # Session presets (keep in sync with save_exam)
-    session_presets = {
-        'MORNING': ('08:00:00', '11:00:00'),
-        'MIDDAY': ('11:30:00', '13:30:00'),
-        'AFTERNOON': ('14:00:00', '16:00:00'),
-        'EVENING': ('17:00:00', '19:00:00'),
-    }
+    # Session presets (keep in sync with save_exam; configurable)
+    session_presets = _default_exam_session_presets()
+    _tmp_conn = None
+    try:
+        _tmp_conn = get_db_connection()
+        if _tmp_conn:
+            with _tmp_conn.cursor() as _c:
+                session_presets = _load_exam_session_presets_from_db(_c)
+    except Exception:
+        session_presets = _default_exam_session_presets()
+    finally:
+        try:
+            if _tmp_conn:
+                _tmp_conn.close()
+        except Exception:
+            pass
 
     def _time_to_minutes(t: str) -> int | None:
         try:
@@ -17204,6 +17733,36 @@ def update_exam():
                 return jsonify({
                     'success': False,
                     'message': 'Supervisor must be an active employee with role Teacher.'
+                }), 400
+
+            # Rule: supervisor must not be the allocated subject teacher for that class/subject.
+            cursor.execute("""
+                SELECT 1
+                FROM teacher_subject_assignments tsa
+                INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                  AND emp.status = 'active'
+                  AND (emp.role = 'teachers' OR emp.role = 'teacher')
+                WHERE tsa.academic_level_id = %s
+                  AND tsa.subject_id = %s
+                  AND tsa.teacher_id = %s
+                LIMIT 1
+            """, (academic_level_id, subject_id, supervisor_id))
+            if cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid supervisor: the selected teacher is allocated to teach that subject in that class. Choose a different active teacher to supervise.'
+                }), 400
+
+            # Enforce: one subject per class/session/day (exclude this row)
+            cursor.execute("""
+                SELECT id FROM exams
+                WHERE academic_level_id = %s AND exam_date = %s AND session_type = %s AND id != %s
+                LIMIT 1
+            """, (academic_level_id, exam_date, session_type, exam_id))
+            if cursor.fetchone():
+                return jsonify({
+                    'success': False,
+                    'message': 'Invalid allocation: this class already has a subject scheduled for that session on that day.'
                 }), 400
 
             # Teacher conflict on same date (overlap) excluding this exam row
@@ -17281,18 +17840,29 @@ def exam_evaluation_eligible_supervisors():
         exam_id = int(data.get('exam_id', 0))
         exam_date = (data.get('exam_date') or '').strip()
         session_type = (data.get('session_type') or '').strip().upper()
+        academic_level_id = int(data.get('academic_level_id', 0) or 0)
+        subject_id = int(data.get('subject_id', 0) or 0)
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Invalid data'}), 400
 
     if exam_id <= 0 or not exam_date or not session_type:
         return jsonify({'success': False, 'message': 'Missing exam, date, or session'}), 400
 
-    session_presets = {
-        'MORNING': ('08:00:00', '11:00:00'),
-        'MIDDAY': ('11:30:00', '13:30:00'),
-        'AFTERNOON': ('14:00:00', '16:00:00'),
-        'EVENING': ('17:00:00', '19:00:00'),
-    }
+    session_presets = _default_exam_session_presets()
+    _tmp_conn = None
+    try:
+        _tmp_conn = get_db_connection()
+        if _tmp_conn:
+            with _tmp_conn.cursor() as _c:
+                session_presets = _load_exam_session_presets_from_db(_c)
+    except Exception:
+        session_presets = _default_exam_session_presets()
+    finally:
+        try:
+            if _tmp_conn:
+                _tmp_conn.close()
+        except Exception:
+            pass
 
     def _time_to_minutes(t: str) -> int | None:
         try:
@@ -17401,6 +17971,29 @@ def exam_evaluation_eligible_supervisors():
                     'end_time': _normalize_time_mysql(en_raw) or '',
                 })
 
+            # Exclude allocated subject teacher(s) for the class/subject (optional inputs)
+            excluded_ids = set()
+            if academic_level_id > 0 and subject_id > 0:
+                cursor.execute("""
+                    SELECT tsa.teacher_id
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN employees emp ON emp.id = tsa.teacher_id
+                      AND emp.status = 'active'
+                      AND (emp.role = 'teachers' OR emp.role = 'teacher')
+                    WHERE tsa.academic_level_id = %s AND tsa.subject_id = %s
+                """, (academic_level_id, subject_id))
+                for r in cursor.fetchall() or []:
+                    tid = r.get('teacher_id') if isinstance(r, dict) else r[0]
+                    if tid is not None:
+                        excluded_ids.add(int(tid))
+
+            # If excluded IDs are also busy, remove them so they don't appear in UI lists.
+            if excluded_ids:
+                busy_ids.difference_update(excluded_ids)
+                for tid in list(conflicts_by_supervisor.keys()):
+                    if int(tid) in excluded_ids:
+                        del conflicts_by_supervisor[int(tid)]
+
             cursor.execute("""
                 SELECT id FROM employees
                 WHERE status = 'active'
@@ -17413,6 +18006,8 @@ def exam_evaluation_eligible_supervisors():
                 if tid is None:
                     continue
                 tid = int(tid)
+                if tid in excluded_ids:
+                    continue
                 if tid in busy_ids:
                     continue
                 eligible.append(tid)
@@ -17502,7 +18097,7 @@ def exam_evaluation_allocation_options():
 
             subjects = []
             subject_seen = set()
-            teachers_by_subject = {}
+            assigned_teachers_by_subject = {}
             for r in rows:
                 subject_id = r.get('subject_id') if isinstance(r, dict) else r[0]
                 subject_name = r.get('subject_name', '') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')
@@ -17521,18 +18116,48 @@ def exam_evaluation_allocation_options():
 
                 if subject_id and teacher_id:
                     key = str(int(subject_id))
-                    teachers_by_subject.setdefault(key, [])
-                    teachers_by_subject[key].append({
+                    assigned_teachers_by_subject.setdefault(key, [])
+                    assigned_teachers_by_subject[key].append({
                         'id': int(teacher_id),
                         'full_name': full_name or '',
                         'employee_id': employee_id or '',
                     })
 
+            # Supervisor options: all active teachers EXCEPT allocated subject teachers for this class/subject
+            cursor.execute(f"""
+                SELECT e.id AS teacher_id, e.full_name, {_employee_staff_identity_sql('e')} AS employee_id
+                FROM employees e
+                WHERE e.status = 'active' AND (e.role = 'teachers' OR e.role = 'teacher')
+                ORDER BY e.full_name ASC, e.id ASC
+            """)
+            all_active_teachers = [{
+                'id': int((r.get('teacher_id') if isinstance(r, dict) else r[0])),
+                'full_name': (r.get('full_name', '') if isinstance(r, dict) else (r[1] if len(r) > 1 else '')) or '',
+                'employee_id': (r.get('employee_id', '') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or '',
+            } for r in (cursor.fetchall() or []) if (r.get('teacher_id') if isinstance(r, dict) else r[0]) is not None]
+            all_ids = [t['id'] for t in all_active_teachers]
+            all_ids_set = set(all_ids)
+
+            excluded_ids_by_subject = {}
+            supervisors_by_subject = {}
+            for s in subjects:
+                sid = str(int(s['id']))
+                excluded = {int(t['id']) for t in (assigned_teachers_by_subject.get(sid) or []) if t.get('id') is not None}
+                excluded_ids_by_subject[sid] = sorted(excluded)
+                elig_ids = all_ids_set.difference(excluded)
+                supervisors_by_subject[sid] = [t for t in all_active_teachers if int(t['id']) in elig_ids]
+
             return jsonify({
                 'success': True,
                 'level_name': level_name or '',
                 'subjects': subjects,
-                'teachers_by_subject': teachers_by_subject,
+                # Back-compat + clarity:
+                # - assigned_teachers_by_subject: the actual allocated subject teachers for this class
+                # - supervisors_by_subject: eligible exam supervisors (active teachers excluding allocated ones)
+                'teachers_by_subject': assigned_teachers_by_subject,
+                'assigned_teachers_by_subject': assigned_teachers_by_subject,
+                'excluded_teacher_ids_by_subject': excluded_ids_by_subject,
+                'supervisors_by_subject': supervisors_by_subject,
             })
     except Exception as e:
         print(f"Error allocation options: {e}")

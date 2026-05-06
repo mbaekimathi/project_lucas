@@ -27,13 +27,13 @@
         </a>
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-3">
+                <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-3">
                     <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg">
                         <i class="fas fa-calendar-alt text-white"></i>
                     </span>
                     <span class="break-words">{{ exam_meta.exam_name }}</span>
                 </h1>
-                <p class="text-sm text-gray-600 dark:text-gray-400 ml-0 lg:ml-14">
+                <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 ml-0 lg:ml-14">
                     <span class="font-semibold">{{ exam_meta.exam_type or '—' }}</span>
                     <span class="mx-2">·</span>
                     {{ exam_meta.year_name or '—' }}
@@ -43,18 +43,18 @@
                     <span>{{ allocation_count }} allocation(s)</span>
                 </p>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto">
                 {% if not exam_meta.is_locked %}
                 <button type="button"
                         id="erd-open-add-modal"
-                        class="inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-md">
+                        class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-md w-full sm:w-auto">
                     <i class="fas fa-plus"></i>
                     Allocate Other Class
                 </button>
                 {% endif %}
                 {% if exam_meta.is_locked %}
-                <div class="flex items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm font-medium shrink-0">
-                    <i class="fas fa-lock"></i>
+                <div class="flex items-start sm:items-center gap-2 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-sm font-medium shrink-0 w-full lg:w-auto">
+                    <i class="fas fa-lock mt-0.5 sm:mt-0"></i>
                     This exam is locked. Timetables are view-only until it is unlocked on the registration page.
                 </div>
                 {% endif %}
@@ -62,26 +62,36 @@
         </div>
     </div>
 
-    <div class="mb-6 flex flex-wrap gap-2 border-b border-gray-200 dark:border-gray-700 pb-4">
+    <div class="mb-6 border-b border-gray-200 dark:border-gray-700 pb-4 overflow-x-auto">
+        <div class="flex flex-nowrap sm:flex-wrap gap-2 min-w-max">
         <button type="button"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition"
-                :class="mainTab === 'timetable'
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
+                :class="mainTab === 'exam_data'
                     ? 'bg-brand-primary text-white shadow-md'
                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-brand-primary/40'"
-                @click="setMainTab('timetable')">
+                @click="setMainTab('exam_data')">
+            <i class="fas fa-database mr-2"></i>Exam data
+        </button>
+        <button type="button"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
+                :class="mainTab === 'timetable_data'
+                    ? 'bg-brand-primary text-white shadow-md'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-brand-primary/40'"
+                @click="setMainTab('timetable_data')">
             <i class="fas fa-calendar-alt mr-2"></i>Timetable
         </button>
         <button type="button"
-                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition"
+                class="rounded-xl px-4 py-2.5 text-sm font-semibold transition whitespace-nowrap"
                 :class="mainTab === 'analytics'
                     ? 'bg-violet-600 text-white shadow-md'
                     : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:border-violet-500/40'"
                 @click="setMainTab('analytics')">
             <i class="fas fa-chart-pie mr-2"></i>Analytics
         </button>
+        </div>
     </div>
 
-    <div x-show="mainTab === 'timetable'">
+    <div x-show="mainTab === 'exam_data'">
     {% if not timetables_by_level %}
     <div class="dashboard-card rounded-2xl shadow-xl p-12 text-center text-gray-600 dark:text-gray-400">
         No class-level allocations found for this exam.
@@ -239,7 +249,248 @@
         {% endfor %}
     </div>
     {% endif %}
-    </div>{# end timetable tab #}
+    </div>{# end exam data tab #}
+
+    <div x-show="mainTab === 'timetable_data'" x-cloak>
+        {% if not timetables_by_level %}
+        <div class="dashboard-card rounded-2xl shadow-xl p-12 text-center text-gray-600 dark:text-gray-400">
+            No class-level allocations found for this exam.
+        </div>
+        {% else %}
+        <div class="space-y-8">
+            {# Only show sessions that exist in saved allocations for this exam (i.e., what was checked/used during registration). #}
+            {% set _session_order = ['MORNING','MIDDAY','AFTERNOON','EVENING','CUSTOM'] %}
+            {% set session_cols = [] %}
+            {% for s in _session_order %}
+                {% if (exam_rows|selectattr('session_type','equalto',s)|list|length) > 0 %}
+                    {% set _ = session_cols.append(s) %}
+                {% endif %}
+            {% endfor %}
+            {% if session_cols|length == 0 %}
+                {% set session_cols = ['MORNING','MIDDAY','AFTERNOON','EVENING'] %}
+            {% endif %}
+            {% for level in timetables_by_level %}
+            <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                    <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                        <span class="w-9 h-9 rounded-lg bg-brand-primary/15 text-brand-primary flex items-center justify-center">
+                            <i class="fas fa-th"></i>
+                        </span>
+                        {{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400 font-semibold">({{ level.level_category }})</span>{% endif %}
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                        Grid view: rows = days, columns = sessions.
+                    </p>
+                </div>
+
+                {# Mobile: stack days and sessions (no horizontal scrolling needed). #}
+                <div class="md:hidden space-y-4 text-sm">
+                    {% for block in level.dates %}
+                    <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/50 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="text-sm font-bold text-gray-900 dark:text-white">
+                                {{ block.date or '—' }}
+                            </div>
+                            <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
+                                {{ level.level_name }}{% if level.level_category %} ({{ level.level_category }}){% endif %}
+                            </div>
+                        </div>
+                        <div class="mt-3 space-y-3">
+                            {% for sc in session_cols %}
+                            {% set hits = block.slots|selectattr('session_type','equalto',sc)|list %}
+                            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 p-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
+                                            {% if sc == 'MORNING' %}Morning{% elif sc == 'MIDDAY' %}Midday{% elif sc == 'AFTERNOON' %}Afternoon{% elif sc == 'EVENING' %}Evening{% else %}Custom{% endif %}
+                                        </div>
+                                        {% set _hh = exam_rows|selectattr('session_type','equalto',sc)|list %}
+                                        {% set _h = _hh|first %}
+                                        {% set _sp = session_presets.get(sc) if session_presets else none %}
+                                        <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
+                                            {% if _h and (_h.start_time or _h.end_time) %}
+                                                {{ (_h.start_time or '—')[:5] }}–{{ (_h.end_time or '—')[:5] }}
+                                            {% elif _sp and (_sp.start or _sp.end) %}
+                                                {{ (_sp.start or '—')[:5] }}–{{ (_sp.end or '—')[:5] }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold whitespace-nowrap">
+                                        <span x-text="''"></span>
+                                    </div>
+                                </div>
+
+                                {% if hits and hits|length > 0 %}
+                                <div class="mt-2 space-y-2">
+                                    {% for slot in hits %}
+                                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-2">
+                                        <div class="flex items-start justify-between gap-2">
+                                            <div class="font-semibold text-gray-900 dark:text-white text-[13px] leading-snug">
+                                                {{ slot.subject_name or '—' }}
+                                            </div>
+                                            {% set st = (slot.status or 'scheduled')|lower %}
+                                            <span class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide
+                                                {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300
+                                                {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300
+                                                {% elif st == 'completed' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200
+                                                {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300
+                                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                                                {{ slot.status or 'scheduled' }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
+                                            {% if slot.supervisor_name or slot.supervisor_employee_id %}
+                                                {{ slot.supervisor_name or '' }}{% if slot.supervisor_employee_id %} ({{ slot.supervisor_employee_id }}){% endif %}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% else %}
+                                <div class="mt-2 text-[11px] text-gray-400">—</div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                {# Desktop/tablet: classic grid timetable (horizontal scroll allowed). #}
+                <div class="hidden md:block overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30">
+                    <table class="min-w-[760px] sm:min-w-[820px] w-full border-separate border-spacing-0 text-sm">
+                        <thead>
+                            <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                                <th class="p-3 text-left font-bold w-36 sticky left-0 z-20 bg-gradient-to-r from-brand-primary to-brand-secondary">
+                                    Date
+                                </th>
+                                {% for sc in session_cols %}
+                                <th class="p-3 text-left font-bold whitespace-nowrap">
+                                    <div class="leading-tight">
+                                        <div>
+                                            {% if sc == 'MORNING' %}Morning{% elif sc == 'MIDDAY' %}Midday{% elif sc == 'AFTERNOON' %}Afternoon{% elif sc == 'EVENING' %}Evening{% else %}Custom{% endif %}
+                                        </div>
+                                        {% set _hh = exam_rows|selectattr('session_type','equalto',sc)|list %}
+                                        {% set _h = _hh|first %}
+                                        {% set _sp = session_presets.get(sc) if session_presets else none %}
+                                        <div class="text-[11px] font-semibold text-white/90">
+                                            {% if _h and (_h.start_time or _h.end_time) %}
+                                                {{ (_h.start_time or '—')[:5] }}–{{ (_h.end_time or '—')[:5] }}
+                                            {% elif _sp and (_sp.start or _sp.end) %}
+                                                {{ (_sp.start or '—')[:5] }}–{{ (_sp.end or '—')[:5] }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for block in level.dates %}
+                            <tr class="border-t border-gray-200 dark:border-gray-800">
+                                <td class="p-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap sticky left-0 z-10 bg-white/90 dark:bg-gray-900/70 border-r border-gray-200 dark:border-gray-800">
+                                    <div class="text-sm font-bold">{{ block.date or '—' }}</div>
+                                </td>
+                                {% for sc in session_cols %}
+                                {% set hits = block.slots|selectattr('session_type','equalto',sc)|list %}
+                                <td class="p-2 sm:p-2.5 align-top text-gray-800 dark:text-gray-200">
+                                    {% if hits and hits|length > 0 %}
+                                        <div class="space-y-1.5 sm:space-y-2">
+                                            {% for slot in hits[:2] %}
+                                                <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-1.5 sm:p-2">
+                                                    <div class="flex items-start justify-between gap-2">
+                                                        <div class="font-semibold text-gray-900 dark:text-white leading-snug text-[12px] sm:text-sm">
+                                                            {{ slot.subject_name or '—' }}
+                                                        </div>
+                                                        {% set st = (slot.status or 'scheduled')|lower %}
+                                                        <span class="shrink-0 px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold uppercase tracking-wide
+                                                            {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300
+                                                            {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300
+                                                            {% elif st == 'completed' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200
+                                                            {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300
+                                                            {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                                                            {{ slot.status or 'scheduled' }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="mt-1 text-[10px] sm:text-[11px] text-gray-700 dark:text-gray-300">
+                                                        {% if slot.supervisor_name or slot.supervisor_employee_id %}
+                                                            {{ slot.supervisor_name or '' }}{% if slot.supervisor_employee_id %} ({{ slot.supervisor_employee_id }}){% endif %}
+                                                        {% else %}
+                                                            —
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                            {% if hits|length > 2 %}
+                                                <div class="text-[10px] sm:text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
+                                                    +{{ hits|length - 2 }} more
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        <div class="h-full min-h-[44px] sm:min-h-[54px] rounded-lg border border-dashed border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-400 text-xs">
+                                            —
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {# Show active subjects that have no allocation rows for this class #}
+                {% set ns = namespace(allocated_ids=[]) %}
+                {% for block in level.dates %}
+                    {% for slot in block.slots %}
+                        {% if slot.subject_id is not none and (slot.subject_id|int) not in ns.allocated_ids %}
+                            {% set _ = ns.allocated_ids.append(slot.subject_id|int) %}
+                        {% endif %}
+                    {% endfor %}
+                {% endfor %}
+                {% set missing_any = false %}
+                {% for s in subjects %}
+                    {% if s.id is not none and (s.id|int) not in ns.allocated_ids %}
+                        {% set missing_any = true %}
+                    {% endif %}
+                {% endfor %}
+
+                {% if missing_any %}
+                <div class="mt-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 p-4">
+                    <div class="flex items-start gap-3">
+                        <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0">
+                            <i class="fas fa-exclamation-triangle"></i>
+                        </span>
+                        <div class="min-w-0">
+                            <p class="text-sm font-bold text-amber-900 dark:text-amber-100">Unallocated subject(s)</p>
+                            <p class="text-xs text-amber-800/80 dark:text-amber-200/80 mt-1">
+                                These active subjects have no timetable slot for this class.
+                            </p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                {% for s in subjects %}
+                                    {% if s.id is not none and (s.id|int) not in ns.allocated_ids %}
+                                        <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-900/40 border border-amber-200 dark:border-amber-800 text-xs font-semibold text-amber-900 dark:text-amber-100">
+                                            {{ s.subject_name }}{% if s.subject_code %} <span class="text-[11px] text-amber-800/70 dark:text-amber-200/70">({{ s.subject_code }})</span>{% endif %}
+                                        </span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>{# end timetable data tab #}
 
     <div x-show="mainTab === 'analytics'" x-cloak class="space-y-8">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -267,15 +518,55 @@
 
         <div class="flex flex-wrap gap-2">
             <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
+                    :class="analyticsSlice === 'day' ? 'bg-brand-primary text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
+                    @click="analyticsSlice='day'; destroyCharts()">By day</button>
+            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
                     :class="analyticsSlice === 'class' ? 'bg-emerald-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
                     @click="analyticsSlice='class'; destroyCharts()">By class</button>
-            <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
-                    :class="analyticsSlice === 'subject' ? 'bg-sky-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
-                    @click="analyticsSlice='subject'; destroyCharts()">By subject</button>
             <button type="button" class="rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wide transition"
                     :class="analyticsSlice === 'supervisor' ? 'bg-violet-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'"
                     @click="analyticsSlice='supervisor'; destroyCharts()">By supervisor</button>
         </div>
+
+        {# —— Day —— #}
+        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'day'">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <i class="fas fa-calendar-day text-brand-primary"></i>
+                        Allocations per day
+                    </h2>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Slots scheduled on each date.</p>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                            <th class="pb-3 pr-4">Date</th>
+                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
+                            <th class="pb-3 text-right">Count</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        {% for row in analytics.day_stats %}
+                        <tr>
+                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">{{ row.exam_date }}</td>
+                            <td class="py-3 pr-4 hidden sm:table-cell">
+                                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
+                                    <div class="h-full rounded-full bg-brand-primary" style="width: {{ row.bar_pct }}%"></div>
+                                </div>
+                                <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
+                            </td>
+                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
 
         {# —— Class —— #}
         <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'class'">
@@ -329,61 +620,6 @@
                  style="min-height: 200px;"
                  :style="{ height: chartBoxHeight('class') }">
                 <canvas id="erdChartClass" class="block w-full h-full max-h-full"></canvas>
-            </div>
-        </section>
-
-        {# —— Subject —— #}
-        <section class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200/80 dark:border-gray-700" x-show="analyticsSlice === 'subject'">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <div>
-                    <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-book-open text-sky-600 dark:text-sky-400"></i>
-                        Subject analysis
-                    </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Appearances across the timetable.</p>
-                </div>
-                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-800/80 self-start">
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
-                            :class="subjectMode === 'raw' ? 'bg-white dark:bg-gray-700 shadow text-sky-800 dark:text-sky-200' : 'text-gray-500'"
-                            @click="subjectMode='raw'; destroyChart('subject')">Raw data</button>
-                    <button type="button" class="rounded-lg px-3 py-1.5 text-xs font-semibold"
-                            :class="subjectMode === 'visual' ? 'bg-white dark:bg-gray-700 shadow text-sky-800 dark:text-sky-200' : 'text-gray-500'"
-                            @click="subjectMode='visual'; scheduleChartBuild('subject')">Visual</button>
-                </div>
-            </div>
-            <div x-show="subjectMode === 'raw'" class="overflow-x-auto">
-                <table class="min-w-full text-sm">
-                    <thead>
-                        <tr class="border-b border-gray-200 dark:border-gray-700 text-left text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <th class="pb-3 pr-4">Subject</th>
-                            <th class="pb-3 pr-4 w-48 hidden sm:table-cell">Share</th>
-                            <th class="pb-3 text-right">Slots</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        {% for row in analytics.subject_stats %}
-                        <tr>
-                            <td class="py-3 pr-4 font-medium text-gray-900 dark:text-white">
-                                {{ row.subject_name }}{% if row.subject_code %}<span class="text-xs text-gray-500 ml-1">({{ row.subject_code }})</span>{% endif %}
-                            </td>
-                            <td class="py-3 pr-4 hidden sm:table-cell">
-                                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden max-w-[12rem]">
-                                    <div class="h-full rounded-full bg-sky-500 dark:bg-sky-400" style="width: {{ row.bar_pct }}%"></div>
-                                </div>
-                                <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-block">{{ row.share_pct }}%</span>
-                            </td>
-                            <td class="py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">{{ row.exam_count }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="3" class="py-6 text-center text-gray-500">No data.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            <div x-show="subjectMode === 'visual'" class="relative w-full overflow-hidden rounded-lg bg-white/50 dark:bg-gray-900/40"
-                 style="min-height: 200px;"
-                 :style="{ height: chartBoxHeight('subject') }">
-                <canvas id="erdChartSubject" class="block w-full h-full max-h-full"></canvas>
             </div>
         </section>
 
@@ -495,16 +731,17 @@
 <script type="application/json" id="erd-subjects">{{ subjects|tojson|safe }}</script>
 <script type="application/json" id="erd-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="erd-exam-meta">{{ exam_meta|tojson|safe }}</script>
+<script type="application/json" id="erd-session-presets">{{ session_presets|default({})|tojson|safe }}</script>
 
 <script>
 (function () {
     window.erdExamPage = function (initialTab) {
-        var tabNorm = initialTab === 'analytics' ? 'analytics' : 'timetable';
+        var t = String(initialTab || '').toLowerCase();
+        var tabNorm = (t === 'analytics' || t === 'timetable_data' || t === 'exam_data') ? t : 'timetable_data';
         return {
             mainTab: tabNorm,
-            analyticsSlice: 'class',
+            analyticsSlice: 'day',
             classMode: 'raw',
-            subjectMode: 'raw',
             superMode: 'raw',
             charts: {},
             /** Server analytics JSON — avoid naming this `analytics` (Alpine / scope quirks). */
@@ -542,7 +779,7 @@
 
             refreshChartsTheme() {
                 var self = this;
-                ['class', 'subject', 'supervisor'].forEach(function (k) {
+                ['day', 'class', 'supervisor'].forEach(function (k) {
                     self.destroyChart(k);
                 });
                 if (this.mainTab !== 'analytics') return;
@@ -550,12 +787,12 @@
                 tick(function () {
                     requestAnimationFrame(function () {
                         requestAnimationFrame(function () {
-                            if (self.analyticsSlice === 'class' && self.classMode === 'visual') {
+                            if (self.analyticsSlice === 'day') {
+                                // Day is raw-only for now
+                                return;
+                            } else if (self.analyticsSlice === 'class' && self.classMode === 'visual') {
                                 self.buildChart('class');
                                 if (self.charts.class) try { self.charts.class.resize(); } catch (e) { /* noop */ }
-                            } else if (self.analyticsSlice === 'subject' && self.subjectMode === 'visual') {
-                                self.buildChart('subject');
-                                if (self.charts.subject) try { self.charts.subject.resize(); } catch (e) { /* noop */ }
                             } else if (self.analyticsSlice === 'supervisor' && self.superMode === 'visual') {
                                 self.buildChart('supervisor');
                                 if (self.charts.supervisor) try { self.charts.supervisor.resize(); } catch (e) { /* noop */ }
@@ -566,7 +803,7 @@
             },
 
             chartBoxHeight(kind) {
-                var key = kind === 'class' ? 'class_stats' : (kind === 'subject' ? 'subject_stats' : 'supervisor_stats');
+                var key = kind === 'class' ? 'class_stats' : (kind === 'supervisor' ? 'supervisor_stats' : 'day_stats');
                 var rows = ((this.erdBreakdown || {})[key] || []).length || 1;
                 var h = Math.min(640, Math.max(200, 56 + rows * 28));
                 return h + 'px';
@@ -597,14 +834,13 @@
                 this.mainTab = t;
                 try {
                     var u = new URL(window.location.href);
-                    if (t === 'analytics') u.searchParams.set('erd_tab', 'analytics');
-                    else u.searchParams.delete('erd_tab');
+                    if (t === 'analytics' || t === 'timetable_data' || t === 'exam_data') u.searchParams.set('erd_tab', t);
+                    else u.searchParams.set('erd_tab', 'exam_data');
                     history.replaceState({}, '', u);
                 } catch (e) { /* noop */ }
                 this.destroyCharts();
                 if (t === 'analytics') {
                     if (this.analyticsSlice === 'class' && this.classMode === 'visual') this.scheduleChartBuild('class');
-                    else if (this.analyticsSlice === 'subject' && this.subjectMode === 'visual') this.scheduleChartBuild('subject');
                     else if (this.analyticsSlice === 'supervisor' && this.superMode === 'visual') this.scheduleChartBuild('supervisor');
                 }
             },
@@ -617,7 +853,6 @@
 
             destroyCharts() {
                 this.destroyChart('class');
-                this.destroyChart('subject');
                 this.destroyChart('supervisor');
             },
 
@@ -626,25 +861,24 @@
                 if (!ChartCtor) return;
                 this.destroyChart(kind);
 
-                var statsKey = kind === 'class' ? 'class_stats' : (kind === 'subject' ? 'subject_stats' : 'supervisor_stats');
-                var canvasId = kind === 'class' ? 'erdChartClass' : (kind === 'subject' ? 'erdChartSubject' : 'erdChartSupervisor');
+                var statsKey = kind === 'class' ? 'class_stats' : (kind === 'supervisor' ? 'supervisor_stats' : 'day_stats');
+                var canvasId = kind === 'class' ? 'erdChartClass' : (kind === 'supervisor' ? 'erdChartSupervisor' : 'erdChartDay');
                 var cfg = kind === 'class'
                     ? { label: 'Exam slots per class', color: 'rgba(16, 185, 129, 0.75)' }
-                    : (kind === 'subject'
-                        ? { label: 'Slots per subject', color: 'rgba(14, 165, 233, 0.78)' }
-                        : { label: 'Sessions per supervisor', color: 'rgba(139, 92, 246, 0.78)' });
+                    : (kind === 'supervisor'
+                        ? { label: 'Sessions per supervisor', color: 'rgba(139, 92, 246, 0.78)' }
+                        : { label: 'Slots per day', color: 'rgba(128, 0, 32, 0.75)' });
 
                 var series = (this.erdBreakdown[statsKey] || []).slice();
                 if (!series.length) return;
 
                 var labels = series.map(function (r) {
+                    if (kind === 'day') {
+                        return String(r.exam_date || '—');
+                    }
                     if (kind === 'class') {
                         var lc = r.level_category ? ' (' + String(r.level_category) + ')' : '';
                         return String(r.level_name || '—') + lc;
-                    }
-                    if (kind === 'subject') {
-                        var c = r.subject_code ? ' (' + String(r.subject_code) + ')' : '';
-                        return String(r.subject_name || '—') + c;
                     }
                     var e = r.employee_id ? ' (' + String(r.employee_id) + ')' : '';
                     return String(r.full_name || '—') + e;
@@ -806,6 +1040,20 @@
     const levels = JSON.parse(document.getElementById('erd-levels')?.textContent || '[]');
     const subjects = JSON.parse(document.getElementById('erd-subjects')?.textContent || '[]');
     const teachers = JSON.parse(document.getElementById('erd-teachers')?.textContent || '[]');
+    let sessionPresets = {};
+    try {
+        sessionPresets = JSON.parse(document.getElementById('erd-session-presets')?.textContent || '{}') || {};
+    } catch (e) {
+        sessionPresets = {};
+    }
+    if (!sessionPresets || !sessionPresets.MORNING) {
+        sessionPresets = {
+            MORNING: { start: '08:00', end: '11:00' },
+            MIDDAY: { start: '11:30', end: '13:30' },
+            AFTERNOON: { start: '14:00', end: '16:00' },
+            EVENING: { start: '17:00', end: '19:00' },
+        };
+    }
     const byId = new Map(rows.map(r => [String(r.id), r]));
     const SAVE_URL = {{ employee_dash_url('exam-evaluation/save')|tojson }};
 
@@ -950,7 +1198,9 @@
         var payload = {
             exam_id: eid,
             exam_date: dateEl.value || '',
-            session_type: sessionEl.value || ''
+            session_type: sessionEl.value || '',
+            academic_level_id: parseInt(levelEl.value || '0', 10) || 0,
+            subject_id: parseInt(subjectEl.value || '0', 10) || 0
         };
         if (sessionEl.value === 'CUSTOM') {
             payload.start_time = startEl.value || '';
@@ -1059,14 +1309,17 @@
 
     sessionEl.addEventListener('change', function() {
         customWrap.classList.toggle('hidden', sessionEl.value !== 'CUSTOM');
-        if (sessionEl.value === 'MORNING') { startEl.value = '08:00'; endEl.value = '11:00'; durationEl.value = ''; }
-        if (sessionEl.value === 'MIDDAY') { startEl.value = '11:30'; endEl.value = '13:30'; durationEl.value = ''; }
-        if (sessionEl.value === 'AFTERNOON') { startEl.value = '14:00'; endEl.value = '16:00'; durationEl.value = ''; }
-        if (sessionEl.value === 'EVENING') { startEl.value = '17:00'; endEl.value = '19:00'; durationEl.value = ''; }
+        if (sessionEl.value && sessionEl.value !== 'CUSTOM' && sessionPresets[sessionEl.value]) {
+            startEl.value = String(sessionPresets[sessionEl.value].start || '');
+            endEl.value = String(sessionPresets[sessionEl.value].end || '');
+            durationEl.value = '';
+        }
         if (sessionEl.value === 'CUSTOM') autoEnd();
         scheduleTeacherRefresh();
     });
     if (dateEl) dateEl.addEventListener('change', scheduleTeacherRefresh);
+    if (levelEl) levelEl.addEventListener('change', scheduleTeacherRefresh);
+    if (subjectEl) subjectEl.addEventListener('change', scheduleTeacherRefresh);
     startEl.addEventListener('input', function() { autoEnd(); scheduleTeacherRefresh(); });
     durationEl.addEventListener('input', function() { autoEnd(); scheduleTeacherRefresh(); });
 
@@ -1177,7 +1430,7 @@
     const addRowBtn = document.getElementById('erd-add-row-btn');
     const ALLOC_OPTIONS_URL = {{ employee_dash_url('exam-evaluation/allocation-options')|tojson }};
     const baseExamId = rows.length ? Number(rows[0].id || 0) : 0;
-    let addOptions = { subjects: [], teachers_by_subject: {} };
+    let addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
 
     if (addLevelEl) {
         fillSelect(addLevelEl, levels, function(x) { return x.level_name + (x.level_category ? ' (' + x.level_category + ')' : ''); });
@@ -1230,9 +1483,15 @@
                 body: JSON.stringify({ academic_level_id: levelId })
             });
             const j = await res.json();
-            addOptions = (j && j.success) ? { subjects: j.subjects || [], teachers_by_subject: j.teachers_by_subject || {} } : { subjects: [], teachers_by_subject: {} };
+            addOptions = (j && j.success)
+                ? {
+                    subjects: j.subjects || [],
+                    teachers_by_subject: j.teachers_by_subject || {},
+                    supervisors_by_subject: j.supervisors_by_subject || {}
+                }
+                : { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
         } catch (e) {
-            addOptions = { subjects: [], teachers_by_subject: {} };
+            addOptions = { subjects: [], teachers_by_subject: {}, supervisors_by_subject: {} };
         }
     }
     function newAllocationRowHtml(idx) {
@@ -1257,7 +1516,11 @@
             '</div>';
     }
     function availableTeachersBySubject(subjectId) {
-        return (addOptions.teachers_by_subject && addOptions.teachers_by_subject[String(subjectId)]) ? addOptions.teachers_by_subject[String(subjectId)] : [];
+        // Prefer eligible supervisors list; fall back to legacy teachers_by_subject.
+        const k = String(subjectId);
+        if (addOptions.supervisors_by_subject && addOptions.supervisors_by_subject[k]) return addOptions.supervisors_by_subject[k];
+        if (addOptions.teachers_by_subject && addOptions.teachers_by_subject[k]) return addOptions.teachers_by_subject[k];
+        return [];
     }
     function addAllocationRow() {
         const idx = addRowsWrap.querySelectorAll('[data-row-idx]').length;
@@ -1341,10 +1604,11 @@
         if (sessionSel) {
             sessionSel.addEventListener('change', function () {
                 customWrap.classList.toggle('hidden', sessionSel.value !== 'CUSTOM');
-                if (sessionSel.value === 'MORNING') { startEl.value = '08:00'; endEl.value = '11:00'; durationEl.value = ''; }
-                if (sessionSel.value === 'MIDDAY') { startEl.value = '11:30'; endEl.value = '13:30'; durationEl.value = ''; }
-                if (sessionSel.value === 'AFTERNOON') { startEl.value = '14:00'; endEl.value = '16:00'; durationEl.value = ''; }
-                if (sessionSel.value === 'EVENING') { startEl.value = '17:00'; endEl.value = '19:00'; durationEl.value = ''; }
+                if (sessionSel.value && sessionSel.value !== 'CUSTOM' && sessionPresets[sessionSel.value]) {
+                    startEl.value = String(sessionPresets[sessionSel.value].start || '');
+                    endEl.value = String(sessionPresets[sessionSel.value].end || '');
+                    durationEl.value = '';
+                }
                 if (sessionSel.value === 'CUSTOM') { endEl.value = computeEnd(startEl.value, durationEl.value); }
                 checkRowAvailability(idx);
             });

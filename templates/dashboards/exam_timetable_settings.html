@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Exam Timetable Settings - {{ school_settings.school_name or 'School' }}{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <a href="{{ employee_dash_url('exam-evaluation') }}"
+       class="w-full sidebar-item"
+       aria-label="Back to Exam & Evaluation">
+        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
+        <span>Back to Exam &amp; Evaluation</span>
+    </a>
+    <div class="w-full sidebar-item sidebar-item-active cursor-default" aria-current="page">
+        <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
+        <span>Timetable settings</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg">
+                <i class="fas fa-sliders-h text-white"></i>
+            </span>
+            Exam timetable settings
+        </h1>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Configure sessions used when registering exams (manual presets and auto-scheduling).
+        </p>
+    </div>
+
+    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700 bg-white/95 dark:bg-gray-900/60">
+        <form method="POST" class="space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {% set rows = [
+                    ('MORNING','Morning'),
+                    ('MIDDAY','Midday'),
+                    ('AFTERNOON','Afternoon'),
+                    ('EVENING','Evening')
+                ] %}
+                {% for key,label in rows %}
+                {% set row = settings.get(key, {}) %}
+                <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4 bg-white/70 dark:bg-gray-800/40">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        <h3 class="text-sm font-bold text-gray-900 dark:text-white">{{ label }} session</h3>
+                        <span class="text-xs font-semibold text-gray-500 dark:text-gray-400">{{ key }}</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Start time</label>
+                            <input type="time"
+                                   name="{{ key }}_start"
+                                   value="{{ (row.get('start') or '') }}"
+                                   required
+                                   class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Duration (minutes)</label>
+                            <input type="number"
+                                   name="{{ key }}_duration"
+                                   min="1"
+                                   step="1"
+                                   value="{{ (row.get('duration_minutes') or '') }}"
+                                   required
+                                   class="w-full px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                <a href="{{ employee_dash_url('exam-evaluation') }}"
+                   class="px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm font-semibold text-center">
+                    Cancel
+                </a>
+                <button type="submit"
+                        class="px-5 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-maroon-dark text-white text-sm font-semibold shadow-md">
+                    Save settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .dashboard-card {
+        backdrop-filter: blur(10px);
+    }
+</style>
+{% endblock %}
+
