@@ -17013,6 +17013,7 @@ def save_exam():
         term_id = int(data.get('term_id', 0))
         allocations = data.get('allocations') or []
         auto_generate = bool(data.get('auto_generate'))
+        share_timetable = bool(data.get('share_timetable'))
         base_exam_date = (data.get('base_exam_date') or '').strip()
         exam_dates_raw = data.get('exam_dates')
         level_ids_raw = data.get('level_ids')
@@ -17373,9 +17374,25 @@ def save_exam():
                         candidate_by_ls[key] = set(candidates)
 
                 # Build tasks (one per class/subject). Supervisor selection happens per-slot to avoid conflicts.
+                # If share_timetable=true, the selected classes share one timetable pattern based on common subjects.
                 task_list = []
-                for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
-                    task_list.append({'academic_level_id': lid, 'subject_id': sid})
+                if share_timetable and len(level_ids) > 1:
+                    common = None
+                    for lid in level_ids:
+                        sset = set(subjects_by_level.get(int(lid), set()))
+                        common = sset if common is None else common.intersection(sset)
+                    common = sorted({int(x) for x in (common or set()) if x})
+                    if not common:
+                        return jsonify({
+                            'success': False,
+                            'message': 'Shared timetable requires the selected classes to have at least one common active allocated subject.'
+                        }), 400
+                    for sid in common:
+                        for lid in level_ids:
+                            task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
+                else:
+                    for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
+                        task_list.append({'academic_level_id': lid, 'subject_id': sid})
                 if not task_list:
                     return jsonify({
                         'success': False,
@@ -17402,34 +17419,22 @@ def save_exam():
                             return True
                     return False
 
-                total_slots_per_level = len(schedule_dates) * len(SESSION_ORDER)
-                for task in task_list_sorted:
-                    level_id = int(task['academic_level_id'])
-                    subject_id = int(task['subject_id'])
-                    candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})
-                    if not candidates:
+                if share_timetable and len(level_ids) > 1:
+                    # Shared timetable mode: for each subject index, all classes use same (date, session).
+                    # Supervisors must be different between classes for the same slot.
+                    common_subjects = sorted(set(t['subject_id'] for t in task_list_sorted))
+                    total_slots = len(schedule_dates) * len(SESSION_ORDER)
+                    if len(common_subjects) > total_slots:
                         return jsonify({
                             'success': False,
-                            'message': 'No eligible supervisors found for one or more class/subject pairs.'
+                            'message': 'Not enough selected exam days/sessions to schedule all common subjects for a shared timetable.'
                         }), 400
 
-                    placed = False
-                    attempts = 0
-                    # Try successive slots for this class until we find a free eligible supervisor.
-                    while not placed and attempts < total_slots_per_level:
-                        attempts += 1
-                        slot_idx = next_slot_index_by_level[level_id]
-                        day_offset = slot_idx // len(SESSION_ORDER)
-                        sess_idx = slot_idx % len(SESSION_ORDER)
-                        if day_offset >= len(schedule_dates):
-                            break
+                    for subj_idx, subject_id in enumerate(common_subjects):
+                        day_offset = subj_idx // len(SESSION_ORDER)
+                        sess_idx = subj_idx % len(SESSION_ORDER)
                         session_type = SESSION_ORDER[sess_idx]
                         allocation_exam_date = schedule_dates[day_offset]
-                        key = (level_id, allocation_exam_date, session_type)
-                        next_slot_index_by_level[level_id] += 1
-                        if key in seen_class_session_slots:
-                            continue
-
                         start_time_str, end_time_str = session_presets[session_type]
                         smin = _time_to_minutes(start_time_str)
                         emin = _time_to_minutes(end_time_str)
@@ -17438,42 +17443,125 @@ def save_exam():
                         if emin <= smin:
                             emin += 24 * 60
 
-                        free_candidates = [tid for tid in candidates if not _teacher_conflicts(tid, allocation_exam_date, smin, emin)]
-                        if not free_candidates:
-                            # Slot exists but no eligible supervisors are free; try the next slot for this class.
-                            continue
+                        used_in_slot = set()
+                        for level_id in level_ids:
+                            # Enforce one subject per class/session/day
+                            class_slot_key = (int(level_id), allocation_exam_date, session_type)
+                            if class_slot_key in seen_class_session_slots:
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'Internal error: duplicate class slot while building shared timetable.'
+                                }), 500
 
-                        teacher_id = random.choice(free_candidates)
-                        seen_class_session_slots.add(key)
-                        seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
-                        placed = True
+                            candidates = sorted({int(x) for x in (candidate_by_ls.get((int(level_id), int(subject_id))) or set()) if x})
+                            free_candidates = [
+                                tid for tid in candidates
+                                if tid not in used_in_slot and not _teacher_conflicts(tid, allocation_exam_date, smin, emin)
+                            ]
+                            if not free_candidates:
+                                return jsonify({
+                                    'success': False,
+                                    'message': 'Shared timetable requires enough available supervisors. Not enough distinct supervisors for one or more slots; try adding more teachers or selecting more days/sessions.'
+                                }), 400
 
-                    smin_dur = _time_to_minutes(start_time_str)
-                    emin_dur = _time_to_minutes(end_time_str)
-                    duration_minutes = (emin_dur - smin_dur) if (
-                        smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
-                    ) else None
+                            teacher_id = random.choice(free_candidates)
+                            used_in_slot.add(int(teacher_id))
+                            seen_class_session_slots.add(class_slot_key)
+                            seen_teacher_slots.append((int(teacher_id), allocation_exam_date, smin, emin))
 
-                    if not placed:
-                        return jsonify({
-                            'success': False,
-                            'message': 'Could not auto-schedule without supervisor conflicts. Try selecting more exam days or fewer sessions.'
-                        }), 400
+                            smin_dur = _time_to_minutes(start_time_str)
+                            emin_dur = _time_to_minutes(end_time_str)
+                            duration_minutes = (emin_dur - smin_dur) if (
+                                smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
+                            ) else None
 
-                    normalized_allocations.append({
-                        'academic_level_id': level_id,
-                        'subject_id': subject_id,
-                        'teacher_id': int(teacher_id),
-                        'exam_date': allocation_exam_date,
-                        'venue': level_venue_by_id.get(
-                            level_id,
-                            (default_venue or '').strip().upper() or f'LEVEL {level_id}'
-                        ),
-                        'session_type': session_type,
-                        'start_time': start_time_str,
-                        'end_time': end_time_str,
-                        'duration_minutes': duration_minutes,
-                    })
+                            normalized_allocations.append({
+                                'academic_level_id': int(level_id),
+                                'subject_id': int(subject_id),
+                                'teacher_id': int(teacher_id),
+                                'exam_date': allocation_exam_date,
+                                'venue': level_venue_by_id.get(
+                                    int(level_id),
+                                    (default_venue or '').strip().upper() or f'LEVEL {int(level_id)}'
+                                ),
+                                'session_type': session_type,
+                                'start_time': start_time_str,
+                                'end_time': end_time_str,
+                                'duration_minutes': duration_minutes,
+                            })
+                else:
+                    total_slots_per_level = len(schedule_dates) * len(SESSION_ORDER)
+                    for task in task_list_sorted:
+                        level_id = int(task['academic_level_id'])
+                        subject_id = int(task['subject_id'])
+                        candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})
+                        if not candidates:
+                            return jsonify({
+                                'success': False,
+                                'message': 'No eligible supervisors found for one or more class/subject pairs.'
+                            }), 400
+
+                        placed = False
+                        attempts = 0
+                        # Try successive slots for this class until we find a free eligible supervisor.
+                        while not placed and attempts < total_slots_per_level:
+                            attempts += 1
+                            slot_idx = next_slot_index_by_level[level_id]
+                            day_offset = slot_idx // len(SESSION_ORDER)
+                            sess_idx = slot_idx % len(SESSION_ORDER)
+                            if day_offset >= len(schedule_dates):
+                                break
+                            session_type = SESSION_ORDER[sess_idx]
+                            allocation_exam_date = schedule_dates[day_offset]
+                            key = (level_id, allocation_exam_date, session_type)
+                            next_slot_index_by_level[level_id] += 1
+                            if key in seen_class_session_slots:
+                                continue
+
+                            start_time_str, end_time_str = session_presets[session_type]
+                            smin = _time_to_minutes(start_time_str)
+                            emin = _time_to_minutes(end_time_str)
+                            if smin is None or emin is None:
+                                return jsonify({'success': False, 'message': 'Invalid session preset times.'}), 500
+                            if emin <= smin:
+                                emin += 24 * 60
+
+                            free_candidates = [tid for tid in candidates if not _teacher_conflicts(tid, allocation_exam_date, smin, emin)]
+                            if not free_candidates:
+                                # Slot exists but no eligible supervisors are free; try the next slot for this class.
+                                continue
+
+                            teacher_id = random.choice(free_candidates)
+                            seen_class_session_slots.add(key)
+                            seen_teacher_slots.append((teacher_id, allocation_exam_date, smin, emin))
+                            placed = True
+
+                        smin_dur = _time_to_minutes(start_time_str)
+                        emin_dur = _time_to_minutes(end_time_str)
+                        duration_minutes = (emin_dur - smin_dur) if (
+                            smin_dur is not None and emin_dur is not None and emin_dur > smin_dur
+                        ) else None
+
+                        if not placed:
+                            return jsonify({
+                                'success': False,
+                                'message': 'Could not auto-schedule without supervisor conflicts. Try selecting more exam days or fewer sessions.'
+                            }), 400
+
+                        normalized_allocations.append({
+                            'academic_level_id': level_id,
+                            'subject_id': subject_id,
+                            'teacher_id': int(teacher_id),
+                            'exam_date': allocation_exam_date,
+                            'venue': level_venue_by_id.get(
+                                level_id,
+                                (default_venue or '').strip().upper() or f'LEVEL {level_id}'
+                            ),
+                            'session_type': session_type,
+                            'start_time': start_time_str,
+                            'end_time': end_time_str,
+                            'duration_minutes': duration_minutes,
+                        })
 
             if not normalized_allocations:
                 return jsonify({'success': False, 'message': 'No allocations to save.'}), 400

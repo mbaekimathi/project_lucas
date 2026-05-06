@@ -284,6 +284,20 @@
                     Choose at least one class, or use Select all.
                 </p>
 
+                <div class="mt-4 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox"
+                               class="mt-1 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                               x-model="autoShareTimetable">
+                        <span class="text-sm text-gray-800 dark:text-gray-200">
+                            <span class="font-semibold">Share the same timetable across selected classes</span>
+                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                When enabled, selected classes follow the same date/session pattern; supervisors are assigned per class and must be different for the same slot.
+                            </span>
+                        </span>
+                    </label>
+                </div>
+
                 <div class="mt-6">
                     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Base start date <span class="text-red-500">*</span></label>
                     <input type="date" x-model="autoBaseDate"
@@ -1157,6 +1171,7 @@ function examEvaluation() {
             { value: 'EVENING', label: 'Evening' },
             { value: 'CUSTOM', label: 'Custom' },
         ],
+        autoShareTimetable: false,
 
         init() {
             this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
@@ -1733,6 +1748,7 @@ function examEvaluation() {
                     academic_year_id: parseInt(this.examForm.academic_year_id),
                     term_id: parseInt(this.examForm.term_id),
                     auto_generate: true,
+                    share_timetable: !!this.autoShareTimetable,
                     base_exam_date: this.autoBaseDate,
                     level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
                     session_types: this.selectedSessionTypes.slice(),
