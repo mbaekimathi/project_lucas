@@ -17014,6 +17014,7 @@ def save_exam():
         allocations = data.get('allocations') or []
         auto_generate = bool(data.get('auto_generate'))
         share_timetable = bool(data.get('share_timetable'))
+        share_group_level_ids_raw = data.get('share_group_level_ids')
         base_exam_date = (data.get('base_exam_date') or '').strip()
         exam_dates_raw = data.get('exam_dates')
         level_ids_raw = data.get('level_ids')
@@ -17279,6 +17280,27 @@ def save_exam():
                 if not level_ids:
                     return jsonify({'success': False, 'message': 'No active academic levels found.'}), 400
 
+                share_group_level_ids: list[int] = []
+                if share_timetable:
+                    if share_group_level_ids_raw is None:
+                        share_group_level_ids = []
+                    elif not isinstance(share_group_level_ids_raw, list):
+                        return jsonify({'success': False, 'message': 'Invalid share_group_level_ids (must be a list).'}), 400
+                    else:
+                        try:
+                            share_group_level_ids = sorted({int(x) for x in share_group_level_ids_raw if int(x) > 0})
+                        except (ValueError, TypeError):
+                            return jsonify({'success': False, 'message': 'Invalid share_group_level_ids values.'}), 400
+
+                    # Must be a subset of selected level_ids
+                    level_set = set(int(x) for x in level_ids)
+                    share_group_level_ids = [int(x) for x in share_group_level_ids if int(x) in level_set]
+                    if len(share_group_level_ids) < 2:
+                        return jsonify({
+                            'success': False,
+                            'message': 'Shared timetable requires selecting at least 2 classes in the share group.'
+                        }), 400
+
                 ph = ','.join(['%s'] * len(level_ids))
                 cursor.execute(f"""
                     SELECT id, level_category, level_name, level_code
@@ -17374,25 +17396,31 @@ def save_exam():
                         candidate_by_ls[key] = set(candidates)
 
                 # Build tasks (one per class/subject). Supervisor selection happens per-slot to avoid conflicts.
-                # If share_timetable=true, the selected classes share one timetable pattern based on common subjects.
+                # Shared timetable: only the share-group classes share one timetable pattern.
                 task_list = []
-                if share_timetable and len(level_ids) > 1:
+                shared_group = share_group_level_ids[:] if share_timetable else []
+                non_shared_levels = [int(lid) for lid in level_ids if int(lid) not in set(shared_group)]
+
+                if share_timetable:
                     common = None
-                    for lid in level_ids:
+                    for lid in shared_group:
                         sset = set(subjects_by_level.get(int(lid), set()))
                         common = sset if common is None else common.intersection(sset)
                     common = sorted({int(x) for x in (common or set()) if x})
                     if not common:
                         return jsonify({
                             'success': False,
-                            'message': 'Shared timetable requires the selected classes to have at least one common active allocated subject.'
+                            'message': 'Shared timetable requires the chosen share-group classes to have at least one common active allocated subject.'
                         }), 400
                     for sid in common:
-                        for lid in level_ids:
+                        for lid in shared_group:
                             task_list.append({'academic_level_id': int(lid), 'subject_id': int(sid)})
-                else:
-                    for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
-                        task_list.append({'academic_level_id': lid, 'subject_id': sid})
+
+                # Normal scheduling tasks for the remaining selected levels
+                for (lid, sid) in sorted(candidate_by_ls.keys(), key=lambda k: (k[0], k[1])):
+                    if int(lid) in set(shared_group):
+                        continue
+                    task_list.append({'academic_level_id': lid, 'subject_id': sid})
                 if not task_list:
                     return jsonify({
                         'success': False,
@@ -17419,10 +17447,11 @@ def save_exam():
                             return True
                     return False
 
-                if share_timetable and len(level_ids) > 1:
+                if share_timetable:
                     # Shared timetable mode: for each subject index, all classes use same (date, session).
                     # Supervisors must be different between classes for the same slot.
-                    common_subjects = sorted(set(t['subject_id'] for t in task_list_sorted))
+                    share_set = set(int(x) for x in shared_group)
+                    common_subjects = sorted({int(t['subject_id']) for t in task_list_sorted if int(t['academic_level_id']) in share_set})
                     total_slots = len(schedule_dates) * len(SESSION_ORDER)
                     if len(common_subjects) > total_slots:
                         return jsonify({
@@ -17444,7 +17473,7 @@ def save_exam():
                             emin += 24 * 60
 
                         used_in_slot = set()
-                        for level_id in level_ids:
+                        for level_id in shared_group:
                             # Enforce one subject per class/session/day
                             class_slot_key = (int(level_id), allocation_exam_date, session_type)
                             if class_slot_key in seen_class_session_slots:
@@ -17489,10 +17518,13 @@ def save_exam():
                                 'end_time': end_time_str,
                                 'duration_minutes': duration_minutes,
                             })
-                else:
+                # Always schedule non-shared levels using normal logic
+                if non_shared_levels:
                     total_slots_per_level = len(schedule_dates) * len(SESSION_ORDER)
                     for task in task_list_sorted:
                         level_id = int(task['academic_level_id'])
+                        if share_timetable and level_id in set(shared_group):
+                            continue
                         subject_id = int(task['subject_id'])
                         candidates = sorted({int(x) for x in (candidate_by_ls.get((level_id, subject_id)) or set()) if x})
                         if not candidates:
