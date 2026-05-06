@@ -17292,7 +17292,7 @@ def save_exam():
                         except (ValueError, TypeError):
                             return jsonify({'success': False, 'message': 'Invalid share_group_level_ids values.'}), 400
 
-                    # Must be a subset of selected level_ids
+                    # Must be a subset of selected level_ids (after filtering levels later too)
                     level_set = set(int(x) for x in level_ids)
                     share_group_level_ids = [int(x) for x in share_group_level_ids if int(x) in level_set]
                     if len(share_group_level_ids) < 2:
@@ -17348,13 +17348,23 @@ def save_exam():
                             if sid not in subject_name_by_id and sname:
                                 subject_name_by_id[int(sid)] = str(sname)
 
-                # If any selected class has no active allocated subjects, stop early (nothing to schedule).
+                # If some selected classes have no active allocated subjects, skip them and continue.
                 missing_levels = [int(lid) for lid in level_ids if int(lid) not in subjects_by_level or not subjects_by_level[int(lid)]]
                 if missing_levels:
-                    return jsonify({
-                        'success': False,
-                        'message': f"Auto-register requires subject allocations first. These class IDs have no active allocated subjects: {', '.join(map(str, missing_levels))}."
-                    }), 400
+                    level_ids = [int(lid) for lid in level_ids if int(lid) not in set(missing_levels)]
+                    if not level_ids:
+                        return jsonify({
+                            'success': False,
+                            'message': f"Auto-register requires subject allocations first. None of the selected classes have active allocated subjects. Missing class IDs: {', '.join(map(str, missing_levels))}."
+                        }), 400
+                    # If shared timetable was requested, re-filter the share-group based on the remaining valid classes.
+                    if share_timetable:
+                        share_group_level_ids = [int(x) for x in share_group_level_ids if int(x) in set(int(y) for y in level_ids)]
+                        if len(share_group_level_ids) < 2:
+                            return jsonify({
+                                'success': False,
+                                'message': f"Shared timetable requires at least 2 classes with active allocated subjects. Skipped class IDs with no allocations: {', '.join(map(str, missing_levels))}."
+                            }), 400
 
                 # Load all active teachers once (fallback for missing allocations)
                 cursor.execute("""
