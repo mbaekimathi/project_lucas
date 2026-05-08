@@ -14367,6 +14367,17 @@ def update_password(role):
                         "UPDATE employees SET password_hash = %s WHERE id = %s",
                         (new_password_hash, employee_db_id),
                     )
+                    if getattr(cursor, "rowcount", 0) < 1:
+                        try:
+                            connection.rollback()
+                        except Exception:
+                            pass
+                        flash(
+                            'Password change could not be saved (no rows updated). '
+                            'This usually means the app is connected to a different database/user than the one you are checking.',
+                            'error',
+                        )
+                        return redirect(employee_staff_settings_url('employee'))
                     cursor.execute(
                         "UPDATE password_reset_tokens SET consumed_at = %s WHERE id = %s",
                         (datetime.utcnow(), token_row['id']),
@@ -14390,6 +14401,17 @@ def update_password(role):
                     "UPDATE employees SET password_hash = %s WHERE id = %s",
                     (new_password_hash, employee_db_id),
                 )
+                if getattr(cursor, "rowcount", 0) < 1:
+                    try:
+                        connection.rollback()
+                    except Exception:
+                        pass
+                    flash(
+                        'Password change could not be saved (no rows updated). '
+                        'This usually means the app is connected to a different database/user than the one you are checking.',
+                        'error',
+                    )
+                    return redirect(employee_staff_settings_url('employee'))
                 connection.commit()
                 flash('Password updated successfully!', 'success')
                 return redirect(employee_staff_settings_url('employee'))

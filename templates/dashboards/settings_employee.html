@@ -15,6 +15,21 @@
         <p class="text-gray-600 dark:text-gray-400">Manage your account settings and preferences</p>
     </div>
 
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="mb-6 space-y-3">
+                {% for category, message in messages %}
+                    <div class="p-4 rounded-xl text-sm border {% if category == 'error' %}bg-red-50 dark:bg-red-950/40 border-red-200 dark:border-red-800 text-red-800 dark:text-red-200{% elif category == 'success' %}bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200{% else %}bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200{% endif %}">
+                        <div class="flex items-start gap-2">
+                            <i class="fas {% if category == 'error' %}fa-exclamation-circle{% elif category == 'success' %}fa-check-circle{% else %}fa-info-circle{% endif %} mt-0.5 shrink-0" aria-hidden="true"></i>
+                            <span>{{ message }}</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
     <!-- Change Password Section -->
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Change Password</h3>
