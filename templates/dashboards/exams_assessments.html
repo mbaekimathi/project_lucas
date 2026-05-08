@@ -10,10 +10,10 @@
     {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('exams-assessments') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
+   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments' or request.endpoint == 'teacher_exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Exams & Assessments</span>
-    {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint == 'exams_assessments' or request.endpoint == 'teacher_exams_assessments' or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('exam-analytics') }}"
    class="sidebar-item mb-2 {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}sidebar-item-active{% endif %}">
@@ -187,6 +187,15 @@
                             </td>
                             <td class="p-3 sm:p-4">
                                 <span class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{{ level.level_description or '—' }}</span>
+                                {% if level.subjects %}
+                                <div class="mt-2 flex flex-wrap gap-1.5">
+                                    {% for subj in level.subjects %}
+                                    <span class="px-2 py-1 text-[11px] font-semibold rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 border border-emerald-200/60 dark:border-emerald-700/40">
+                                        {% if subj.subject_code %}{{ subj.subject_code }}{% else %}Subject{% endif %}{% if subj.subject_name %} · {{ subj.subject_name }}{% endif %}
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
                             </td>
                             <td class="p-3 sm:p-4 text-center whitespace-nowrap">
                                 <span class="px-3 py-1.5 text-xs font-bold rounded-full inline-flex items-center gap-1 {% if level.level_status == 'active' %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300{% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300{% endif %}">
@@ -227,7 +236,16 @@
                     </span>
                 </div>
                 {% if level.level_description %}
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2 leading-relaxed">{{ level.level_description }}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2 leading-relaxed">{{ level.level_description }}</p>
+                {% endif %}
+                {% if level.subjects %}
+                <div class="mb-4 flex flex-wrap gap-1.5">
+                    {% for subj in level.subjects %}
+                    <span class="px-2 py-1 text-[11px] font-semibold rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 border border-emerald-200/60 dark:border-emerald-700/40">
+                        {% if subj.subject_code %}{{ subj.subject_code }}{% else %}Subject{% endif %}{% if subj.subject_name %} · {{ subj.subject_name }}{% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
                 {% endif %}
                 <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="modern-btn w-full inline-flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
@@ -258,7 +276,16 @@
                     </span>
                 </div>
                 {% if level.level_description %}
-                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed">{{ level.level_description }}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 leading-relaxed">{{ level.level_description }}</p>
+                {% endif %}
+                {% if level.subjects %}
+                <div class="mb-4 flex flex-wrap gap-1.5">
+                    {% for subj in level.subjects %}
+                    <span class="px-2 py-1 text-[11px] font-semibold rounded-lg bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200 border border-emerald-200/60 dark:border-emerald-700/40">
+                        {% if subj.subject_code %}{{ subj.subject_code }}{% else %}Subject{% endif %}{% if subj.subject_name %} · {{ subj.subject_name }}{% endif %}
+                    </span>
+                    {% endfor %}
+                </div>
                 {% endif %}
                 <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="modern-btn w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">

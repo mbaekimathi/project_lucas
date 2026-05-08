@@ -21220,17 +21220,27 @@ def attendance():
 @app.route('/dashboard/employee/exams-assessments')
 @login_required
 def exams_assessments():
-    """Exams & Assessments page for academic coordinators"""
+    """Exams & Assessments page.
+
+    - Coordinators/principals: see all academic levels.
+    - Teachers: see only allocated classes (and their subjects).
+    """
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
+
+    # Teacher view: reuse the same allocated-only dataset as `/teachers/exams-assessments`.
+    # This keeps existing sidebar links (`employee_dash_url('exams-assessments')`) working for teachers.
+    if is_teacher:
+        return teacher_exams_assessments()
     
     # Fetch all registered academic levels
     academic_levels = []
@@ -21259,6 +21269,126 @@ def exams_assessments():
         finally:
             connection.close()
     
+    return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
+
+
+@app.route('/teachers/exams-assessments')
+@login_required
+def teacher_exams_assessments():
+    """Teacher view of Exams & Assessments: show only allocated classes/subjects with students in session."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
+    is_technician = user_role == 'technician'
+    if not (is_teacher or is_technician):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    # Resolve teacher employee PK (employees.id)
+    teacher_id = None
+    if user_role in ('teachers', 'teacher'):
+        teacher_id = session.get('user_id')
+    elif is_technician and viewing_as_role in ('teachers', 'teacher'):
+        teacher_id = session.get('viewing_as_employee_id')
+
+    if not teacher_id:
+        flash('Teacher profile not selected.', 'error')
+        return redirect(employee_dashboard_path())
+
+    # Build the same `academic_levels` structure the template expects, but scoped to this teacher.
+    # Each level additionally includes `subjects`: [{id, subject_name, subject_code}, ...]
+    academic_levels = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                # Only levels allocated to this teacher, and only those with at least one student "in session"
+                # (students.current_grade matches academic_levels.level_name).
+                #
+                # Also include allocated subjects per level so the page can show "classes and subjects".
+                cursor.execute("""
+                    SELECT
+                        al.id AS level_id,
+                        al.level_category,
+                        al.level_name,
+                        al.level_description,
+                        al.level_status,
+                        s.id AS subject_id,
+                        s.subject_name,
+                        s.subject_code
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+                    INNER JOIN subjects s ON s.id = tsa.subject_id
+                    WHERE tsa.teacher_id = %s
+                      AND EXISTS (
+                        SELECT 1
+                        FROM students st
+                        WHERE st.status = 'in session'
+                          AND TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
+                      )
+                    ORDER BY al.level_category, al.level_name, s.subject_name
+                """, (int(teacher_id),))
+
+                rows = cursor.fetchall() or []
+                levels_by_id = {}
+                for r in rows:
+                    if isinstance(r, dict):
+                        level_id = r.get('level_id')
+                        subject_id = r.get('subject_id')
+                        subject_name = r.get('subject_name')
+                        subject_code = r.get('subject_code')
+                        if level_id not in levels_by_id:
+                            levels_by_id[level_id] = {
+                                'id': level_id,
+                                'level_category': r.get('level_category', ''),
+                                'level_name': r.get('level_name', ''),
+                                'level_description': r.get('level_description', ''),
+                                'level_status': r.get('level_status', 'active'),
+                                'subjects': [],
+                            }
+                        if subject_id is not None:
+                            levels_by_id[level_id]['subjects'].append({
+                                'id': subject_id,
+                                'subject_name': subject_name or '',
+                                'subject_code': subject_code or '',
+                            })
+                    else:
+                        # (level_id, level_category, level_name, level_description, level_status, subject_id, subject_name, subject_code)
+                        level_id = r[0] if len(r) > 0 else None
+                        if level_id is None:
+                            continue
+                        if level_id not in levels_by_id:
+                            levels_by_id[level_id] = {
+                                'id': level_id,
+                                'level_category': r[1] if len(r) > 1 else '',
+                                'level_name': r[2] if len(r) > 2 else '',
+                                'level_description': r[3] if len(r) > 3 else '',
+                                'level_status': r[4] if len(r) > 4 else 'active',
+                                'subjects': [],
+                            }
+                        subject_id = r[5] if len(r) > 5 else None
+                        if subject_id is not None:
+                            levels_by_id[level_id]['subjects'].append({
+                                'id': subject_id,
+                                'subject_name': r[6] if len(r) > 6 and r[6] else '',
+                                'subject_code': r[7] if len(r) > 7 and r[7] else '',
+                            })
+
+                # Preserve ordering from SQL by iterating rows and building list once per new level.
+                seen = set()
+                for r in rows:
+                    lid = r.get('level_id') if isinstance(r, dict) else (r[0] if len(r) > 0 else None)
+                    if lid is None or lid in seen:
+                        continue
+                    seen.add(lid)
+                    academic_levels.append(levels_by_id[lid])
+        except Exception as e:
+            print(f"Error fetching teacher allocated academic levels: {e}")
+        finally:
+            connection.close()
+
+    # Render the same UI, but scoped to teacher allocations.
     return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
 
 
