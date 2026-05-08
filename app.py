@@ -5373,12 +5373,16 @@ def dashboard_employee():
                                     if not teacher_dashboard_year and len(any_term) > 2:
                                         teacher_dashboard_year = any_term[2]
 
+                        # Students table doesn't store academic_level_id; it stores a grade label in current_grade.
+                        # Map "in session" counts to academic_levels via current_grade -> level_name.
                         in_session_by_level = {}
                         cursor.execute("""
-                            SELECT academic_level_id, COUNT(*) AS in_session_count
-                            FROM students
-                            WHERE status = 'in session' AND academic_level_id IS NOT NULL
-                            GROUP BY academic_level_id
+                            SELECT al.id AS academic_level_id, COUNT(*) AS in_session_count
+                            FROM students st
+                            JOIN academic_levels al
+                              ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
+                            WHERE st.status = 'in session'
+                            GROUP BY al.id
                         """)
                         for row in (cursor.fetchall() or []):
                             level_id = row.get('academic_level_id') if isinstance(row, dict) else (row[0] if len(row) > 0 else None)
@@ -6050,13 +6054,16 @@ def teacher_my_classes():
                             'subject_code': row[6] if len(row) > 6 else ''
                         })
 
-                # Count students currently in session per academic level
+                # Count students currently in session per academic level.
+                # Students table stores grade label in current_grade, not academic_level_id.
                 in_session_by_level = {}
                 cursor.execute("""
-                    SELECT academic_level_id, COUNT(*) AS in_session_count
-                    FROM students
-                    WHERE status = 'in session' AND academic_level_id IS NOT NULL
-                    GROUP BY academic_level_id
+                    SELECT al.id AS academic_level_id, COUNT(*) AS in_session_count
+                    FROM students st
+                    JOIN academic_levels al
+                      ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
+                    WHERE st.status = 'in session'
+                    GROUP BY al.id
                 """)
                 in_session_results = cursor.fetchall()
                 for row in in_session_results:
