@@ -20,6 +20,36 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Live "passwords must match" validation (reset + settings forms)
+    function wirePasswordMatch(newId, confirmId, messageId) {
+        const newEl = document.getElementById(newId);
+        const confirmEl = document.getElementById(confirmId);
+        if (!newEl || !confirmEl) return;
+        const msgEl = messageId ? document.getElementById(messageId) : null;
+
+        function validate() {
+            const ok = !confirmEl.value || newEl.value === confirmEl.value;
+            confirmEl.setCustomValidity(ok ? '' : 'Passwords do not match.');
+            confirmEl.classList.toggle('border-red-500', !ok);
+            if (msgEl) {
+                if (ok) {
+                    msgEl.textContent = '';
+                    msgEl.classList.add('hidden');
+                } else {
+                    msgEl.textContent = 'Passwords do not match.';
+                    msgEl.classList.remove('hidden');
+                }
+            }
+        }
+
+        newEl.addEventListener('input', validate);
+        confirmEl.addEventListener('input', validate);
+        validate();
+    }
+
+    wirePasswordMatch('new_password', 'confirm_password', 'confirm_password_mismatch');
+    wirePasswordMatch('employee_new_password', 'employee_confirm_password', 'employee_confirm_password_mismatch');
+
     // Add fade-in animation to elements
     const fadeElements = document.querySelectorAll('.fade-in-section');
     fadeElements.forEach((element, index) => {
