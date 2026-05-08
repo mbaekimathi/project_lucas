@@ -262,6 +262,7 @@ class DashboardRolePathRewriteMiddleware:
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS', 'True').lower() in ['true', '1', 'yes']
+app.config['MAIL_USE_SSL'] = os.environ.get('MAIL_USE_SSL', 'False').lower() in ['true', '1', 'yes']
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER', 'noreply@modernschool.com')
@@ -2710,6 +2711,13 @@ def apply_mail_config_from_env_and_integration():
         app.config['MAIL_USERNAME'] = smtp_user
         app.config['MAIL_PASSWORD'] = smtp_pass
         app.config['MAIL_DEFAULT_SENDER'] = (integ.get('from_email') or smtp_user).strip()
+    # Flask-Mail caches configuration at init time; refresh extension state after any update.
+    try:
+        mail.init_app(app)
+    except Exception:
+        pass
+
+    if smtp_user and smtp_pass:
         return True
     return bool((app.config.get('MAIL_USERNAME') or '').strip())
 
@@ -14157,6 +14165,77 @@ def update_employee_profile():
     
     return redirect(url_for('profile', role='employee'))
 
+# Employee password change via email verification code
+@app.route('/settings/employee/password/send-code', methods=['POST'])
+@login_required
+def send_employee_password_change_code():
+    """Send a 6-digit verification code to the logged-in employee's email."""
+    user_role = session.get('role', '').lower()
+    employee_settings_roles = [r for r in EMPLOYEE_SUB_ROLES if r not in ('head of institution', 'deputy head of institution', 'super admin')]
+    if user_role not in employee_settings_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(url_for('home'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error. Please try again later.', 'error')
+        return redirect(employee_staff_settings_url('employee'))
+
+    try:
+        with connection.cursor() as cursor:
+            employee_id = session.get('employee_id') or session.get('user_id')
+            cursor.execute(
+                "SELECT id, full_name, email FROM employees WHERE id = %s OR employee_id = %s LIMIT 1",
+                (employee_id, employee_id),
+            )
+            employee = cursor.fetchone()
+            if not employee or not (employee.get('email') if isinstance(employee, dict) else employee[2]):
+                flash('No email address is linked to your account. Update your profile email first.', 'error')
+                return redirect(employee_staff_settings_url('employee'))
+
+            full_name = employee.get('full_name') if isinstance(employee, dict) else employee[1]
+            email = employee.get('email') if isinstance(employee, dict) else employee[2]
+            email_norm = normalize_login_email(email)
+
+            code = ''.join(secrets.choice('0123456789') for _ in range(6))
+            code_hash = generate_password_hash(code)
+            expires_at = datetime.utcnow() + timedelta(minutes=30)
+
+            if not send_password_reset_email(email_norm, full_name or 'User', code):
+                flash(
+                    'Could not send the verification email. Your school can set SMTP under Integration Settings, '
+                    'or the server administrator can set MAIL_* environment variables.',
+                    'error',
+                )
+                return redirect(employee_staff_settings_url('employee'))
+
+            cursor.execute("""
+                DELETE FROM password_reset_tokens
+                WHERE LOWER(TRIM(email)) = %s AND account_type = 'employee' AND consumed_at IS NULL
+            """, (email_norm,))
+            cursor.execute("""
+                INSERT INTO password_reset_tokens (email, account_type, account_id, code_hash, expires_at)
+                VALUES (%s, 'employee', %s, %s, %s)
+            """, (email_norm, employee.get('id') if isinstance(employee, dict) else employee[0], code_hash, expires_at))
+            connection.commit()
+
+            session['pwd_reset_email'] = email_norm
+            flash('We sent a 6-digit code to your email. Enter it below to confirm the password change.', 'success')
+            return redirect(employee_staff_settings_url('employee'))
+    except Exception as e:
+        print(f"send_employee_password_change_code error: {e}")
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        flash('An error occurred while sending the verification code. Please try again.', 'error')
+        return redirect(employee_staff_settings_url('employee'))
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
 # Settings Update Routes
 @app.route('/settings/<role>/password', methods=['POST'])
 @login_required
@@ -14223,53 +14302,110 @@ def update_password(role):
         if user_role not in employee_settings_roles:
             flash('You do not have permission to perform this action.', 'error')
             return redirect(url_for('home'))
-        
+
+        reset_code = (request.form.get('reset_code') or '').strip().replace(' ', '')
         current_password = request.form.get('current_password', '')
         new_password = request.form.get('new_password', '')
         confirm_password = request.form.get('confirm_password', '')
-        
-        if not all([current_password, new_password, confirm_password]):
-            flash('Please fill in all password fields.', 'error')
+
+        if not all([new_password, confirm_password]):
+            flash('Please fill in the new password fields.', 'error')
             return redirect(employee_staff_settings_url('employee'))
-        
+
         if new_password != confirm_password:
             flash('New passwords do not match.', 'error')
             return redirect(employee_staff_settings_url('employee'))
-        
+
         if len(new_password) < 6:
             flash('Password must be at least 6 characters long.', 'error')
             return redirect(employee_staff_settings_url('employee'))
-        
+
         connection = get_db_connection()
-        if connection:
-            try:
-                with connection.cursor() as cursor:
-                    employee_id = session.get('employee_id') or session.get('user_id')
-                    cursor.execute("SELECT password_hash FROM employees WHERE id = %s OR employee_id = %s", 
-                                 (employee_id, employee_id))
-                    employee = cursor.fetchone()
-                    
-                    if employee and check_password_hash(employee['password_hash'], current_password):
-                        new_password_hash = generate_password_hash(new_password)
-                        cursor.execute("""
-                            UPDATE employees 
-                            SET password_hash = %s
-                            WHERE id = %s OR employee_id = %s
-                        """, (new_password_hash, employee_id, employee_id))
-                        connection.commit()
-                        flash('Password updated successfully!', 'success')
-                    else:
-                        flash('Current password is incorrect.', 'error')
-            except Exception as e:
-                print(f"Error updating password: {e}")
-                connection.rollback()
-                flash('An error occurred while updating your password. Please try again.', 'error')
-            finally:
-                connection.close()
-        else:
+        if not connection:
             flash('Database connection error. Please try again later.', 'error')
-        
-        return redirect(employee_staff_settings_url('employee'))
+            return redirect(employee_staff_settings_url('employee'))
+
+        try:
+            with connection.cursor() as cursor:
+                employee_id = session.get('employee_id') or session.get('user_id')
+                cursor.execute(
+                    "SELECT id, password_hash, email FROM employees WHERE id = %s OR employee_id = %s LIMIT 1",
+                    (employee_id, employee_id),
+                )
+                employee = cursor.fetchone()
+                if not employee:
+                    flash('Employee account not found.', 'error')
+                    return redirect(employee_staff_settings_url('employee'))
+
+                employee_db_id = employee.get('id') if isinstance(employee, dict) else employee[0]
+                employee_email = employee.get('email') if isinstance(employee, dict) else employee[2]
+                email_norm = normalize_login_email(employee_email)
+
+                # Preferred: verify by 6-digit email code (no current password required)
+                if reset_code:
+                    if (not reset_code.isdigit()) or len(reset_code) != 6:
+                        flash('Verification code must be a 6-digit number.', 'error')
+                        return redirect(employee_staff_settings_url('employee'))
+
+                    cursor.execute("""
+                        SELECT * FROM password_reset_tokens
+                        WHERE LOWER(TRIM(email)) = %s
+                          AND account_type = 'employee'
+                          AND account_id = %s
+                          AND consumed_at IS NULL
+                          AND expires_at > %s
+                        ORDER BY id DESC
+                        LIMIT 1
+                    """, (email_norm, employee_db_id, datetime.utcnow()))
+                    token_row = cursor.fetchone()
+                    if not token_row or not check_password_hash(token_row['code_hash'], reset_code):
+                        flash('Invalid or expired verification code. Please request a new code.', 'error')
+                        return redirect(employee_staff_settings_url('employee'))
+
+                    new_password_hash = generate_password_hash(new_password)
+                    cursor.execute(
+                        "UPDATE employees SET password_hash = %s WHERE id = %s",
+                        (new_password_hash, employee_db_id),
+                    )
+                    cursor.execute(
+                        "UPDATE password_reset_tokens SET consumed_at = %s WHERE id = %s",
+                        (datetime.utcnow(), token_row['id']),
+                    )
+                    connection.commit()
+                    flash('Password updated successfully!', 'success')
+                    return redirect(employee_staff_settings_url('employee'))
+
+                # Fallback: current password (keeps older UI/clients working)
+                if not current_password:
+                    flash('Enter your current password or request a 6-digit verification code.', 'error')
+                    return redirect(employee_staff_settings_url('employee'))
+
+                stored_hash = employee.get('password_hash') if isinstance(employee, dict) else employee[1]
+                if not stored_hash or not check_password_hash(stored_hash, current_password):
+                    flash('Current password is incorrect.', 'error')
+                    return redirect(employee_staff_settings_url('employee'))
+
+                new_password_hash = generate_password_hash(new_password)
+                cursor.execute(
+                    "UPDATE employees SET password_hash = %s WHERE id = %s",
+                    (new_password_hash, employee_db_id),
+                )
+                connection.commit()
+                flash('Password updated successfully!', 'success')
+                return redirect(employee_staff_settings_url('employee'))
+        except Exception as e:
+            print(f"Error updating password: {e}")
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            flash('An error occurred while updating your password. Please try again.', 'error')
+            return redirect(employee_staff_settings_url('employee'))
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
     
     elif role == 'curriculum coordinator':
         schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']

@@ -2,6 +2,24 @@
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
+    // Password visibility toggles (eye icon)
+    document.querySelectorAll('[data-password-toggle]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const targetId = this.getAttribute('data-password-toggle');
+            if (!targetId) return;
+            const input = document.getElementById(targetId);
+            if (!input) return;
+            const showing = input.getAttribute('type') === 'text';
+            input.setAttribute('type', showing ? 'password' : 'text');
+            const icon = this.querySelector('i.fas');
+            if (icon) {
+                icon.classList.toggle('fa-eye', showing);
+                icon.classList.toggle('fa-eye-slash', !showing);
+            }
+            this.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        });
+    });
+
     // Add fade-in animation to elements
     const fadeElements = document.querySelectorAll('.fade-in-section');
     fadeElements.forEach((element, index) => {

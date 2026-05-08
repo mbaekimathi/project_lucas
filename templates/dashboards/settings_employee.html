@@ -18,27 +18,55 @@
     <!-- Change Password Section -->
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Change Password</h3>
-        
-        <form method="POST" action="/settings/employee/password" class="space-y-6">
+
+        <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30 p-4 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                    <p class="font-semibold text-gray-900 dark:text-white">Email verification</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">We’ll send a 6-digit code to your account email to confirm this password change.</p>
+                </div>
+                <form method="POST" action="{{ url_for('send_employee_password_change_code') }}">
+                    <button type="submit" class="px-5 py-2.5 rounded-lg font-semibold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all">
+                        <i class="fas fa-paper-plane mr-2"></i>Send code
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('update_password', role='employee') }}" class="space-y-6">
             <div>
                 <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
-                    Current Password <span class="text-red-500">*</span>
+                    6-digit verification code <span class="text-red-500">*</span>
                 </label>
-                <input type="password" 
-                       name="current_password" 
+                <input type="text"
+                       name="reset_code"
                        required
-                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                       inputmode="numeric"
+                       autocomplete="one-time-code"
+                       maxlength="6"
+                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white tracking-widest font-mono text-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
+                       placeholder="123456">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Code expires in 30 minutes</p>
             </div>
 
             <div>
                 <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                     New Password <span class="text-red-500">*</span>
                 </label>
-                <input type="password" 
-                       name="new_password" 
-                       required
-                       minlength="6"
-                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                <div class="relative">
+                    <input type="password" 
+                           id="employee_new_password"
+                           name="new_password" 
+                           required
+                           minlength="6"
+                           class="w-full px-4 py-3 pr-12 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <button type="button"
+                            class="absolute inset-y-0 right-0 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
+                            data-password-toggle="employee_new_password"
+                            aria-label="Show password">
+                        <i class="fas fa-eye" aria-hidden="true"></i>
+                    </button>
+                </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Password must be at least 6 characters long</p>
             </div>
 
@@ -46,11 +74,20 @@
                 <label class="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300">
                     Confirm New Password <span class="text-red-500">*</span>
                 </label>
-                <input type="password" 
-                       name="confirm_password" 
-                       required
-                       minlength="6"
-                       class="w-full px-4 py-3 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                <div class="relative">
+                    <input type="password" 
+                           id="employee_confirm_password"
+                           name="confirm_password" 
+                           required
+                           minlength="6"
+                           class="w-full px-4 py-3 pr-12 rounded-lg border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <button type="button"
+                            class="absolute inset-y-0 right-0 px-4 text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-white"
+                            data-password-toggle="employee_confirm_password"
+                            aria-label="Show password">
+                        <i class="fas fa-eye" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
 
             <div class="flex justify-end pt-4">
