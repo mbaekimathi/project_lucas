@@ -85,8 +85,8 @@
             </div>
             
             {% if timetable_data %}
-            <!-- Desktop Timetable (hidden on mobile) -->
-            <div class="hidden lg:block table-responsive-wrapper">
+            <!-- Timetable grid: days as columns, time as rows -->
+            <div class="table-responsive-wrapper overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-700">
@@ -160,88 +160,6 @@
                         {% endif %}
                     </tbody>
                 </table>
-            </div>
-
-            <!-- Mobile & Tablet Timetable (Card View) -->
-            <div class="lg:hidden p-4">
-                {% set all_times = [] %}
-                {% for day, times in timetable_data.items() %}
-                    {% for time in times.keys() %}
-                        {% if time not in all_times %}
-                            {% set _ = all_times.append(time) %}
-                        {% endif %}
-                    {% endfor %}
-                {% endfor %}
-                {% set all_times = all_times | sort %}
-                
-                {% set day_colors = {
-                    'Monday': {'bg': 'from-blue-500 to-blue-600', 'light': 'bg-blue-50 dark:bg-blue-900/20', 'border': 'border-blue-200 dark:border-blue-700'},
-                    'Tuesday': {'bg': 'from-emerald-500 to-emerald-600', 'light': 'bg-emerald-50 dark:bg-emerald-900/20', 'border': 'border-emerald-200 dark:border-emerald-700'},
-                    'Wednesday': {'bg': 'from-purple-500 to-purple-600', 'light': 'bg-purple-50 dark:bg-purple-900/20', 'border': 'border-purple-200 dark:border-purple-700'},
-                    'Thursday': {'bg': 'from-orange-500 to-orange-600', 'light': 'bg-orange-50 dark:bg-orange-900/20', 'border': 'border-orange-200 dark:border-orange-700'},
-                    'Friday': {'bg': 'from-rose-500 to-rose-600', 'light': 'bg-rose-50 dark:bg-rose-900/20', 'border': 'border-rose-200 dark:border-rose-700'},
-                    'Saturday': {'bg': 'from-cyan-500 to-cyan-600', 'light': 'bg-cyan-50 dark:bg-cyan-900/20', 'border': 'border-cyan-200 dark:border-cyan-700'},
-                    'Sunday': {'bg': 'from-gray-500 to-gray-600', 'light': 'bg-gray-50 dark:bg-gray-900/20', 'border': 'border-gray-200 dark:border-gray-700'}
-                } %}
-                
-                <div class="space-y-4">
-                    {% for day in days_order %}
-                    {% if day in timetable_data and timetable_data[day] %}
-                    {% set dc = day_colors.get(day, day_colors['Monday']) %}
-                    <div class="bg-white dark:bg-gray-700/50 rounded-2xl border {{ dc.border }} overflow-hidden shadow-sm">
-                        <!-- Day Header -->
-                        <div class="bg-gradient-to-r {{ dc.bg }} px-4 py-3">
-                            <div class="flex items-center justify-between">
-                                <h3 class="text-white font-bold text-base sm:text-lg">{{ day }}</h3>
-                                <span class="bg-white/20 text-white text-xs px-2 py-1 rounded-full font-medium">
-                                    {% set day_lessons = namespace(count=0) %}
-                                    {% for time, classes in timetable_data[day].items() %}
-                                        {% set day_lessons.count = day_lessons.count + classes|length %}
-                                    {% endfor %}
-                                    {{ day_lessons.count }} lesson{{ 's' if day_lessons.count != 1 else '' }}
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <!-- Day Classes -->
-                        <div class="divide-y divide-gray-100 dark:divide-gray-600">
-                            {% for time in all_times %}
-                            {% if time in timetable_data[day] %}
-                            {% for class_info in timetable_data[day][time] %}
-                            <div class="p-4 hover:bg-gray-50 dark:hover:bg-gray-600/50 transition-colors">
-                                <div class="flex items-start gap-3">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-16 text-center">
-                                            <div class="text-xs text-gray-500 dark:text-gray-400 uppercase">Time</div>
-                                            <div class="text-sm font-bold text-gray-900 dark:text-white">{{ time }}</div>
-                                        </div>
-                                    </div>
-                                    <div class="flex-1 {{ dc.light }} rounded-xl p-3">
-                                        <h4 class="font-bold text-gray-900 dark:text-white text-sm mb-1">{{ class_info.subject_name }}</h4>
-                                        {% if class_info.subject_code %}
-                                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                                            <i class="fas fa-hashtag mr-1"></i>{{ class_info.subject_code }}
-                                        </p>
-                                        {% endif %}
-                                        <div class="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
-                                            <i class="fas fa-graduation-cap"></i>
-                                            <span>{{ class_info.level_name }}</span>
-                                        </div>
-                                        <div class="mt-2 flex items-center gap-1.5 text-xs text-blue-700 dark:text-blue-300">
-                                            <i class="fas fa-users"></i>
-                                            <span>{{ class_info.in_session_count or 0 }} in session</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            {% endfor %}
-                            {% endif %}
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endif %}
-                    {% endfor %}
-                </div>
             </div>
             {% else %}
             <!-- Empty State -->

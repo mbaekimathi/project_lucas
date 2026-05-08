@@ -4980,29 +4980,63 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
 
         if level_ids:
             ph = ','.join(['%s'] * len(level_ids))
-            cursor.execute(
-                f"""
-                SELECT COUNT(DISTINCT s.student_id) AS c
-                FROM students s
-                WHERE s.status = 'in session' AND s.academic_level_id IN ({ph})
-                """,
-                level_ids,
-            )
-            rr = cursor.fetchone()
-            if rr:
-                out['student_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+            # Students table may not have academic_level_id (it stores grade label in current_grade).
+            # Prefer academic_level_id if it exists; otherwise join via current_grade -> academic_levels.level_name.
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(DISTINCT s.student_id) AS c
+                    FROM students s
+                    WHERE s.status = 'in session' AND s.academic_level_id IN ({ph})
+                    """,
+                    level_ids,
+                )
+                rr = cursor.fetchone()
+                if rr:
+                    out['student_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+            except Exception:
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(DISTINCT s.student_id) AS c
+                    FROM students s
+                    INNER JOIN academic_levels al
+                      ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al.level_name))
+                    WHERE s.status = 'in session' AND al.id IN ({ph})
+                    """,
+                    level_ids,
+                )
+                rr = cursor.fetchone()
+                if rr:
+                    out['student_count'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
 
-            cursor.execute(
-                f"""
-                SELECT COUNT(*) AS c FROM student_attendance_records sar
-                INNER JOIN students s ON s.student_id = sar.student_id AND s.status = 'in session'
-                WHERE sar.term_id = %s AND sar.present = 1 AND s.academic_level_id IN ({ph})
-                """,
-                [term_id] + level_ids,
-            )
-            rr = cursor.fetchone()
-            if rr:
-                out['attendance_present_cohort'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+            try:
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) AS c FROM student_attendance_records sar
+                    INNER JOIN students s ON s.student_id = sar.student_id AND s.status = 'in session'
+                    WHERE sar.term_id = %s AND sar.present = 1 AND s.academic_level_id IN ({ph})
+                    """,
+                    [term_id] + level_ids,
+                )
+                rr = cursor.fetchone()
+                if rr:
+                    out['attendance_present_cohort'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+            except Exception:
+                cursor.execute(
+                    f"""
+                    SELECT COUNT(*) AS c
+                    FROM student_attendance_records sar
+                    INNER JOIN students s
+                      ON s.student_id = sar.student_id AND s.status = 'in session'
+                    INNER JOIN academic_levels al
+                      ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al.level_name))
+                    WHERE sar.term_id = %s AND sar.present = 1 AND al.id IN ({ph})
+                    """,
+                    [term_id] + level_ids,
+                )
+                rr = cursor.fetchone()
+                if rr:
+                    out['attendance_present_cohort'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
 
         cursor.execute(
             """

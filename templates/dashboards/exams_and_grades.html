@@ -411,10 +411,6 @@
                 </select>
             </div>
             <div class="xl:col-span-2 flex flex-col sm:flex-row gap-2 lg:justify-end sm:items-end">
-                <button type="button" id="exam-eg-open-results"
-                        class="exam-eg-touch inline-flex items-center justify-center px-4 py-3 sm:py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-base sm:text-sm font-semibold w-full sm:w-auto">
-                    <i class="fas fa-pen-to-square mr-2"></i>Exam results registration
-                </button>
                 <button type="button" id="exam-eg-reset"
                         class="exam-eg-touch inline-flex items-center justify-center px-4 py-3 sm:py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-base sm:text-sm font-semibold w-full sm:w-auto">
                     <i class="fas fa-undo mr-2"></i>Clear filters
@@ -925,17 +921,6 @@
             if (el) el.value = '';
         });
         scheduleReload();
-    });
-
-    var openResultsBtn = document.getElementById('exam-eg-open-results');
-    if (openResultsBtn) openResultsBtn.addEventListener('click', function () {
-        var classSel = document.getElementById('exam-eg-class');
-        var levelId = classSel && classSel.value ? String(classSel.value).trim() : '';
-        if (!levelId) {
-            alert('Select a class first to register results.');
-            return;
-        }
-        window.location.href = levelStudentsUrl(levelId);
     });
 
     wireLockButtons(document.getElementById('exam-eg-root'));
