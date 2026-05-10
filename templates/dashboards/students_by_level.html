@@ -14,7 +14,7 @@
 /* Sticky columns */
 .sticky-col { position: sticky; z-index: 10; }
 .sticky-col-1 { left: 0; }
-.sticky-col-2 { left: 40px; }
+.sticky-col-2 { left: 2.5rem; }
 thead .sticky-col { z-index: 20; }
 
 /* Row backgrounds for sticky cells */
@@ -28,6 +28,79 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 /* Border on sticky student column */
 .sticky-col-2 { border-right: 2px solid #d1d5db; }
 .dark .sticky-col-2 { border-right-color: #4b5563; }
+
+/* Fit sheet to viewport; subject cols share remaining width evenly */
+.marks-sheet-table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+}
+.marks-sheet-table col.marks-col-idx { width: 2.5rem; }
+.marks-sheet-table col.marks-col-student { width: 22%; }
+@media (max-width: 767px) {
+    .marks-sheet-table col.marks-col-student { width: 26%; }
+}
+.marks-sheet-table col.marks-col-total { width: 2.65rem; }
+.marks-sheet-table col.marks-col-rank { width: 2.35rem; }
+.marks-sheet-table .marks-th-subject,
+.marks-sheet-table .marks-td-subject {
+    padding-left: 0.125rem;
+    padding-right: 0.125rem;
+}
+@media (min-width: 768px) {
+    .marks-sheet-table .marks-th-subject,
+    .marks-sheet-table .marks-td-subject {
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+    }
+}
+.marks-sheet-table .marks-th-subject {
+    font-size: 0.65rem;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    hyphens: auto;
+    word-break: break-word;
+}
+@media (min-width: 768px) {
+    .marks-sheet-table .marks-th-subject { font-size: 0.7rem; }
+}
+/* Subject cells: full-width inputs only on phones (narrow columns). Desktop keeps compact fixed width. */
+@media (max-width: 767px) {
+    .marks-sheet-table td.marks-td-subject .mark-input {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+}
+@media (min-width: 768px) {
+    .marks-sheet-table td.marks-td-subject {
+        text-align: center;
+        vertical-align: middle;
+    }
+    .marks-sheet-table td.marks-td-subject .mark-input {
+        width: 52px;
+        min-width: 52px;
+        max-width: 52px;
+        height: 32px;
+        min-height: 32px;
+        margin-left: auto;
+        margin-right: auto;
+        display: block;
+        box-sizing: border-box;
+    }
+}
+@media (min-width: 1024px) {
+    .marks-sheet-table td.marks-td-subject .mark-input {
+        width: 58px;
+        min-width: 58px;
+        max-width: 58px;
+        height: 34px;
+    }
+}
+.sticky-col-1 { width: 2.5rem; min-width: 2.5rem; }
 
 /* Input styling */
 .mark-input {
@@ -67,25 +140,47 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
 /* Mobile: larger touch targets; 16px+ font avoids iOS zoom on focus */
 @media (max-width: 767px) {
-    .sticky-col-2 { left: 36px; }
-    .mark-input {
+    .marks-sheet-wrap .mark-input {
         width: 100%;
         min-width: 0;
-        max-width: 4.5rem;
-        height: 44px;
-        min-height: 44px;
-        padding: 6px 4px;
-        font-size: 17px;
-        border-radius: 8px;
-        touch-action: manipulation;
-    }
-    .marks-mobile-card .mark-input {
         max-width: none;
-        width: 100%;
+        height: 38px;
+        min-height: 38px;
+        padding: 4px 2px;
+        font-size: 16px;
+        border-radius: 6px;
+        touch-action: manipulation;
+        box-sizing: border-box;
+    }
+}
+
+/*
+ * Horizontal marks strip inside dashboard main (overflow-y-auto + overflow-x-hidden).
+ * min-w-0 + explicit touch-action fixes iOS/Android not scrolling the table sideways.
+ */
+.marks-sheet-page {
+    min-width: 0;
+}
+.marks-sheet-horizontal-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y;
+}
+
+/* Dashboard main column uses overflow-x-hidden; that eats sideways gestures on nested scrollers (esp. iOS). */
+@media (max-width: 1023px) {
+    body:not(.sidebar-open-mobile) main div.flex-1.min-h-0.overflow-y-auto.overflow-x-hidden:has(.marks-sheet-page) {
+        overflow-x: visible !important;
     }
 }
 
 @media (min-width: 768px) and (max-width: 1023px) {
+    /* Marks sheet inputs use .marks-sheet-table td… rules (higher specificity). */
     .mark-input { width: 52px; height: 40px; font-size: 16px; }
 }
 
@@ -105,71 +200,221 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     color: #6b7280;
 }
 .dark .filter-label { color: #9ca3af; }
+
+/* Modern toolbar (marks sheet header + filters) */
+.marks-toolbar-shell {
+    position: relative;
+    border-bottom: 1px solid rgb(226 232 240 / 0.85);
+}
+.dark .marks-toolbar-shell {
+    border-bottom-color: rgb(51 65 85 / 0.5);
+}
+.marks-toolbar-shell__bg {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 120% 80% at 100% -20%, rgb(16 185 129 / 0.12), transparent 50%),
+        radial-gradient(ellipse 90% 60% at 0% 100%, rgb(14 165 233 / 0.08), transparent 45%),
+        linear-gradient(180deg, rgb(248 250 252) 0%, rgb(255 255 255) 55%, rgb(248 250 252) 100%);
+}
+.dark .marks-toolbar-shell__bg {
+    background:
+        radial-gradient(ellipse 120% 80% at 100% -20%, rgb(16 185 129 / 0.15), transparent 50%),
+        radial-gradient(ellipse 90% 60% at 0% 100%, rgb(56 189 248 / 0.06), transparent 45%),
+        linear-gradient(180deg, rgb(15 23 42) 0%, rgb(17 24 39) 50%, rgb(15 23 42) 100%);
+}
+.marks-toolbar .filter-label {
+    font-size: 0.6875rem;
+    letter-spacing: 0.07em;
+    font-weight: 700;
+    color: rgb(100 116 139);
+    margin-bottom: 0.375rem;
+}
+.dark .marks-toolbar .filter-label {
+    color: rgb(148 163 184);
+}
+.marks-toolbar-select {
+    width: 100%;
+    min-height: 48px;
+    padding: 0.625rem 2.25rem 0.625rem 0.875rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(226 232 240);
+    background-color: rgb(255 255 255);
+    color: rgb(15 23 42);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.25;
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.65rem center;
+    background-size: 1rem;
+}
+@media (min-width: 640px) {
+    .marks-toolbar-select { font-size: 0.875rem; }
+}
+.marks-toolbar-select:hover:not(:disabled) {
+    border-color: rgb(167 243 208);
+}
+.marks-toolbar-select:focus {
+    outline: none;
+    border-color: rgb(16 185 129);
+    box-shadow: 0 0 0 3px rgb(16 185 129 / 0.22);
+}
+.marks-toolbar-select:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    background-color: rgb(248 250 252);
+}
+.dark .marks-toolbar-select {
+    border-color: rgb(71 85 105);
+    background-color: rgb(30 41 59);
+    color: rgb(241 245 249);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+}
+.dark .marks-toolbar-select:hover:not(:disabled) {
+    border-color: rgb(52 211 153 / 0.45);
+}
+.dark .marks-toolbar-select:disabled {
+    background-color: rgb(15 23 42);
+}
+.marks-toolbar-btn-reset {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 48px;
+    padding: 0.625rem 1rem;
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: rgb(6 95 70);
+    background: linear-gradient(180deg, rgb(236 253 245) 0%, rgb(209 250 229) 100%);
+    border: 1px solid rgb(167 243 208);
+    box-shadow: 0 1px 2px rgb(16 185 129 / 0.12);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+.marks-toolbar-btn-reset:hover {
+    filter: brightness(1.02);
+    box-shadow: 0 4px 14px rgb(16 185 129 / 0.18);
+}
+.marks-toolbar-btn-reset:active {
+    transform: scale(0.98);
+}
+.dark .marks-toolbar-btn-reset {
+    color: rgb(167 243 208);
+    background: linear-gradient(180deg, rgb(6 78 59 / 0.45) 0%, rgb(6 95 70 / 0.35) 100%);
+    border-color: rgb(52 211 153 / 0.35);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+.dark .marks-toolbar-btn-reset:hover {
+    box-shadow: 0 4px 18px rgb(16 185 129 / 0.15);
+}
 </style>
 {% endblock %}
 
 {% block content %}
-<div x-data="marksSheet()" x-init="init()" class="min-h-screen bg-gray-50 dark:bg-gray-900">
+<div x-data="marksSheet()" x-init="init()" class="marks-sheet-page min-h-screen bg-gray-50 dark:bg-gray-900 min-w-0">
     
-    <!-- Top Bar -->
-    <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-3 sm:px-4">
-        <div class="flex flex-col gap-3">
-            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
-                <div>
-                    <h1 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white leading-tight">{{ academic_level.level_name }}</h1>
-                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">{{ students|length }} students · {{ subjects|length }} subjects</p>
+    <!-- Top bar: title + filters (behavior unchanged) -->
+    <header class="marks-toolbar-shell">
+        <div class="marks-toolbar-shell__bg" aria-hidden="true"></div>
+        <div class="relative px-3 py-4 sm:px-5 sm:py-6 max-w-[1680px] mx-auto">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6 mb-5 sm:mb-6">
+                <div class="flex gap-3 sm:gap-4 min-w-0 flex-1">
+                    <div class="flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-900/20 ring-2 ring-white/30 dark:ring-emerald-400/15">
+                        <i class="fas fa-clipboard-check text-lg sm:text-xl" aria-hidden="true"></i>
+                    </div>
+                    <div class="min-w-0 pt-0.5">
+                        <p class="text-[10px] sm:text-xs font-bold uppercase tracking-[0.14em] text-emerald-700/90 dark:text-emerald-400/90 mb-1">Marks entry</p>
+                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white leading-tight">{{ academic_level.level_name }}</h1>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200/90 dark:border-slate-600 shadow-sm">
+                                <i class="fas fa-users text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
+                                {{ students|length }} students
+                            </span>
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-white/90 dark:bg-slate-800/90 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 border border-slate-200/90 dark:border-slate-600 shadow-sm">
+                                <i class="fas fa-book text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
+                                {{ subjects|length }} subjects
+                            </span>
+                        </div>
+                    </div>
                 </div>
-                <a href="{{ employee_dash_url('exams-assessments') }}" class="inline-flex items-center justify-center min-h-[44px] px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 shrink-0 touch-manipulation">
-                    ← Back
+                <a href="{{ employee_dash_url('exams-assessments') }}"
+                   class="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-100 bg-white/90 dark:bg-slate-800/90 rounded-xl border border-slate-200/90 dark:border-slate-600 shadow-sm hover:bg-white dark:hover:bg-slate-800 hover:border-emerald-300/80 dark:hover:border-emerald-600/50 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors shrink-0 touch-manipulation">
+                    <i class="fas fa-arrow-left text-xs opacity-80" aria-hidden="true"></i>
+                    Back
                 </a>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-3 lg:items-end">
-                <div class="min-w-0">
-                    <label class="filter-label mb-1 block">Academic Year</label>
-                    <select x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
-                            class="w-full min-h-[48px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 touch-manipulation">
-                        <option value="" disabled>Select year</option>
-                        <template x-for="year in academicYears" :key="year.id">
-                            <option :value="String(year.id)" x-text="year.year_name"></option>
-                        </template>
-                    </select>
+
+            <div class="marks-toolbar rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white/85 dark:bg-slate-900/55 backdrop-blur-md shadow-md shadow-slate-900/[0.06] dark:shadow-black/30 px-4 py-4 sm:px-5 sm:py-5">
+                <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700/80">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400">
+                        <i class="fas fa-sliders-h text-sm" aria-hidden="true"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-900 dark:text-white leading-none">Session &amp; exam</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Choose year, term, then exam — same as before.</p>
+                    </div>
                 </div>
-                <div class="min-w-0">
-                    <label class="filter-label mb-1 block">Term</label>
-                    <select x-model="selectedTermId" @change="onTermChange()"
-                            :disabled="!filteredTerms.length"
-                            class="w-full min-h-[48px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation">
-                        <option value="" disabled x-text="filteredTerms.length ? 'Select term' : 'No terms'"></option>
-                        <template x-for="term in filteredTerms" :key="term.id">
-                            <option :value="String(term.id)" x-text="term.term_name"></option>
-                        </template>
-                    </select>
-                </div>
-                <div class="min-w-0 sm:col-span-2 lg:col-span-1">
-                    <label class="filter-label mb-1 block">Exam</label>
-                    <select x-model="selectedExam" @change="onExamSelected()"
-                            :disabled="!filteredExams.length"
-                            class="w-full min-h-[48px] px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed touch-manipulation">
-                        <option value="" disabled x-text="filteredExams.length ? 'Select exam' : 'No exams'"></option>
-                        <template x-for="exam in filteredExams" :key="exam.id">
-                            <option :value="String(exam.id)" x-text="exam.exam_name"></option>
-                        </template>
-                    </select>
-                </div>
-                <div class="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1 lg:flex-nowrap lg:items-end">
-                    <button type="button"
-                            @click="resetToSchoolCurrent()"
-                            title="Reset filters to the school's current academic year and term (and a sensible default exam)."
-                            class="flex-1 min-h-[48px] px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 touch-manipulation">
-                        Use current term
-                    </button>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-4 lg:items-end">
+                    <div class="min-w-0">
+                        <label class="filter-label block" for="marks-filter-year">Academic Year</label>
+                        <select id="marks-filter-year"
+                                x-model="selectedAcademicYearId" @change="onAcademicYearChange()"
+                                class="marks-toolbar-select touch-manipulation">
+                            <option value="" disabled>Select year</option>
+                            <template x-for="year in academicYears" :key="year.id">
+                                <option :value="String(year.id)" x-text="year.year_name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="min-w-0">
+                        <label class="filter-label block" for="marks-filter-term">Term</label>
+                        <select id="marks-filter-term"
+                                x-model="selectedTermId" @change="onTermChange()"
+                                :disabled="!filteredTerms.length"
+                                class="marks-toolbar-select touch-manipulation">
+                            <option value="" disabled x-text="filteredTerms.length ? 'Select term' : 'No terms'"></option>
+                            <template x-for="term in filteredTerms" :key="term.id">
+                                <option :value="String(term.id)" x-text="term.term_name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="min-w-0 sm:col-span-2 lg:col-span-1">
+                        <label class="filter-label block" for="marks-filter-exam">Exam</label>
+                        <select id="marks-filter-exam"
+                                x-model="selectedExam" @change="onExamSelected()"
+                                :disabled="!filteredExams.length"
+                                class="marks-toolbar-select touch-manipulation">
+                            <option value="" disabled x-text="filteredExams.length ? 'Select exam' : 'No exams'"></option>
+                            <template x-for="exam in filteredExams" :key="exam.id">
+                                <option :value="String(exam.id)" x-text="exam.exam_name"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div class="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-1 lg:flex-nowrap lg:items-end">
+                        <button type="button"
+                                @click="resetToSchoolCurrent()"
+                                title="Reset filters to the school's current academic year and term (and a sensible default exam)."
+                                class="marks-toolbar-btn-reset flex-1 touch-manipulation">
+                            <i class="fas fa-rotate-left text-xs opacity-90" aria-hidden="true"></i>
+                            Use current term
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </header>
 
-    <!-- Main Content -->
-    <div class="p-2 sm:p-4 max-w-[100vw] overflow-x-hidden">
+    <!-- Main Content: avoid overflow-x-hidden so nested horizontal scroll works on mobile -->
+    <div class="p-2 sm:p-4 w-full max-w-full min-w-0">
         {% if students and subjects %}
         
         <!-- Info Message -->
@@ -180,34 +425,49 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         </div>
 
         <p class="marks-scroll-hint mb-2 text-xs text-gray-500 dark:text-gray-400 px-1">
-            <i class="fas fa-hand-pointer mr-1"></i>Tip: use the <strong>student cards</strong> on phones for larger mark fields. On wider screens, use the table and scroll horizontally if needed.
+            <i class="fas fa-table mr-1"></i>Columns shrink to fit your screen. <strong>Swipe sideways</strong> only if you zoom in or have many subjects.
         </p>
 
-        <!-- Tablet/Desktop: wide marks table (first in DOM; duplicate mobile inputs stay hidden from keyboard nav via findVisibleMarkInput) -->
-        <div class="hidden md:block bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-            <div class="overflow-x-auto overscroll-x-contain touch-pan-x -webkit-overflow-scrolling-touch">
-                <table class="w-full text-sm border-collapse min-w-[640px]">
+        <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
+        <div class="marks-sheet-wrap mb-4 w-full min-w-0 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+            <div class="marks-sheet-horizontal-scroll overscroll-x-contain">
+                <table class="marks-sheet-table w-full text-sm border-collapse">
+                    <colgroup>
+                        <col class="marks-col-idx">
+                        <col class="marks-col-student">
+                        {% for subject in subjects %}
+                        <col>
+                        {% endfor %}
+                        <col class="marks-col-total">
+                        <col class="marks-col-rank">
+                    </colgroup>
                     <thead class="bg-gray-100 dark:bg-gray-700">
                         <tr>
-                            <th class="sticky-col sticky-col-1 px-2 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 w-10">#</th>
-                            <th class="sticky-col sticky-col-2 px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 min-w-[10rem] md:min-w-[12rem]">Student</th>
+                            <th class="sticky-col sticky-col-1 px-1 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">#</th>
+                            <th class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
-                            <th class="px-1 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase min-w-[4.5rem]" title="{{ subject.subject_name }}">{{ subject.subject_name[:4] }}</th>
+                            {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
+                            {% if raw_code %}
+                                {% set subj_lbl = raw_code[:5] %}
+                            {% else %}
+                                {% set subj_lbl = (subject.subject_name[:4]|upper) if subject.subject_name else '' %}
+                            {% endif %}
+                            <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }}">{{ subj_lbl }}</th>
                             {% endfor %}
-                            <th class="px-3 py-3 text-center text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 min-w-[70px]">Total</th>
-                            <th class="px-3 py-3 text-center text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 min-w-[60px]">Rank</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight">Tot</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight">Rnk</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         {% for student in students %}
                         {% set student_row_idx = loop.index0 %}
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-gray-500 dark:text-gray-400 font-medium">{{ loop.index }}</td>
-                            <td class="sticky-col sticky-col-2 px-3 py-2">
-                                <span class="font-medium text-gray-900 dark:text-white text-sm">{{ student.full_name }}</span>
+                            <td class="sticky-col sticky-col-1 px-1 py-1.5 sm:px-2 sm:py-2 text-center text-[11px] sm:text-sm text-gray-500 dark:text-gray-400 font-medium tabular-nums">{{ loop.index }}</td>
+                            <td class="sticky-col sticky-col-2 px-1.5 py-1.5 sm:px-3 sm:py-2 min-w-0">
+                                <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2">{{ student.full_name }}</span>
                             </td>
                             {% for subject in subjects %}
-                            <td class="px-1 py-1 text-center">
+                            <td class="marks-td-subject py-1 sm:py-1 text-center align-middle">
                                 {% if can_edit %}
                                 <input type="text"
                                        inputmode="numeric"
@@ -228,99 +488,38 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                        autocomplete="off"
                                        enterkeyhint="next">
                                 {% else %}
-                                <span class="text-gray-900 dark:text-white font-semibold text-base" x-text="getMark('{{ student.student_id }}', {{ subject.id }}) || '-'"></span>
+                                <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getMark('{{ student.student_id }}', {{ subject.id }}) || '-'"></span>
                                 {% endif %}
                             </td>
                             {% endfor %}
-                            <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" x-text="getTotal('{{ student.student_id }}') || '-'"></td>
-                            <td class="px-3 py-2 text-center text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20" x-text="getRank('{{ student.student_id }}') || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-xs sm:text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 leading-tight tabular-nums" x-text="getTotal('{{ student.student_id }}') || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight" x-text="getRank('{{ student.student_id }}') || '-'"></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     <tfoot class="bg-gray-50 dark:bg-gray-900/40 border-t-2 border-gray-300 dark:border-gray-600">
                         <tr>
                             <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">Σ</td>
-                            <td class="sticky-col sticky-col-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200">Subject Mean</td>
+                            <td class="sticky-col sticky-col-2 px-1.5 py-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-200 leading-tight">Mean</td>
                             {% for subject in subjects %}
-                            <td class="px-1 py-2 text-center text-sm font-bold text-indigo-700 dark:text-indigo-300"
+                            <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-indigo-700 dark:text-indigo-300 tabular-nums"
                                 x-text="getSubjectMean({{ subject.id }})"></td>
                             {% endfor %}
-                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
-                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                         </tr>
                         <tr>
                             <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">G</td>
-                            <td class="sticky-col sticky-col-2 px-3 py-2 text-xs font-bold text-gray-700 dark:text-gray-200">Mean Grade</td>
+                            <td class="sticky-col sticky-col-2 px-1.5 py-2 text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-200 leading-tight">Grd</td>
                             {% for subject in subjects %}
-                            <td class="px-1 py-2 text-center text-sm font-extrabold text-violet-700 dark:text-violet-300"
+                            <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-extrabold text-violet-700 dark:text-violet-300"
                                 x-text="getSubjectGrade({{ subject.id }}) || '-'"></td>
                             {% endfor %}
-                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
-                            <td class="px-3 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                         </tr>
                     </tfoot>
                 </table>
-            </div>
-        </div>
-
-        <!-- Mobile: one card per student — full-width mark inputs -->
-        <div class="md:hidden space-y-3 mb-4">
-            {% for student in students %}
-            {% set student_row_idx = loop.index0 %}
-            <div class="marks-mobile-card bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-200 dark:border-gray-700 p-3">
-                <div class="flex items-start justify-between gap-2 border-b border-gray-100 dark:border-gray-700 pb-2 mb-3">
-                    <div class="min-w-0">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">#{{ loop.index }}</p>
-                        <p class="font-semibold text-gray-900 dark:text-white text-sm leading-snug">{{ student.full_name }}</p>
-                    </div>
-                    <div class="text-right shrink-0 text-xs">
-                        <div class="text-emerald-700 dark:text-emerald-300 font-bold" x-text="mobileTotalLabel('{{ student.student_id }}')"></div>
-                        <div class="text-amber-700 dark:text-amber-300 font-bold mt-0.5" x-text="mobileRankLabel('{{ student.student_id }}')"></div>
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {% for subject in subjects %}
-                    <div class="min-w-0">
-                        <label class="block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate" title="{{ subject.subject_name }}">{{ subject.subject_name }}</label>
-                        {% if can_edit %}
-                        <input type="text"
-                               inputmode="numeric"
-                               pattern="[0-9]*"
-                               maxlength="3"
-                               data-row-index="{{ student_row_idx }}"
-                               data-col-index="{{ loop.index0 }}"
-                               :value="getMark('{{ student.student_id }}', {{ subject.id }})"
-                               @blur="saveMark('{{ student.student_id }}', {{ subject.id }}, $event.target.value)"
-                               @keydown.enter="handleEnterKey($event)"
-                               @keydown.up.prevent="handleArrowKey($event)"
-                               @keydown.down.prevent="handleArrowKey($event)"
-                               @keydown.left.prevent="handleArrowKey($event)"
-                               @keydown.right.prevent="handleArrowKey($event)"
-                               @keypress="$event.charCode >= 48 && $event.charCode <= 57 || $event.preventDefault()"
-                               :disabled="!selectedExam || examIsLocked"
-                               :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
-                               class="mark-input w-full mt-1 touch-manipulation"
-                               autocomplete="off"
-                               enterkeyhint="next"
-                               aria-label="Mark for {{ subject.subject_name }}">
-                        {% else %}
-                        <p class="mt-1 text-lg font-bold text-gray-900 dark:text-white" x-text="getMark('{{ student.student_id }}', {{ subject.id }}) || '—'"></p>
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endfor %}
-            <div class="bg-gray-50 dark:bg-gray-900/50 rounded-xl border border-gray-200 dark:border-gray-700 p-3 text-xs">
-                <p class="font-bold text-gray-700 dark:text-gray-200 mb-2">Subject mean &amp; grade</p>
-                <div class="space-y-1.5">
-                    {% for subject in subjects %}
-                    <div class="flex justify-between gap-2 border-b border-gray-200/80 dark:border-gray-600/80 pb-1 last:border-0">
-                        <span class="text-gray-600 dark:text-gray-300 truncate">{{ subject.subject_name }}</span>
-                        <span class="shrink-0 font-semibold text-indigo-700 dark:text-indigo-300" x-text="getSubjectMean({{ subject.id }}) + ' · ' + (getSubjectGrade({{ subject.id }}) || '—')"></span>
-                    </div>
-                    {% endfor %}
-                </div>
             </div>
         </div>
 
@@ -620,16 +819,6 @@ function marksSheet() {
                 }
             }
             return null;
-        },
-
-        mobileTotalLabel(studentId) {
-            const t = this.getTotal(studentId);
-            return 'Total: ' + (t != null ? t : '—');
-        },
-
-        mobileRankLabel(studentId) {
-            const r = this.getRank(studentId);
-            return 'Rank: ' + (r != null ? r : '—');
         },
 
         findVisibleMarkInput(row, col) {

@@ -13,17 +13,30 @@
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+    .erd-timetable-scroll {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        touch-action: pan-x pan-y;
+    }
+    .erd-timetable-scroll table tbody td.sticky-date-col {
+        box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.12);
+    }
+    .dark .erd-timetable-scroll table tbody td.sticky-date-col {
+        box-shadow: 4px 0 12px -4px rgba(0, 0, 0, 0.35);
+    }
+</style>
 {% endblock %}
 
 {% block content %}
 {# Use single-quoted x-data so |tojson's double-quotes cannot break the attribute (otherwise: x-data="erdExamPage("timetable")" breaks Alpine). #}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen max-w-[100vw] overflow-x-hidden bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"
      x-data='erdExamPage({{ erd_tab|tojson }})'>
     <div class="mb-6">
-        <a href="{{ url_for('exam_evaluation') }}"
+        <a href="{% if erd_teacher_view %}{{ employee_dash_url('exam-timetable') }}{% else %}{{ url_for('exam_evaluation') }}{% endif %}"
            class="inline-flex items-center gap-2 text-sm font-semibold text-brand-primary hover:underline mb-4">
             <i class="fas fa-arrow-left"></i>
-            Back to Exam &amp; Evaluation
+            {% if erd_teacher_view %}Back to Exams Timetable{% else %}Back to Exam &amp; Evaluation{% endif %}
         </a>
         <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
             <div>
@@ -42,9 +55,14 @@
                     <span class="mx-2">·</span>
                     <span>{{ allocation_count }} allocation(s)</span>
                 </p>
+                {% if erd_teacher_view %}
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 lg:ml-14 max-w-xl">
+                    Showing only classes where you are allocated as exam supervisor.
+                </p>
+                {% endif %}
             </div>
             <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full lg:w-auto">
-                {% if not exam_meta.is_locked %}
+                {% if not exam_meta.is_locked and not erd_teacher_view %}
                 <button type="button"
                         id="erd-open-add-modal"
                         class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-md w-full sm:w-auto">
@@ -149,8 +167,8 @@
                                 <p><span class="font-semibold">Venue:</span> {{ slot.venue or '—' }}</p>
                             </div>
                             <div class="mt-3">
-                                {% if exam_meta.is_locked %}
-                                <span class="text-xs text-gray-400 dark:text-gray-500">Locked</span>
+                                {% if exam_meta.is_locked or erd_teacher_view %}
+                                <span class="text-xs text-gray-400 dark:text-gray-500">{% if erd_teacher_view and not exam_meta.is_locked %}View only{% else %}Locked{% endif %}</span>
                                 {% else %}
                                 <div class="grid grid-cols-2 gap-2">
                                     <button type="button"
@@ -182,7 +200,9 @@
                                     <th class="p-3 text-left font-bold hidden md:table-cell">Teacher</th>
                                     <th class="p-3 text-left font-bold hidden lg:table-cell">Venue</th>
                                     <th class="p-3 text-center font-bold">Status</th>
+                                    {% if not erd_teacher_view %}
                                     <th class="p-3 text-center font-bold">Actions</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -219,6 +239,7 @@
                                             {{ slot.status or 'scheduled' }}
                                         </span>
                                     </td>
+                                    {% if not erd_teacher_view %}
                                     <td class="p-3 text-center whitespace-nowrap">
                                         {% if exam_meta.is_locked %}
                                         <span class="text-xs text-gray-400 dark:text-gray-500" title="Unlock the exam on the registration page first">—</span>
@@ -237,6 +258,7 @@
                                         </button>
                                         {% endif %}
                                     </td>
+                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -271,105 +293,34 @@
             {% endif %}
             {% for level in timetables_by_level %}
             <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
-                    <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                        <span class="w-9 h-9 rounded-lg bg-brand-primary/15 text-brand-primary flex items-center justify-center">
-                            <i class="fas fa-th"></i>
-                        </span>
-                        {{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400 font-semibold">({{ level.level_category }})</span>{% endif %}
-                    </h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                        Grid view: rows = days, columns = sessions.
+                <div class="mb-5 space-y-2">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                            <span class="w-9 h-9 rounded-lg bg-brand-primary/15 text-brand-primary flex items-center justify-center shrink-0">
+                                <i class="fas fa-th"></i>
+                            </span>
+                            <span class="min-w-0">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400 font-semibold">({{ level.level_category }})</span>{% endif %}</span>
+                        </h2>
+                        <p class="hidden md:block text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                            Grid view: rows = days, columns = sessions.
+                        </p>
+                    </div>
+                    <p class="md:hidden text-xs text-gray-500 dark:text-gray-400 inline-flex items-start gap-2">
+                        <i class="fas fa-arrows-alt-h text-brand-primary shrink-0 mt-0.5"></i>
+                        <span>Swipe sideways for the full timetable — days in rows, sessions in columns.</span>
                     </p>
                 </div>
 
-                {# Mobile: stack days and sessions (no horizontal scrolling needed). #}
-                <div class="md:hidden space-y-4 text-sm">
-                    {% for block in level.dates %}
-                    <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/50 p-4">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="text-sm font-bold text-gray-900 dark:text-white">
-                                {{ block.date or '—' }}
-                            </div>
-                            <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
-                                {{ level.level_name }}{% if level.level_category %} ({{ level.level_category }}){% endif %}
-                            </div>
-                        </div>
-                        <div class="mt-3 space-y-3">
-                            {% for sc in session_cols %}
-                            {% set hits = block.slots|selectattr('session_type','equalto',sc)|list %}
-                            <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/30 p-3">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <div class="text-xs font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                                            {% if sc == 'MORNING' %}Morning{% elif sc == 'MIDDAY' %}Midday{% elif sc == 'AFTERNOON' %}Afternoon{% elif sc == 'EVENING' %}Evening{% else %}Custom{% endif %}
-                                        </div>
-                                        {% set _hh = exam_rows|selectattr('session_type','equalto',sc)|list %}
-                                        {% set _h = _hh|first %}
-                                        {% set _sp = session_presets.get(sc) if session_presets else none %}
-                                        <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold">
-                                            {% if _h and (_h.start_time or _h.end_time) %}
-                                                {{ (_h.start_time or '—')[:5] }}–{{ (_h.end_time or '—')[:5] }}
-                                            {% elif _sp and (_sp.start or _sp.end) %}
-                                                {{ (_sp.start or '—')[:5] }}–{{ (_sp.end or '—')[:5] }}
-                                            {% else %}
-                                                —
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    <div class="text-[11px] text-gray-500 dark:text-gray-400 font-semibold whitespace-nowrap">
-                                        <span x-text="''"></span>
-                                    </div>
-                                </div>
-
-                                {% if hits and hits|length > 0 %}
-                                <div class="mt-2 space-y-2">
-                                    {% for slot in hits %}
-                                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-2">
-                                        <div class="flex items-start justify-between gap-2">
-                                            <div class="font-semibold text-gray-900 dark:text-white text-[13px] leading-snug">
-                                                {{ slot.subject_name or '—' }}
-                                            </div>
-                                            {% set st = (slot.status or 'scheduled')|lower %}
-                                            <span class="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide
-                                                {% if st == 'scheduled' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300
-                                                {% elif st == 'ongoing' %}bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300
-                                                {% elif st == 'completed' %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200
-                                                {% elif st == 'cancelled' %}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300
-                                                {% else %}bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200{% endif %}">
-                                                {{ slot.status or 'scheduled' }}
-                                            </span>
-                                        </div>
-                                        <div class="mt-1 text-[11px] text-gray-600 dark:text-gray-300">
-                                            {% if slot.supervisor_name or slot.supervisor_employee_id %}
-                                                {{ slot.supervisor_name or '' }}{% if slot.supervisor_employee_id %} ({{ slot.supervisor_employee_id }}){% endif %}
-                                            {% else %}
-                                                —
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                                {% else %}
-                                <div class="mt-2 text-[11px] text-gray-400">—</div>
-                                {% endif %}
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-
-                {# Desktop/tablet: classic grid timetable (horizontal scroll allowed). #}
-                <div class="hidden md:block overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30">
-                    <table class="min-w-[760px] sm:min-w-[820px] w-full border-separate border-spacing-0 text-sm">
+                {# Timetable grid on all breakpoints; horizontal scroll on narrow screens. #}
+                <div class="erd-timetable-scroll overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 max-w-full">
+                    <table class="min-w-[640px] md:min-w-[760px] lg:min-w-[820px] w-full border-separate border-spacing-0 text-sm">
                         <thead>
                             <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
-                                <th class="p-3 text-left font-bold w-36 sticky left-0 z-20 bg-gradient-to-r from-brand-primary to-brand-secondary">
+                                <th class="p-2 md:p-3 text-left font-bold w-28 min-w-[7rem] md:w-36 sticky left-0 z-20 bg-gradient-to-r from-brand-primary to-brand-secondary">
                                     Date
                                 </th>
                                 {% for sc in session_cols %}
-                                <th class="p-3 text-left font-bold whitespace-nowrap">
+                                <th class="p-2 md:p-3 text-left font-bold whitespace-nowrap">
                                     <div class="leading-tight">
                                         <div>
                                             {% if sc == 'MORNING' %}Morning{% elif sc == 'MIDDAY' %}Midday{% elif sc == 'AFTERNOON' %}Afternoon{% elif sc == 'EVENING' %}Evening{% else %}Custom{% endif %}
@@ -394,8 +345,8 @@
                         <tbody>
                             {% for block in level.dates %}
                             <tr class="border-t border-gray-200 dark:border-gray-800">
-                                <td class="p-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap sticky left-0 z-10 bg-white/90 dark:bg-gray-900/70 border-r border-gray-200 dark:border-gray-800">
-                                    <div class="text-sm font-bold">{{ block.date or '—' }}</div>
+                                <td class="sticky-date-col p-2 md:p-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap sticky left-0 z-10 bg-white dark:bg-gray-900 md:bg-white/90 md:dark:bg-gray-900/70 border-r border-gray-200 dark:border-gray-800">
+                                    <div class="text-xs md:text-sm font-bold leading-tight">{{ block.date or '—' }}</div>
                                 </td>
                                 {% for sc in session_cols %}
                                 {% set hits = block.slots|selectattr('session_type','equalto',sc)|list %}
@@ -462,7 +413,7 @@
                     {% endif %}
                 {% endfor %}
 
-                {% if missing_any %}
+                {% if missing_any and not erd_teacher_view %}
                 <div class="mt-5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 p-4">
                     <div class="flex items-start gap-3">
                         <span class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 flex items-center justify-center shrink-0">
@@ -680,6 +631,7 @@
     </div>
 </div>
 
+{% if not erd_teacher_view %}
 <div id="erd-add-modal" class="fixed inset-0 z-[121] hidden">
     <div id="erd-add-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
     <div class="absolute inset-0 p-3 sm:p-6 flex items-center justify-center">
@@ -724,6 +676,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <script type="application/json" id="erd-analytics-bundle">{{ analytics|tojson|safe }}</script>
 <script type="application/json" id="erd-exam-rows">{{ exam_rows|tojson|safe }}</script>

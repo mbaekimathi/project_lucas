@@ -4,195 +4,209 @@
 
 {% block sidebar_content %}{% endblock %}
 
+{% set days_order = days_order | default(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) %}
+{% set timetable_data = timetable_data | default({}) %}
+
+{# Aggregate timetable stats for summary chips #}
+{% set stats = namespace(periods=0, subjects=[]) %}
+{% for day in days_order %}
+{% if day in timetable_data %}
+{% for time_slot, class_list in timetable_data[day].items() %}
+{% set stats.periods = stats.periods + (class_list|length) %}
+{% for class_info in class_list %}
+{% set sn = class_info.subject_name %}
+{% if sn and sn not in stats.subjects %}{% set _ = stats.subjects.append(sn) %}{% endif %}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20 py-4 sm:py-6 lg:py-8 page-content">
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 dark:from-gray-950 dark:via-gray-900 dark:to-emerald-950/25 py-4 sm:py-6 lg:py-8 page-content">
     <div class="max-w-7xl mx-auto px-4 sm:px-5 md:px-6 lg:px-8">
-        
-        <!-- Modern Header Card -->
-        <div class="relative overflow-hidden bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 rounded-2xl sm:rounded-3xl shadow-xl mb-6 sm:mb-8">
-            <!-- Decorative Elements -->
-            <div class="absolute inset-0 opacity-10">
-                <div class="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/3"></div>
-                <div class="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/4"></div>
+
+        <!-- Hero -->
+        <header class="relative overflow-hidden rounded-2xl sm:rounded-3xl shadow-lg shadow-emerald-900/10 dark:shadow-black/40 mb-6 sm:mb-8 animate-fade-in-up">
+            <div class="absolute inset-0 bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700"></div>
+            <div class="absolute inset-0 opacity-[0.12]" aria-hidden="true">
+                <div class="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-white blur-3xl"></div>
+                <div class="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-cyan-300 blur-3xl"></div>
             </div>
-            <div class="absolute inset-0 opacity-5" style="background-image: radial-gradient(circle at 2px 2px, white 1px, transparent 0); background-size: 32px 32px;"></div>
-            
-            <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div class="flex items-center gap-4">
-                        <div class="w-14 h-14 sm:w-16 sm:h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center shadow-lg">
-                            <i class="fas fa-chalkboard-teacher text-white text-2xl sm:text-3xl"></i>
+            <div class="absolute inset-0 opacity-[0.35] mix-blend-soft-light pointer-events-none" style="background-image: url(&quot;data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.35'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&quot;);"></div>
+
+            <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-9">
+                <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-5 min-w-0">
+                        <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-inner">
+                            <i class="fas fa-chalkboard-teacher text-white text-2xl sm:text-3xl" aria-hidden="true"></i>
                         </div>
-                        <div>
-                            <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-1">My Classes</h1>
+                        <div class="min-w-0">
+                            <h1 class="text-2xl sm:text-3xl lg:text-4xl font-bold text-white tracking-tight">My Classes</h1>
                             {% if teacher_name %}
-                            <p class="text-emerald-100 text-sm sm:text-base">Welcome back, <span class="font-semibold text-white">{{ teacher_name }}</span></p>
+                            <p class="mt-1 text-emerald-50/95 text-sm sm:text-base">Welcome back, <span class="font-semibold text-white">{{ teacher_name }}</span></p>
                             {% endif %}
                             {% if staff_employee_number or portal_employee_number %}
-                            <p class="text-emerald-100/90 text-xs sm:text-sm mt-1 space-x-2">
-                                {% if staff_employee_number %}<span>Staff # <span class="font-semibold text-white">{{ staff_employee_number }}</span></span>{% endif %}
-                                {% if portal_employee_number %}<span class="opacity-90">Portal login <span class="font-medium text-white">{{ portal_employee_number }}</span></span>{% endif %}
+                            <p class="mt-2 text-emerald-100/85 text-xs sm:text-sm flex flex-wrap gap-x-3 gap-y-1">
+                                {% if staff_employee_number %}<span>Staff # <span class="font-semibold text-white tabular-nums">{{ staff_employee_number }}</span></span>{% endif %}
+                                {% if portal_employee_number %}<span>Portal <span class="font-medium text-white tabular-nums">{{ portal_employee_number }}</span></span>{% endif %}
                             </p>
                             {% endif %}
                         </div>
                     </div>
-                    
-                    {% if current_term and current_year %}
-                    <div class="flex flex-wrap gap-2 sm:gap-3">
-                        <div class="bg-white/15 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/20">
-                            <p class="text-emerald-100 text-xs uppercase tracking-wide mb-0.5">Academic Year</p>
-                            <p class="text-white font-bold text-sm sm:text-base">{{ current_year }}</p>
+
+                    <div class="flex flex-col sm:flex-row flex-wrap gap-2 sm:gap-3 lg:justify-end shrink-0">
+                        {% if current_term and current_year %}
+                        <div class="rounded-xl bg-white/12 backdrop-blur-md border border-white/20 px-3 sm:px-4 py-2.5 sm:py-3">
+                            <p class="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wider text-emerald-100/90">Academic year</p>
+                            <p class="text-white font-bold text-sm sm:text-base tabular-nums">{{ current_year }}</p>
                         </div>
-                        <div class="bg-white/15 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/20">
-                            <p class="text-emerald-100 text-xs uppercase tracking-wide mb-0.5">Current Term</p>
+                        <div class="rounded-xl bg-white/12 backdrop-blur-md border border-white/20 px-3 sm:px-4 py-2.5 sm:py-3">
+                            <p class="text-[0.65rem] sm:text-xs font-semibold uppercase tracking-wider text-emerald-100/90">Current term</p>
                             <p class="text-white font-bold text-sm sm:text-base">{{ current_term }}</p>
                         </div>
+                        {% endif %}
                     </div>
-                    {% endif %}
                 </div>
+
+                {% if not is_technician or teacher_name %}
+                <!-- Summary metrics -->
+                <div class="mt-6 pt-6 border-t border-white/15 grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
+                    <div class="rounded-xl bg-black/10 backdrop-blur-sm border border-white/10 px-3 py-3 sm:py-3.5">
+                        <p class="text-[0.65rem] uppercase tracking-wide text-emerald-100/80 font-medium">Weekly slots</p>
+                        <p class="text-xl sm:text-2xl font-bold text-white tabular-nums">{{ stats.periods }}</p>
+                    </div>
+                    <div class="rounded-xl bg-black/10 backdrop-blur-sm border border-white/10 px-3 py-3 sm:py-3.5">
+                        <p class="text-[0.65rem] uppercase tracking-wide text-emerald-100/80 font-medium">Subjects</p>
+                        <p class="text-xl sm:text-2xl font-bold text-white tabular-nums">{{ stats.subjects|length }}</p>
+                    </div>
+                    <div class="rounded-xl bg-black/10 backdrop-blur-sm border border-white/10 px-3 py-3 sm:py-3.5 col-span-2 sm:col-span-1">
+                        <p class="text-[0.65rem] uppercase tracking-wide text-emerald-100/80 font-medium">Schedule</p>
+                        <p class="text-sm sm:text-base font-semibold text-white leading-snug">{% if timetable_data %}Active timetable{% else %}Not published{% endif %}</p>
+                    </div>
+                </div>
+                {% endif %}
             </div>
-        </div>
+        </header>
 
         {% if is_technician and not teacher_name %}
-        <!-- Technician Notice Card -->
-        <div class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-2 border-amber-200 dark:border-amber-700 rounded-2xl p-6 mb-6 shadow-sm">
-            <div class="flex items-start gap-4">
-                <div class="w-12 h-12 bg-amber-500 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                    <i class="fas fa-user-tie text-white text-xl"></i>
+        <div class="modern-card rounded-2xl p-5 sm:p-6 border border-amber-200/80 dark:border-amber-800/60 bg-gradient-to-br from-amber-50 to-orange-50/90 dark:from-amber-950/40 dark:to-orange-950/30 shadow-sm" role="status">
+            <div class="flex flex-col sm:flex-row sm:items-start gap-4">
+                <div class="w-12 h-12 shrink-0 rounded-xl bg-amber-500 flex items-center justify-center shadow-md">
+                    <i class="fas fa-user-tie text-white text-lg" aria-hidden="true"></i>
                 </div>
-                <div>
-                    <h3 class="text-lg font-bold text-amber-900 dark:text-amber-200 mb-1">Select a Teacher</h3>
-                    <p class="text-amber-700 dark:text-amber-300 text-sm">Please select a teacher from the dropdown in the header to view their classes and timetable.</p>
+                <div class="min-w-0">
+                    <h2 class="text-lg font-bold text-amber-950 dark:text-amber-100">Select a teacher</h2>
+                    <p class="mt-1 text-sm text-amber-900/85 dark:text-amber-200/90 leading-relaxed">Use the teacher dropdown in the header to load their classes and weekly timetable.</p>
                 </div>
             </div>
         </div>
         {% else %}
 
-        <!-- Weekly Timetable Section -->
-        <div class="modern-card rounded-2xl sm:rounded-3xl overflow-hidden">
-            <div class="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-800">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                            <i class="fas fa-calendar-alt text-white"></i>
+        <!-- Weekly timetable -->
+        <section class="modern-card rounded-2xl sm:rounded-3xl overflow-hidden border border-gray-200/80 dark:border-gray-700/80 shadow-sm" aria-labelledby="timetable-heading">
+            <div class="px-4 sm:px-6 py-4 sm:py-5 border-b border-gray-100 dark:border-gray-700 bg-gradient-to-r from-slate-50 to-white dark:from-gray-800 dark:to-gray-800/90">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div class="flex items-start sm:items-center gap-3 min-w-0">
+                        <div class="w-10 h-10 shrink-0 rounded-xl bg-gradient-to-br from-sky-600 to-blue-700 flex items-center justify-center shadow-md">
+                            <i class="fas fa-calendar-alt text-white text-sm" aria-hidden="true"></i>
                         </div>
-                        <div>
-                            <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Weekly Timetable</h2>
-                            <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Your teaching schedule</p>
+                        <div class="min-w-0">
+                            <h2 id="timetable-heading" class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">Weekly timetable</h2>
+                            <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Your teaching schedule for this term</p>
                         </div>
                     </div>
+                    {% if timetable_data %}
+                    <p class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                        <i class="fas fa-hand-point-right text-gray-400 hidden sm:inline" aria-hidden="true"></i>
+                        <i class="fas fa-arrows-alt-h text-gray-400 sm:hidden" aria-hidden="true"></i>
+                        <span><span class="sm:hidden">Swipe</span><span class="hidden sm:inline">Scroll</span> sideways to view all periods</span>
+                    </p>
+                    {% endif %}
                 </div>
             </div>
-            
+
             {% if timetable_data %}
-            <!-- Timetable grid: days as columns, time as rows -->
-            <div class="table-responsive-wrapper overflow-x-auto">
-                <table class="w-full">
-                    <thead>
-                        <tr class="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-700">
-                            <th class="px-4 py-4 text-left text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider border-r border-gray-200 dark:border-gray-600 sticky left-0 bg-gray-50 dark:bg-gray-700 z-10 min-w-[100px]">
-                                <div class="flex items-center gap-2">
-                                    <i class="fas fa-clock text-gray-400"></i>
-                                    Time
-                                </div>
-                            </th>
-                            {% for day in days_order %}
-                            <th class="px-4 py-4 text-center text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wider border-r border-gray-200 dark:border-gray-600 {% if loop.last %}border-r-0{% endif %} min-w-[140px]">
-                                {{ day }}
-                            </th>
-                            {% endfor %}
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                        {% set all_times = [] %}
-                        {% for day, times in timetable_data.items() %}
-                            {% for time in times.keys() %}
-                                {% if time not in all_times %}
-                                    {% set _ = all_times.append(time) %}
-                                {% endif %}
-                            {% endfor %}
-                        {% endfor %}
-                        {% set all_times = all_times | sort %}
-                        
-                        {% if all_times %}
-                            {% for time in all_times %}
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                <td class="px-4 py-4 text-sm font-semibold text-gray-900 dark:text-white border-r border-gray-200 dark:border-gray-600 sticky left-0 bg-white dark:bg-gray-800 z-10">
-                                    <div class="flex items-center gap-2">
-                                        <span class="w-2 h-2 bg-emerald-500 rounded-full"></span>
-                                        {{ time }}
-                                    </div>
-                                </td>
-                                {% for day in days_order %}
-                                <td class="px-3 py-3 text-sm border-r border-gray-200 dark:border-gray-600 {% if loop.last %}border-r-0{% endif %}">
-                                    {% if day in timetable_data and time in timetable_data[day] %}
-                                        {% for class_info in timetable_data[day][time] %}
-                                        <div class="mb-2 last:mb-0">
-                                            <div class="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 border border-emerald-200 dark:border-emerald-700 rounded-xl p-3 hover:shadow-md transition-shadow">
-                                                <div class="font-bold text-emerald-800 dark:text-emerald-200 text-xs sm:text-sm mb-1">
-                                                    {{ class_info.subject_name }}
-                                                </div>
-                                                {% if class_info.subject_code %}
-                                                <div class="text-xs text-emerald-600 dark:text-emerald-400 mb-1.5">
-                                                    <i class="fas fa-hashtag mr-1"></i>{{ class_info.subject_code }}
-                                                </div>
-                                                {% endif %}
-                                                <div class="flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-800/50 px-2 py-1 rounded-lg w-fit">
-                                                    <i class="fas fa-graduation-cap"></i>
-                                                    <span>{{ class_info.level_name }}</span>
-                                                </div>
-                                                <div class="mt-1.5 flex items-center gap-1 text-xs text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-800/40 px-2 py-1 rounded-lg w-fit">
-                                                    <i class="fas fa-users"></i>
-                                                    <span>{{ class_info.in_session_count or 0 }} in session</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    {% else %}
-                                        <div class="text-center py-2">
-                                            <span class="text-gray-300 dark:text-gray-600">—</span>
-                                        </div>
-                                    {% endif %}
-                                </td>
+            {% set all_times = [] %}
+            {% for day, times in timetable_data.items() %}
+                {% for time in times.keys() %}
+                    {% if time not in all_times %}
+                        {% set _ = all_times.append(time) %}
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+            {% set all_times = all_times | sort %}
+
+            {# ----- Classic grid timetable (all breakpoints; horizontal scroll on narrow screens) ----- #}
+            <div class="timetable-scroll-wrap p-2 sm:p-3 md:p-4 bg-gradient-to-b from-slate-100/90 to-slate-50/50 dark:from-gray-900/90 dark:to-gray-950/50">
+                <div class="overflow-x-auto overscroll-x-contain timetable-scrollbar rounded-md shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-none border-[3px] border-slate-400 dark:border-slate-600 bg-white dark:bg-gray-950">
+                    <table class="timetable-sheet w-full min-w-[680px] sm:min-w-[760px] lg:min-w-[840px] border-collapse">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="timetable-corner-cell timetable-grid-header px-2 py-2.5 sm:px-3 sm:py-3 text-left text-[0.65rem] sm:text-xs font-extrabold uppercase tracking-wide text-slate-800 dark:text-slate-100 border-2 border-slate-400 dark:border-slate-500 sticky left-0 z-20 w-[4.5rem] sm:w-[5.5rem] shadow-[4px_0_0_rgba(15,23,42,0.06)] dark:shadow-[4px_0_0_rgba(0,0,0,0.4)]">
+                                    Day / Time
+                                </th>
+                                {% for time in all_times %}
+                                <th scope="col" class="timetable-grid-header px-1.5 sm:px-2 py-2 sm:py-2.5 text-center text-[0.6rem] sm:text-[0.7rem] font-bold leading-tight text-slate-800 dark:text-slate-100 border-2 border-slate-400 dark:border-slate-500 min-w-[4.75rem] sm:min-w-[5.5rem] lg:min-w-[6.25rem]">
+                                    <span class="tabular-nums block">{{ time }}</span>
+                                </th>
                                 {% endfor %}
                             </tr>
-                            {% endfor %}
-                        {% endif %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% if all_times %}
+                                {% for day in days_order %}
+                                <tr class="timetable-body-row transition-colors">
+                                    <th scope="row" class="timetable-day-cell timetable-grid-cell px-2 py-2 sm:px-3 sm:py-2.5 text-left text-[0.65rem] sm:text-xs font-extrabold text-slate-900 dark:text-slate-50 border-2 border-slate-400 dark:border-slate-500 sticky left-0 z-10 align-middle shadow-[4px_0_0_rgba(15,23,42,0.06)] dark:shadow-[4px_0_0_rgba(0,0,0,0.4)]">
+                                        <span class="block leading-tight">{{ day[:3] }}<span class="hidden md:inline">{{ day[3:] }}</span></span>
+                                    </th>
+                                    {% for time in all_times %}
+                                    <td class="timetable-grid-cell px-1.5 sm:px-2 py-1.5 sm:py-2 align-top border-2 border-slate-400 dark:border-slate-500 min-h-[3.25rem] sm:min-h-[3.75rem] lg:min-h-[4rem] bg-white dark:bg-gray-950">
+                                        {% if day in timetable_data and time in timetable_data[day] %}
+                                            {% for class_info in timetable_data[day][time] %}
+                                            <div class="{% if not loop.last %}mb-1.5 pb-1.5 border-b border-dotted border-slate-300 dark:border-slate-600{% endif %}">
+                                                <div class="text-[0.58rem] sm:text-[0.65rem] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 leading-tight">{{ class_info.level_name or '—' }}</div>
+                                                <div class="text-[0.65rem] sm:text-xs lg:text-sm font-semibold text-slate-900 dark:text-slate-100 leading-snug mt-0.5">{{ class_info.subject_name }}</div>
+                                            </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="min-h-[2.5rem] sm:min-h-[2.75rem] flex items-center justify-center text-slate-200 dark:text-slate-700 text-lg font-light select-none" aria-hidden="true">·</div>
+                                        {% endif %}
+                                    </td>
+                                    {% endfor %}
+                                </tr>
+                                {% endfor %}
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
             {% else %}
-            <!-- Empty State -->
-            <div class="p-8 sm:p-12 lg:p-16 text-center">
+            <div class="p-8 sm:p-12 lg:p-14 text-center">
                 <div class="max-w-md mx-auto">
-                    <div class="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                        <i class="fas fa-calendar-times text-gray-400 dark:text-gray-500 text-3xl sm:text-4xl"></i>
+                    <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 flex items-center justify-center mx-auto mb-6 shadow-inner">
+                        <i class="fas fa-calendar-times text-gray-400 dark:text-gray-500 text-3xl sm:text-4xl" aria-hidden="true"></i>
                     </div>
-                    <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">No Timetable Available</h3>
-                    <p class="text-gray-500 dark:text-gray-400 mb-2">Your teaching schedule hasn't been set up for the current term yet.</p>
-                    <p class="text-sm text-gray-400 dark:text-gray-500">Please contact the curriculum coordinator to configure your timetable.</p>
-                    
-                    <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                        <div class="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                            <i class="fas fa-info-circle"></i>
-                            <span>Need help? Contact <span class="text-emerald-600 dark:text-emerald-400 font-medium">Curriculum Coordinator</span></span>
-                        </div>
+                    <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">No timetable yet</h3>
+                    <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base leading-relaxed">Your teaching schedule has not been published for the current term.</p>
+                    <p class="text-gray-500 dark:text-gray-500 text-xs sm:text-sm mt-3">Contact your curriculum coordinator if this looks wrong.</p>
+                    <div class="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <i class="fas fa-info-circle text-emerald-600 dark:text-emerald-400" aria-hidden="true"></i>
+                        <span>If your schedule looks incomplete, contact your curriculum coordinator.</span>
                     </div>
                 </div>
             </div>
             {% endif %}
-        </div>
+        </section>
 
         {% endif %}
     </div>
 </div>
 
 <style>
-/* Smooth animations */
 @keyframes fadeInUp {
     from {
         opacity: 0;
-        transform: translateY(20px);
+        transform: translateY(14px);
     }
     to {
         opacity: 1;
@@ -201,33 +215,78 @@
 }
 
 .animate-fade-in-up {
-    animation: fadeInUp 0.5s ease-out forwards;
+    animation: fadeInUp 0.45s ease-out both;
 }
 
-/* Custom scrollbar for timetable */
-.overflow-x-auto::-webkit-scrollbar {
-    height: 8px;
+.timetable-scrollbar::-webkit-scrollbar {
+    height: 10px;
 }
 
-.overflow-x-auto::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 4px;
+.timetable-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 118, 110, 0.06);
+    border-radius: 999px;
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb {
-    background: rgba(16, 185, 129, 0.3);
-    border-radius: 4px;
+.dark .timetable-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb:hover {
-    background: rgba(16, 185, 129, 0.5);
+.timetable-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(16, 185, 129, 0.35);
+    border-radius: 999px;
 }
 
-/* Ensure proper touch scrolling on mobile */
+.timetable-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 185, 129, 0.55);
+}
+
+.timetable-scroll-wrap {
+    background: linear-gradient(to right, rgba(248, 250, 252, 0.95) 0%, transparent 12%, transparent 88%, rgba(248, 250, 252, 0.95) 100%);
+}
+
+.dark .timetable-scroll-wrap {
+    background: linear-gradient(to right, rgba(15, 23, 42, 0.5) 0%, transparent 10%, transparent 90%, rgba(15, 23, 42, 0.5) 100%);
+}
+
+.timetable-sheet thead .timetable-grid-header,
+.timetable-sheet thead .timetable-corner-cell {
+    background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
+}
+
+.dark .timetable-sheet thead .timetable-grid-header,
+.dark .timetable-sheet thead .timetable-corner-cell {
+    background: linear-gradient(180deg, #475569 0%, #334155 100%);
+}
+
+.timetable-sheet tbody .timetable-day-cell {
+    background-color: #eef2f6;
+}
+
+.dark .timetable-sheet tbody .timetable-day-cell {
+    background-color: rgb(30 41 59);
+}
+
+.timetable-body-row:nth-child(even) .timetable-grid-cell:not(.timetable-day-cell) {
+    background-color: rgb(248 250 252) !important;
+}
+
+.dark .timetable-body-row:nth-child(even) .timetable-grid-cell:not(.timetable-day-cell) {
+    background-color: rgb(17 24 39) !important;
+}
+
+.timetable-body-row:hover .timetable-grid-cell:not(.timetable-day-cell) {
+    background-color: rgb(236 253 245) !important;
+}
+
+.dark .timetable-body-row:hover .timetable-grid-cell:not(.timetable-day-cell) {
+    background-color: rgba(6, 78, 59, 0.22) !important;
+}
+
 @media (max-width: 1023px) {
-    .overflow-x-auto {
+    .timetable-scrollbar {
         -webkit-overflow-scrolling: touch;
     }
 }
+
 </style>
 {% endblock %}

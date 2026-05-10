@@ -3,11 +3,16 @@
 {% block title %}Exam Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set _ea_role = (session.get('role') or '')|lower %}
+{% set _ea_view_as = (session.get('viewing_as_employee_role') or '')|lower %}
+{% set hide_exam_registration_nav = (_ea_role in ('teachers', 'teacher') or _ea_view_as in ('teachers', 'teacher')) %}
+{% if not hide_exam_registration_nav %}
 <a href="{{ employee_dash_url('exam-evaluation') }}"
    class="sidebar-item mb-2">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Registration</span>
 </a>
+{% endif %}
 <a href="{{ employee_dash_url('exams-assessments') }}"
    class="sidebar-item mb-2">
     <i class="fas fa-clipboard-list w-5"></i>

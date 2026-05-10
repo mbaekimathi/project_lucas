@@ -122,11 +122,11 @@
     <span>Exam Analytics</span>
     {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ employee_dash_url('exams-assessments/timetable') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}sidebar-item-active{% endif %}">
+<a href="{{ employee_dash_url('exam-timetable') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Exams Timetable</span>
-    {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endblock %}
 
@@ -299,7 +299,7 @@
         {% endif %}
     </div>
 </div>
-<script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exams-assessments/timetable/api'), 'timetable_by_date': timetable_by_date, 'total_slots': total_slots, 'days_count': timetable_by_date|length, 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
+<script type="application/json" id="exam-tt-bootstrap">{{ {'api_url': employee_dash_url('exam-timetable/api'), 'timetable_by_date': timetable_by_date, 'total_slots': total_slots, 'days_count': timetable_by_date|length, 'exams_for_filter': exams_for_filter}|tojson|safe }}</script>
 <script>
 (function () {
     const boot = JSON.parse(document.getElementById('exam-tt-bootstrap').textContent || '{}');

@@ -3,34 +3,122 @@
 {% block title %}Exams & Assessments - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set _nav_role = (session.get('role') or '')|lower %}
+{% set _nav_view_as = (session.get('viewing_as_employee_role') or '')|lower %}
+{% set hide_exam_registration_nav = (
+  request.endpoint == 'teacher_exams_assessments'
+  or _nav_role in ('teachers', 'teacher')
+  or _nav_view_as in ('teachers', 'teacher')
+) %}
+{% if not hide_exam_registration_nav %}
 <a href="{{ employee_dash_url('exam-evaluation') }}"
    class="sidebar-item mb-2 {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Registration</span>
     {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% endif %}
 <a href="{{ employee_dash_url('exams-assessments') }}"
    class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments' or request.endpoint == 'teacher_exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Exams & Assessments</span>
     {% if request.endpoint == 'exams_assessments' or request.endpoint == 'teacher_exams_assessments' or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% if request.endpoint != 'teacher_exams_assessments' %}
 <a href="{{ employee_dash_url('exam-analytics') }}"
    class="sidebar-item mb-2 {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}sidebar-item-active{% endif %}">
     <i class="fas fa-chart-line w-5"></i>
     <span>Exam Analytics</span>
     {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
-<a href="{{ employee_dash_url('exams-assessments/timetable') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}sidebar-item-active{% endif %}">
+{% endif %}
+<a href="{{ employee_dash_url('exam-timetable') }}"
+   class="sidebar-item mb-2 {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
     <i class="fas fa-calendar-alt w-5"></i>
     <span>Exams Timetable</span>
-    {% if request.endpoint == 'exams_assessments_timetable' or request.path.endswith('/exams-assessments/timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endblock %}
 
 {% block extra_head %}
 <style>
+{% if request.endpoint == 'teacher_exams_assessments' %}
+    .teacher-exams-shell {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+    }
+    .teacher-exams-hero {
+        background: linear-gradient(135deg, var(--brand-primary, #047857) 0%, color-mix(in srgb, var(--brand-primary, #047857) 72%, #000) 48%, color-mix(in srgb, var(--brand-secondary, #065f46) 85%, #000) 100%);
+        box-shadow: 0 20px 50px -12px color-mix(in srgb, var(--brand-primary, #047857) 35%, transparent);
+    }
+    .teacher-exams-card {
+        border-radius: 1rem;
+        border: 1px solid rgb(229 231 235 / 0.95);
+        background: color-mix(in srgb, rgb(255 255 255) 92%, transparent);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+    }
+    .teacher-exams-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 18px 40px -18px color-mix(in srgb, var(--brand-primary, #047857) 28%, transparent);
+        border-color: color-mix(in srgb, var(--brand-primary, #047857) 35%, rgb(229 231 235));
+    }
+    .dark .teacher-exams-card {
+        border-color: rgb(55 65 81 / 0.9);
+        background: color-mix(in srgb, rgb(17 24 39) 88%, transparent);
+    }
+    .dark .teacher-exams-card:hover {
+        border-color: color-mix(in srgb, var(--brand-secondary, #34d399) 40%, rgb(55 65 81));
+        box-shadow: 0 18px 40px -14px rgba(0, 0, 0, 0.45);
+    }
+    .teacher-exams-subject-pill {
+        font-size: 0.6875rem;
+        font-weight: 600;
+        line-height: 1.35;
+        padding: 0.35rem 0.65rem;
+        border-radius: 9999px;
+        border: 1px solid color-mix(in srgb, var(--brand-primary, #047857) 22%, rgb(209 250 229));
+        background: color-mix(in srgb, var(--brand-primary, #047857) 8%, rgb(240 253 244));
+        color: color-mix(in srgb, var(--brand-primary, #065f46) 90%, #000);
+        max-width: 100%;
+        word-break: break-word;
+        hyphens: auto;
+    }
+    .dark .teacher-exams-subject-pill {
+        border-color: color-mix(in srgb, var(--brand-secondary, #34d399) 35%, rgb(55 65 81));
+        background: color-mix(in srgb, var(--brand-primary, #047857) 22%, rgb(17 24 39));
+        color: rgb(209 250 229);
+    }
+    .teacher-exams-cta {
+        min-height: 2.75rem;
+        touch-action: manipulation;
+        border-radius: 0.875rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+    }
+    .teacher-exams-cta:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.05);
+        box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--brand-primary, #047857) 45%, transparent);
+    }
+    .teacher-exams-cta:focus-visible {
+        outline: 2px solid var(--brand-secondary, #34d399);
+        outline-offset: 3px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .teacher-exams-card:hover,
+        .teacher-exams-cta:hover {
+            transform: none;
+        }
+        .scroll-reveal {
+            animation: none;
+        }
+    }
+{% endif %}
     .dashboard-card {
         background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(10px);
@@ -104,11 +192,141 @@
 {% endblock %}
 
 {% block content %}
+{% set teacher_classes_page = (request.endpoint == 'teacher_exams_assessments') %}
+
+{% if teacher_classes_page %}
+<div class="teacher-exams-shell px-3 pt-4 pb-8 sm:px-5 md:px-6 lg:px-8 min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-100 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+    <div class="max-w-[90rem] mx-auto space-y-5 sm:space-y-7">
+
+        <section class="teacher-exams-hero rounded-2xl sm:rounded-3xl overflow-hidden border border-white/15 shadow-xl scroll-reveal" aria-labelledby="teacher-exams-heading">
+            <div class="relative px-4 py-6 sm:px-7 sm:py-8 md:px-10 md:py-10">
+                <div class="absolute inset-0 opacity-[0.12] pointer-events-none" style="background-image: radial-gradient(circle at 20% 20%, white 0, transparent 45%), radial-gradient(circle at 80% 0%, white 0, transparent 40%);"></div>
+                <div class="relative flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 lg:gap-10">
+                    <div class="min-w-0 flex-1">
+                        <p class="text-[11px] sm:text-xs font-bold uppercase tracking-[0.2em] text-white/75 mb-2">Marks entry</p>
+                        <h1 id="teacher-exams-heading" class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
+                            Exams &amp; assessments
+                        </h1>
+                        <p class="mt-3 text-sm sm:text-base text-white/90 max-w-2xl leading-relaxed">
+                            Choose a grade to open your class sheet. You will only see subjects assigned to you for that grade.
+                        </p>
+                        <div class="mt-5 flex flex-wrap gap-2 sm:gap-3">
+                            {% if academic_levels and academic_levels|length > 0 %}
+                            <span class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/15 text-white text-sm font-semibold ring-1 ring-white/25 backdrop-blur-sm">
+                                <i class="fas fa-layer-group opacity-90" aria-hidden="true"></i>
+                                {{ academic_levels|length }} grade{{ 's' if academic_levels|length != 1 else '' }} allocated
+                            </span>
+                            {% endif %}
+                            <span class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/10 text-white/95 text-xs sm:text-sm font-medium ring-1 ring-white/20">
+                                <i class="fas fa-mobile-screen-button opacity-90" aria-hidden="true"></i>
+                                Works on phone &amp; desktop
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 w-full sm:w-auto lg:w-52 xl:w-56">
+                        <a href="{{ employee_dash_url('exam-timetable') }}"
+                           class="teacher-exams-cta inline-flex items-center justify-center gap-2 w-full px-4 py-3.5 bg-white text-gray-900 rounded-xl text-sm font-bold shadow-lg hover:bg-gray-50">
+                            <i class="fas fa-calendar-alt text-brand-primary dark:text-brand-primary"></i>
+                            Exams timetable
+                        </a>
+                        <p class="text-[11px] sm:text-xs text-white/75 lg:text-center leading-snug px-1">
+                            View supervision duties &amp; session dates on one calendar-style screen.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% if academic_levels and academic_levels|length > 0 %}
+        <section class="scroll-reveal" aria-labelledby="teacher-exams-classes-heading">
+            <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-4 px-0.5">
+                <div>
+                    <h2 id="teacher-exams-classes-heading" class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white">
+                        Your classes &amp; subjects
+                    </h2>
+                    <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Tap a grade title or the button to enter marks.
+                    </p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
+                {% for level in academic_levels %}
+                <article class="teacher-exams-card p-4 sm:p-5 flex flex-col h-full">
+                    <div class="flex items-start justify-between gap-3 mb-4">
+                        <div class="flex items-start gap-3 min-w-0 flex-1">
+                            <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-brand-primary/90 to-brand-secondary flex items-center justify-center shrink-0 shadow-md text-white">
+                                <i class="fas fa-graduation-cap text-lg" aria-hidden="true"></i>
+                            </div>
+                            <div class="min-w-0 pt-0.5">
+                                <p class="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 truncate">{{ level.level_category }}</p>
+                                <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white leading-snug truncate mt-0.5">
+                                    <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}"
+                                       class="text-brand-primary dark:text-brand-secondary hover:underline decoration-2 underline-offset-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded">
+                                        {{ level.level_name }}
+                                    </a>
+                                </h3>
+                            </div>
+                        </div>
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] sm:text-xs font-bold uppercase tracking-wide rounded-full shrink-0 {% if level.level_status == 'active' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200{% else %}bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full {% if level.level_status == 'active' %}bg-emerald-500{% else %}bg-gray-400{% endif %}"></span>
+                            {{ level.level_status|title }}
+                        </span>
+                    </div>
+
+                    <div class="flex-1 min-h-[3rem]">
+                        <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Subjects you teach</p>
+                        {% if level.subjects %}
+                        <div class="flex flex-wrap gap-2">
+                            {% for subj in level.subjects %}
+                            <span class="teacher-exams-subject-pill" title="{{ subj.subject_name or subj.subject_code }}">
+                                {% if subj.subject_code %}<span class="font-bold">{{ subj.subject_code }}</span>{% endif %}
+                                {% if subj.subject_name %}<span class="{% if subj.subject_code %}opacity-90 ml-1{% endif %}">{{ subj.subject_name }}</span>{% endif %}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="text-sm text-amber-700 dark:text-amber-300/90 bg-amber-50 dark:bg-amber-950/40 rounded-lg px-3 py-2 border border-amber-200/80 dark:border-amber-800/60">
+                            No subjects linked — contact your coordinator if this looks wrong.
+                        </p>
+                        {% endif %}
+                    </div>
+
+                    <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}"
+                       class="teacher-exams-cta mt-5 w-full inline-flex items-center justify-center gap-2 px-4 py-3.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm sm:text-base shadow-md">
+                        <i class="fas fa-pen-to-square" aria-hidden="true"></i>
+                        Enter grades
+                    </a>
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        <section class="teacher-exams-card px-5 py-14 sm:py-16 text-center max-w-lg mx-auto scroll-reveal" aria-live="polite">
+            <div class="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center shadow-lg text-white">
+                <i class="fas fa-folder-open text-2xl" aria-hidden="true"></i>
+            </div>
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">No classes allocated yet</h2>
+            <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 leading-relaxed">
+                When your coordinator assigns subjects to you for each grade, they will appear here so you can enter marks.
+            </p>
+            <a href="{{ employee_dash_url('exam-timetable') }}"
+               class="teacher-exams-cta mt-8 inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gray-900 dark:bg-white dark:text-gray-900 text-white text-sm font-bold rounded-xl">
+                <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                Open exams timetable
+            </a>
+        </section>
+        {% endif %}
+    </div>
+</div>
+
+{% else %}
+{# ----- Coordinator / non-teacher view (unchanged structure) ----- #}
 <div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
     <!-- Page Header -->
     <div class="mb-6 sm:mb-8 scroll-reveal">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div class="min-w-0 flex-1">
                 <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
                     <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-emerald-700 rounded-xl flex items-center justify-center mr-3 shadow-lg">
                         <i class="fas fa-clipboard-list text-white text-xl sm:text-2xl"></i>
@@ -119,20 +337,8 @@
                     Manage exams, assessments, and grading for each academic level.
                 </p>
             </div>
-            <div class="flex flex-wrap items-center gap-3">
-                <a href="{{ employee_dash_url('exams-assessments/timetable') }}"
-                   class="inline-flex items-center px-4 py-2.5 bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-xl text-sm font-semibold transition-all shadow-sm">
-                    <i class="fas fa-calendar-alt mr-2"></i>
-                    Exams Timetable
-                </a>
-                <a href="{{ employee_dash_url('exam-analytics') }}" 
-                   class="inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
-                    <i class="fas fa-chart-line mr-2"></i>
-                    Exam Analytics
-                </a>
-            </div>
             {% if academic_levels and academic_levels|length > 0 %}
-            <div class="flex-shrink-0">
+            <div class="flex-shrink-0 sm:self-center">
                 <div class="px-4 py-2.5 bg-gradient-to-r from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20 rounded-xl border-2 border-green-500/20 dark:border-green-500/30">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-graduation-cap text-green-600 dark:text-green-400"></i>
@@ -153,7 +359,7 @@
                 <div class="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-700 rounded-lg flex items-center justify-center mr-3 shadow-md">
                     <i class="fas fa-graduation-cap text-white"></i>
                 </div>
-                Registered Academic Levels
+                {% if teacher_classes_page %}Your grades &amp; subjects{% else %}Registered Academic Levels{% endif %}
             </h2>
         </div>
         
@@ -165,10 +371,10 @@
                     <thead>
                         <tr class="bg-gradient-to-r from-green-600 to-emerald-700 text-white">
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold uppercase tracking-wider">Category</th>
-                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold uppercase tracking-wider">Level Name</th>
-                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold uppercase tracking-wider">Description</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold uppercase tracking-wider">{% if teacher_classes_page %}Grade / class{% else %}Level Name{% endif %}</th>
+                            <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold uppercase tracking-wider">{% if teacher_classes_page %}Your subjects{% else %}Description{% endif %}</th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold uppercase tracking-wider">Status</th>
-                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold uppercase tracking-wider">Action</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold uppercase tracking-wider">{% if teacher_classes_page %}Marks entry{% else %}Action{% endif %}</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -183,10 +389,15 @@
                                 </div>
                             </td>
                             <td class="p-3 sm:p-4 whitespace-nowrap">
-                                <span class="text-sm font-bold text-gray-900 dark:text-white">{{ level.level_name }}</span>
+                                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}"
+                                   class="text-sm font-bold text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:underline focus:outline-none focus:ring-2 focus:ring-green-500 rounded">
+                                    {{ level.level_name }}
+                                </a>
                             </td>
                             <td class="p-3 sm:p-4">
+                                {% if not teacher_classes_page %}
                                 <span class="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{{ level.level_description or '—' }}</span>
+                                {% endif %}
                                 {% if level.subjects %}
                                 <div class="mt-2 flex flex-wrap gap-1.5">
                                     {% for subj in level.subjects %}
@@ -195,6 +406,8 @@
                                     </span>
                                     {% endfor %}
                                 </div>
+                                {% elif teacher_classes_page %}
+                                <span class="text-sm text-gray-500 dark:text-gray-400">No subjects linked to this allocation.</span>
                                 {% endif %}
                             </td>
                             <td class="p-3 sm:p-4 text-center whitespace-nowrap">
@@ -206,8 +419,8 @@
                             <td class="p-3 sm:p-4 text-center whitespace-nowrap">
                                 <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                                    class="modern-btn inline-flex items-center px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
-                                    <i class="fas fa-users mr-2"></i>
-                                    View Students
+                                    <i class="fas {% if teacher_classes_page %}fa-pen-to-square{% else %}fa-users{% endif %} mr-2"></i>
+                                    {% if teacher_classes_page %}Enter grades{% else %}View Students{% endif %}
                                 </a>
                             </td>
                         </tr>
@@ -227,7 +440,12 @@
                             <i class="fas fa-graduation-cap text-green-600 dark:text-green-400"></i>
                         </div>
                         <div class="min-w-0">
-                            <h3 class="text-base font-bold text-gray-900 dark:text-white truncate">{{ level.level_name }}</h3>
+                            <h3 class="text-base font-bold truncate">
+                                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}"
+                                   class="text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:underline">
+                                    {{ level.level_name }}
+                                </a>
+                            </h3>
                             <p class="text-xs text-gray-500 dark:text-gray-400">{{ level.level_category }}</p>
                         </div>
                     </div>
@@ -235,7 +453,7 @@
                         {{ level.level_status|title }}
                     </span>
                 </div>
-                {% if level.level_description %}
+                {% if level.level_description and not teacher_classes_page %}
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 line-clamp-2 leading-relaxed">{{ level.level_description }}</p>
                 {% endif %}
                 {% if level.subjects %}
@@ -246,11 +464,13 @@
                     </span>
                     {% endfor %}
                 </div>
+                {% elif teacher_classes_page %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">No subjects linked to this allocation.</p>
                 {% endif %}
                 <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="modern-btn w-full inline-flex items-center justify-center px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
-                    <i class="fas fa-users mr-2"></i>
-                    View Students
+                    <i class="fas {% if teacher_classes_page %}fa-pen-to-square{% else %}fa-users{% endif %} mr-2"></i>
+                    {% if teacher_classes_page %}Enter grades{% else %}View Students{% endif %}
                 </a>
             </div>
             {% endfor %}
@@ -266,7 +486,12 @@
                             <i class="fas fa-graduation-cap text-green-600 dark:text-green-400 text-lg"></i>
                         </div>
                         <div class="min-w-0 flex-1">
-                            <h3 class="text-base font-bold text-gray-900 dark:text-white leading-snug truncate">{{ level.level_name }}</h3>
+                            <h3 class="text-base font-bold leading-snug truncate">
+                                <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}"
+                                   class="text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 hover:underline">
+                                    {{ level.level_name }}
+                                </a>
+                            </h3>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ level.level_category }}</p>
                         </div>
                     </div>
@@ -275,7 +500,7 @@
                         {{ level.level_status|title }}
                     </span>
                 </div>
-                {% if level.level_description %}
+                {% if level.level_description and not teacher_classes_page %}
                 <p class="text-sm text-gray-600 dark:text-gray-400 mb-3 leading-relaxed">{{ level.level_description }}</p>
                 {% endif %}
                 {% if level.subjects %}
@@ -286,11 +511,13 @@
                     </span>
                     {% endfor %}
                 </div>
+                {% elif teacher_classes_page %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">No subjects linked to this allocation.</p>
                 {% endif %}
                 <a href="{{ employee_dash_url('exams-assessments/level/' ~ level.id ~ '/students') }}" 
                    class="modern-btn w-full inline-flex items-center justify-center px-4 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-xl text-sm font-semibold transition-all shadow-md">
-                    <i class="fas fa-users mr-2"></i>
-                    View Students
+                    <i class="fas {% if teacher_classes_page %}fa-pen-to-square{% else %}fa-users{% endif %} mr-2"></i>
+                    {% if teacher_classes_page %}Enter grades{% else %}View Students{% endif %}
                 </a>
             </div>
             {% endfor %}
@@ -301,10 +528,17 @@
             <div class="w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl rotate-3">
                 <i class="fas fa-graduation-cap text-white text-4xl"></i>
             </div>
-            <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">No Academic Levels Found</h3>
-            <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto leading-relaxed">No academic levels have been registered yet. Academic levels need to be set up before you can manage exams and assessments.</p>
+            <h3 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-3">{% if teacher_classes_page %}No classes allocated{% else %}No Academic Levels Found{% endif %}</h3>
+            <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+                {% if teacher_classes_page %}
+                You do not have any subject allocations yet for exam marks entry. Ask your coordinator to assign subjects to you for each grade in Staff → subject allocations.
+                {% else %}
+                No academic levels have been registered yet. Academic levels need to be set up before you can manage exams and assessments.
+                {% endif %}
+            </p>
         </div>
         {% endif %}
     </div>
 </div>
+{% endif %}
 {% endblock %}

@@ -275,10 +275,10 @@
         <i class="fas fa-tasks w-5"></i>
         <span>Assignments</span>
     </a>
-    <a href="{{ employee_dash_url('exams-and-grades') }}" 
-       class="sidebar-item {% if request.endpoint == 'exams_and_grades' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-check w-5"></i>
-        <span>Exams & Grades</span>
+    <a href="{{ employee_dash_url('exams-assessments') }}" 
+       class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clipboard-list w-5"></i>
+        <span>Exams &amp; Assessments</span>
     </a>
     <a href="{{ employee_dash_url('student-management/students-progress') }}"
        class="sidebar-item {% if request.endpoint in ('students_progress', 'student_progress_detail') %}sidebar-item-active{% endif %}">

@@ -22,6 +22,31 @@
 
 {% block extra_head %}
 <style>
+    /* Subject-class allocation: fluid layout + touch scrolling */
+    .sca-page-shell {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    }
+    .sca-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        max-width: 100%;
+    }
+    .sca-table-scroll table {
+        min-width: 640px;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .dashboard-card:hover,
+        .subject-card:hover,
+        .modern-btn:hover:not(:disabled),
+        .modern-input:focus {
+            transform: none;
+            box-shadow: none;
+        }
+    }
     .dashboard-card {
         background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(10px);
@@ -57,18 +82,6 @@
         box-shadow: 0 8px 16px rgba(128, 0, 32, 0.25);
     }
     
-    @media (max-width: 768px) {
-        .responsive-table {
-            display: block;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        
-        .responsive-table table {
-            min-width: 600px;
-        }
-    }
-
     .subject-card {
         transition: all 0.2s ease;
     }
@@ -80,17 +93,18 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="subjectAllocation()" x-init="init()">
+<div class="sca-page-shell px-3 py-4 sm:px-5 md:px-6 lg:px-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="subjectAllocation()" x-init="init()">
+    <div class="max-w-[100rem] mx-auto w-full min-w-0">
     <div class="mb-6 sm:mb-8 scroll-reveal">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center mr-3 shadow-lg">
-                        <i class="fas fa-tasks text-white text-xl sm:text-2xl"></i>
+        <div class="flex flex-col gap-4">
+            <div class="min-w-0">
+                <h1 class="text-xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-3">
+                    <div class="w-11 h-11 sm:w-14 sm:h-14 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg">
+                        <i class="fas fa-tasks text-white text-lg sm:text-2xl"></i>
                     </div>
-                    Subject & Class Allocation Panel
+                    <span class="leading-tight min-w-0">Subject &amp; Class Allocation Panel</span>
                 </h1>
-                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-16">Select an academic level and teacher, then allocate subjects to them. These allocations will be linked to the timetable.</p>
+                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 max-w-3xl">Select an academic level and teacher, then allocate subjects to them. These allocations will be linked to the timetable.</p>
             </div>
         </div>
     </div>
@@ -167,14 +181,14 @@
             </div>
         </div>
         
-        <div class="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="mb-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
             <template x-for="subject in availableSubjects" :key="'subject-alloc-' + subject.id">
                 <button type="button"
                         @click="openTeacherPicker(subject)"
                         :class="isSubjectAllocated(subject.id)
                             ? 'border-green-400 dark:border-green-600 bg-green-50/70 dark:bg-green-900/20'
                             : 'border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/40 hover:border-brand-primary/60'"
-                        class="subject-card text-left rounded-xl border-2 p-4 w-full">
+                        class="subject-card text-left rounded-xl border-2 p-4 sm:p-4 w-full min-h-[44px] touch-manipulation">
                     <div class="flex items-start justify-between gap-2">
                         <div>
                             <div class="font-semibold text-gray-900 dark:text-white" x-text="subject.subject_name + (subject.subject_code ? ' (' + subject.subject_code + ')' : '')"></div>
@@ -195,12 +209,12 @@
                     </div>
                 </button>
             </template>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                <a href="#" class="text-brand-primary hover:text-brand-maroon-dark font-medium transition-colors" @click.prevent="showAddSubjectModal = true">
-                    <i class="fas fa-plus mr-1"></i>Add New Subject
-                </a>
-            </p>
         </div>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 mb-2">
+            <a href="#" class="inline-flex items-center gap-1.5 min-h-[44px] sm:min-h-0 py-2 sm:py-0 text-brand-primary hover:text-brand-maroon-dark font-semibold transition-colors touch-manipulation" @click.prevent="showAddSubjectModal = true">
+                <i class="fas fa-plus"></i>Add New Subject
+            </a>
+        </p>
         
         <!-- Actions -->
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-gray-200 dark:border-gray-700">
@@ -216,10 +230,10 @@
     <!-- Teacher Picker Modal -->
     <div x-show="showTeacherPickerModal"
          x-cloak
-         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
          @click.self="closeTeacherPicker()">
-        <div class="dashboard-card rounded-2xl shadow-2xl max-w-xl w-full" @click.stop>
-            <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
+        <div class="dashboard-card rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-xl w-full max-h-[92dvh] sm:max-h-[90vh] flex flex-col min-h-0 mx-auto sm:mx-0" @click.stop>
+            <div class="p-4 sm:p-5 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3 shrink-0">
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Allocate Teacher</h3>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mt-1" x-text="activeSubject ? activeSubject.subject_name + (activeSubject.subject_code ? ' (' + activeSubject.subject_code + ')' : '') : ''"></p>
@@ -229,16 +243,16 @@
                 </button>
             </div>
 
-            <div class="p-5 max-h-[65vh] overflow-y-auto">
+            <div class="p-4 sm:p-5 flex-1 min-h-0 overflow-y-auto overscroll-contain">
                 <button type="button"
                         @click="selectTeacherForActiveSubject(null)"
-                        class="w-full text-left mb-2 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-primary/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        class="w-full text-left mb-2 px-3 py-3 sm:py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-primary/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 touch-manipulation">
                     <span class="font-medium text-gray-800 dark:text-gray-200">No teacher (clear allocation)</span>
                 </button>
                 <template x-for="teacher in teachers" :key="'picker-teacher-' + teacher.id">
                     <button type="button"
                             @click="selectTeacherForActiveSubject(teacher.id)"
-                            class="w-full text-left mb-2 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-primary/50 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            class="w-full text-left mb-2 px-3 py-3 sm:py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-brand-primary/50 hover:bg-gray-50 dark:hover:bg-gray-700/50 touch-manipulation">
                         <div class="flex items-center justify-between gap-2">
                             <div>
                                 <div class="font-medium text-gray-900 dark:text-white" x-text="teacher.full_name"></div>
@@ -256,9 +270,9 @@
     <!-- Add Subject Modal -->
     <div x-show="showAddSubjectModal" 
          x-cloak
-         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
          @click.self="showAddSubjectModal = false">
-        <div class="dashboard-card rounded-2xl shadow-2xl max-w-md w-full transform transition-all" @click.stop>
+        <div class="dashboard-card rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-md w-full max-h-[92dvh] overflow-y-auto transform transition-all mx-auto sm:mx-0" @click.stop>
             <div class="p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Add New Subject</h3>
@@ -305,15 +319,15 @@
                                   style="text-transform: uppercase;"></textarea>
                     </div>
                     
-                    <div class="flex items-center justify-end gap-3 pt-4">
+                    <div class="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 pt-4">
                         <button type="button" 
                                 @click="showAddSubjectModal = false; newSubject = {subject_name: '', subject_code: '', description: ''}"
-                                class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                class="min-h-[44px] px-4 py-3 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors touch-manipulation">
                             Cancel
                         </button>
                         <button type="submit" 
                                 :disabled="creatingSubject"
-                                class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                class="min-h-[44px] px-6 py-3 sm:py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation">
                             <span x-text="creatingSubject ? 'Creating...' : 'Create Subject'"></span>
                         </button>
                     </div>
@@ -341,7 +355,7 @@
                 Academic Level
             </label>
             <select x-model="existingAllocationsLevelId"
-                    class="modern-input w-full md:w-[28rem] px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    class="modern-input w-full max-w-full md:max-w-xl lg:max-w-2xl px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary touch-manipulation">
                 <option value="">Select Academic Level</option>
                 <template x-for="level in academicLevels" :key="'existing-level-' + level.id">
                     <option :value="String(level.id)" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
@@ -367,9 +381,44 @@
             <p class="text-gray-600 dark:text-gray-400 text-lg">Select an academic level to view existing allocations.</p>
         </div>
         
-        <!-- Allocations Table -->
-        <div x-show="existingAllocationsLevelId && filteredAllocations.length > 0" class="responsive-table">
-            <div class="overflow-x-auto rounded-xl border-2 border-gray-200 dark:border-gray-700">
+        <!-- Allocations: mobile cards -->
+        <div x-show="existingAllocationsLevelId && filteredAllocations.length > 0" class="md:hidden space-y-3">
+            <template x-for="allocation in filteredAllocations" :key="'alloc-card-' + allocation.id">
+                <div class="rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/80 p-4 shadow-sm">
+                    <div class="flex items-start justify-between gap-2 mb-3">
+                        <div class="min-w-0 flex-1">
+                            <div class="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subject</div>
+                            <div class="font-semibold text-gray-900 dark:text-white text-sm mt-0.5 break-words" x-text="allocation.subject_name"></div>
+                            <div class="text-xs text-gray-600 dark:text-gray-400 mt-1" x-show="allocation.subject_code" x-text="'Code: ' + allocation.subject_code"></div>
+                        </div>
+                        <span class="shrink-0 px-2 py-1 text-[10px] font-bold uppercase rounded-full bg-brand-primary/10 text-brand-primary">Level</span>
+                    </div>
+                    <div class="text-sm text-gray-700 dark:text-gray-300 mb-1">
+                        <span class="font-semibold" x-text="allocation.level_name"></span>
+                        <span class="text-gray-500 dark:text-gray-400 text-xs block mt-0.5" x-text="allocation.level_category"></span>
+                    </div>
+                    <div class="border-t border-gray-100 dark:border-gray-700 pt-3 mt-3">
+                        <div class="text-[11px] font-bold uppercase text-gray-500 dark:text-gray-400">Teacher</div>
+                        <div class="font-medium text-gray-900 dark:text-white text-sm mt-0.5 break-words" x-text="allocation.teacher_name"></div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400" x-text="'ID: ' + allocation.employee_id"></div>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2 mt-4">
+                        <button type="button" @click="openEditAllocationModal(allocation)"
+                                class="modern-btn flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold shadow-md touch-manipulation">
+                            <i class="fas fa-pen"></i>Edit
+                        </button>
+                        <button type="button" @click="deleteAllocation(allocation.id)"
+                                class="modern-btn flex-1 inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-semibold shadow-md touch-manipulation">
+                            <i class="fas fa-trash"></i>Delete
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Allocations: tablet/desktop table -->
+        <div x-show="existingAllocationsLevelId && filteredAllocations.length > 0" class="hidden md:block">
+            <div class="sca-table-scroll rounded-xl border-2 border-gray-200 dark:border-gray-700">
                 <table class="w-full border-collapse">
                     <thead>
                         <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
@@ -380,27 +429,27 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="allocation in filteredAllocations" :key="allocation.id">
+                        <template x-for="allocation in filteredAllocations" :key="'alloc-row-' + allocation.id">
                             <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                                <td class="p-3 sm:p-4">
-                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.level_name"></div>
+                                <td class="p-3 sm:p-4 align-top">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm break-words" x-text="allocation.level_name"></div>
                                     <div class="text-xs text-gray-600 dark:text-gray-400" x-text="allocation.level_category"></div>
                                 </td>
-                                <td class="p-3 sm:p-4">
-                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.subject_name"></div>
+                                <td class="p-3 sm:p-4 align-top">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm break-words" x-text="allocation.subject_name"></div>
                                     <div class="text-xs text-gray-600 dark:text-gray-400" x-show="allocation.subject_code" x-text="'Code: ' + allocation.subject_code"></div>
                                 </td>
-                                <td class="p-3 sm:p-4">
-                                    <div class="font-semibold text-gray-900 dark:text-white text-sm" x-text="allocation.teacher_name"></div>
+                                <td class="p-3 sm:p-4 align-top">
+                                    <div class="font-semibold text-gray-900 dark:text-white text-sm break-words" x-text="allocation.teacher_name"></div>
                                     <div class="text-xs text-gray-600 dark:text-gray-400" x-text="'ID: ' + allocation.employee_id"></div>
                                 </td>
-                                <td class="p-3 sm:p-4 text-center">
-                                    <button @click="openEditAllocationModal(allocation)"
-                                            class="modern-btn px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md mr-2">
+                                <td class="p-3 sm:p-4 text-center align-top whitespace-nowrap">
+                                    <button type="button" @click="openEditAllocationModal(allocation)"
+                                            class="modern-btn inline-flex items-center px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-md mr-2 touch-manipulation">
                                         <i class="fas fa-pen mr-1"></i>Edit
                                     </button>
-                                    <button @click="deleteAllocation(allocation.id)"
-                                            class="modern-btn px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold transition-all shadow-md">
+                                    <button type="button" @click="deleteAllocation(allocation.id)"
+                                            class="modern-btn inline-flex items-center px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-semibold shadow-md touch-manipulation">
                                         <i class="fas fa-trash mr-1"></i>Delete
                                     </button>
                                 </td>
@@ -415,9 +464,9 @@
     <!-- Edit Existing Allocation Modal -->
     <div x-show="showEditAllocationModal"
          x-cloak
-         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+         class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4"
          @click.self="closeEditAllocationModal()">
-        <div class="dashboard-card rounded-2xl shadow-2xl max-w-lg w-full" @click.stop>
+        <div class="dashboard-card rounded-t-2xl sm:rounded-2xl shadow-2xl max-w-lg w-full max-h-[92dvh] overflow-y-auto mx-auto sm:mx-0" @click.stop>
             <div class="p-5 border-b border-gray-200 dark:border-gray-700 flex items-start justify-between gap-3">
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Edit Allocation</h3>
@@ -438,21 +487,22 @@
                     </template>
                 </select>
 
-                <div class="flex items-center justify-end gap-3 mt-5">
+                <div class="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 mt-5">
                     <button type="button"
                             @click="closeEditAllocationModal()"
-                            class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            class="min-h-[44px] px-4 py-3 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors touch-manipulation">
                         Cancel
                     </button>
                     <button type="button"
                             @click="saveEditedAllocation()"
                             :disabled="updatingAllocation || !editTeacherId"
-                            class="px-5 py-2.5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="min-h-[44px] px-5 py-3 sm:py-2.5 bg-brand-primary hover:bg-brand-maroon-dark text-white rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation">
                         <span x-text="updatingAllocation ? 'Saving...' : 'Save Changes'"></span>
                     </button>
                 </div>
             </div>
         </div>
+    </div>
     </div>
 </div>
 

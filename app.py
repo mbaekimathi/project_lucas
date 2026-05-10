@@ -5570,11 +5570,11 @@ def dashboard_employee():
                          teacher_exam_timetable=teacher_exam_timetable,
                          teacher_dashboard_analytics=teacher_dashboard_analytics)
 
-# Exams and Grades Route (for teachers)
+# Exams and Grades Route (for teachers) — canonical UI lives on exam_timetable.
 @app.route('/dashboard/employee/exams-and-grades')
 @login_required
 def exams_and_grades():
-    """Teacher-facing full exam timetable (filters + day sections), same data as coordinator timetable."""
+    """Backward-compatible URL; redirects to /…/exam-timetable (teacher matrix or full timetable)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
@@ -5585,21 +5585,7 @@ def exams_and_grades():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
-    if user_role in ('teachers', 'teacher'):
-        sup_for_page = session.get('user_id')
-    elif is_technician and viewing_as_role in ('teachers', 'teacher'):
-        sup_for_page = session.get('viewing_as_employee_id')
-    else:
-        sup_for_page = None
-    tt_ctx = _compute_exams_assessments_timetable_bundle(
-        supervisor_employee_id=sup_for_page,
-        restrict_to_supervisor=True,
-    )
-    tt_ctx['role'] = user_role
-    tt_ctx['is_technician'] = is_technician
-    tt_ctx['level_students_url_tmpl'] = employee_dashboard_path('exams-assessments/level/__LEVEL__/students')
-    tt_ctx['teacher_supervised_timetable_only'] = True
-    return render_template('dashboards/exams_and_grades.html', **tt_ctx)
+    return redirect(url_for('exam_timetable'))
 
 
 @app.route('/dashboard/employee/grades-registration')
@@ -5987,7 +5973,8 @@ def teacher_my_classes():
                                  current_term=None,
                                  current_year=None,
                                  timetable_data={},
-                                 assignments=[])
+                                 assignments=[],
+                                 days_order=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
     else:
         # Use user_id (database primary key) not employee_id (string like "333333")
         teacher_id = session.get('user_id')
@@ -16321,6 +16308,10 @@ def exam_evaluation():
     """Exam & Evaluation page - register exams and allocate supervisors"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_teacher_effective_nav = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
+    if is_teacher_effective_nav:
+        return redirect(employee_dashboard_path('exam-timetable'))
     
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
@@ -16896,8 +16887,9 @@ def exam_evaluation_registered_detail():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher_effective = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
 
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher_effective):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -16911,17 +16903,17 @@ def exam_evaluation_registered_detail():
         term_id = int(request.args.get('term_id', 0))
     except (ValueError, TypeError):
         flash('Invalid exam link.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     if not exam_name_raw or academic_year_id <= 0 or term_id <= 0:
         flash('Missing exam details.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     exam_name_key = exam_name_raw.upper()
     connection = get_db_connection()
     if not connection:
         flash('Database connection failed.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     records = []
     academic_levels = []
@@ -17072,14 +17064,47 @@ def exam_evaluation_registered_detail():
         import traceback
         traceback.print_exc()
         flash('Could not load this exam.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
     finally:
         if connection:
             connection.close()
 
     if not records:
         flash('Exam not found.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
+
+    teacher_supervisor_pk = None
+    if is_teacher_effective:
+        if user_role in ('teachers', 'teacher'):
+            teacher_supervisor_pk = session.get('user_id')
+        elif user_role == 'technician' and viewing_as_role in ('teachers', 'teacher'):
+            teacher_supervisor_pk = session.get('viewing_as_employee_id')
+        try:
+            teacher_supervisor_pk = int(teacher_supervisor_pk) if teacher_supervisor_pk is not None else None
+        except (TypeError, ValueError):
+            teacher_supervisor_pk = None
+
+        if not teacher_supervisor_pk:
+            flash('Could not resolve your staff profile.', 'error')
+            return redirect(url_for('exam_timetable'))
+
+        level_ids_for_teacher = set()
+        for r in records:
+            try:
+                sid = r.get('supervisor_id')
+                if sid is not None and int(sid) == teacher_supervisor_pk:
+                    lid = r.get('academic_level_id')
+                    if lid is not None:
+                        level_ids_for_teacher.add(int(lid))
+            except (TypeError, ValueError):
+                continue
+        if not level_ids_for_teacher:
+            flash('You have no class allocations for this exam.', 'info')
+            return redirect(url_for('exam_timetable'))
+        records = [
+            r for r in records
+            if r.get('academic_level_id') is not None and int(r['academic_level_id']) in level_ids_for_teacher
+        ]
 
     from collections import defaultdict
 
@@ -17149,6 +17174,7 @@ def exam_evaluation_registered_detail():
         analytics=analytics,
         erd_tab=erd_tab,
         session_presets=session_presets_ui,
+        erd_teacher_view=is_teacher_effective,
     )
 
 
@@ -17162,8 +17188,9 @@ def exam_evaluation_registered_analytics():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_teacher_effective = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
 
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher_effective):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
@@ -17173,11 +17200,11 @@ def exam_evaluation_registered_analytics():
         term_id = int(request.args.get('term_id', 0))
     except (ValueError, TypeError):
         flash('Invalid exam link.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     if not exam_name_raw or academic_year_id <= 0 or term_id <= 0:
         flash('Missing exam details.', 'error')
-        return redirect(url_for('exam_evaluation'))
+        return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     q = urlencode({
         'academic_year_id': academic_year_id,
@@ -21355,12 +21382,8 @@ def teacher_exams_assessments():
                     INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
                     INNER JOIN subjects s ON s.id = tsa.subject_id
                     WHERE tsa.teacher_id = %s
-                      AND EXISTS (
-                        SELECT 1
-                        FROM students st
-                        WHERE st.status = 'in session'
-                          AND TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
-                      )
+                      AND COALESCE(al.level_status, 'active') = 'active'
+                      AND COALESCE(s.status, 'active') = 'active'
                     ORDER BY al.level_category, al.level_name, s.subject_name
                 """, (int(teacher_id),))
 
@@ -21408,6 +21431,17 @@ def teacher_exams_assessments():
                                 'subject_name': r[6] if len(r) > 6 and r[6] else '',
                                 'subject_code': r[7] if len(r) > 7 and r[7] else '',
                             })
+
+                for lev in levels_by_id.values():
+                    seen_sid = set()
+                    uniq = []
+                    for s in lev.get('subjects') or []:
+                        sid = s.get('id')
+                        if sid is None or sid in seen_sid:
+                            continue
+                        seen_sid.add(sid)
+                        uniq.append(s)
+                    lev['subjects'] = uniq
 
                 # Preserve ordering from SQL by iterating rows and building list once per new level.
                 seen = set()
@@ -21471,9 +21505,10 @@ def _enrich_timetable_days_exam_groups(timetable_by_date):
 
 
 def _session_exam_timetable_supervisor_scope():
-    """If True, timetable rows are limited to ``exams.supervisor_id`` matching the signed-in teacher.
+    """If True, timetable rows are limited to exams the signed-in teacher supervises.
 
-    Returns (restrict_to_supervisor: bool, supervisor_employees_id: int|None).
+    Uses ``exams.supervisor_id`` or ``exam_supervisors`` (see timetable bundle). Returns
+    ``(restrict_to_supervisor: bool, supervisor_employees_id: int|None)``.
     ``supervisor_employees_id`` is ``employees.id`` (same as ``session['user_id']`` for teachers).
     """
     ur = (session.get('role') or '').lower()
@@ -21493,11 +21528,72 @@ def _session_exam_timetable_supervisor_scope():
     return False, None
 
 
-def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, restrict_to_supervisor=False):
+_EXAM_EG_MATRIX_SESSION_ORDER = ('MORNING', 'MIDDAY', 'AFTERNOON', 'EVENING', 'CUSTOM', '__OTHER__')
+
+
+def _exam_eg_summary_matrix(summary_rows):
+    """Build ``{cols, days}`` for date × session timetables on Exams & Grades.
+
+    Each row needs ``exam_date`` (YYYY-MM-DD or empty), ``session_key`` (e.g. MORNING), plus labels for rendering.
+    """
+    if not summary_rows:
+        return {'cols': [], 'days': []}
+    rows = list(summary_rows)
+    keys_seen = set()
+    for r in rows:
+        sk = r.get('session_key') or '__OTHER__'
+        sk = sk.strip().upper() if isinstance(sk, str) else '__OTHER__'
+        keys_seen.add(sk or '__OTHER__')
+
+    cols = [k for k in _EXAM_EG_MATRIX_SESSION_ORDER if k in keys_seen]
+    for k in sorted(keys_seen):
+        if k not in cols:
+            cols.append(k)
+
+    date_set = {(r.get('exam_date') or '') for r in rows}
+    dated = sorted([d for d in date_set if d])
+    if '' in date_set:
+        dated.append('')
+
+    days_out = []
+    for dk in dated:
+        dr = [r for r in rows if (r.get('exam_date') or '') == dk]
+        if not dr:
+            continue
+        weekday = dr[0].get('weekday') or ''
+        date_heading = dr[0].get('date_heading') or '—'
+        cells = {c: [] for c in cols}
+        for r in dr:
+            sk = r.get('session_key') or '__OTHER__'
+            sk = sk.strip().upper() if isinstance(sk, str) else '__OTHER__'
+            sk = sk or '__OTHER__'
+            if sk not in cells:
+                cells[sk] = []
+            cells[sk].append(r)
+        days_out.append({
+            'exam_date': dk,
+            'weekday': weekday,
+            'date_heading': date_heading,
+            'cells': cells,
+        })
+
+    return {'cols': cols, 'days': days_out}
+
+
+def _compute_exams_assessments_timetable_bundle(
+    supervisor_employee_id=None,
+    restrict_to_supervisor=False,
+    teacher_assignments_employee_id=None,
+):
     """Build exams timetable data from ``request.args`` (full page or ``live=1`` AJAX).
 
-    When ``restrict_to_supervisor`` is True, only rows with ``e.supervisor_id = supervisor_employee_id`` are
-    included (used for teachers on exams-and-grades and their timetable API calls).
+    When ``restrict_to_supervisor`` is True, only exams supervised by ``supervisor_employee_id`` are included:
+    ``exams.supervisor_id`` **or** a matching row in ``exam_supervisors`` (same logic as the teacher dashboard
+    supervision counts). Used for exams-and-grades and timetable API calls when scoped as teacher.
+
+    When ``teacher_assignments_employee_id`` is set (same employee as the teacher in session), also returns
+    ``teacher_assignment_exam_rows``: exams for subject/class combinations from ``teacher_subject_assignments``,
+    with allocated supervisors listed — for the “my subjects & who supervises” panel on Exams & Grades.
     """
     def _coerce_str(v):
         if v is None:
@@ -21630,6 +21726,7 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
             infer_year_for_term = False
 
     timetable_rows = []
+    teacher_assignment_exam_rows = []
     academic_years = []
     terms = []
     exams_for_filter = []
@@ -21640,6 +21737,12 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
             sup_filter_id = int(supervisor_employee_id) if supervisor_employee_id is not None else None
         except (TypeError, ValueError):
             sup_filter_id = None
+    ta_filter_id = None
+    if teacher_assignments_employee_id is not None:
+        try:
+            ta_filter_id = int(teacher_assignments_employee_id)
+        except (TypeError, ValueError):
+            ta_filter_id = None
     connection = get_db_connection()
     if connection:
         try:
@@ -21817,8 +21920,12 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
                     exam_filter_params.append(selected_term_id)
                 if restrict_to_supervisor:
                     if sup_filter_id:
-                        exam_filter_query += " AND e.supervisor_id = %s"
-                        exam_filter_params.append(sup_filter_id)
+                        exam_filter_query += (
+                            " AND (e.supervisor_id = %s OR EXISTS ("
+                            "SELECT 1 FROM exam_supervisors es "
+                            "WHERE es.exam_id = e.id AND es.supervisor_id = %s))"
+                        )
+                        exam_filter_params.extend([sup_filter_id, sup_filter_id])
                     else:
                         exam_filter_query += " AND 1 = 0"
                 exam_filter_query += " ORDER BY e.exam_name ASC"
@@ -21833,10 +21940,15 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
                         SELECT DISTINCT al.id, al.level_name, al.level_category
                         FROM exams e
                         INNER JOIN academic_levels al ON e.academic_level_id = al.id
-                        WHERE e.supervisor_id = %s
+                        WHERE (
+                            e.supervisor_id = %s OR EXISTS (
+                                SELECT 1 FROM exam_supervisors es
+                                WHERE es.exam_id = e.id AND es.supervisor_id = %s
+                            )
+                        )
                           AND COALESCE(al.level_status, 'active') = 'active'
                         ORDER BY al.level_category ASC, al.level_name ASC
-                    """, (sup_filter_id,))
+                    """, (sup_filter_id, sup_filter_id))
                 elif restrict_to_supervisor:
                     cursor.execute("SELECT 1 WHERE 1 = 0")
                 else:
@@ -21897,8 +22009,12 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
                     timetable_params.append(selected_class_id)
                 if restrict_to_supervisor:
                     if sup_filter_id:
-                        timetable_query += " AND e.supervisor_id = %s"
-                        timetable_params.append(sup_filter_id)
+                        timetable_query += (
+                            " AND (e.supervisor_id = %s OR EXISTS ("
+                            "SELECT 1 FROM exam_supervisors es "
+                            "WHERE es.exam_id = e.id AND es.supervisor_id = %s))"
+                        )
+                        timetable_params.extend([sup_filter_id, sup_filter_id])
                     else:
                         timetable_query += " AND 1 = 0"
                 timetable_query += """
@@ -21949,12 +22065,202 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
                             if include_exam_lock else False
                         ),
                     })
+
+                if ta_filter_id:
+                    try:
+                        tsa_sql = """
+                            SELECT
+                                e.id,
+                                e.exam_name,
+                                e.exam_date,
+                                e.session_type,
+                                e.start_time,
+                                e.end_time,
+                                e.venue,
+                                e.status,
+                                al.level_name,
+                                al.level_category,
+                                s.subject_name,
+                                s.subject_code,
+                                COALESCE(sup_primary.full_name, '') AS primary_supervisor_name,
+                                (
+                                    SELECT GROUP_CONCAT(DISTINCT es2.full_name ORDER BY es2.full_name SEPARATOR ', ')
+                                    FROM exam_supervisors exs
+                                    INNER JOIN employees es2 ON exs.supervisor_id = es2.id
+                                    WHERE exs.exam_id = e.id
+                                      AND (e.supervisor_id IS NULL OR exs.supervisor_id <> e.supervisor_id)
+                                ) AS extra_supervisor_names
+                            FROM exams e
+                            INNER JOIN teacher_subject_assignments tsa
+                                ON tsa.teacher_id = %s
+                               AND tsa.academic_level_id = e.academic_level_id
+                               AND (e.subject_id IS NULL OR tsa.subject_id = e.subject_id)
+                            LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                            LEFT JOIN subjects s ON e.subject_id = s.id
+                            LEFT JOIN employees sup_primary ON e.supervisor_id = sup_primary.id
+                            WHERE (e.status IS NULL OR e.status != 'cancelled')
+                        """
+                        tsa_params = [ta_filter_id]
+                        if selected_year_id > 0:
+                            tsa_sql += " AND e.academic_year_id = %s"
+                            tsa_params.append(selected_year_id)
+                        if selected_term_id > 0:
+                            tsa_sql += " AND e.term_id = %s"
+                            tsa_params.append(selected_term_id)
+                        if selected_exam_name:
+                            tsa_sql += " AND e.exam_name = %s"
+                            tsa_params.append(selected_exam_name)
+                        if selected_class_id > 0:
+                            tsa_sql += " AND e.academic_level_id = %s"
+                            tsa_params.append(selected_class_id)
+                        tsa_sql += """
+                            ORDER BY e.exam_date ASC, e.start_time ASC, al.level_category ASC, al.level_name ASC, e.id ASC
+                        """
+                        cursor.execute(tsa_sql, tuple(tsa_params))
+                        for trow in cursor.fetchall() or []:
+                            pn = _coerce_str(
+                                trow.get('primary_supervisor_name', '')
+                                if isinstance(trow, dict)
+                                else ''
+                            )
+                            extra_raw = trow.get('extra_supervisor_names', '') if isinstance(trow, dict) else ''
+                            extra_csv = _coerce_str(extra_raw) if extra_raw else ''
+                            extras = []
+                            if extra_csv:
+                                for part in extra_csv.split(','):
+                                    p = part.strip()
+                                    if not p or (pn and p.lower() == pn.lower()):
+                                        continue
+                                    if p not in extras:
+                                        extras.append(p)
+                            if pn:
+                                supervisor_allocated = pn + ((' · ' + ', '.join(extras)) if extras else '')
+                            elif extras:
+                                supervisor_allocated = ', '.join(extras)
+                            else:
+                                supervisor_allocated = '—'
+                            ed_iso = _format_date_value(
+                                trow.get('exam_date') if isinstance(trow, dict) else None
+                            )
+                            date_heading = ed_iso or 'No date assigned'
+                            weekday = ''
+                            if ed_iso:
+                                try:
+                                    dt = datetime.strptime(ed_iso, '%Y-%m-%d')
+                                    weekday = dt.strftime('%A')
+                                    date_heading = dt.strftime('%d %B %Y')
+                                except ValueError:
+                                    date_heading = ed_iso
+                            _sess_raw = _coerce_str(
+                                trow.get('session_type', '') if isinstance(trow, dict) else ''
+                            )
+                            _sess_key = _sess_raw.strip().upper() if _sess_raw.strip() else '__OTHER__'
+                            _ta_st = _format_time_value(
+                                trow.get('start_time') if isinstance(trow, dict) else None
+                            )
+                            _ta_en = _format_time_value(
+                                trow.get('end_time') if isinstance(trow, dict) else None
+                            )
+                            _ta_sess_bits = []
+                            if _sess_raw.strip():
+                                _ta_sess_bits.append(_sess_raw.strip())
+                            if _ta_st or _ta_en:
+                                _ta_sess_bits.append(f"{_ta_st or '—'}–{_ta_en or '—'}")
+                            _ta_session_summary = (
+                                ' · '.join(_ta_sess_bits) if _ta_sess_bits else '—'
+                            )
+                            teacher_assignment_exam_rows.append({
+                                'id': trow.get('id') if isinstance(trow, dict) else trow[0],
+                                'exam_name': _coerce_str(trow.get('exam_name', '') if isinstance(trow, dict) else ''),
+                                'exam_date': ed_iso,
+                                'weekday': weekday,
+                                'date_heading': date_heading,
+                                'session_type': _coerce_str(
+                                    trow.get('session_type', '') if isinstance(trow, dict) else ''
+                                ),
+                                'start_time': _ta_st,
+                                'end_time': _ta_en,
+                                'session_summary': _ta_session_summary,
+                                'venue': _coerce_str(trow.get('venue', '') if isinstance(trow, dict) else ''),
+                                'status': _coerce_str(
+                                    (trow.get('status', 'scheduled') if isinstance(trow, dict) else 'scheduled')
+                                    or 'scheduled'
+                                ),
+                                'level_name': _coerce_str(
+                                    trow.get('level_name', '') if isinstance(trow, dict) else ''
+                                ),
+                                'level_category': _coerce_str(
+                                    trow.get('level_category', '') if isinstance(trow, dict) else ''
+                                ),
+                                'subject_name': _coerce_str(
+                                    trow.get('subject_name', '') if isinstance(trow, dict) else ''
+                                ),
+                                'subject_code': _coerce_str(
+                                    trow.get('subject_code', '') if isinstance(trow, dict) else ''
+                                ),
+                                'supervisor_allocated': supervisor_allocated,
+                                'session_key': _sess_key,
+                            })
+                    except Exception as tsa_err:
+                        print(f"Error fetching teacher-assignment exam supervisors: {tsa_err}")
+
         except Exception as e:
             print(f"Error fetching all exam timetables: {e}")
         finally:
             connection.close()
 
     from collections import defaultdict
+
+    supervision_duty_summary_rows = []
+    if restrict_to_supervisor and timetable_rows:
+        for item in timetable_rows:
+            dk = item.get('exam_date') or ''
+            date_heading = dk or 'No date assigned'
+            weekday = ''
+            if dk:
+                try:
+                    dt = datetime.strptime(dk, '%Y-%m-%d')
+                    weekday = dt.strftime('%A')
+                    date_heading = dt.strftime('%d %B %Y')
+                except ValueError:
+                    date_heading = dk
+            session_bits = []
+            st = item.get('session_type') or ''
+            if st:
+                session_bits.append(st)
+            st_t = item.get('start_time') or ''
+            en_t = item.get('end_time') or ''
+            if st_t or en_t:
+                session_bits.append(f"{st_t or '—'}–{en_t or '—'}")
+            st_key_raw = (item.get('session_type') or '').strip()
+            session_key = st_key_raw.upper() if st_key_raw else '__OTHER__'
+            supervision_duty_summary_rows.append({
+                'exam_name': item.get('exam_name') or '',
+                'exam_date': dk,
+                'weekday': weekday,
+                'date_heading': date_heading,
+                'session_key': session_key,
+                'session_summary': ' · '.join(session_bits) if session_bits else '—',
+                'start_time': item.get('start_time') or '',
+                'end_time': item.get('end_time') or '',
+                'subject_name': item.get('subject_name') or '',
+                'subject_code': item.get('subject_code') or '',
+                'level_name': item.get('level_name') or '',
+                'level_category': item.get('level_category') or '',
+                'venue': item.get('venue') or '',
+            })
+        supervision_duty_summary_rows.sort(
+            key=lambda r: (
+                r.get('exam_date') or '9999-12-31',
+                r.get('session_key') or '',
+                r.get('session_summary') or '',
+                r.get('level_name') or '',
+                r.get('subject_name') or '',
+            ),
+        )
+
+    supervision_duty_matrix = _exam_eg_summary_matrix(supervision_duty_summary_rows)
+    teacher_assignment_matrix = _exam_eg_summary_matrix(teacher_assignment_exam_rows)
 
     timetable_by_date = []
     if timetable_rows:
@@ -22014,13 +22320,17 @@ def _compute_exams_assessments_timetable_bundle(supervisor_employee_id=None, res
         'selected_term_id': selected_term_id,
         'selected_exam_name': selected_exam_name,
         'selected_class_id': selected_class_id,
+        'supervision_duty_summary_rows': supervision_duty_summary_rows,
+        'teacher_assignment_exam_rows': teacher_assignment_exam_rows,
+        'supervision_duty_matrix': supervision_duty_matrix,
+        'teacher_assignment_matrix': teacher_assignment_matrix,
     }
 
 
-@app.route('/dashboard/employee/exams-assessments/timetable')
+@app.route('/dashboard/employee/exam-timetable')
 @login_required
-def exams_assessments_timetable():
-    """All exams timetable with filters for year, term, exam, and class."""
+def exam_timetable():
+    """Exams timetable: teachers see date × session matrices (supervision + assignments); coordinators/principals see full wall timetable."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
@@ -22033,6 +22343,25 @@ def exams_assessments_timetable():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
+    # Signed-in teacher, or technician viewing as teacher → same compact matrices as legacy exams-and-grades.
+    teacher_matrix_view = (
+        user_role in ('teachers', 'teacher')
+        or (user_role == 'technician' and viewing_as_role in ('teachers', 'teacher'))
+    )
+    if teacher_matrix_view:
+        if user_role in ('teachers', 'teacher'):
+            emp_matrix_id = session.get('user_id')
+        else:
+            emp_matrix_id = session.get('viewing_as_employee_id')
+        ctx = _compute_exams_assessments_timetable_bundle(
+            supervisor_employee_id=emp_matrix_id,
+            restrict_to_supervisor=True,
+            teacher_assignments_employee_id=emp_matrix_id,
+        )
+        ctx['role'] = user_role
+        ctx['is_technician'] = is_technician
+        return render_template('dashboards/exams_and_grades.html', **ctx)
+
     restrict_sup, sup_id = _session_exam_timetable_supervisor_scope()
     ctx = _compute_exams_assessments_timetable_bundle(
         supervisor_employee_id=sup_id,
@@ -22042,9 +22371,9 @@ def exams_assessments_timetable():
     return render_template('dashboards/exams_timetable_all.html', **ctx)
 
 
-@app.route('/dashboard/employee/exams-assessments/timetable/api')
+@app.route('/dashboard/employee/exam-timetable/api')
 @login_required
-def exams_assessments_timetable_api():
+def exam_timetable_api():
     """JSON for live timetable filtering (requires ``live=1`` plus filter query params)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
@@ -22064,6 +22393,7 @@ def exams_assessments_timetable_api():
     ctx = _compute_exams_assessments_timetable_bundle(
         supervisor_employee_id=sup_id,
         restrict_to_supervisor=restrict_sup,
+        teacher_assignments_employee_id=sup_id if restrict_sup else None,
     )
     return jsonify({
         'success': True,
@@ -22076,7 +22406,31 @@ def exams_assessments_timetable_api():
         'selected_term_id': ctx.get('selected_term_id', 0),
         'selected_exam_name': ctx.get('selected_exam_name') or '',
         'selected_class_id': ctx.get('selected_class_id', 0),
+        'supervision_duty_summary_rows': ctx.get('supervision_duty_summary_rows') or [],
+        'teacher_assignment_exam_rows': ctx.get('teacher_assignment_exam_rows') or [],
+        'supervision_duty_matrix': ctx.get('supervision_duty_matrix') or {'cols': [], 'days': []},
+        'teacher_assignment_matrix': ctx.get('teacher_assignment_matrix') or {'cols': [], 'days': []},
     })
+
+
+@app.route('/dashboard/employee/exams-assessments/timetable')
+@login_required
+def exams_assessments_timetable_legacy_redirect():
+    """Old path; permanent redirect to /exam-timetable."""
+    target = url_for('exam_timetable')
+    if request.query_string:
+        target += '?' + request.query_string.decode()
+    return redirect(target, code=301)
+
+
+@app.route('/dashboard/employee/exams-assessments/timetable/api')
+@login_required
+def exams_assessments_timetable_api_legacy_redirect():
+    """Old API path; permanent redirect to /exam-timetable/api."""
+    target = url_for('exam_timetable_api')
+    if request.query_string:
+        target += '?' + request.query_string.decode()
+    return redirect(target, code=301)
 
 # Exam Analytics Route
 @app.route('/dashboard/employee/exam-analytics')
@@ -22679,6 +23033,16 @@ def students_by_academic_level(level_id):
                     'level_description': level_result.get('level_description') if isinstance(level_result, dict) else level_result[3],
                     'level_status': level_result.get('level_status') if isinstance(level_result, dict) else level_result[4]
                 }
+
+                if is_teacher and teacher_id:
+                    cursor.execute("""
+                        SELECT 1 FROM teacher_subject_assignments
+                        WHERE teacher_id = %s AND academic_level_id = %s
+                        LIMIT 1
+                    """, (teacher_id, level_id))
+                    if not cursor.fetchone():
+                        flash('You are not allocated to this class for exam marks entry.', 'error')
+                        return redirect(employee_dashboard_path('exams-assessments'))
                 
                 # Get all students with current_grade matching the level_name from students table (simplified - only full_name and student_id)
                 cursor.execute("""
