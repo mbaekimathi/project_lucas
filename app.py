@@ -15284,12 +15284,14 @@ def system_settings():
     # Check if user is accountant or viewing as accountant
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
     # Check permission OR role-based access - allow technicians and accountants
     has_access = check_permission_or_role('system_settings', 
                                          allowed_roles=['technician', 'accountant'])
     
-    if not (has_access or is_accountant or is_technician):
+    # Allow secretary to open Academic Year section (read-only UI behavior is in templates/forms).
+    if not (has_access or is_accountant or is_technician or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
