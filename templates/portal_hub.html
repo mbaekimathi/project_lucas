@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ school_settings.school_name or 'School' }} — Portal{% endblock %}
+{% block body_class %}public-site school-public{% endblock %}
+{% block header_subtitle %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}Admissions &amp; staff access{% endif %}{% endblock %}
+
+{% block content %}
+<section class="auth-portal auth-portal--wide relative py-12 md:py-16">
+    <div class="auth-portal__bg" aria-hidden="true"></div>
+    <div class="relative z-10 max-w-xl mx-auto px-4 sm:px-6">
+        <div class="text-center mb-8">
+            <p class="edu-eyebrow mb-2 text-brand-primary dark:text-brand-secondary">Portal</p>
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white tracking-tight">{{ school_settings.school_name or 'School portal' }}</h1>
+            {% if session.get('user_id') %}
+            <p class="text-gray-600 dark:text-gray-400 mt-2 text-sm sm:text-base leading-relaxed">
+                You are signed in. Return to your dashboard or sign out when you are finished.
+            </p>
+            {% else %}
+            <p class="text-gray-600 dark:text-gray-400 mt-2 text-sm sm:text-base leading-relaxed">
+                Use the options below. The full school dashboard is not available on this site.
+            </p>
+            {% endif %}
+        </div>
+        <div class="auth-card rounded-2xl border border-gray-200/80 dark:border-slate-600/80 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-xl p-8 md:p-10 flex flex-col gap-3">
+            {% if session.get('user_id') %}
+            <div class="flex flex-col items-center text-center gap-4 pb-1">
+                {% if session.get('profile_picture') %}
+                <img src="{{ url_for('static', filename=session.profile_picture) }}"
+                     alt="Profile photo of {{ session.get('full_name', 'User') }}"
+                     class="w-20 h-20 rounded-full object-cover border-2 border-gray-200 dark:border-slate-600 shadow-md">
+                {% else %}
+                <div class="w-20 h-20 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center border-2 border-gray-200/60 dark:border-slate-600 shadow-md" aria-hidden="true">
+                    <i class="fas fa-user text-white text-3xl"></i>
+                </div>
+                {% endif %}
+                <div>
+                    <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ session.get('full_name', 'User') }}</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 max-w-sm mx-auto leading-relaxed">
+                        Would you like to go back to your dashboard, or log out?
+                    </p>
+                </div>
+            </div>
+            <a href="{{ dashboard_home_url() }}" class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline">
+                <i class="fas fa-home" aria-hidden="true"></i> Go to dashboard
+            </a>
+            <a href="{{ url_for('logout') }}" class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-gray-300 dark:border-slate-600 text-gray-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log out
+            </a>
+            {% else %}
+            <a href="{{ url_for('login') }}" class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline">
+                <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Login
+            </a>
+            <a href="{{ url_for('register_employee') }}" class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-gray-300 dark:border-slate-600 text-gray-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                <i class="fas fa-user-plus" aria-hidden="true"></i> Staff registration
+            </a>
+            <a href="{{ url_for('admission') }}" class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-gray-300 dark:border-slate-600 text-gray-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

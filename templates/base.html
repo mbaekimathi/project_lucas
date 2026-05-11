@@ -1,12 +1,5 @@
-{% set public_site_topnav = request.endpoint in ['home', 'features', 'solutions', 'pricing', 'demo', 'about', 'contact', 'faq', 'programs', 'gallery', 'news', 'team', 'login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
-{% set pub_nav = [
-    ('/', 'home', 'Home', 'fa-home'),
-    ('/about', 'about', 'About', 'fa-school'),
-    ('/features', 'features', 'Programs', 'fa-book-open'),
-    ('/solutions', 'solutions', 'Community', 'fa-people-group'),
-    ('/admission', 'admission', 'Admissions', 'fa-file-signature'),
-] %}
-{% set marketing_premium_shell = request.endpoint in ['home', 'features', 'solutions', 'pricing', 'demo', 'faq', 'about', 'contact', 'login', 'admission'] %}
+{% set public_site_topnav = request.endpoint in ['home', 'login', 'register_employee', 'admission'] %}
+{% set marketing_premium_shell = request.endpoint in ['home', 'login', 'admission'] %}
 <!DOCTYPE html>
 <html lang="en" x-data="{ 
     darkMode: localStorage.getItem('darkMode') === 'true',
@@ -24,8 +17,7 @@
     publicTopNav: {{ public_site_topnav|tojson }},
     {# Solid header on home too — matches other marketing pages and keeps nav readable #}
     publicHeaderGlass: false,
-    publicHeaderScrolled: false,
-    mobilePublicNavOpen: false
+    publicHeaderScrolled: false
 }" 
       :class="{ 'dark': darkMode }"
       x-init="
@@ -620,7 +612,7 @@
                             <span class="sr-only">{{ school_settings.school_name or 'Home' }}</span>
                             {% endif %}
                             <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if school_settings.school_logo %} mt-0.5{% elif public_site_topnav %} hidden md:block{% endif %}">
-                                {% block header_subtitle %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endblock %}
+                                {% block header_subtitle %}{% if public_site_topnav or not session.get('user_id') %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endif %}{% endblock %}
                             </div>
                         </div>
                     </a>
@@ -628,17 +620,6 @@
                     <span class="site-header__product-tag hidden xl:inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider" title="Curriculum">CBC · Kenya</span>
                     {% endif %}
                 </div>
-
-                {% if public_site_topnav %}
-                <div class="site-header__nav-shell hidden lg:flex flex-1 justify-center min-w-0 max-w-full px-1">
-                    <nav class="site-header__nav site-header__nav--marketing flex flex-wrap items-center justify-center gap-x-0.5 gap-y-1 max-w-full min-w-0 py-1 px-0.5 sm:px-1" aria-label="Primary">
-                        {% for href, ep, label, icon in pub_nav %}
-                        <a href="{{ href }}" class="public-nav-link inline-flex items-center gap-1.5 xl:gap-2 px-2 sm:px-2.5 xl:px-3.5 py-2 xl:py-2.5 rounded-full text-xs xl:text-sm whitespace-nowrap transition-all duration-200 {% if request.endpoint == ep %}is-active font-semibold{% else %}font-medium{% endif %}">
-                            <i class="fas {{ icon }} text-[0.65rem] xl:text-xs opacity-90 shrink-0" aria-hidden="true"></i><span class="tracking-tight">{{ label }}</span></a>
-                        {% endfor %}
-                    </nav>
-                </div>
-                {% endif %}
 
                 <!-- Right: User Menu / Login -->
                 <div class="site-header__actions flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
@@ -650,17 +631,6 @@
                         <i class="fas fa-clock text-xs text-slate-300"></i>
                         <span id="header-live-time" class="text-xs font-semibold whitespace-nowrap"></span>
                     </div>
-                    {% endif %}
-                    {% if public_site_topnav %}
-                    {% if request.endpoint not in ['login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
-                    <a href="{{ url_for('admission') }}" class="site-header__demo-cta hidden sm:inline-flex items-center gap-1.5 rounded-full border border-transparent px-3 py-2 text-xs font-semibold whitespace-nowrap transition-colors md:px-3.5 md:text-sm">
-                        <i class="fas fa-file-signature text-[0.7rem] opacity-90" aria-hidden="true"></i><span class="hidden md:inline">Apply online</span><span class="md:hidden">Apply</span>
-                    </a>
-                    {% endif %}
-                    <button type="button" @click="mobilePublicNavOpen = !mobilePublicNavOpen" class="site-header__icon-btn site-header__menu-btn lg:hidden p-2.5 rounded-xl touch-manipulation text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent hover:border-gray-200 dark:hover:border-gray-600" :aria-expanded="mobilePublicNavOpen" aria-controls="public-site-nav-panel" aria-label="Toggle menu">
-                        <i class="fas fa-bars text-xl" x-show="!mobilePublicNavOpen"></i>
-                        <i class="fas fa-times text-xl" x-show="mobilePublicNavOpen" x-cloak></i>
-                    </button>
                     {% endif %}
                     <!-- Dark Mode Toggle -->
                     <button type="button" @click.prevent="darkMode = !darkMode" 
@@ -750,25 +720,20 @@
                                  x-transition:leave-end="opacity-0 scale-95"
                              x-cloak
                              class="absolute right-0 mt-1.5 sm:mt-2 w-36 sm:w-48 md:w-52 bg-white dark:bg-slate-900 rounded-lg sm:rounded-xl shadow-lg border border-slate-200 dark:border-slate-600 py-1 sm:py-2 z-50">
-                            {% set user_role = session.get('role', 'employee')|lower %}
-                            {% set profile_role = 'employee' if user_role in ['employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'] else user_role %}
                             <a href="{{ dashboard_home_url() }}" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 leading-tight">
-                                <i class="fas fa-tachometer-alt w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400"></i><span class="font-medium">Dashboard</span>
+                                <i class="fas fa-th-large w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400"></i><span class="font-medium">Dashboard</span>
                             </a>
-                            <a href="/profile/{{ profile_role }}" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 leading-tight">
-                                <i class="fas fa-user w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400"></i><span class="font-medium">Profile</span>
-                            </a>
-                            <a href="/settings/{{ profile_role }}" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 leading-tight">
-                                <i class="fas fa-cog w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400"></i><span class="font-medium">Settings</span>
+                            <a href="{{ url_for('home') }}" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 leading-tight">
+                                <i class="fas fa-home w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center text-slate-500 dark:text-slate-400"></i><span class="font-medium">Portal home</span>
                             </a>
                             <hr class="my-0.5 sm:my-1 border-gray-200 dark:border-gray-700">
-                            <a href="/logout" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 leading-tight">
+                            <a href="{{ url_for('logout') }}" class="flex items-center gap-1.5 sm:gap-2 px-2 py-1.5 sm:px-3 sm:py-2 text-xs sm:text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 leading-tight">
                                 <i class="fas fa-sign-out-alt w-3.5 sm:w-4 text-[11px] sm:text-sm shrink-0 flex items-center justify-center"></i><span class="font-medium">Logout</span>
                                 </a>
                             </div>
                         </div>
                         {% else %}
-                    {% if request.endpoint in ['login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
+                    {% if request.endpoint in ['login', 'register_employee', 'admission'] %}
                     <a href="{{ url_for('home') }}" class="site-header__login site-header__login--ghost px-4 py-2.5 rounded-xl transition-all text-sm font-semibold touch-manipulation border-2 border-brand-primary text-brand-primary hover:bg-brand-primary hover:text-white dark:border-brand-secondary dark:text-brand-secondary dark:hover:bg-brand-secondary dark:hover:text-white">
                         <i class="fas fa-home mr-2"></i><span class="hidden sm:inline">Back to site</span>
                     </a>
@@ -782,34 +747,6 @@
             </div>
         </div>
     </header>
-
-    {% if public_site_topnav %}
-    <div id="public-site-nav-panel"
-         x-show="mobilePublicNavOpen"
-         x-transition:enter="transition ease-out duration-200"
-         x-transition:enter-start="opacity-0 -translate-y-1"
-         x-transition:enter-end="opacity-100 translate-y-0"
-         x-transition:leave="transition ease-in duration-150"
-         x-transition:leave-start="opacity-100 translate-y-0"
-         x-transition:leave-end="opacity-0 -translate-y-1"
-         @click.away="mobilePublicNavOpen = false"
-         class="public-site-nav-panel lg:hidden fixed top-16 left-0 right-0 z-40 border-b shadow-2xl"
-         x-cloak>
-        <nav class="public-site-nav-panel__nav flex flex-col gap-2 py-3 px-4 sm:px-6 max-h-[min(70vh,calc(100vh-5rem))] overflow-y-auto" aria-label="Primary mobile">
-            {% for href, ep, label, icon in pub_nav %}
-            <a href="{{ href }}" @click="mobilePublicNavOpen = false" class="public-site-nav-panel__link flex items-center gap-3 px-4 py-3.5 rounded-xl border transition-colors {% if request.endpoint == ep %}border-brand-primary/50 text-brand-primary font-semibold bg-brand-primary/[0.08] dark:bg-brand-primary/15 shadow-sm{% else %}border-gray-200/80 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800/80{% endif %}">
-                <span class="public-site-nav-panel__icon-wrap flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700/80 text-brand-primary"><i class="fas {{ icon }}"></i></span>
-                <span class="text-base font-medium">{{ label }}</span>
-            </a>
-            {% endfor %}
-            {% if request.endpoint not in ['login', 'register_employee', 'admission', 'retrieve_password', 'reset_password'] %}
-            <a href="{{ url_for('admission') }}" @click="mobilePublicNavOpen = false" class="public-site-nav-panel__cta mt-1 flex items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-bold text-white shadow-lg">
-                <i class="fas fa-file-signature" aria-hidden="true"></i> Apply for admission
-            </a>
-            {% endif %}
-        </nav>
-    </div>
-    {% endif %}
 
     {% if not public_site_topnav %}
     <!-- Sidebar Overlay (Mobile / tablet drawer) -->
@@ -996,12 +933,12 @@
         {% set brand_title = (school_settings.project_name or school_settings.school_name or 'School')|trim %}
         {% set brand_words = brand_title.split() %}
         <div class="public-site-footer__bar">
-            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-10">
+            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 md:py-5">
                 <div class="public-site-footer__grid{% if marketing_premium_shell %} public-site-footer__grid--premium{% endif %}">
                     <div class="public-site-footer__col public-site-footer__col--brand">
                         <a href="{{ url_for('home') }}" class="public-site-footer__brand">
                             {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="public-site-footer__logo-img" width="160" height="48" loading="lazy" decoding="async">
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="{{ school_settings.school_name or 'School logo' }}" class="public-site-footer__logo-img" width="120" height="36" loading="lazy" decoding="async">
                             {% else %}
                             <div class="public-site-footer__wordmark" aria-hidden="true">
                                 {% if brand_words|length > 1 %}
@@ -1021,25 +958,18 @@
                             {% if school_settings.school_email %}
                             <a href="mailto:{{ school_settings.school_email }}" class="public-site-footer__social-link" aria-label="Email"><i class="fas fa-envelope" aria-hidden="true"></i></a>
                             {% else %}
-                            <a href="{{ url_for('contact') }}" class="public-site-footer__social-link" aria-label="Contact"><i class="fas fa-envelope" aria-hidden="true"></i></a>
+                            <span class="public-site-footer__social-link public-site-footer__social-link--inactive" aria-disabled="true" title="No email on file"><i class="fas fa-envelope" aria-hidden="true"></i></span>
                             {% endif %}
                             <a href="{{ school_settings.twitter_url or '#' }}" class="public-site-footer__social-link{% if not school_settings.twitter_url %} public-site-footer__social-link--inactive{% endif %}" {% if school_settings.twitter_url %}target="_blank" rel="noopener noreferrer"{% else %}aria-disabled="true" tabindex="-1"{% endif %} aria-label="X"><i class="fab fa-x-twitter" aria-hidden="true"></i></a>
                         </div>
                     </div>
                     <div class="public-site-footer__col public-site-footer__col--links">
-                        <p class="public-site-footer__heading">Explore</p>
+                        <p class="public-site-footer__heading">Portal</p>
                         <ul class="public-site-footer__list">
-                            <li><a href="{{ url_for('features') }}">Programs &amp; learning</a></li>
-                            <li><a href="{{ url_for('admission') }}">Admissions</a></li>
-                            <li><a href="{{ url_for('solutions') }}">Community &amp; life</a></li>
-                            <li><a href="{{ url_for('faq') }}">FAQ</a></li>
-                        </ul>
-                        <p class="public-site-footer__heading public-site-footer__heading--spaced">School</p>
-                        <ul class="public-site-footer__list">
-                            <li><a href="{{ url_for('about') }}">About us</a></li>
-                            <li><a href="{{ url_for('contact') }}">Contact the office</a></li>
-                            <li><a href="{{ url_for('pricing') }}">Fees &amp; information</a></li>
-                            <li><a href="{{ url_for('terms_and_conditions') }}">Policies</a></li>
+                            <li><a href="{{ url_for('home') }}">Home</a></li>
+                            <li><a href="{{ url_for('login') }}">Login</a></li>
+                            <li><a href="{{ url_for('register_employee') }}">Staff registration</a></li>
+                            <li><a href="{{ url_for('admission') }}">Admission</a></li>
                         </ul>
                     </div>
                     <div class="public-site-footer__col public-site-footer__col--contact">
@@ -1048,7 +978,7 @@
                             {% if school_settings.school_email %}
                             <li><a href="mailto:{{ school_settings.school_email }}"><i class="fas fa-envelope" aria-hidden="true"></i> {{ school_settings.school_email }}</a></li>
                             {% else %}
-                            <li><a href="{{ url_for('contact') }}"><i class="fas fa-envelope" aria-hidden="true"></i> Message us</a></li>
+                            <li><span class="public-site-footer__contact-static text-white/50"><i class="fas fa-envelope" aria-hidden="true"></i> See school office</span></li>
                             {% endif %}
                             {% if school_settings.school_phone %}
                             <li><a href="tel:{{ school_settings.school_phone|replace(' ', '') }}"><i class="fas fa-phone" aria-hidden="true"></i> {{ school_settings.school_phone }}</a></li>
@@ -1060,19 +990,15 @@
                         <a href="{{ url_for('login') }}" class="public-site-footer__portal-btn"><i class="fas fa-right-to-bracket" aria-hidden="true"></i> Staff / parent login</a>
                     </div>
                     <div class="public-site-footer__col public-site-footer__col--search">
-                        <p class="public-site-footer__heading">Search</p>
-                        <p class="public-site-footer__hint">Find pages on this site.</p>
-                        <form class="public-site-footer__search" action="{{ url_for('public_site_search') }}" method="get" role="search" aria-label="Search this site">
-                            <label class="sr-only" for="site-footer-search-q">Search our site</label>
-                            <input type="search" id="site-footer-search-q" name="q" class="public-site-footer__search-input" placeholder="admissions, programs, contact…" autocomplete="off" minlength="1">
-                            <button type="submit" class="public-site-footer__search-btn">Go</button>
-                        </form>
+                        <p class="public-site-footer__heading">Quick links</p>
+                        <p class="public-site-footer__hint">This site only offers login, staff registration, and admission.</p>
+                        <a href="{{ url_for('login') }}" class="public-site-footer__portal-btn inline-flex w-full justify-center">Go to login</a>
                     </div>
                 </div>
             </div>
         </div>
         <div class="public-site-footer__sub">
-            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row flex-wrap items-center justify-between gap-2 text-[11px] sm:text-xs text-white/45">
+            <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2 sm:py-2 flex flex-col sm:flex-row flex-wrap items-center justify-between gap-1.5 text-[10px] sm:text-[11px] text-white/45">
                 <div class="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 sm:justify-start">
                     <span class="inline-flex items-center gap-1.5"><i class="fas fa-shield-halved text-white/30 text-[10px]" aria-hidden="true"></i> Safe, welcoming campus</span>
                     <span class="text-white/20 hidden sm:inline" aria-hidden="true">·</span>

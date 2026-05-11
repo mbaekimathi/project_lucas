@@ -2409,6 +2409,7 @@ def permission_required(permission_key):
 def send_admission_confirmation_email(parent_email, parent_name, student_name, student_id):
     """Send confirmation email to parent/guardian after admission submission"""
     try:
+        salutation_name = (parent_name or '').strip() or 'Parent/Guardian'
         # Get support contact information from environment or use defaults
         support_email = os.environ.get('SUPPORT_EMAIL', 'support@modernschool.com')
         support_phone = os.environ.get('SUPPORT_PHONE', '+254 700 000 000')
@@ -2478,7 +2479,7 @@ def send_admission_confirmation_email(parent_email, parent_name, student_name, s
                 <h1>{school_name}</h1>
             </div>
             <div class="content">
-                <p>Dear {parent_name},</p>
+                <p>Dear {salutation_name},</p>
                 
                 <p>Thank you for submitting the admission application for <strong>{student_name}</strong>.</p>
                 
@@ -2517,7 +2518,7 @@ def send_admission_confirmation_email(parent_email, parent_name, student_name, s
         
         # Plain text version
         text_body = f"""
-Dear {parent_name},
+Dear {salutation_name},
 
 Thank you for submitting the admission application for {student_name}.
 
@@ -3434,28 +3435,59 @@ def admission():
         else:
             sponsor_email = None  # Convert empty string to None for database
         
-        # Parent/Guardian information (from parents table)
-        parent_name = normalize_text(request.form.get('parent_name', ''))  # parents.full_name
-        relationship = normalize_text(request.form.get('relationship'), allow_empty=True) if request.form.get('relationship') else None  # parents.relationship
-        parent_phone = normalize_text(request.form.get('parent_phone', ''))  # parents.phone
-        parent_email = normalize_text(request.form.get('parent_email', ''), uppercase=False, allow_empty=True)  # parents.email
+        # Parent/Guardian information (from parents table) — optional on form; defaults applied before save
+        parent_name = normalize_text(request.form.get('parent_name', ''), allow_empty=True)
+        relationship = normalize_text(request.form.get('relationship'), allow_empty=True) if request.form.get('relationship') else None
+        parent_phone = normalize_text(request.form.get('parent_phone', ''), uppercase=False, allow_empty=True)
+        parent_email = normalize_text(request.form.get('parent_email', ''), uppercase=False, allow_empty=True)
         if parent_email:
-            parent_email = parent_email.lower()  # Email in lowercase
+            parent_email = parent_email.lower()
         else:
-            parent_email = None  # Convert empty string to None for database
-        emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None  # parents.emergency_contact
+            parent_email = None
+        emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None
         
         consent = request.form.get('consent')
+        parent_email_left_blank = not (request.form.get('parent_email') or '').strip()
         
-        # Validate required fields
-        if not all([full_name, date_of_birth, parent_name, relationship, parent_phone, consent, student_category]):
-            flash('Please fill in all required fields.', 'error')
+        # Required: student core + category + consent
+        if not all([full_name, date_of_birth, consent, student_category]):
+            flash('Please fill in all required fields (student details, student category, and consent).', 'error')
             return redirect(url_for('admission'))
         
         # Validate sponsor_name if category is sponsored or both
         if student_category in ['sponsored', 'both'] and not sponsor_name:
             flash('Please provide sponsor name/company for sponsored students.', 'error')
             return redirect(url_for('admission'))
+        
+        # Optional blanks → placeholders (parents.phone / parents.full_name are NOT NULL in DB)
+        if not parent_name:
+            parent_name = normalize_text(f'PARENT TO {full_name}')
+        if not relationship:
+            relationship = normalize_text('NOT SPECIFIED')
+        if not parent_phone:
+            parent_phone = '070000000000'
+        if parent_email_left_blank:
+            parent_email = 'parent@gmail.com'
+        if not emergency_contact:
+            emergency_contact = '070000000000'
+        if not address:
+            address = normalize_text(
+                f'NOT PROVIDED AT APPLICATION — STUDENT: {full_name}',
+                uppercase=False,
+                allow_empty=False,
+            )
+        if not medical_info:
+            medical_info = normalize_text(
+                'NOT PROVIDED AT APPLICATION',
+                uppercase=False,
+                allow_empty=False,
+            )
+        if not special_needs:
+            special_needs = normalize_text(
+                'NONE REPORTED AT APPLICATION',
+                uppercase=False,
+                allow_empty=False,
+            )
         
         # Save to database
         connection = get_db_connection()
@@ -3485,13 +3517,18 @@ def admission():
                         VALUES (%s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(parent_sql, (
-                        student_id, parent_name, parent_phone, parent_email, relationship, emergency_contact
+                        student_id,
+                        (parent_name or ''),
+                        (parent_phone or ''),
+                        parent_email,
+                        relationship,
+                        emergency_contact,
                     ))
                     
                     connection.commit()
                     
-                    # Send email notification to parent (only if email is provided)
-                    if parent_email:
+                    # Confirmation email only when applicant typed an address (not auto-filled placeholder)
+                    if parent_email and not parent_email_left_blank:
                         try:
                             send_admission_confirmation_email(parent_email, parent_name, full_name, student_id)
                         except Exception as email_error:
@@ -12037,11 +12074,12 @@ def student_management():
         try:
             with connection.cursor() as cursor:
                 cursor.execute("""
-                    SELECT s.id, s.student_id, s.full_name, s.date_of_birth, s.gender, 
-                           s.current_grade, s.previous_school, s.address, s.medical_info, 
-                           s.special_needs, s.student_category, s.status, s.created_at, s.updated_at,
-                           p.full_name as parent_name, p.phone as parent_phone, 
-                           p.email as parent_email, p.relationship
+                    SELECT s.id, s.student_id, s.full_name, s.date_of_birth, s.gender,
+                           s.current_grade, s.previous_school, s.assessment_number, s.address, s.medical_info,
+                           s.special_needs, s.student_category, s.sponsor_name, s.sponsor_phone, s.sponsor_email,
+                           s.status, s.created_at, s.updated_at,
+                           p.full_name as parent_name, p.phone as parent_phone,
+                           p.email as parent_email, p.relationship, p.emergency_contact
                     FROM students s
                     LEFT JOIN parents p ON s.student_id = p.student_id
                     ORDER BY s.created_at DESC

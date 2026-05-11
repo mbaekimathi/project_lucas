@@ -309,14 +309,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Handle admission links to open modal
-    document.querySelectorAll('a[href="/admission"]').forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            // Dispatch Alpine event to open modal
-            window.dispatchEvent(new CustomEvent('open-admission-modal'));
-        });
-    });
+    // Admission links go to /admission (full page). Do not intercept — a previous
+    // modal-based flow used preventDefault here, which blocked navigation when no modal existed.
 });
 
 // Add custom validation to email fields

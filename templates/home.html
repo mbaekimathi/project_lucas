@@ -5,179 +5,75 @@
 
 {% block content_full_bleed %}{% endblock %}
 
-{% if school_settings.school_hero_image %}
-{% set welcome_img = url_for('static', filename=school_settings.school_hero_image) %}
-{% set welcome_img_is_logo = false %}
-{% elif school_settings.school_logo %}
-{% set welcome_img = url_for('static', filename=school_settings.school_logo) %}
-{% set welcome_img_is_logo = true %}
-{% else %}
-{% set welcome_img = 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=1200&q=85&auto=format&fit=crop' %}
-{% set welcome_img_is_logo = false %}
-{% endif %}
-
 {% block content %}
-<div class="edu-section edu-section--tint pb-16 md:pb-20">
-    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-14 md:pt-20">
-        <div class="edu-card overflow-hidden p-7 md:p-10 mb-10 md:mb-12">
-            <div class="grid gap-10 lg:grid-cols-2 lg:gap-12 items-center">
-                <div class="min-w-0">
-                    <p class="edu-eyebrow">Welcome to</p>
-                    <h1 class="edu-display text-3xl sm:text-4xl md:text-5xl text-slate-900 dark:text-white mt-2">{{ school_settings.school_name or 'Our school' }}</h1>
-                    <p class="mt-4 text-slate-600 dark:text-slate-300 leading-relaxed">
-                        We are proud to offer a supportive, {{ school_settings.project_name or 'CBC' }}-aligned environment where every learner is known, challenged, and celebrated.
-                    </p>
-                    <div class="mt-6 flex flex-wrap items-center gap-3">
-                        <a href="{{ url_for('admission') }}" class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
-                            <i class="fas fa-file-signature" aria-hidden="true"></i> Apply for admission
-                        </a>
-                        <a href="{{ url_for('contact') }}" class="inline-flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-600 px-5 py-3 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-white/80 dark:hover:bg-slate-800/80 transition-colors">
-                            <i class="fas fa-envelope" aria-hidden="true"></i> Contact the office
-                        </a>
-                    </div>
-                </div>
-                <div class="relative min-h-[220px] sm:min-h-[260px] lg:min-h-[300px] rounded-xl overflow-hidden border border-slate-200/90 dark:border-slate-600/80 bg-slate-100 dark:bg-slate-800/60 shadow-inner">
-                    <img src="{{ welcome_img }}"
-                         alt="{% if welcome_img_is_logo %}{{ school_settings.school_name or 'School' }} logo{% else %}Campus and learning at {{ school_settings.school_name or 'our school' }}{% endif %}"
-                         class="absolute inset-0 w-full h-full {{ 'object-contain p-6 sm:p-8' if welcome_img_is_logo else 'object-cover' }}"
-                         width="1200"
-                         height="800"
-                         loading="eager"
-                         decoding="async">
-                </div>
-            </div>
+<div class="edu-section edu-section--tint min-h-[calc(100vh-10rem)] flex flex-col items-center justify-center py-16 px-4 sm:px-6"
+     x-data="{ portalLinksOpen: true }"
+     x-cloak
+     @keydown.escape.window="portalLinksOpen = false">
+    <div class="text-center max-w-md" x-show="!portalLinksOpen" x-transition.opacity.duration.200ms>
+        {% if school_settings.school_logo %}
+        <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+             alt=""
+             class="mx-auto h-16 w-auto object-contain mb-4"
+             width="160"
+             height="64"
+             loading="eager"
+             decoding="async">
+        {% else %}
+        <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg mb-4">
+            <i class="fas fa-graduation-cap text-2xl" aria-hidden="true"></i>
         </div>
-        <div class="max-w-3xl mx-auto text-center pt-2">
-            <p class="edu-eyebrow">Why families choose us</p>
-            <h2 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-3">Excellence, character, and community</h2>
-            <p class="mt-4 text-slate-600 dark:text-slate-300 leading-relaxed">
-                {{ school_settings.school_name or 'Our school' }} combines rigorous academics with pastoral care. Teachers partner with parents so students grow in confidence, curiosity, and compassion.
-            </p>
-        </div>
-        <div class="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {% for title, body, icon in [
-                ('Holistic growth', 'Academics, arts, sport, and service learning woven into everyday school life.', 'fa-seedling'),
-                ('CBC-ready pathways', 'Competency-based progression with clear feedback for learners and guardians.', 'fa-book-open'),
-                ('Partnership with home', 'Open communication, transparent reporting, and invitations to celebrate milestones.', 'fa-handshake')
-            ] %}
-            <article class="edu-card edu-card--lift p-6 md:p-7">
-                <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md">
-                    <i class="fas {{ icon }} text-lg" aria-hidden="true"></i>
-                </div>
-                <h3 class="mt-5 font-heading font-bold text-lg text-slate-900 dark:text-white">{{ title }}</h3>
-                <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ body }}</p>
-            </article>
-            {% endfor %}
-        </div>
+        {% endif %}
+        <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{{ school_settings.school_name or 'School portal' }}</h1>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Open the portal menu for login, staff registration, or admission.</p>
+        <button type="button"
+                @click="portalLinksOpen = true"
+                class="mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity">
+            <i class="fas fa-th-large" aria-hidden="true"></i> Portal links
+        </button>
     </div>
-</div>
 
-{% if academic_levels %}
-<div class="edu-section pb-16 md:pb-20">
-    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
-            <div>
-                <p class="edu-eyebrow">Our programmes</p>
-                <h2 class="edu-display text-3xl sm:text-4xl text-slate-900 dark:text-white mt-2">Levels we offer</h2>
-                <p class="mt-2 text-slate-600 dark:text-slate-300 max-w-xl">Active pathways at {{ school_settings.school_name or 'our school' }} — speak to admissions about placement and transitions.</p>
-            </div>
-            <a href="{{ url_for('admission') }}" class="inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity shrink-0">
-                <i class="fas fa-arrow-right" aria-hidden="true"></i> Start an application
-            </a>
-        </div>
-        <div class="home-levels space-y-8 md:space-y-10">
-            {% for cat, grouped_levels in academic_levels|groupby('level_category') %}
-            {% set ns = namespace(icon='fa-layer-group') %}
-            {% set c = (cat or '')|lower %}
-            {% if 'early' in c or 'nursery' in c or 'pre-primary' in c or 'pre primary' in c or 'pp1' in c or 'pp2' in c or 'ecd' in c or 'creche' in c or 'daycare' in c or 'playgroup' in c %}
-                {% set ns.icon = 'fa-shapes' %}
-            {% elif 'lower' in c and 'prim' in c %}
-                {% set ns.icon = 'fa-book-open' %}
-            {% elif 'upper' in c and 'prim' in c %}
-                {% set ns.icon = 'fa-book' %}
-            {% elif 'junior' in c or 'jss' in c or ('lower' in c and 'secondary' in c) or 'middle' in c %}
-                {% set ns.icon = 'fa-flask' %}
-            {% elif 'senior' in c or 'sss' in c or 'sss' in c or ('upper' in c and 'secondary' in c) or 'a-level' in c or 'alevel' in c or 'high school' in c %}
-                {% set ns.icon = 'fa-graduation-cap' %}
-            {% elif 'primary' in c %}
-                {% set ns.icon = 'fa-book-open' %}
-            {% elif 'secondary' in c or 'high' in c %}
-                {% set ns.icon = 'fa-school' %}
-            {% elif 'college' in c or 'university' in c or 'tertiary' in c %}
-                {% set ns.icon = 'fa-building-columns' %}
-            {% elif 'technical' in c or 'tvet' in c or 'vocational' in c %}
-                {% set ns.icon = 'fa-gears' %}
-            {% elif 'special' in c or 'inclusive' in c or 'sne' in c %}
-                {% set ns.icon = 'fa-hands-holding-heart' %}
-            {% endif %}
-            <section class="home-levels__category edu-card overflow-hidden border border-slate-200/80 dark:border-slate-600/60 shadow-lg">
-                <header class="home-levels__category-head flex flex-col sm:flex-row sm:items-center gap-5 p-6 md:p-8 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-900/90 dark:via-slate-900/70 dark:to-slate-900/90 border-b border-slate-200/90 dark:border-slate-600/50">
-                    <div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-4 ring-brand-primary/15 dark:ring-white/10" aria-hidden="true">
-                        <i class="fas {{ ns.icon }} text-2xl"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <p class="edu-eyebrow">Category</p>
-                        <h3 class="edu-display text-2xl sm:text-3xl text-slate-900 dark:text-white mt-1 tracking-tight">{{ (cat or 'General programmes')|trim }}</h3>
-                        <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ grouped_levels|length }} level{% if grouped_levels|length != 1 %}s{% endif %} in this pathway</p>
-                    </div>
-                </header>
-                <div class="p-6 md:p-8 bg-slate-50/80 dark:bg-slate-950/35">
-                    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {% for level in grouped_levels %}
-                        <article class="rounded-xl border border-slate-200/90 dark:border-slate-600/70 bg-white dark:bg-slate-900/80 p-5 shadow-sm hover:shadow-md hover:border-brand-primary/35 dark:hover:border-brand-secondary/40 transition-shadow">
-                            <div class="flex items-start gap-3">
-                                <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 dark:text-brand-secondary">
-                                    <i class="fas fa-bookmark text-sm" aria-hidden="true"></i>
-                                </span>
-                                <div class="min-w-0">
-                                    <h4 class="font-heading font-bold text-base text-slate-900 dark:text-white leading-snug">{{ level.level_name }}</h4>
-                                    {% if level.level_description %}
-                                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{{ level.level_description }}</p>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </article>
-                        {% endfor %}
-                    </div>
+    <div x-show="portalLinksOpen"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="portal-links-title">
+        <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+             @click="portalLinksOpen = false"
+             aria-hidden="true"></div>
+        <div class="relative z-10 w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-600/80 bg-white dark:bg-slate-900 shadow-2xl p-6 sm:p-8"
+             @click.stop>
+            <div class="flex items-start justify-between gap-3 mb-6">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-brand-primary dark:text-brand-secondary">Welcome</p>
+                    <h2 id="portal-links-title" class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-1">{{ school_settings.school_name or 'School portal' }}</h2>
+                    <p class="text-sm text-slate-600 dark:text-slate-400 mt-2">Sign in, register as staff, or start an application.</p>
                 </div>
-            </section>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="edu-section edu-section--dark py-14 md:py-16">
-    <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="grid lg:grid-cols-2 gap-10 items-center">
-            <div>
-                <p class="text-white/70 text-xs font-semibold uppercase tracking-widest">Visit &amp; connect</p>
-                <h2 class="edu-display text-3xl sm:text-4xl text-white mt-3">See {{ school_settings.school_name or 'our school' }} in action</h2>
-                <p class="mt-4 text-white/85 leading-relaxed">
-                    Book a tour, meet our leadership team, or ask about enrolment for the coming term. We would love to show you how our students learn and lead.
-                </p>
-                <div class="mt-8 flex flex-wrap gap-3">
-                    <a href="{{ url_for('demo') }}" class="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-bold text-brand-primary shadow-lg hover:bg-slate-50 transition-colors">
-                        <i class="fas fa-calendar-check" aria-hidden="true"></i> Schedule a visit
-                    </a>
-                    <a href="{{ url_for('features') }}" class="inline-flex items-center gap-2 rounded-full border-2 border-white/70 px-5 py-3 text-sm font-semibold text-white hover:bg-white/10 transition-colors">
-                        Explore programs
-                    </a>
-                </div>
+                <button type="button"
+                        @click="portalLinksOpen = false"
+                        class="shrink-0 rounded-lg p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+                        aria-label="Close">
+                    <i class="fas fa-times text-lg" aria-hidden="true"></i>
+                </button>
             </div>
-            <div class="edu-card edu-card--glass p-8 text-slate-800 dark:text-slate-100">
-                <h3 class="font-heading font-bold text-lg text-slate-900 dark:text-white">Office hours</h3>
-                <ul class="mt-4 space-y-3 text-sm">
-                    <li class="flex gap-3"><i class="fas fa-location-dot text-brand-primary mt-0.5" aria-hidden="true"></i><span>{% if school_settings.school_location %}{{ school_settings.school_location|replace('\n', ' · ') }}{% else %}Reach us through the contact page for directions.{% endif %}</span></li>
-                    {% if school_settings.school_phone %}
-                    <li class="flex gap-3"><i class="fas fa-phone text-brand-primary mt-0.5" aria-hidden="true"></i><a class="font-medium hover:underline" href="tel:{{ school_settings.school_phone|replace(' ', '') }}">{{ school_settings.school_phone }}</a></li>
-                    {% endif %}
-                    {% if school_settings.school_email %}
-                    <li class="flex gap-3"><i class="fas fa-envelope text-brand-primary mt-0.5" aria-hidden="true"></i><a class="font-medium hover:underline" href="mailto:{{ school_settings.school_email }}">{{ school_settings.school_email }}</a></li>
-                    {% endif %}
-                </ul>
-                <a href="{{ url_for('login') }}" class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 py-3 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors">
-                    <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Parent / staff portal
+            <div class="flex flex-col gap-3">
+                <a href="{{ url_for('login') }}"
+                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline">
+                    <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Login
+                </a>
+                <a href="{{ url_for('register_employee') }}"
+                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                    <i class="fas fa-user-plus" aria-hidden="true"></i> Employee sign up
+                </a>
+                <a href="{{ url_for('admission') }}"
+                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                    <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
                 </a>
             </div>
         </div>

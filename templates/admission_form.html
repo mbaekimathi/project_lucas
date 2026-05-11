@@ -42,8 +42,7 @@
                     </div>
                     <div class="ml-3 flex-1">
                         <p class="text-xs sm:text-sm text-gray-700 leading-relaxed">
-                            <strong class="font-semibold text-gray-900">Note:</strong> This form is based on the <code class="bg-white px-2 py-0.5 rounded text-xs font-mono text-blue-600">students</code> table structure. 
-                            All fields map directly to the corresponding database columns. Student ID will be auto-generated upon submission.
+                            <strong class="font-semibold text-gray-900">Note:</strong> Fields marked with a red asterisk (<span class="text-red-500">*</span>) are required. Parent/guardian and additional information are optional. You will receive a student reference when you submit.
                         </p>
                     </div>
                 </div>
@@ -61,7 +60,7 @@
                             </div>
                             <div>
                                 <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900">Student Information</h2>
-                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Personal details of the student</p>
+                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Personal details, academic level, and sponsorship category</p>
                             </div>
                         </div>
                         
@@ -69,7 +68,6 @@
                             <div class="sm:col-span-2">
                                 <label for="full_name" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Full Name <span class="text-red-500">*</span>
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.full_name)</span>
                                 </label>
                                 <input type="text" id="full_name" name="full_name" required
                                        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white
@@ -79,7 +77,6 @@
                             <div>
                                 <label for="date_of_birth" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Date of Birth <span class="text-red-500">*</span>
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.date_of_birth)</span>
                                 </label>
                                 <input type="date" id="date_of_birth" name="date_of_birth" required
                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
@@ -89,7 +86,6 @@
                             <div>
                                 <label for="gender" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Gender
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.gender)</span>
                                 </label>
                                 <select id="gender" name="gender"
                                         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
@@ -104,7 +100,6 @@
                             <div>
                                 <label for="current_grade" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Academic Level
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.current_grade)</span>
                                 </label>
                                 <select id="current_grade" name="current_grade"
                                         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
@@ -120,7 +115,6 @@
                             <div>
                                 <label for="previous_school" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Previous School
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.previous_school)</span>
                                 </label>
                                 <input type="text" id="previous_school" name="previous_school"
         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
@@ -129,13 +123,55 @@
                             <div>
                                 <label for="assessment_number" class="block text-sm font-semibold mb-2 text-gray-700">
                                     Assessment Number
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.assessment_number)</span>
                                 </label>
                                 <input type="text" id="assessment_number" name="assessment_number"
                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all 
                                               placeholder:text-gray-400 shadow-sm hover:shadow-md"
                                        placeholder="Enter assessment number">
+                            </div>
+
+                            <div class="sm:col-span-2">
+                                <label for="student_category" class="block text-sm font-semibold mb-2 text-gray-700">
+                                    Student Category <span class="text-red-500">*</span>
+                                </label>
+                                <select id="student_category" name="student_category" required
+                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
+                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
+                                        onchange="toggleSponsorFields(this.value)">
+                                    <option value="">Select category</option>
+                                    <option value="self sponsored">Self Sponsored</option>
+                                    <option value="sponsored">Sponsored</option>
+                                    <option value="both">Both</option>
+                                </select>
+                                <p class="text-xs text-gray-500 mt-1.5">If sponsored, enter sponsor details when they appear below.</p>
+                            </div>
+                        </div>
+
+                        <!-- Sponsor Information (shown when category is sponsored or both) -->
+                        <div id="sponsor_fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 p-6 bg-gray-50 dark:bg-slate-800/40 rounded-lg border border-gray-200 dark:border-slate-600 transition-all duration-300" style="display: none;">
+                            <div>
+                                <label for="sponsor_name" class="block text-sm font-semibold mb-2 text-gray-700">
+                                    Sponsor Name <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="sponsor_name" name="sponsor_name"
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
+                            </div>
+                            
+                            <div>
+                                <label for="sponsor_phone" class="block text-sm font-semibold mb-2 text-gray-700">
+                                    Sponsor Phone
+                                </label>
+                                <input type="tel" id="sponsor_phone" name="sponsor_phone"
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
+                            </div>
+                            
+                            <div class="sm:col-span-2">
+                                <label for="sponsor_email" class="block text-sm font-semibold mb-2 text-gray-700">
+                                    Sponsor Email
+                                </label>
+                                <input type="email" id="sponsor_email" name="sponsor_email"
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                         </div>
                     </div>
@@ -148,26 +184,27 @@
                             </div>
                             <div>
                                 <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900">Parent/Guardian Information</h2>
-                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Contact details of parent or guardian</p>
+                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Optional — contact details if available</p>
                             </div>
                         </div>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div>
                                 <label for="parent_name" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Parent/Guardian Name <span class="text-red-500">*</span>
+                                    Parent/Guardian Name <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
-                                <input type="text" id="parent_name" name="parent_name" required
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
+                                <input type="text" id="parent_name" name="parent_name"
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400"
+                                       placeholder="Leave blank if unknown">
                             </div>
                             
                             <div>
                                 <label for="relationship" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Relationship to Student <span class="text-red-500">*</span>
+                                    Relationship to Student <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
-                                <select id="relationship" name="relationship" required
+                                <select id="relationship" name="relationship"
                                         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                                    <option value="">Select Relationship</option>
+                                    <option value="">Select relationship</option>
                                     <option value="Father">Father</option>
                                     <option value="Mother">Mother</option>
                                     <option value="Guardian">Guardian</option>
@@ -177,78 +214,18 @@
                             
                             <div>
                                 <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Parent Phone <span class="text-red-500">*</span>
+                                    Parent Phone <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
-                                <input type="tel" id="parent_phone" name="parent_phone" required
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
+                                <input type="tel" id="parent_phone" name="parent_phone"
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400"
+                                       placeholder="e.g. 07…">
                             </div>
                             
                             <div class="sm:col-span-2">
                                 <label for="parent_email" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Parent Email
+                                    Parent Email <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
                                 <input type="email" id="parent_email" name="parent_email"
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Student Category Section -->
-                    <div class="space-y-6 pt-6 border-t border-gray-200">
-                        <div class="flex items-center space-x-3 pb-4">
-                            <div class="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center shadow-md">
-                                <i class="fas fa-tag text-white text-lg sm:text-xl"></i>
-                            </div>
-                            <div>
-                                <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900">Student Category</h2>
-                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Select the student's sponsorship category</p>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                            <div>
-                                <label for="student_category" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Student Category <span class="text-red-500">*</span>
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.student_category)</span>
-                                </label>
-                                <select id="student_category" name="student_category" required
-                                        class="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 
-                                               focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all shadow-sm hover:shadow-md"
-                                        onchange="toggleSponsorFields(this.value)">
-                                    <option value="">Select Category</option>
-                                    <option value="self sponsored">Self Sponsored</option>
-                                    <option value="sponsored">Sponsored</option>
-                                    <option value="both">Both</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <!-- Sponsor Information (shown only if category is sponsored) -->
-                        <div id="sponsor_fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mt-6 p-6 bg-gray-50 rounded-lg border border-gray-200 transition-all duration-300" style="display: none;">
-                            <div>
-                                <label for="sponsor_name" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Sponsor Name <span class="text-red-500">*</span>
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_name)</span>
-                                </label>
-                                <input type="text" id="sponsor_name" name="sponsor_name"
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
-                            </div>
-                            
-                            <div>
-                                <label for="sponsor_phone" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Sponsor Phone
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_phone)</span>
-                                </label>
-                                <input type="tel" id="sponsor_phone" name="sponsor_phone"
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
-                            </div>
-                            
-                            <div class="sm:col-span-2">
-                                <label for="sponsor_email" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Sponsor Email
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.sponsor_email)</span>
-                                </label>
-                                <input type="email" id="sponsor_email" name="sponsor_email"
         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                         </div>
@@ -262,15 +239,14 @@
                             </div>
                             <div>
                                 <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900">Additional Information</h2>
-                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Additional details and special requirements</p>
+                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Optional — address, medical notes, special needs, emergency contact</p>
                             </div>
                         </div>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div class="sm:col-span-2">
                                 <label for="address" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Address
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.address)</span>
+                                    Address <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
                                 <textarea id="address" name="address" rows="3"
                                           class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
@@ -278,8 +254,7 @@
                             
                             <div>
                                 <label for="emergency_contact" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Emergency Contact
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(parents.emergency_contact)</span>
+                                    Emergency Contact <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
                                 <input type="text" id="emergency_contact" name="emergency_contact"
         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
@@ -287,8 +262,7 @@
                             
                             <div>
                                 <label for="medical_info" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Medical Info
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.medical_info)</span>
+                                    Medical Info <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
                                 <textarea id="medical_info" name="medical_info" rows="3"
                                           class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
@@ -296,8 +270,7 @@
                             
                             <div class="sm:col-span-2">
                                 <label for="special_needs" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Special Needs
-                                    <span class="text-xs font-normal text-gray-400 ml-1">(students.special_needs)</span>
+                                    Special Needs <span class="text-xs font-normal text-gray-400">(optional)</span>
                                 </label>
                                 <textarea id="special_needs" name="special_needs" rows="3"
                                           class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
@@ -360,7 +333,7 @@
                         <strong class="font-semibold text-slate-800 dark:text-slate-100">{{ school_settings.school_name or 'Our school' }}</strong> is not accepting new applications through this portal at the moment.
                     </p>
                     <div class="flex flex-col sm:flex-row gap-3 justify-center items-center">
-                        <a href="{{ url_for('contact') }}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-95 transition-all">
+                        <a href="{% if school_settings.school_email %}mailto:{{ school_settings.school_email }}{% else %}{{ url_for('home') }}{% endif %}" class="touch-btn inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-95 transition-all">
                             <i class="fas fa-envelope" aria-hidden="true"></i>
                             Contact the school
                         </a>

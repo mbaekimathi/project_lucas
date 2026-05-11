@@ -764,7 +764,7 @@ footer.public-site-footer--marketing .public-site-footer__col--brand .public-sit
 
 footer.public-site-footer--marketing .public-site-footer__grid {
   display: grid;
-  gap: 2rem 1.5rem;
+  gap: 1.15rem 1rem;
 }
 
 @media (min-width: 640px) {
@@ -777,17 +777,17 @@ footer.public-site-footer--marketing .public-site-footer__grid {
   footer.public-site-footer--marketing .public-site-footer__grid {
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr) minmax(0, 0.95fr) minmax(0, 1fr);
     align-items: start;
-    gap: 2rem 2.5rem;
+    gap: 1.15rem 1.35rem;
   }
 }
 
 footer.public-site-footer--marketing .public-site-footer__heading {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.42);
-  margin: 0 0 0.85rem;
+  margin: 0 0 0.45rem;
 }
 
 footer.public-site-footer--marketing .public-site-footer__heading--spaced {
@@ -795,10 +795,10 @@ footer.public-site-footer--marketing .public-site-footer__heading--spaced {
 }
 
 footer.public-site-footer--marketing .public-site-footer__tagline {
-  margin: 0.85rem 0 0;
+  margin: 0.5rem 0 0;
   max-width: 22rem;
-  font-size: 0.875rem;
-  line-height: 1.55;
+  font-size: 0.8rem;
+  line-height: 1.45;
   color: rgba(255, 255, 255, 0.52);
 }
 
@@ -809,11 +809,11 @@ footer.public-site-footer--marketing .public-site-footer__list {
 }
 
 footer.public-site-footer--marketing .public-site-footer__list li {
-  margin: 0.35rem 0;
+  margin: 0.2rem 0;
 }
 
 footer.public-site-footer--marketing .public-site-footer__list a {
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.78);
   text-decoration: none;
@@ -831,8 +831,8 @@ footer.public-site-footer--marketing .public-site-footer__contact-list {
 }
 
 footer.public-site-footer--marketing .public-site-footer__contact-list li {
-  margin: 0.5rem 0;
-  font-size: 0.875rem;
+  margin: 0.3rem 0;
+  font-size: 0.8rem;
 }
 
 footer.public-site-footer--marketing .public-site-footer__contact-list a {
@@ -873,11 +873,11 @@ footer.public-site-footer--marketing .public-site-footer__portal-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.1rem;
-  padding: 0.65rem 1rem;
-  border-radius: 12px;
-  font-size: 0.8rem;
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #fff;
   text-decoration: none;
@@ -892,18 +892,21 @@ footer.public-site-footer--marketing .public-site-footer__portal-btn:hover {
 }
 
 footer.public-site-footer--marketing .public-site-footer__hint {
-  margin: 0 0 0.65rem;
-  font-size: 0.8rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.75rem;
   color: rgba(255, 255, 255, 0.45);
 }
 
 footer.public-site-footer--marketing .public-site-footer__social--inline {
-  margin-top: 1rem;
+  margin-top: 0.6rem;
   justify-content: flex-start;
 }
 
 footer.public-site-footer--marketing .public-site-footer__social--inline .public-site-footer__social-link {
-  border-radius: 10px;
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 0.88rem;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
