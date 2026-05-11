@@ -23863,8 +23863,9 @@ def students_by_academic_level(level_id):
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
@@ -24342,8 +24343,9 @@ def get_marks_by_exam():
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
     
     # Get teacher ID for filtering marks (for teachers)
@@ -24588,8 +24590,9 @@ def get_exams_for_filters():
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
 
-    if not (is_academic_coordinator or is_technician or is_principal or is_teacher):
+    if not (is_academic_coordinator or is_technician or is_principal or is_teacher or is_secretary):
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
 
     teacher_id = None
@@ -25054,8 +25057,9 @@ def get_students_by_academic_level():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_academic_coordinator or is_technician or is_principal or is_secretary):
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
     
     try:
