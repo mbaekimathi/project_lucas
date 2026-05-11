@@ -32,8 +32,8 @@
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
-            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Mean Grade</div>
-            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ "%.2f"|format(mean_grade) }}</div>
+            <div class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Mean % (scaled)</div>
+            <div class="text-2xl font-bold text-green-600 dark:text-green-400">{{ "%.2f"|format(mean_grade) }}%</div>
             <div class="text-xs text-gray-500 mt-1">{{ count_marks }} mark{{ 's' if count_marks != 1 else '' }} recorded</div>
         </div>
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-5">
@@ -50,7 +50,7 @@
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 sm:p-8">
         <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
             <i class="fas fa-trophy text-green-600 mr-2"></i>
-            Top ranking teachers (by subject mean grade)
+            Top ranking teachers (by subject mean %)
         </h2>
         {% if top_teachers and top_teachers|length > 0 %}
         <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
@@ -60,7 +60,7 @@
                         <th class="p-3 text-left font-semibold">#</th>
                         <th class="p-3 text-left font-semibold">Subject</th>
                         <th class="p-3 text-left font-semibold">Teacher</th>
-                        <th class="p-3 text-right font-semibold">Mean Grade</th>
+                        <th class="p-3 text-right font-semibold">Mean %</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -72,7 +72,7 @@
                         </td>
                         <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.subject_name or '—' }}</td>
                         <td class="p-3 text-gray-700 dark:text-gray-300">{{ t.supervisor_name }}</td>
-                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{{ "%.2f"|format(t.mean_grade) }}</td>
+                        <td class="p-3 text-right font-medium text-gray-900 dark:text-white">{{ "%.2f"|format(t.mean_grade) }}%</td>
                     </tr>
                     {% endfor %}
                 </tbody>

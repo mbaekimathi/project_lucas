@@ -6,11 +6,9 @@
 {% block content_full_bleed %}{% endblock %}
 
 {% block content %}
-<div class="edu-section edu-section--tint min-h-[calc(100vh-10rem)] flex flex-col items-center justify-center py-16 px-4 sm:px-6"
-     x-data="{ portalLinksOpen: true }"
-     x-cloak
-     @keydown.escape.window="portalLinksOpen = false">
-    <div class="text-center max-w-md" x-show="!portalLinksOpen" x-transition.opacity.duration.200ms>
+<div class="edu-section edu-section--tint min-h-[calc(100vh-10rem)] flex flex-col items-center justify-center py-16 px-4 sm:px-6">
+    {% if employee_in_portal %}
+    <div class="text-center max-w-md w-full rounded-2xl border border-slate-200/90 dark:border-slate-600/80 bg-white/95 dark:bg-slate-900/95 shadow-xl px-6 py-8 sm:px-8 sm:py-10">
         {% if school_settings.school_logo %}
         <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
              alt=""
@@ -24,59 +22,98 @@
             <i class="fas fa-graduation-cap text-2xl" aria-hidden="true"></i>
         </div>
         {% endif %}
-        <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{{ school_settings.school_name or 'School portal' }}</h1>
-        <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Open the portal menu for login, staff registration, or admission.</p>
-        <button type="button"
-                @click="portalLinksOpen = true"
-                class="mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity">
-            <i class="fas fa-th-large" aria-hidden="true"></i> Portal links
-        </button>
+        <h1 class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{{ school_settings.school_name or 'School portal' }}</h1>
+        {% if session.get('full_name') %}
+        <p class="mt-2 text-sm font-medium text-slate-700 dark:text-slate-300">Signed in as {{ session.get('full_name') }}</p>
+        {% endif %}
+        <p class="mt-4 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            You are already signed in to the staff portal. Go back to your dashboard, or sign out if you are finished.
+        </p>
+        <div class="mt-8 flex flex-col sm:flex-row items-stretch justify-center gap-3">
+            <a href="{{ employee_dash_url() }}"
+               class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline sm:flex-1">
+                <i class="fas fa-gauge-high" aria-hidden="true"></i> Back to dashboard
+            </a>
+            <a href="{{ url_for('logout') }}"
+               class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline sm:flex-1">
+                <i class="fas fa-right-from-bracket" aria-hidden="true"></i> Log out
+            </a>
+        </div>
     </div>
-
-    <div x-show="portalLinksOpen"
-         x-transition:enter="transition ease-out duration-200"
-         x-transition:enter-start="opacity-0"
-         x-transition:enter-end="opacity-100"
-         x-transition:leave="transition ease-in duration-150"
-         x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0"
-         class="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="portal-links-title">
-        <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
-             @click="portalLinksOpen = false"
-             aria-hidden="true"></div>
-        <div class="relative z-10 w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-600/80 bg-white dark:bg-slate-900 shadow-2xl p-6 sm:p-8"
-             @click.stop>
-            <div class="flex items-start justify-between gap-3 mb-6">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-wider text-brand-primary dark:text-brand-secondary">Welcome</p>
-                    <h2 id="portal-links-title" class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-1">{{ school_settings.school_name or 'School portal' }}</h2>
-                    <p class="text-sm text-slate-600 dark:text-slate-400 mt-2">Sign in, register as staff, or start an application.</p>
-                </div>
-                <button type="button"
-                        @click="portalLinksOpen = false"
-                        class="shrink-0 rounded-lg p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
-                        aria-label="Close">
-                    <i class="fas fa-times text-lg" aria-hidden="true"></i>
-                </button>
+    {% else %}
+    <div x-data="{ portalLinksOpen: true }"
+         x-cloak
+         @keydown.escape.window="portalLinksOpen = false"
+         class="contents">
+        <div class="text-center max-w-md" x-show="!portalLinksOpen" x-transition.opacity.duration.200ms>
+            {% if school_settings.school_logo %}
+            <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
+                 alt=""
+                 class="mx-auto h-16 w-auto object-contain mb-4"
+                 width="160"
+                 height="64"
+                 loading="eager"
+                 decoding="async">
+            {% else %}
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg mb-4">
+                <i class="fas fa-graduation-cap text-2xl" aria-hidden="true"></i>
             </div>
-            <div class="flex flex-col gap-3">
-                <a href="{{ url_for('login') }}"
-                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline">
-                    <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Login
-                </a>
-                <a href="{{ url_for('register_employee') }}"
-                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
-                    <i class="fas fa-user-plus" aria-hidden="true"></i> Employee sign up
-                </a>
-                <a href="{{ url_for('admission') }}"
-                   class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
-                    <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
-                </a>
+            {% endif %}
+            <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">{{ school_settings.school_name or 'School portal' }}</h1>
+            <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">Open the portal menu for login, staff registration, or admission.</p>
+            <button type="button"
+                    @click="portalLinksOpen = true"
+                    class="mt-6 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity">
+                <i class="fas fa-th-large" aria-hidden="true"></i> Portal links
+            </button>
+        </div>
+
+        <div x-show="portalLinksOpen"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="portal-links-title">
+            <div class="absolute inset-0 bg-slate-900/55 backdrop-blur-sm"
+                 @click="portalLinksOpen = false"
+                 aria-hidden="true"></div>
+            <div class="relative z-10 w-full max-w-md rounded-2xl border border-slate-200/90 dark:border-slate-600/80 bg-white dark:bg-slate-900 shadow-2xl p-6 sm:p-8"
+                 @click.stop>
+                <div class="flex items-start justify-between gap-3 mb-6">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wider text-brand-primary dark:text-brand-secondary">Welcome</p>
+                        <h2 id="portal-links-title" class="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white mt-1">{{ school_settings.school_name or 'School portal' }}</h2>
+                        <p class="text-sm text-slate-600 dark:text-slate-400 mt-2">Sign in, register as staff, or start an application.</p>
+                    </div>
+                    <button type="button"
+                            @click="portalLinksOpen = false"
+                            class="shrink-0 rounded-lg p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800 transition-colors"
+                            aria-label="Close">
+                        <i class="fas fa-times text-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+                <div class="flex flex-col gap-3">
+                    <a href="{{ url_for('login') }}"
+                       class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-lg hover:opacity-95 transition-opacity no-underline">
+                        <i class="fas fa-right-to-bracket" aria-hidden="true"></i> Login
+                    </a>
+                    <a href="{{ url_for('register_employee') }}"
+                       class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                        <i class="fas fa-user-plus" aria-hidden="true"></i> Employee sign up
+                    </a>
+                    <a href="{{ url_for('admission') }}"
+                       class="inline-flex items-center justify-center gap-2 w-full rounded-xl px-5 py-3.5 text-sm font-semibold border-2 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors no-underline">
+                        <i class="fas fa-user-graduate" aria-hidden="true"></i> Admission
+                    </a>
+                </div>
             </div>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

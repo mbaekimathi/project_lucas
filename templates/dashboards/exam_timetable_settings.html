@@ -1,20 +1,46 @@
 {% extends "base.html" %}
 
-{% block title %}Exam Timetable Settings - {{ school_settings.school_name or 'School' }}{% endblock %}
+{% block title %}Timetable Sessions - {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-    <a href="{{ employee_dash_url('exam-evaluation') }}"
-       class="w-full sidebar-item"
-       aria-label="Back to Exam & Evaluation">
-        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
-        <span>Back to Exam &amp; Evaluation</span>
+{% set _cc_settings_role = (request.view_args.get('role', '') if request.view_args else '')|lower|replace('-', ' ') %}
+<div class="space-y-1 mb-3">
+    <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 px-1 mb-1">Academic</p>
+    <a href="{{ employee_dash_url() }}"
+       class="sidebar-item w-full {% if request.endpoint == 'dashboard' and request.path.rstrip('/') == employee_dash_url().rstrip('/') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-home w-5" aria-hidden="true"></i>
+        <span>Dashboard</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
     </a>
-    <div class="w-full sidebar-item sidebar-item-active cursor-default" aria-current="page">
+    <a href="{{ employee_staff_settings_url('curriculum coordinator') }}"
+       class="sidebar-item w-full {% if request.endpoint == 'settings' and _cc_settings_role == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
         <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
-        <span>Timetable settings</span>
-    </div>
+        <span>Curriculum coordinator settings</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
+    </a>
+    <a href="{{ employee_dash_url('academic-settings') }}"
+       class="sidebar-item w-full {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-calendar-alt w-5" aria-hidden="true"></i>
+        <span>Academic Level Settings</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
+    </a>
 </div>
+<p class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 px-1 mb-1">Curriculum</p>
+<a href="{{ employee_dash_url('exam-subject-settings') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_subject_settings' or request.path.rstrip('/').endswith('/exam-subject-settings') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-layer-group w-5"></i>
+    <span>Exam Subject Settings</span>
+</a>
+<a href="{{ employee_dash_url('timetable-sessions') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_timetable_settings' or request.endpoint == 'settings' and _cc_settings_role == 'curriculum coordinator' or request.path.rstrip('/').endswith('/timetable-sessions') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Timetable Sessions</span>
+</a>
+<a href="{{ employee_dash_url('grades-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-list-check w-5"></i>
+    <span>Grade Settings</span>
+</a>
 {% endblock %}
 
 {% block content %}
@@ -24,7 +50,7 @@
             <span class="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg">
                 <i class="fas fa-sliders-h text-white"></i>
             </span>
-            Exam timetable settings
+            Timetable Sessions
         </h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
             Configure sessions used when registering exams (manual presets and auto-scheduling).
@@ -32,7 +58,7 @@
     </div>
 
     <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 border border-gray-200/80 dark:border-gray-700 bg-white/95 dark:bg-gray-900/60">
-        <form method="POST" class="space-y-6">
+        <form method="POST" action="{{ employee_dash_url('timetable-sessions') }}" class="space-y-6">
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {% set rows = [
                     ('MORNING','Morning'),

@@ -71,6 +71,13 @@
 
 {% block sidebar_content %}
 <div class="space-y-2">
+    <a href="{{ dashboard_home_url() }}"
+       class="w-full sidebar-item mb-1 border-b border-gray-200 dark:border-gray-700 pb-2">
+        <i class="fas fa-gauge w-5"></i>
+        <span class="font-medium">Dashboard</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
+    </a>
+
     <!-- Student Management Link -->
     <a href="{{ employee_dash_url('student-management') }}" 
        class="w-full sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}Exam subject settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <a href="{{ employee_dash_url() }}"
+       class="w-full sidebar-item"
+       aria-label="Back to staff dashboard">
+        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
+        <span>Back to dashboard</span>
+    </a>
+    <a href="{{ employee_dash_url('exam-evaluation') }}"
+       class="w-full sidebar-item"
+       aria-label="Exam and evaluation registration">
+        <i class="fas fa-clipboard-check w-5" aria-hidden="true"></i>
+        <span>Exam &amp; evaluation</span>
+    </a>
+    <a href="{{ employee_dash_url('timetable-sessions') }}"
+       class="w-full sidebar-item"
+       aria-label="Open exam timetable settings">
+        <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
+        <span>Timetable sessions</span>
+    </a>
+    <a href="{{ employee_dash_url('exam-subject-settings') }}"
+       class="w-full sidebar-item sidebar-item-active"
+       aria-label="Exam subject total marks">
+        <i class="fas fa-book-open w-5" aria-hidden="true"></i>
+        <span>Exam subject settings</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+    <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex flex-wrap items-center gap-3">
+            <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg">
+                <i class="fas fa-book-open text-lg" aria-hidden="true"></i>
+            </span>
+            Exam subject settings
+        </h1>
+        <p class="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400 max-w-3xl">
+            Edit <strong>Exam total marks</strong> for each subject (numbers only, decimals allowed). This is the <strong>paper total</strong> teachers enter marks out of (for example 50 or 75). When it is <strong>100</strong> (or left empty for the default 100), stored marks match a 0–100 scale. Other totals scale to a percentage the same way: <code class="text-xs bg-gray-100 dark:bg-gray-800 px-1 rounded">% = marks ÷ total × 100</code>.
+            Parent and progress views use that percentage. The <strong>Report % preview</strong> column updates as you type so you can confirm scaling before saving. Leave a field <strong>empty</strong> and save to clear a custom value and use the default (100) again.
+        </p>
+    </div>
+
+    {% if subjects_rows %}
+    <form id="exam-subject-settings-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="space-y-4" novalidate>
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/80 shadow-sm">
+            <table class="min-w-full text-sm text-left">
+                <thead class="bg-gray-50 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                        <th scope="col" class="px-4 py-3 font-semibold">Subject</th>
+                        <th scope="col" class="px-4 py-3 font-semibold whitespace-nowrap">Code</th>
+                        <th scope="col" class="px-4 py-3 font-semibold whitespace-nowrap">Exam total marks</th>
+                        <th scope="col" class="px-4 py-3 font-semibold min-w-[14rem]">Report % preview</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for s in subjects_rows %}
+                    <tr class="exam-scale-row hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                        <td class="px-4 py-3 font-medium text-gray-900 dark:text-white">{{ s.subject_name }}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300 font-mono text-xs">{{ s.subject_code or '—' }}</td>
+                        <td class="px-4 py-3 min-w-[10rem]">
+                            <label class="sr-only" for="exam_total_marks_{{ s.id }}">Exam total marks for {{ s.subject_name }}</label>
+                            <input id="exam_total_marks_{{ s.id }}"
+                                   type="text"
+                                   name="exam_total_marks_{{ s.id }}"
+                                   inputmode="decimal"
+                                   autocomplete="off"
+                                   spellcheck="false"
+                                   placeholder="e.g. 100"
+                                   value="{% if s.exam_total_marks is not none %}{{ s.exam_total_marks }}{% else %}100{% endif %}"
+                                   class="exam-total-input w-full max-w-[12rem] rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-base text-gray-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent">
+                        </td>
+                        <td class="px-4 py-3 text-gray-700 dark:text-gray-200 text-xs sm:text-sm leading-snug">
+                            <p class="preview-example m-0">
+                                Example:
+                                <strong class="tabular-nums preview-num-raw">{{ s.preview_example_raw }}</strong>
+                                /
+                                <strong class="tabular-nums preview-num-max">{{ s.effective_max }}</strong>
+                                marks →
+                                <strong class="text-emerald-700 dark:text-emerald-400 tabular-nums preview-num-pct">{{ s.preview_example_pct if s.preview_example_pct is not none else '—' }}</strong>%
+                            </p>
+                            <p class="mt-1 m-0 text-[11px] text-gray-500 dark:text-gray-400">Full paper marks → <strong class="text-gray-700 dark:text-gray-300">100%</strong> on reports &amp; parent view</p>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <button type="submit"
+                    class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                <i class="fas fa-save" aria-hidden="true"></i>
+                Save all
+            </button>
+            <a href="{{ employee_dash_url('exam-evaluation') }}"
+               class="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary">
+                Cancel
+            </a>
+        </div>
+    </form>
+    {% else %}
+    <div class="rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-500 dark:text-gray-400">
+        <i class="fas fa-inbox text-3xl mb-3 block text-gray-400" aria-hidden="true"></i>
+        <p>No active subjects found. Add subjects under <strong>Classes &amp; subjects</strong> or <strong>Subject &amp; class allocation</strong> first.</p>
+    </div>
+    {% endif %}
+
+    <section id="combine-exam-subjects" class="scroll-mt-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/80 shadow-sm overflow-hidden">
+        <div class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/90">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-object-group text-brand-primary" aria-hidden="true"></i>
+                Combine exam subjects
+            </h2>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+                Select subjects to show as <strong>one column</strong> on the marks sheet. Names and codes are joined with <strong>/</strong>.
+                When you save a combination, those papers’ <strong>exam totals are rescaled proportionally so they sum to 100</strong> (same relative weights). The combined column uses one <strong>unified percentage (0–100)</strong>, saved proportionally on every paper.
+                Removing the combination <strong>restores</strong> the previous totals from before you combined them.
+            </p>
+        </div>
+        <div class="p-4 sm:p-6 space-y-6">
+            {% if subjects_choices %}
+            <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="space-y-4">
+                <input type="hidden" name="combine_action" value="create">
+                <p class="text-sm text-gray-600 dark:text-gray-400">Tick subjects in listing order (order defines segments in the combined name/code).</p>
+                <div class="space-y-2 max-h-72 overflow-y-auto rounded-xl border border-gray-100 dark:border-gray-800 p-2">
+                    {% for s in subjects_choices %}
+                    <label class="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
+                        <input type="checkbox" name="subject_pick" value="{{ s.id }}" class="mt-1 rounded border-gray-300 dark:border-gray-600">
+                        <span class="flex-1 text-sm text-gray-900 dark:text-white">
+                            <span class="font-medium">{{ s.subject_name }}</span>
+                            {% if s.subject_code %}<span class="text-gray-500 dark:text-gray-400 font-mono text-xs ml-2">{{ s.subject_code }}</span>{% endif %}
+                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Paper total (scaling): {{ s.exam_total_marks_display }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <button type="submit"
+                        class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                    <i class="fas fa-link" aria-hidden="true"></i>
+                    Save combination
+                </button>
+            </form>
+            {% else %}
+            <p class="text-sm text-gray-500 dark:text-gray-400">No active subjects to combine.</p>
+            {% endif %}
+
+            {% if combinations_display %}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div class="px-4 py-3 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="font-semibold text-gray-900 dark:text-white">Current combinations</h3>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Removing restores separate columns on the marks sheet (existing marks stay).</p>
+                </div>
+                <ul class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for c in combinations_display %}
+                    <li class="px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="font-semibold text-gray-900 dark:text-white">{{ c.label_name }}</p>
+                            <p class="text-xs font-mono text-gray-600 dark:text-gray-300 mt-1">{{ c.label_code }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                Paper totals: {{ c.member_totals | join('/') }}
+                            </p>
+                        </div>
+                        <form method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="shrink-0"
+                              onsubmit="return confirm('Remove this combination? Marks already entered stay on each subject.');">
+                            <input type="hidden" name="combine_action" value="delete">
+                            <input type="hidden" name="combination_id" value="{{ c.id }}">
+                            <button type="submit"
+                                    class="text-sm font-semibold text-red-600 dark:text-red-400 hover:underline px-3 py-2 rounded-lg border border-red-200 dark:border-red-900/50">
+                                Remove
+                            </button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+<script>
+(function () {
+    function effectiveMaxFromInput(val) {
+        var n = parseFloat(String(val).replace(',', '.').trim());
+        if (!isFinite(n) || n <= 0) return 100;
+        return n;
+    }
+    function previewForMax(mx) {
+        var ill = mx >= 50 ? 50 : Math.round((mx / 2) * 10000) / 10000;
+        if (!(ill > 0)) ill = 1;
+        var pct = Math.round((10000 * ill) / mx) / 100;
+        return { raw: ill, max: mx, pct: pct };
+    }
+    function updateRow(tr) {
+        var inp = tr.querySelector('.exam-total-input');
+        if (!inp) return;
+        var mx = effectiveMaxFromInput(inp.value);
+        var p = previewForMax(mx);
+        var rawEl = tr.querySelector('.preview-num-raw');
+        var maxEl = tr.querySelector('.preview-num-max');
+        var pctEl = tr.querySelector('.preview-num-pct');
+        if (rawEl) rawEl.textContent = String(p.raw);
+        if (maxEl) maxEl.textContent = String(p.max);
+        if (pctEl) pctEl.textContent = String(p.pct);
+    }
+    var form = document.getElementById('exam-subject-settings-form');
+    if (!form) return;
+    form.addEventListener('input', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('exam-total-input')) {
+            var tr = e.target.closest('tr.exam-scale-row');
+            if (tr) updateRow(tr);
+        }
+    });
+    form.querySelectorAll('tr.exam-scale-row').forEach(updateRow);
+})();
+</script>
+{% endblock %}

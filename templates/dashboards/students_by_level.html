@@ -423,6 +423,9 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <i class="fas fa-info-circle mr-2"></i>Select an exam above to enter or view marks.
             </p>
         </div>
+        <div x-show="selectedExam" class="mb-3 p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+            Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). Combined columns (joined with <strong>/</strong>) use one <strong>unified % (0–100)</strong> applied proportionally to each paper. The <strong>Avg%</strong> column is the mean of column percentages.
+        </div>
 
         <p class="marks-scroll-hint mb-2 text-xs text-gray-500 dark:text-gray-400 px-1">
             <i class="fas fa-table mr-1"></i>Columns shrink to fit your screen. <strong>Swipe sideways</strong> only if you zoom in or have many subjects.
@@ -452,9 +455,15 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% else %}
                                 {% set subj_lbl = (subject.subject_name[:4]|upper) if subject.subject_name else '' %}
                             {% endif %}
-                            <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }}">{{ subj_lbl }}</th>
+                            {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
+                            {% if subject.combination_id %}
+                            <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
+                                title="{{ subject.subject_name }} — unified % (0–100); each paper scaled using its exam total from Exam subject settings">{{ subj_lbl[:10] }}{% if subj_lbl|length > 10 %}…{% endif %}</th>
+                            {% else %}
+                            <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }} — enter marks out of {{ subj_max }}">{{ subj_lbl }}</th>
+                            {% endif %}
                             {% endfor %}
-                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight">Tot</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight">Rnk</th>
                         </tr>
                     </thead>
@@ -470,8 +479,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="marks-td-subject py-1 sm:py-1 text-center align-middle">
                                 {% if can_edit %}
                                 <input type="text"
-                                       inputmode="numeric"
-                                       maxlength="3"
+                                       inputmode="decimal"
+                                       maxlength="8"
                                        data-row-index="{{ student_row_idx }}"
                                        data-col-index="{{ loop.index0 }}"
                                        :value="getMark('{{ student.student_id }}', {{ subject.id }})"
@@ -481,7 +490,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                        @keydown.down.prevent="handleArrowKey($event)"
                                        @keydown.left.prevent="handleArrowKey($event)"
                                        @keydown.right.prevent="handleArrowKey($event)"
-                                       @keypress="$event.charCode >= 48 && $event.charCode <= 57 || $event.preventDefault()"
+                                       @keypress="allowMarkChar($event)"
                                        :disabled="!selectedExam || examIsLocked"
                                        :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
                                        class="mark-input touch-manipulation"
@@ -586,6 +595,8 @@ function marksSheet() {
         terms: {{ (terms or [])|tojson|safe }},
         defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
         subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
+        subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
+        columnMembers: {{ (combination_column_members or {})|tojson|safe }},
 
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
         studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
@@ -596,6 +607,46 @@ function marksSheet() {
             if (!this.selectedExam) return false;
             const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
             return !!(ex && ex.is_locked);
+        },
+
+        subjectExamMaxFor(subjectId) {
+            const k = String(subjectId);
+            const v = this.subjectExamMax[k] ?? this.subjectExamMax[subjectId];
+            const n = Number(v);
+            return (Number.isFinite(n) && n > 0) ? n : 100;
+        },
+
+        getCombinationMembers(subjectId) {
+            const m = this.columnMembers[String(subjectId)];
+            return Array.isArray(m) && m.length ? m : null;
+        },
+
+        _rawStoredMark(studentId, subjectId) {
+            const studentMarks = this.marks[studentId];
+            if (!studentMarks || !studentMarks[subjectId]) return null;
+            const subjectMark = studentMarks[subjectId];
+            let val = null;
+            if (typeof subjectMark === 'object') {
+                const ex = this.selectedExam;
+                if (ex) {
+                    val = subjectMark[ex];
+                    if (val == null) val = subjectMark[String(ex)];
+                }
+            } else {
+                val = subjectMark;
+            }
+            if (val === '' || val == null) return null;
+            const n = Number(val);
+            return Number.isFinite(n) ? n : null;
+        },
+
+        allowMarkChar(event) {
+            const code = event.charCode;
+            if (!code) return;
+            const ch = String.fromCharCode(code);
+            if (ch >= '0' && ch <= '9') return;
+            if ((ch === '.' || ch === ',') && !String(event.target.value).includes('.')) return;
+            event.preventDefault();
         },
 
         get filteredTerms() {
@@ -769,30 +820,48 @@ function marksSheet() {
             await this.loadMarks();
         },
 
-        getMark(studentId, subjectId) {
-            const studentMarks = this.marks[studentId];
-            if (!studentMarks || !studentMarks[subjectId]) return '';
-            
-            const subjectMark = studentMarks[subjectId];
-            if (typeof subjectMark === 'object') {
-                const val = this.selectedExam ? subjectMark[this.selectedExam] : null;
-                return val != null ? parseInt(val) : '';
+        getMarkNumeric(studentId, subjectId) {
+            const members = this.getCombinationMembers(subjectId);
+            if (members && members.length) {
+                let sum = 0;
+                let cnt = 0;
+                for (const mid of members) {
+                    const raw = this._rawStoredMark(studentId, mid);
+                    if (raw !== null) {
+                        sum += (100 * raw) / this.subjectExamMaxFor(mid);
+                        cnt += 1;
+                    }
+                }
+                return cnt ? sum / cnt : null;
             }
-            return subjectMark != null ? parseInt(subjectMark) : '';
+            return this._rawStoredMark(studentId, subjectId);
+        },
+
+        getMark(studentId, subjectId) {
+            const members = this.getCombinationMembers(subjectId);
+            const n = this.getMarkNumeric(studentId, subjectId);
+            if (n === null) return '';
+            if (members && members.length) {
+                if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+                return String(Number(n.toFixed(1)));
+            }
+            if (Number.isInteger(n)) return String(n);
+            return String(n);
         },
 
         getTotal(studentId) {
             if (!this.selectedExam) return null;
-            let total = 0, hasMarks = false;
-            
+            let sumPct = 0;
+            let count = 0;
             for (const subjectId of this.subjectIds) {
-                const mark = this.getMark(studentId, subjectId);
-                if (mark !== '' && !isNaN(mark)) {
-                    total += parseInt(mark);
-                    hasMarks = true;
+                const raw = this.getMarkNumeric(studentId, subjectId);
+                if (raw !== null) {
+                    const mx = this.subjectExamMaxFor(subjectId);
+                    sumPct += (100 * raw) / mx;
+                    count += 1;
                 }
             }
-            return hasMarks ? total : null;
+            return count ? (sumPct / count).toFixed(1) : null;
         },
 
         getRank(studentId) {
@@ -835,17 +904,18 @@ function marksSheet() {
 
         getSubjectMean(subjectId) {
             if (!this.selectedExam) return '-';
-            let total = 0;
+            const mx = this.subjectExamMaxFor(subjectId);
+            let sumPct = 0;
             let count = 0;
             for (const studentId of this.studentIds) {
-                const mark = this.getMark(studentId, subjectId);
-                if (mark !== '' && !isNaN(mark)) {
-                    total += Number(mark);
+                const raw = this.getMarkNumeric(studentId, subjectId);
+                if (raw !== null) {
+                    sumPct += (100 * raw) / mx;
                     count += 1;
                 }
             }
             if (!count) return '-';
-            return (total / count).toFixed(1);
+            return (sumPct / count).toFixed(1);
         },
 
         gradeForMark(subjectId, marksValue) {
@@ -939,28 +1009,44 @@ function marksSheet() {
             });
         },
 
-        async saveMark(studentId, subjectId, value) {
+        async saveCombinationMark(studentId, columnSubjectId, value) {
             if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
-            
-            const intValue = value ? parseInt(value.replace(/\D/g, '')) : null;
-            const key = `${studentId}_${subjectId}`;
-            
+            const members = this.getCombinationMembers(columnSubjectId);
+            if (!members || !members.length) return;
+            const cid = Math.abs(Number(columnSubjectId));
+            const key = `${studentId}_${columnSubjectId}`;
+            const trimmed = (value || '').trim().replace(',', '.');
+            let numValue = null;
+            if (trimmed) {
+                numValue = parseFloat(trimmed);
+                if (Number.isNaN(numValue)) {
+                    this.saveStatus[key] = 'error';
+                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
+                    return;
+                }
+                if (numValue < 0 || numValue > 100 + 1e-6) {
+                    this.saveStatus[key] = 'error';
+                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
+                    return;
+                }
+            }
             this.saveStatus[key] = 'saving';
-            
-            // Update local data
             if (!this.marks[studentId]) this.marks[studentId] = {};
-            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
-            this.marks[studentId][subjectId][this.selectedExam] = intValue;
-
+            for (const mid of members) {
+                const mx = this.subjectExamMaxFor(mid);
+                const rw = numValue === null ? null : Math.round((numValue / 100) * mx * 100) / 100;
+                if (!this.marks[studentId][mid]) this.marks[studentId][mid] = {};
+                this.marks[studentId][mid][this.selectedExam] = rw;
+            }
             try {
-                const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
+                const response = await fetch('{{ employee_dash_url('exams-assessments/save-combination-marks') }}', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        combination_id: cid,
                         student_id: studentId,
-                        subject_id: subjectId,
                         exam_id: this.selectedExam,
-                        marks: intValue,
+                        marks: numValue,
                         level_id: this.levelId
                     })
                 });
@@ -971,9 +1057,75 @@ function marksSheet() {
                     this.saveStatus[key] = 'error';
                 } else {
                     this.saveStatus[key] = result.success ? 'saved' : 'error';
+                    if (!result.success) await this.loadMarks();
                 }
             } catch (error) {
                 this.saveStatus[key] = 'error';
+                await this.loadMarks();
+            }
+            setTimeout(() => { this.saveStatus[key] = ''; }, 1500);
+        },
+
+        async saveMark(studentId, subjectId, value) {
+            if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
+
+            if (this.getCombinationMembers(subjectId)) {
+                return this.saveCombinationMark(studentId, subjectId, value);
+            }
+
+            const key = `${studentId}_${subjectId}`;
+            const trimmed = (value || '').trim().replace(',', '.');
+            let numValue = null;
+            if (trimmed) {
+                numValue = parseFloat(trimmed);
+                if (Number.isNaN(numValue)) {
+                    this.saveStatus[key] = 'error';
+                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
+                    return;
+                }
+                if (numValue < 0) {
+                    this.saveStatus[key] = 'error';
+                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
+                    return;
+                }
+                const mx = this.subjectExamMaxFor(subjectId);
+                if (numValue > mx + 1e-6) {
+                    this.saveStatus[key] = 'error';
+                    setTimeout(() => { this.saveStatus[key] = ''; }, 2000);
+                    return;
+                }
+            }
+
+            this.saveStatus[key] = 'saving';
+
+            if (!this.marks[studentId]) this.marks[studentId] = {};
+            if (!this.marks[studentId][subjectId]) this.marks[studentId][subjectId] = {};
+            this.marks[studentId][subjectId][this.selectedExam] = numValue;
+
+            try {
+                const response = await fetch('{{ employee_dash_url('exams-assessments/save-marks') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        student_id: studentId,
+                        subject_id: subjectId,
+                        exam_id: this.selectedExam,
+                        marks: numValue,
+                        level_id: this.levelId
+                    })
+                });
+                const result = await response.json();
+                if (response.status === 403 && result.locked) {
+                    this.lockedModal = true;
+                    this.selectedExam = '';
+                    this.saveStatus[key] = 'error';
+                } else {
+                    this.saveStatus[key] = result.success ? 'saved' : 'error';
+                    if (!result.success) await this.loadMarks();
+                }
+            } catch (error) {
+                this.saveStatus[key] = 'error';
+                await this.loadMarks();
             }
             
             setTimeout(() => { this.saveStatus[key] = ''; }, 1500);
@@ -1003,6 +1155,9 @@ function marksSheet() {
                     this.marks = {};
                 } else if (result.success) {
                     this.marks = result.marks || {};
+                    if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {
+                        this.subjectExamMax = { ...this.subjectExamMax, ...result.subject_exam_max };
+                    }
                 }
             } catch (error) {
                 console.error('Load error:', error);

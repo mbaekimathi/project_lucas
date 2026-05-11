@@ -694,6 +694,281 @@ def ensure_exam_timetable_settings_columns(cursor):
             print(f"ensure_exam_timetable_settings_columns ({col_name}): {e}")
 
 
+def ensure_subject_exam_total_marks_column(cursor):
+    """Per-subject maximum marks for exam entry (NULL = use default 100)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM subjects LIKE 'exam_total_marks'")
+        if cursor.fetchone():
+            return
+        cursor.execute(
+            """
+            ALTER TABLE subjects
+            ADD COLUMN exam_total_marks DECIMAL(8,2) NULL DEFAULT NULL
+            COMMENT 'Maximum marks for exam entry for this subject (NULL uses 100)'
+            AFTER status
+            """
+        )
+        print("OK: Added subjects.exam_total_marks column")
+    except Exception as e:
+        print(f"ensure_subject_exam_total_marks_column: {e}")
+
+
+def subject_exam_max_raw_marks(exam_total_marks_value):
+    """Positive maximum raw marks for exam entry; default 100 when unset, zero, or invalid."""
+    try:
+        v = float(exam_total_marks_value)
+        if v > 0:
+            return v
+    except (TypeError, ValueError):
+        pass
+    return 100.0
+
+
+def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
+    """Scale raw marks to a 0–100 percentage using the subject's exam total (default 100)."""
+    mx = subject_exam_max_raw_marks(exam_total_marks_value)
+    if raw_marks is None:
+        return None
+    try:
+        r = float(raw_marks)
+    except (TypeError, ValueError):
+        return None
+    if mx <= 0:
+        return None
+    return round(100.0 * r / mx, 2)
+
+
+def ensure_subject_exam_combination_tables(cursor):
+    """Groups of subjects shown as one marks column (combined label); marks stored per member subject."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'subject_exam_combinations'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subject_exam_combinations (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            print("OK: Created subject_exam_combinations table")
+        cursor.execute("SHOW TABLES LIKE 'subject_exam_combination_members'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subject_exam_combination_members (
+                    combination_id INT NOT NULL,
+                    subject_id INT NOT NULL,
+                    sort_order INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (combination_id, subject_id),
+                    INDEX idx_subject_exam_combo_member_subject (subject_id)
+                )
+            """)
+            print("OK: Created subject_exam_combination_members table")
+        try:
+            cursor.execute("SHOW COLUMNS FROM subject_exam_combinations LIKE 'totals_snapshot_json'")
+            if not cursor.fetchone():
+                cursor.execute(
+                    """
+                    ALTER TABLE subject_exam_combinations
+                    ADD COLUMN totals_snapshot_json TEXT NULL
+                    COMMENT 'JSON snapshot of subjects.exam_total_marks before proportional rescale to sum 100'
+                    AFTER created_at
+                    """
+                )
+                print("OK: Added subject_exam_combinations.totals_snapshot_json")
+        except Exception as e:
+            print(f"ensure_subject_exam_combination_tables (totals_snapshot_json): {e}")
+    except Exception as e:
+        print(f"ensure_subject_exam_combination_tables: {e}")
+
+
+def _exam_total_marks_snapshot_value(db_val):
+    """JSON-safe prior exam_total_marks for restore (NULL stays None)."""
+    if db_val is None:
+        return None
+    try:
+        return round(float(db_val), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_subject_totals_for_exam_combination(cursor, subject_ids_ordered):
+    """
+    Rescale subjects.exam_total_marks proportionally so effective maxima sum to 100.
+    Returns a list suitable for json.dumps into totals_snapshot_json (restore on combination delete).
+    """
+    if not subject_ids_ordered or len(subject_ids_ordered) < 2:
+        return []
+    placeholders = ','.join(['%s'] * len(subject_ids_ordered))
+    cursor.execute(
+        f"SELECT id, exam_total_marks FROM subjects WHERE id IN ({placeholders})",
+        tuple(subject_ids_ordered),
+    )
+    rows = cursor.fetchall() or []
+    by_id = {}
+    for r in rows:
+        sid = r.get('id') if isinstance(r, dict) else r[0]
+        etm = r.get('exam_total_marks') if isinstance(r, dict) else r[1]
+        by_id[int(sid)] = etm
+
+    snapshot = []
+    weights = []
+    for sid in subject_ids_ordered:
+        sid = int(sid)
+        etm_before = by_id.get(sid)
+        snapshot.append({
+            'subject_id': sid,
+            'exam_total_marks': _exam_total_marks_snapshot_value(etm_before),
+        })
+        weights.append(subject_exam_max_raw_marks(etm_before))
+
+    total_w = sum(weights)
+    n = len(subject_ids_ordered)
+    if total_w <= 0:
+        equal = round(100.0 / n, 2)
+        floored = [equal] * n
+        diff = round(100.0 - sum(floored), 2)
+        floored[-1] = round(floored[-1] + diff, 2)
+    else:
+        precise = [100.0 * w / total_w for w in weights]
+        floored = [round(x, 2) for x in precise]
+        diff = round(100.0 - sum(floored), 2)
+        floored[-1] = round(floored[-1] + diff, 2)
+
+    for sid, new_max in zip(subject_ids_ordered, floored):
+        cursor.execute(
+            "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
+            (new_max, int(sid)),
+        )
+    return snapshot
+
+
+def restore_subject_totals_from_combination_snapshot(cursor, snapshot_json_str):
+    """Apply stored exam_total_marks per subject; ignores invalid entries."""
+    if not snapshot_json_str:
+        return
+    try:
+        entries = json.loads(snapshot_json_str)
+    except (TypeError, ValueError, json.JSONDecodeError) as e:
+        print(f"restore_subject_totals_from_combination_snapshot: bad JSON: {e}")
+        return
+    if not isinstance(entries, list):
+        return
+    for ent in entries:
+        if not isinstance(ent, dict):
+            continue
+        sid = ent.get('subject_id')
+        if sid is None:
+            continue
+        try:
+            sid = int(sid)
+        except (TypeError, ValueError):
+            continue
+        etm = ent.get('exam_total_marks')
+        if etm is None:
+            cursor.execute(
+                "UPDATE subjects SET exam_total_marks = NULL WHERE id = %s",
+                (sid,),
+            )
+        else:
+            try:
+                cursor.execute(
+                    "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
+                    (round(float(etm), 2), sid),
+                )
+            except (TypeError, ValueError):
+                cursor.execute(
+                    "UPDATE subjects SET exam_total_marks = NULL WHERE id = %s",
+                    (sid,),
+                )
+
+
+def fetch_subject_exam_combinations(cursor):
+    """Return [{'id': combo_id, 'member_subject_ids': [..ordered..]}, ...]."""
+    ensure_subject_exam_combination_tables(cursor)
+    cursor.execute("""
+        SELECT combination_id, subject_id, sort_order
+        FROM subject_exam_combination_members
+        ORDER BY combination_id ASC, sort_order ASC, subject_id ASC
+    """)
+    grouped = {}
+    for row in cursor.fetchall() or []:
+        cid = row.get('combination_id') if isinstance(row, dict) else row[0]
+        sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+        if cid is None or sid is None:
+            continue
+        cid = int(cid)
+        sid = int(sid)
+        grouped.setdefault(cid, []).append(sid)
+    return [{'id': cid, 'member_subject_ids': mids} for cid, mids in sorted(grouped.items())]
+
+
+def merge_subjects_with_exam_combinations(subjects, combinations):
+    """
+    Replace member subjects with one synthetic column per applicable combination.
+    Synthetic row uses negative id -combo_id, exam_total_marks 100 (enter unified %); names/codes joined with '/'.
+    """
+    if not subjects or not combinations:
+        return subjects
+    by_id = {int(s['id']): dict(s) for s in subjects}
+    original_order = [int(s['id']) for s in subjects]
+    id_set = set(original_order)
+    subject_to_combo = {}
+    combo_members_by_id = {}
+    for c in combinations:
+        mids = [int(x) for x in (c.get('member_subject_ids') or [])]
+        if len(mids) < 2:
+            continue
+        if not all(m in id_set for m in mids):
+            continue
+        cid = int(c['id'])
+        combo_members_by_id[cid] = mids
+        conflict = False
+        for mid in mids:
+            if mid in subject_to_combo:
+                conflict = True
+                break
+        if conflict:
+            continue
+        for mid in mids:
+            subject_to_combo[mid] = cid
+
+    sep = '/'
+    out = []
+    consumed = set()
+    for sid in original_order:
+        if sid in consumed:
+            continue
+        if sid not in subject_to_combo:
+            out.append(by_id[sid])
+            continue
+        cid = subject_to_combo[sid]
+        mids = combo_members_by_id.get(cid)
+        if not mids:
+            out.append(by_id[sid])
+            continue
+        anchor = min(mids, key=lambda m: original_order.index(m))
+        if sid != anchor:
+            continue
+        names = sep.join((by_id[mid].get('subject_name') or '').strip() or '—' for mid in mids)
+        code_parts = []
+        for mid in mids:
+            cd = (by_id[mid].get('subject_code') or '').strip()
+            code_parts.append(cd if cd else ((by_id[mid].get('subject_name') or '')[:12] or '—'))
+        combo_row = {
+            'id': -cid,
+            'subject_name': names,
+            'subject_code': sep.join(code_parts),
+            'description': '',
+            'status': 'active',
+            'exam_total_marks': 100.0,
+            'combination_id': cid,
+            'member_subject_ids': list(mids),
+        }
+        out.append(combo_row)
+        for mid in mids:
+            consumed.add(mid)
+    return out
+
+
 def _default_exam_session_presets():
     return {
         'MORNING': ('08:00:00', '11:00:00'),
@@ -1404,6 +1679,11 @@ def init_db():
                     INDEX idx_subject_code (subject_code)
                 )
             """)
+            try:
+                ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_combination_tables(cursor)
+            except Exception as e:
+                print(f"Migration note (subjects.exam_total_marks): {e}")
             
             # Create academic_years table (must be before terms, timetables, exams)
             cursor.execute("""
@@ -3279,7 +3559,9 @@ This is an automated message. Please do not reply to this email.
 # Routes
 @app.route('/')
 def home():
-    return render_template('home.html')
+    # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
+    employee_in_portal = bool(session.get('employee_id'))
+    return render_template('home.html', employee_in_portal=employee_in_portal)
 
 
 @app.route('/search')
@@ -4994,6 +5276,7 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
         return empty
     out = dict(empty)
     try:
+        ensure_subject_exam_total_marks_column(cursor)
         cursor.execute(
             """
             SELECT DISTINCT academic_level_id AS lid FROM teacher_subject_assignments WHERE teacher_id = %s
@@ -5149,7 +5432,8 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
         cursor.execute(
             """
             SELECT sub.subject_name, sub.subject_code,
-                   AVG(sm.marks) AS mean_marks,
+                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS mean_marks,
                    COUNT(sm.marks) AS mark_count
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
@@ -5189,9 +5473,12 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
 
         cursor.execute(
             """
-            SELECT st.academic_level_id, al.level_name, AVG(sm.marks) AS avg_m, COUNT(*) AS cnt
+            SELECT st.academic_level_id, al.level_name,
+                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m, COUNT(*) AS cnt
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+            INNER JOIN subjects sub ON sm.subject_id = sub.id
             INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
             INNER JOIN academic_levels al ON al.id = st.academic_level_id
             WHERE sm.marks IS NOT NULL
@@ -5246,9 +5533,12 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
 
         cursor.execute(
             """
-            SELECT tsa.teacher_id, AVG(sm.marks) AS avg_m
+            SELECT tsa.teacher_id,
+                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+            INNER JOIN subjects sub ON sm.subject_id = sub.id
             INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
             INNER JOIN teacher_subject_assignments tsa
               ON tsa.subject_id = sm.subject_id AND tsa.academic_level_id = st.academic_level_id
@@ -13409,6 +13699,7 @@ def _fetch_student_progress_payload(student_id):
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_subject_exam_total_marks_column(cursor)
                 cursor.execute("""
                     SELECT s.student_id, s.full_name, s.current_grade, s.status
                     FROM students s WHERE s.student_id = %s
@@ -13424,7 +13715,8 @@ def _fetch_student_progress_payload(student_id):
 
                 if student:
                     cursor.execute("""
-                        SELECT ay.year_name, t.term_name, e.exam_name, sub.subject_name, sub.subject_code, sm.marks
+                        SELECT ay.year_name, t.term_name, e.exam_name, sub.subject_name, sub.subject_code,
+                               sub.exam_total_marks, sm.marks
                         FROM student_marks sm
                         INNER JOIN exams e ON sm.exam_id = e.id
                         INNER JOIN subjects sub ON sm.subject_id = sub.id
@@ -13439,17 +13731,20 @@ def _fetch_student_progress_payload(student_id):
                         term_name = r.get('term_name') if isinstance(r, dict) else r[1]
                         exam_name = r.get('exam_name') if isinstance(r, dict) else r[2]
                         subject_name = (r.get('subject_name') or r.get('subject_code') or 'N/A') if isinstance(r, dict) else (r[3] or r[4] or 'N/A')
-                        marks_val = r.get('marks') if isinstance(r, dict) else r[5]
+                        exam_total_marks = r.get('exam_total_marks') if isinstance(r, dict) else r[5]
+                        marks_val = r.get('marks') if isinstance(r, dict) else r[6]
                         try:
-                            m = float(marks_val) if marks_val is not None else None
+                            m_raw = float(marks_val) if marks_val is not None else None
                         except (TypeError, ValueError):
-                            m = None
+                            m_raw = None
+                        m_pct = raw_mark_to_percentage(m_raw, exam_total_marks) if m_raw is not None else None
                         progress_data.append({
                             'year_name': year_name,
                             'term_name': term_name,
                             'exam_name': exam_name,
                             'subject_name': subject_name,
-                            'marks': m,
+                            'marks': m_pct,
+                            'marks_raw': m_raw,
                         })
 
                     subject_marks = {}
@@ -13934,8 +14229,8 @@ def settings(role):
         if user_role not in schedule_management_roles:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
-        
-        # Fetch existing settings
+
+        # Curriculum Coordinator settings (academic schedule management).
         connection = get_db_connection()
         settings = {}
         settings_profiles = []
@@ -13992,15 +14287,15 @@ def settings(role):
 
                         try:
                             parsed_profile_levels = json.loads(raw_profile_levels)
-                        except:
+                        except Exception:
                             parsed_profile_levels = []
                         try:
                             parsed_class_times = json.loads(raw_class_times)
-                        except:
+                        except Exception:
                             parsed_class_times = []
                         try:
                             parsed_activities = json.loads(raw_activities)
-                        except:
+                        except Exception:
                             parsed_activities = []
                         parsed_days = [d.strip() for d in str(raw_study_days).split(',') if str(d).strip()]
 
@@ -14041,25 +14336,22 @@ def settings(role):
                     if result:
                         if isinstance(result, dict):
                             settings = result
-                            # Parse applicable levels JSON
                             raw_levels = settings.get('applicable_levels') or '[]'
                             try:
                                 settings['applicable_levels'] = json.loads(raw_levels)
-                            except:
+                            except Exception:
                                 settings['applicable_levels'] = []
-                            # Parse class times JSON
                             if settings.get('class_time_allocation'):
                                 try:
                                     settings['class_times'] = json.loads(settings['class_time_allocation'])
-                                except:
+                                except Exception:
                                     settings['class_times'] = []
                             else:
                                 settings['class_times'] = []
-                            # Parse activities JSON
                             if settings.get('activity_time_allocation'):
                                 try:
                                     settings['activities'] = json.loads(settings['activity_time_allocation'])
-                                except:
+                                except Exception:
                                     settings['activities'] = []
                             else:
                                 settings['activities'] = []
@@ -14069,15 +14361,15 @@ def settings(role):
                             activities_json = result[6] if result[6] else '[]'
                             try:
                                 applicable_levels = json.loads(applicable_levels_json)
-                            except:
+                            except Exception:
                                 applicable_levels = []
                             try:
                                 class_times = json.loads(class_times_json)
-                            except:
+                            except Exception:
                                 class_times = []
                             try:
                                 activities = json.loads(activities_json)
-                            except:
+                            except Exception:
                                 activities = []
                             settings = {
                                 'id': result[0],
@@ -14095,7 +14387,7 @@ def settings(role):
                 settings['activities'] = []
             finally:
                 connection.close()
-        
+
         if 'activities' not in settings:
             settings['activities'] = []
         if 'class_times' not in settings:
@@ -14106,7 +14398,7 @@ def settings(role):
             settings['profile_name'] = ''
         if 'id' not in settings:
             settings['id'] = ''
-        
+
         return render_template(
             'dashboards/settings_academic_coordinator.html',
             role=user_role,
@@ -16648,7 +16940,368 @@ def exam_evaluation():
                          session_presets=session_presets_ui)
 
 
-@app.route('/dashboard/employee/exam-timetable-settings', methods=['GET', 'POST'])
+@app.route('/dashboard/employee/exam-subject-settings', methods=['GET', 'POST'])
+@login_required
+def exam_subject_settings():
+    """Per-subject exam maximum marks (curriculum coordinator / principal / technician)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    if user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher'):
+        return redirect(employee_dashboard_path('exam-timetable'))
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dashboard_path('exam-evaluation'))
+
+    settings_anchor = employee_dashboard_path('exam-subject-settings')
+    combine_hash_redirect = f"{settings_anchor}#combine-exam-subjects"
+
+    if request.method == 'POST':
+        combine_action = (request.form.get('combine_action') or '').strip().lower()
+
+        if combine_action == 'delete':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_combination_tables(cursor)
+                    cid = request.form.get('combination_id', type=int)
+                    if not cid:
+                        flash('Missing combination.', 'error')
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT totals_snapshot_json FROM subject_exam_combinations WHERE id = %s
+                            """,
+                            (cid,),
+                        )
+                        snap_row = cursor.fetchone()
+                        snap_raw = None
+                        if snap_row:
+                            snap_raw = (
+                                snap_row.get('totals_snapshot_json')
+                                if isinstance(snap_row, dict)
+                                else snap_row[0]
+                            )
+                        cursor.execute(
+                            "DELETE FROM subject_exam_combination_members WHERE combination_id = %s",
+                            (cid,),
+                        )
+                        restore_subject_totals_from_combination_snapshot(cursor, snap_raw)
+                        cursor.execute(
+                            "DELETE FROM subject_exam_combinations WHERE id = %s",
+                            (cid,),
+                        )
+                        connection.commit()
+                        if snap_raw:
+                            flash(
+                                'Combination removed. Exam totals for those papers were restored '
+                                'to their values before the combination.',
+                                'success',
+                            )
+                        else:
+                            flash('Combination removed.', 'success')
+            except Exception as e:
+                print(f"exam_subject_settings combine delete: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not remove combination.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(combine_hash_redirect)
+
+        if combine_action == 'create':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_combination_tables(cursor)
+                    raw_ids = request.form.getlist('subject_pick')
+                    sid_order = []
+                    seen = set()
+                    for x in raw_ids:
+                        try:
+                            sid = int(x)
+                            if sid not in seen:
+                                seen.add(sid)
+                                sid_order.append(sid)
+                        except (TypeError, ValueError):
+                            continue
+                    if len(sid_order) < 2:
+                        flash('Select at least two subjects to combine.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    placeholders = ','.join(['%s'] * len(sid_order))
+                    cursor.execute(
+                        f"""
+                        SELECT id FROM subjects
+                        WHERE id IN ({placeholders}) AND COALESCE(status, 'active') = 'active'
+                        """,
+                        tuple(sid_order),
+                    )
+                    ok_active = {r.get('id') if isinstance(r, dict) else r[0] for r in (cursor.fetchall() or [])}
+                    sid_order = [s for s in sid_order if s in ok_active]
+                    if len(sid_order) < 2:
+                        flash('Need at least two active subjects.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    cursor.execute(
+                        f"""
+                        SELECT subject_id FROM subject_exam_combination_members
+                        WHERE subject_id IN ({placeholders})
+                        """,
+                        tuple(sid_order),
+                    )
+                    conflicts = cursor.fetchall() or []
+                    if conflicts:
+                        flash(
+                            'One or more selected subjects are already part of another combination. '
+                            'Remove that combination first.',
+                            'error',
+                        )
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(combine_hash_redirect)
+                    cursor.execute(
+                        "INSERT INTO subject_exam_combinations (created_at) VALUES (CURRENT_TIMESTAMP)"
+                    )
+                    combo_id = cursor.lastrowid
+                    totals_snapshot = normalize_subject_totals_for_exam_combination(cursor, sid_order)
+                    cursor.execute(
+                        """
+                        UPDATE subject_exam_combinations
+                        SET totals_snapshot_json = %s
+                        WHERE id = %s
+                        """,
+                        (json.dumps(totals_snapshot), combo_id),
+                    )
+                    for order_idx, sid in enumerate(sid_order):
+                        cursor.execute(
+                            """
+                            INSERT INTO subject_exam_combination_members (combination_id, subject_id, sort_order)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (combo_id, sid, order_idx),
+                        )
+                    connection.commit()
+                    flash(
+                        'Subjects combined for marks entry. Exam totals for those papers were scaled '
+                        'proportionally so they sum to 100 (restore by removing this combination).',
+                        'success',
+                    )
+            except Exception as e:
+                print(f"exam_subject_settings combine create: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not save combination. Try again.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(combine_hash_redirect)
+
+        try:
+            with connection.cursor() as cursor:
+                ensure_subject_exam_total_marks_column(cursor)
+                cursor.execute(
+                    """
+                    SELECT id FROM subjects
+                    WHERE COALESCE(status, 'active') = 'active'
+                    """
+                )
+                id_rows = cursor.fetchall() or []
+                subject_ids = []
+                for r in id_rows:
+                    sid = r.get('id') if isinstance(r, dict) else r[0]
+                    if sid is not None:
+                        subject_ids.append(int(sid))
+                parsed = {}
+                for sid in subject_ids:
+                    raw = (request.form.get(f'exam_total_marks_{sid}') or '').strip()
+                    if raw == '':
+                        parsed[sid] = None
+                        continue
+                    try:
+                        val = float(raw)
+                        if val < 1 or val > 1000:
+                            raise ValueError('out of range')
+                        parsed[sid] = val
+                    except (TypeError, ValueError):
+                        flash(
+                            f'Invalid total marks for one or more subjects (ID {sid}). '
+                            'Use a number between 1 and 1000, or leave blank for default (100).',
+                            'error',
+                        )
+                        return redirect(employee_dashboard_path('exam-subject-settings'))
+                for sid, val in parsed.items():
+                    if val is None:
+                        cursor.execute(
+                            "UPDATE subjects SET exam_total_marks = NULL WHERE id = %s",
+                            (sid,),
+                        )
+                    else:
+                        cursor.execute(
+                            "UPDATE subjects SET exam_total_marks = %s WHERE id = %s",
+                            (val, sid),
+                        )
+                connection.commit()
+            flash('Exam total marks per subject were saved.', 'success')
+        except Exception as e:
+            print(f"exam_subject_settings save: {e}")
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            flash('Could not save settings. Please try again.', 'error')
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+        return redirect(employee_dashboard_path('exam-subject-settings'))
+
+    subjects_rows = []
+    subjects_choices = []
+    combinations_display = []
+    try:
+        with connection.cursor() as cursor:
+            ensure_subject_exam_total_marks_column(cursor)
+            ensure_subject_exam_combination_tables(cursor)
+            cursor.execute(
+                """
+                SELECT s.id, s.subject_name, s.subject_code, s.exam_total_marks
+                FROM subjects s
+                WHERE COALESCE(s.status, 'active') = 'active'
+                ORDER BY s.subject_name ASC
+                """
+            )
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    et = row.get('exam_total_marks')
+                    sid = row.get('id')
+                    sname = row.get('subject_name') or ''
+                    scode = row.get('subject_code') or ''
+                else:
+                    et = row[3] if len(row) > 3 else None
+                    sid = row[0]
+                    sname = row[1] or ''
+                    scode = row[2] or ''
+                et_f = float(et) if et is not None else None
+                mx = subject_exam_max_raw_marks(et_f)
+                if mx >= 50:
+                    preview_raw = 50.0
+                else:
+                    preview_raw = round(mx / 2.0, 4) if mx > 0 else 1.0
+                if preview_raw <= 0:
+                    preview_raw = 1.0
+                preview_pct = raw_mark_to_percentage(preview_raw, et_f)
+                subjects_rows.append(
+                    {
+                        'id': sid,
+                        'subject_name': sname,
+                        'subject_code': scode,
+                        'exam_total_marks': et_f,
+                        'effective_max': mx,
+                        'preview_example_raw': preview_raw,
+                        'preview_example_pct': preview_pct,
+                    }
+                )
+            subjects_choices = [
+                {
+                    'id': int(r['id']),
+                    'subject_name': r.get('subject_name') or '',
+                    'subject_code': r.get('subject_code') or '',
+                    'exam_total_marks_display': subject_exam_max_raw_marks(r.get('exam_total_marks')),
+                }
+                for r in subjects_rows
+            ]
+            sep = '/'
+            name_map = {int(r['id']): r for r in subjects_rows}
+            for c in fetch_subject_exam_combinations(cursor):
+                mids = c.get('member_subject_ids') or []
+                if len(mids) < 2:
+                    continue
+                names = []
+                codes = []
+                totals = []
+                for mid in mids:
+                    info = name_map.get(mid)
+                    if info:
+                        names.append((info.get('subject_name') or '').strip() or '—')
+                        cd = (info.get('subject_code') or '').strip()
+                        codes.append(cd if cd else ((info.get('subject_name') or '')[:12] or '—'))
+                        totals.append(str(subject_exam_max_raw_marks(info.get('exam_total_marks'))))
+                    else:
+                        names.append('—')
+                        codes.append('—')
+                        totals.append('100')
+                combinations_display.append({
+                    'id': c['id'],
+                    'label_name': sep.join(names),
+                    'label_code': sep.join(codes),
+                    'member_totals': totals,
+                    'member_ids': mids,
+                })
+    except Exception as e:
+        print(f"exam_subject_settings load: {e}")
+        flash('Could not load subjects.', 'error')
+        subjects_rows = []
+        subjects_choices = []
+        combinations_display = []
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    return render_template(
+        'dashboards/exam_subject_settings.html',
+        role=user_role,
+        subjects_rows=subjects_rows,
+        subjects_choices=subjects_choices,
+        combinations_display=combinations_display,
+    )
+
+
+@app.route('/dashboard/employee/exam-subject-combine')
+@login_required
+def exam_subject_combine_legacy_redirect():
+    """Old URL; combining is on Exam subject settings."""
+    return redirect(
+        employee_dashboard_path('exam-subject-settings') + '#combine-exam-subjects',
+        code=302,
+    )
+
+
+@app.route('/dashboard/employee/exam-timetable-settings')
+@login_required
+def exam_timetable_settings_legacy_redirect():
+    """Legacy URL; timetable sessions live at /timetable-sessions."""
+    return redirect(employee_dashboard_path('timetable-sessions'), code=302)
+
+
+@app.route('/dashboard/employee/timetable-sessions', methods=['GET', 'POST'])
 @login_required
 def exam_timetable_settings():
     """Configure exam session start times and durations."""
@@ -16728,18 +17381,18 @@ def exam_timetable_settings():
                     parts = start.split(':')
                     if len(parts) < 2:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
                     try:
                         hh = int(parts[0]); mm = int(parts[1])
                     except Exception:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
                     if hh < 0 or hh > 23 or mm < 0 or mm > 59:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
                     if duration <= 0:
                         flash(f'{k.title()} duration must be greater than 0 minutes.', 'error')
-                        return redirect(employee_dashboard_path('exam-timetable-settings'))
+                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
 
                     payload[k] = {'start': f"{hh:02d}:{mm:02d}", 'duration_minutes': duration}
 
@@ -16756,7 +17409,7 @@ def exam_timetable_settings():
                 )
                 connection.commit()
                 flash('Exam timetable sessions updated successfully.', 'success')
-                return redirect(employee_dashboard_path('exam-timetable-settings'))
+                return redirect(employee_dashboard_path('timetable-sessions'))
 
             settings = _current_settings(cursor)
             return render_template(
@@ -22644,11 +23297,18 @@ def exam_analytics_detail(exam_id):
         # Compute mean grade per slot and position (rank by mean descending)
         try:
             with connection.cursor() as cur2:
+                ensure_subject_exam_total_marks_column(cur2)
                 for slot in slots:
                     cur2.execute("""
-                        SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade,
-                               COUNT(*) as count_marks
-                        FROM student_marks WHERE exam_id = %s
+                        SELECT COALESCE(AVG(
+                            (100 * CAST(sm.marks AS DECIMAL(16,8)))
+                            / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)
+                        ), 0) AS mean_grade,
+                               COUNT(*) AS count_marks
+                        FROM student_marks sm
+                        INNER JOIN exams ex ON sm.exam_id = ex.id
+                        INNER JOIN subjects sub ON ex.subject_id = sub.id
+                        WHERE sm.exam_id = %s
                     """, (slot['id'],))
                     m = cur2.fetchone()
                     slot['mean_grade'] = float(m.get('mean_grade', 0) if isinstance(m, dict) else (m[0] if m and len(m) > 0 else 0))
@@ -22700,6 +23360,7 @@ def exam_analytics_detail(exam_id):
                 break
         try:
             with connection.cursor() as cur2:
+                ensure_subject_exam_total_marks_column(cur2)
                 # Load grading allocations (default + subject-specific overrides)
                 default_grade_bands = []
                 subject_grade_bands = {}
@@ -22791,33 +23452,57 @@ def exam_analytics_detail(exam_id):
                         if all_slot_ids and subj.get('subject_id') is not None:
                             placeholders = ','.join(['%s'] * len(all_slot_ids))
                             cur2.execute("""
-                                SELECT marks FROM student_marks
-                                WHERE student_id = %s AND subject_id = %s AND exam_id IN (""" + placeholders + """)
+                                SELECT sm.marks, sub.exam_total_marks
+                                FROM student_marks sm
+                                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                                WHERE sm.student_id = %s AND sm.subject_id = %s AND sm.exam_id IN (""" + placeholders + """)
                             """, [sid, subj['subject_id']] + all_slot_ids)
+                            pcts = []
                             for mrow in cur2.fetchall():
                                 mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
+                                etm = mrow.get('exam_total_marks') if isinstance(mrow, dict) else (mrow[1] if mrow and len(mrow) > 1 else None)
                                 if mval is not None:
-                                    total_for_subject = (total_for_subject or 0) + float(mval)
+                                    try:
+                                        p = raw_mark_to_percentage(float(mval), etm)
+                                    except (TypeError, ValueError):
+                                        p = None
+                                    if p is not None:
+                                        pcts.append(p)
+                            total_for_subject = round(sum(pcts) / len(pcts), 2) if pcts else None
                         else:
                             # Fallback: match by exam_id only (one slot per subject)
+                            pcts_fb = []
                             for exam_id in subj.get('slot_ids', []):
                                 cur2.execute("""
-                                    SELECT marks FROM student_marks WHERE student_id = %s AND exam_id = %s
+                                    SELECT sm.marks, sub.exam_total_marks
+                                    FROM student_marks sm
+                                    INNER JOIN subjects sub ON sm.subject_id = sub.id
+                                    WHERE sm.student_id = %s AND sm.exam_id = %s
                                 """, (sid, exam_id))
                                 mrow = cur2.fetchone()
-                                mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
-                                if mval is not None:
-                                    total_for_subject = (total_for_subject or 0) + float(mval)
+                                if mrow:
+                                    mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
+                                    etm = mrow.get('exam_total_marks') if isinstance(mrow, dict) else (mrow[1] if mrow and len(mrow) > 1 else None)
+                                    if mval is not None:
+                                        try:
+                                            p = raw_mark_to_percentage(float(mval), etm)
+                                        except (TypeError, ValueError):
+                                            p = None
+                                        if p is not None:
+                                            pcts_fb.append(p)
+                            total_for_subject = round(sum(pcts_fb) / len(pcts_fb), 2) if pcts_fb else None
                         grade_value = _grade_for_mark(subj.get('subject_id'), total_for_subject)
                         marks_list.append({'subject_name': subj['subject_name'], 'marks': total_for_subject, 'grade': grade_value})
                     students_marks.append({'student_id': sid, 'full_name': full_name, 'marks_list': marks_list})
                 for sm in students_marks:
-                    sm['total_marks'] = sum((m.get('marks') or 0) for m in sm['marks_list'])
-                    scored_subjects = sum(1 for m in sm['marks_list'] if m.get('marks') is not None)
+                    pct_vals = [m.get('marks') for m in sm['marks_list'] if m.get('marks') is not None]
+                    scored_subjects = len(pct_vals)
                     if scored_subjects > 0:
-                        sm['total_percent'] = float(sm['total_marks']) / float(scored_subjects)
+                        sm['total_marks'] = round(sum(pct_vals) / float(scored_subjects), 2)
+                        sm['total_percent'] = sm['total_marks']
                         sm['total_grade'] = _grade_for_mark(None, sm['total_percent'])
                     else:
+                        sm['total_marks'] = 0
                         sm['total_percent'] = None
                         sm['total_grade'] = ''
                 students_marks.sort(key=lambda x: x['total_marks'], reverse=True)
@@ -22833,8 +23518,12 @@ def exam_analytics_detail(exam_id):
                         continue
                     placeholders = ','.join(['%s'] * len(all_slot_ids))
                     cur2.execute("""
-                        SELECT sm.student_id, SUM(CAST(COALESCE(sm.marks, 0) AS DECIMAL(10,2))) as total_marks, st.full_name
+                        SELECT sm.student_id,
+                               AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                                   / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS total_marks,
+                               st.full_name
                         FROM student_marks sm
+                        INNER JOIN subjects sub ON sm.subject_id = sub.id
                         LEFT JOIN students st ON sm.student_id = st.student_id
                         WHERE sm.subject_id = %s AND sm.exam_id IN (""" + placeholders + """)
                         GROUP BY sm.student_id, st.full_name
@@ -22874,9 +23563,13 @@ def exam_analytics_detail(exam_id):
                         continue
                     placeholders = ','.join(['%s'] * len(all_slot_ids))
                     cur2.execute("""
-                        SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade, COUNT(*) as cnt
-                        FROM student_marks
-                        WHERE subject_id = %s AND exam_id IN (""" + placeholders + """)
+                        SELECT COALESCE(AVG(
+                            (100 * CAST(sm.marks AS DECIMAL(16,8)))
+                            / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)
+                        ), 0) AS mean_grade, COUNT(*) AS cnt
+                        FROM student_marks sm
+                        INNER JOIN subjects sub ON sm.subject_id = sub.id
+                        WHERE sm.subject_id = %s AND sm.exam_id IN (""" + placeholders + """)
                     """, [subj_id] + all_slot_ids)
                     mrow = cur2.fetchone()
                     mean_grade = float(mrow.get('mean_grade', 0) if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else 0))
@@ -22945,6 +23638,7 @@ def exam_analytics_slot(exam_id, slot_id):
         return redirect(url_for('exam_analytics'))
     try:
         with connection.cursor() as cursor:
+            ensure_subject_exam_total_marks_column(cursor)
             cursor.execute("""
                 SELECT e.id, e.subject_id, e.supervisor_id, e.exam_name, e.exam_date,
                        s.subject_name, s.subject_code, emp.full_name as supervisor_name
@@ -22963,8 +23657,14 @@ def exam_analytics_slot(exam_id, slot_id):
             exam_date_str = exam_date_val.strftime('%Y-%m-%d') if exam_date_val and hasattr(exam_date_val, 'strftime') else str(exam_date_val) if exam_date_val else ''
             supervisor_name = row.get('supervisor_name', '') if isinstance(row, dict) else (row[7] if len(row) > 7 else '')
             cursor.execute("""
-                SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade, COUNT(*) as count_marks
-                FROM student_marks WHERE exam_id = %s
+                SELECT COALESCE(AVG(
+                    (100 * CAST(sm.marks AS DECIMAL(16,8)))
+                    / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)
+                ), 0) AS mean_grade, COUNT(*) AS count_marks
+                FROM student_marks sm
+                INNER JOIN exams ex ON sm.exam_id = ex.id
+                INNER JOIN subjects sub ON ex.subject_id = sub.id
+                WHERE sm.exam_id = %s
             """, (slot_id,))
             m = cursor.fetchone()
             mean_grade = float(m.get('mean_grade', 0) if isinstance(m, dict) else (m[0] if m and len(m) > 0 else 0))
@@ -22982,7 +23682,16 @@ def exam_analytics_slot(exam_id, slot_id):
             slot_means = []
             for r in all_slots:
                 sid = r.get('id') if isinstance(r, dict) else r[0]
-                cursor.execute("SELECT COALESCE(AVG(CAST(marks AS DECIMAL(10,2))), 0) as mean_grade FROM student_marks WHERE exam_id = %s", (sid,))
+                cursor.execute("""
+                    SELECT COALESCE(AVG(
+                        (100 * CAST(sm.marks AS DECIMAL(16,8)))
+                        / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)
+                    ), 0) AS mean_grade
+                    FROM student_marks sm
+                    INNER JOIN exams ex ON sm.exam_id = ex.id
+                    INNER JOIN subjects sub ON ex.subject_id = sub.id
+                    WHERE sm.exam_id = %s
+                """, (sid,))
                 mm = cursor.fetchone()
                 smean = float(mm.get('mean_grade', mm[0] if mm and len(mm) > 0 else 0) if isinstance(mm, dict) else (float(mm[0]) if mm and len(mm) > 0 else 0))
                 sname = (r.get('subject_name') or r.get('subject_code') or '') if isinstance(r, dict) else (r[4] or r[5] or '')
@@ -23044,12 +23753,16 @@ def students_by_academic_level(level_id):
     terms = []
     default_grade_bands = []
     subject_grade_bands = {}
+    subject_exam_max_map_base = {}
+    combination_column_members = {}
     current_year_id = None
     current_term_id = None
     
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_combination_tables(cursor)
                 # Get academic level information
                 cursor.execute("""
                     SELECT id, level_category, level_name, level_description, level_status
@@ -23103,7 +23816,7 @@ def students_by_academic_level(level_id):
                 if is_teacher and teacher_id:
                     # Teacher: subjects from exams for this level that they are assigned to, else their assigned subjects
                     cursor.execute("""
-                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
                         FROM subjects s
                         INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
                         INNER JOIN teacher_subject_assignments tsa ON tsa.subject_id = s.id AND tsa.academic_level_id = %s AND tsa.teacher_id = %s
@@ -23113,7 +23826,7 @@ def students_by_academic_level(level_id):
                     subjects_results = cursor.fetchall()
                     if not subjects_results:
                         cursor.execute("""
-                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
                             FROM subjects s
                             INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
                             WHERE tsa.academic_level_id = %s AND tsa.teacher_id = %s AND s.status = 'active'
@@ -23123,7 +23836,7 @@ def students_by_academic_level(level_id):
                 else:
                     # Non-teacher: subjects that appear in exams for this level (registered for exams)
                     cursor.execute("""
-                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
                         FROM subjects s
                         INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
                         WHERE s.status = 'active'
@@ -23133,7 +23846,7 @@ def students_by_academic_level(level_id):
                     if not subjects_results:
                         # Fallback: subjects allocated to this level via subject-class allocation
                         cursor.execute("""
-                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
                             FROM subjects s
                             INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
                             WHERE tsa.academic_level_id = %s AND s.status = 'active'
@@ -23147,8 +23860,17 @@ def students_by_academic_level(level_id):
                         'subject_name': row.get('subject_name') if isinstance(row, dict) else row[1],
                         'subject_code': row.get('subject_code') if isinstance(row, dict) else row[2],
                         'description': row.get('description') if isinstance(row, dict) else row[3],
-                        'status': row.get('status') if isinstance(row, dict) else row[4]
+                        'status': row.get('status') if isinstance(row, dict) else row[4],
+                        'exam_total_marks': row.get('exam_total_marks') if isinstance(row, dict) else (row[5] if len(row) > 5 else None),
                     })
+
+                subjects_flat = [{**s} for s in subjects]
+                combinations_loaded = fetch_subject_exam_combinations(cursor)
+                subject_exam_max_map_base = {
+                    int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
+                    for s in subjects_flat
+                }
+                subjects = merge_subjects_with_exam_combinations(subjects_flat, combinations_loaded)
                 
                 # Get exams for this academic level: unique by exam_name only (one row per exam name)
                 # For teachers, only show exams for their assigned subjects
@@ -23446,6 +24168,12 @@ def students_by_academic_level(level_id):
 
     # Academic coordinators and principals can input/edit marks; teachers can edit for their level
     can_edit = is_teacher or is_academic_coordinator or is_principal
+
+    subject_exam_max_map = dict(subject_exam_max_map_base)
+    for s in subjects:
+        if s.get('combination_id'):
+            subject_exam_max_map[int(s['id'])] = 100.0
+            combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -23462,6 +24190,8 @@ def students_by_academic_level(level_id):
                          student_marks=student_marks,
                          default_grade_bands=default_grade_bands,
                          subject_grade_bands=subject_grade_bands,
+                         subject_exam_max_map=subject_exam_max_map,
+                         combination_column_members=combination_column_members,
                          can_edit=can_edit)
 
 # API Endpoint to fetch marks filtered by exam
@@ -23669,10 +24399,34 @@ def get_marks_by_exam():
                                     del student_marks[sid][subid]
                             if not student_marks[sid]:
                                 del student_marks[sid]
+
+                    subject_exam_max_payload = {}
+                    try:
+                        ensure_subject_exam_total_marks_column(cursor)
+                        if is_teacher and teacher_id and teacher_subject_ids:
+                            ph = ','.join(['%s'] * len(teacher_subject_ids))
+                            cursor.execute(
+                                f"SELECT id, exam_total_marks FROM subjects WHERE id IN ({ph})",
+                                tuple(teacher_subject_ids),
+                            )
+                        else:
+                            cursor.execute("""
+                                SELECT DISTINCT s.id, s.exam_total_marks
+                                FROM subjects s
+                                INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
+                                WHERE s.status = 'active'
+                            """, (level_id,))
+                        for srow in cursor.fetchall() or []:
+                            sid = srow.get('id') if isinstance(srow, dict) else srow[0]
+                            etm = srow.get('exam_total_marks') if isinstance(srow, dict) else srow[1]
+                            subject_exam_max_payload[str(int(sid))] = float(subject_exam_max_raw_marks(etm))
+                    except Exception as _sem:
+                        print(f"subject_exam_max for get-marks: {_sem}")
                     
                     return jsonify({
                         'success': True,
                         'marks': student_marks,
+                        'subject_exam_max': subject_exam_max_payload,
                         'message': 'Marks fetched successfully'
                     })
             except Exception as e:
@@ -23844,6 +24598,7 @@ def save_marks():
         
         try:
             with connection.cursor() as cursor:
+                ensure_subject_exam_total_marks_column(cursor)
                 cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
                 ex_row = cursor.fetchone()
                 if not ex_row:
@@ -23907,6 +24662,21 @@ def save_marks():
                             return jsonify({'success': False, 'message': 'Marks cannot be negative.'}), 400
                     except ValueError:
                         return jsonify({'success': False, 'message': 'Invalid marks value. Must be a number.'}), 400
+
+                cursor.execute(
+                    "SELECT exam_total_marks FROM subjects WHERE id = %s LIMIT 1",
+                    (subject_id,),
+                )
+                sub_max_row = cursor.fetchone()
+                if not sub_max_row:
+                    return jsonify({'success': False, 'message': 'Subject not found.'}), 404
+                etm = sub_max_row.get('exam_total_marks') if isinstance(sub_max_row, dict) else sub_max_row[0]
+                max_raw = subject_exam_max_raw_marks(etm)
+                if marks_value is not None and marks_value > max_raw + 1e-9:
+                    return jsonify({
+                        'success': False,
+                        'message': f'Marks cannot exceed this subject\'s exam maximum ({max_raw:g}).',
+                    }), 400
                 
                 # Check if mark already exists
                 cursor.execute("""
@@ -23958,6 +24728,184 @@ def save_marks():
         print(f"Error in save_marks endpoint: {e}")
         print(f"Traceback: {error_trace}")
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+
+@app.route('/dashboard/employee/exams-assessments/save-combination-marks', methods=['POST'])
+@login_required
+def save_combination_marks():
+    """Apply one unified percentage (0–100) across every paper in a combination (raw per subject from each exam total)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role in ('teachers', 'teacher')
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_teacher or is_academic_coordinator or is_principal):
+        return jsonify({'success': False, 'message': 'You do not have permission to save marks.'}), 403
+
+    teacher_id = None
+    if is_teacher:
+        is_technician = user_role == 'technician'
+        if is_technician:
+            teacher_id = session.get('viewing_as_employee_id')
+        else:
+            teacher_id = session.get('user_id')
+        if not teacher_id:
+            return jsonify({'success': False, 'message': 'Teacher ID not found.'}), 400
+
+    try:
+        data = request.get_json()
+        combination_id = data.get('combination_id')
+        student_id = data.get('student_id')
+        exam_id = data.get('exam_id')
+        marks = data.get('marks')
+        level_id = data.get('level_id')
+
+        if not all([combination_id is not None, student_id, exam_id is not None, level_id]):
+            return jsonify({'success': False, 'message': 'Missing required fields.'}), 400
+        try:
+            combination_id = int(combination_id)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Invalid combination.'}), 400
+
+        connection = get_db_connection()
+        if not connection:
+            return jsonify({'success': False, 'message': 'Database connection failed.'}), 500
+
+        try:
+            with connection.cursor() as cursor:
+                ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_combination_tables(cursor)
+
+                cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
+                ex_row = cursor.fetchone()
+                if not ex_row:
+                    return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+                ex_il = ex_row.get('il') if isinstance(ex_row, dict) else ex_row[0]
+                if ex_il:
+                    return jsonify({
+                        'success': False,
+                        'message': 'This exam is locked. Marks cannot be changed.',
+                        'locked': True,
+                    }), 403
+
+                cursor.execute("""
+                    SELECT academic_level_id, exam_name, academic_year_id, term_id
+                    FROM exams WHERE id = %s
+                """, (exam_id,))
+                exam_scope_row = cursor.fetchone()
+                if not exam_scope_row:
+                    return jsonify({'success': False, 'message': 'Exam not found.'}), 404
+                exam_scope_level_id = exam_scope_row.get('academic_level_id') if isinstance(exam_scope_row, dict) else exam_scope_row[0]
+                exam_scope_name = exam_scope_row.get('exam_name') if isinstance(exam_scope_row, dict) else exam_scope_row[1]
+                exam_scope_year_id = exam_scope_row.get('academic_year_id') if isinstance(exam_scope_row, dict) else exam_scope_row[2]
+                exam_scope_term_id = exam_scope_row.get('term_id') if isinstance(exam_scope_row, dict) else exam_scope_row[3]
+
+                cursor.execute("""
+                    SELECT subject_id FROM subject_exam_combination_members
+                    WHERE combination_id = %s
+                    ORDER BY sort_order ASC, subject_id ASC
+                """, (combination_id,))
+                mem_rows = cursor.fetchall() or []
+                member_ids = []
+                for r in mem_rows:
+                    sid = r.get('subject_id') if isinstance(r, dict) else r[0]
+                    if sid is not None:
+                        member_ids.append(int(sid))
+                if len(member_ids) < 2:
+                    return jsonify({'success': False, 'message': 'Combination not found or incomplete.'}), 404
+
+                pct_val = None
+                if marks is not None and str(marks).strip():
+                    try:
+                        pct_val = float(marks)
+                        if pct_val < 0 or pct_val > 100 + 1e-9:
+                            return jsonify({'success': False, 'message': 'Enter a percentage between 0 and 100.'}), 400
+                    except ValueError:
+                        return jsonify({'success': False, 'message': 'Invalid percentage.'}), 400
+
+                for subject_id in member_ids:
+                    if is_teacher and teacher_id:
+                        cursor.execute("""
+                            SELECT id FROM teacher_subject_assignments
+                            WHERE teacher_id = %s AND subject_id = %s AND academic_level_id = %s
+                        """, (teacher_id, subject_id, level_id))
+                        if not cursor.fetchone():
+                            return jsonify({
+                                'success': False,
+                                'message': 'You are not assigned to all subjects in this combination for this level.',
+                            }), 403
+
+                    resolved_exam_id = exam_id
+                    cursor.execute("""
+                        SELECT id FROM exams
+                        WHERE academic_level_id = %s AND exam_name = %s
+                          AND academic_year_id = %s AND term_id = %s AND subject_id = %s
+                        ORDER BY id ASC LIMIT 1
+                    """, (exam_scope_level_id, exam_scope_name, exam_scope_year_id, exam_scope_term_id, subject_id))
+                    subject_exam_row = cursor.fetchone()
+                    if subject_exam_row:
+                        resolved_exam_id = subject_exam_row.get('id') if isinstance(subject_exam_row, dict) else subject_exam_row[0]
+
+                    cursor.execute(
+                        "SELECT exam_total_marks FROM subjects WHERE id = %s LIMIT 1",
+                        (subject_id,),
+                    )
+                    sub_max_row = cursor.fetchone()
+                    if not sub_max_row:
+                        return jsonify({'success': False, 'message': 'Subject not found.'}), 404
+                    etm = sub_max_row.get('exam_total_marks') if isinstance(sub_max_row, dict) else sub_max_row[0]
+                    max_raw = subject_exam_max_raw_marks(etm)
+
+                    marks_value = None
+                    if pct_val is not None:
+                        marks_value = round((pct_val / 100.0) * max_raw, 2)
+
+                    cursor.execute("""
+                        SELECT id FROM student_marks
+                        WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                    """, (student_id, subject_id, resolved_exam_id))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        if marks_value is not None:
+                            cursor.execute("""
+                                UPDATE student_marks
+                                SET marks = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                            """, (marks_value, student_id, subject_id, resolved_exam_id))
+                        else:
+                            cursor.execute("""
+                                DELETE FROM student_marks
+                                WHERE student_id = %s AND subject_id = %s AND exam_id = %s
+                            """, (student_id, subject_id, resolved_exam_id))
+                    elif marks_value is not None:
+                        cursor.execute("""
+                            INSERT INTO student_marks (student_id, subject_id, exam_id, marks, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        """, (student_id, subject_id, resolved_exam_id, marks_value))
+
+                connection.commit()
+                return jsonify({
+                    'success': True,
+                    'message': 'Combination marks saved.',
+                    'marks_percent': pct_val,
+                })
+        except Exception as e:
+            connection.rollback()
+            import traceback
+            print(f"Error saving combination marks: {e}")
+            print(traceback.format_exc())
+            return jsonify({'success': False, 'message': f'Error saving marks: {str(e)}'}), 500
+        finally:
+            connection.close()
+    except Exception as e:
+        import traceback
+        print(f"Error in save_combination_marks: {e}")
+        print(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
 
 # API Endpoint to fetch students by academic level
 @app.route('/dashboard/employee/exams-assessments/get-students', methods=['POST'])
