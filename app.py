@@ -23519,7 +23519,8 @@ def exam_analytics_detail(exam_id):
                         if subj.get('is_combined'):
                             member_ids = subj.get('member_subject_ids') or []
                             member_weights = subj.get('member_weights') or []
-                            contributions = []
+                            weighted_sum = 0.0
+                            weight_sum = 0.0
                             for idx_m, mid in enumerate(member_ids):
                                 w = member_weights[idx_m] if idx_m < len(member_weights) else 0.0
                                 if w <= 0:
@@ -23546,8 +23547,10 @@ def exam_analytics_detail(exam_id):
                                             pcts_m.append(p)
                                 p_avg = round(sum(pcts_m) / len(pcts_m), 2) if pcts_m else None
                                 if p_avg is not None:
-                                    contributions.append((p_avg * float(w)) / 100.0)
-                            total_for_subject = round(sum(contributions), 2) if contributions else None
+                                    weighted_sum += float(p_avg) * float(w)
+                                    weight_sum += float(w)
+                            # Weighted average of member converted marks (0–100), regardless of whether weights sum to 100.
+                            total_for_subject = round((weighted_sum / weight_sum), 2) if weight_sum > 0 else None
                         # Look up by (student_id, subject_id) and exam_id IN all slots – so marks saved under any slot (e.g. same exam_id for all subjects on exams-assessments) are found
                         elif all_slot_ids and subj.get('subject_id') is not None:
                             placeholders = ','.join(['%s'] * len(all_slot_ids))
@@ -23617,7 +23620,12 @@ def exam_analytics_detail(exam_id):
                 students_marks.sort(key=lambda x: x['total_marks'], reverse=True)
                 for pos, sm in enumerate(students_marks, 1):
                     sm['position'] = pos
-                all_marks_flat = [m.get('marks') for sm in students_marks for m in sm['marks_list'] if m.get('marks') is not None]
+                all_marks_flat = [
+                    m.get('marks')
+                    for sm in students_marks
+                    for m in sm['marks_list']
+                    if m.get('marks') is not None and not m.get('is_combined')
+                ]
                 class_mean = (sum(all_marks_flat) / len(all_marks_flat)) if all_marks_flat else 0.0
                 class_mean_grade = _grade_for_mark(None, class_mean) if all_marks_flat else ''
                 # Subject Analytics: top 10 students per subject (marks for subject from any slot in this exam)
