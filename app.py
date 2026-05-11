@@ -26393,11 +26393,28 @@ def _coerce_academic_report_filters(f):
         out['student_id'] = None
     else:
         out['student_id'] = str(sid).strip() or None
+    # Exams: support multi-select exam_names (preferred) and legacy single exam_name.
+    exam_names_raw = f.get('exam_names', None)
+    if exam_names_raw in (None, '', 'null'):
+        exam_names = None
+    elif isinstance(exam_names_raw, list):
+        exam_names = [str(x).strip() for x in exam_names_raw if str(x).strip()]
+    else:
+        # Accept comma-separated strings or single value
+        s = str(exam_names_raw).strip()
+        if not s:
+            exam_names = None
+        else:
+            exam_names = [p.strip() for p in s.split(',') if p.strip()]
+
     exam_name = f.get('exam_name')
+    if (exam_name is None or exam_name == '' or exam_name == 'null') and exam_names:
+        exam_name = exam_names[0]
     if exam_name is None or exam_name == '' or exam_name == 'null':
         out['exam_name'] = None
     else:
         out['exam_name'] = str(exam_name).strip() or None
+    out['exam_names'] = exam_names
     for dk in ('date_from', 'date_to'):
         dv = f.get(dk)
         if dv is None or dv == '' or dv == 'null':
@@ -26747,7 +26764,16 @@ def _build_academic_report_payload(cursor, report_type, f):
     teacher_id = f.get('teacher_id')
     timetable_view = (f.get('timetable_view') or 'student').lower()
     student_id = _str_opt(f.get('student_id'))
+    exam_names = f.get('exam_names') if isinstance(f, dict) else None
+    if not isinstance(exam_names, list):
+        exam_names = None
+    else:
+        exam_names = [str(x).strip() for x in exam_names if str(x).strip()]
+        if not exam_names:
+            exam_names = None
     exam_name = _str_opt(f.get('exam_name'))
+    if not exam_name and exam_names:
+        exam_name = exam_names[0]
     date_from = _str_opt(f.get('date_from'))
     date_to = _str_opt(f.get('date_to'))
 
@@ -26764,12 +26790,20 @@ def _build_academic_report_payload(cursor, report_type, f):
 
     meta = {}
 
+    def _exam_name_clause_and_params():
+        if exam_names:
+            placeholders = ','.join(['%s'] * len(exam_names))
+            return f" AND e.exam_name IN ({placeholders})", list(exam_names)
+        if exam_name:
+            return " AND e.exam_name = %s", [exam_name]
+        return "", []
+
     def _load_grade_bands_for_reports():
         default_bands = []
         subject_bands = {}
         try:
             cursor.execute("""
-                SELECT code, level_label, start_mark, end_mark
+                SELECT code, level_label, meaning, start_mark, end_mark
                 FROM grade_registrations
                 WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                 ORDER BY start_mark DESC, end_mark DESC
@@ -26779,6 +26813,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     default_bands.append({
                         'code': (grow.get('code') or '').strip(),
                         'label': (grow.get('level_label') or '').strip(),
+                        'meaning': (grow.get('meaning') or '').strip(),
                         'start': float(grow.get('start_mark') or 0),
                         'end': float(grow.get('end_mark') or 0),
                     })
@@ -26786,8 +26821,9 @@ def _build_academic_report_payload(cursor, report_type, f):
                     default_bands.append({
                         'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
                         'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
-                        'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
-                        'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                        'meaning': ((grow[2] if len(grow) > 2 else '') or '').strip(),
+                        'start': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                        'end': float(grow[4] or 0) if len(grow) > 4 else 0.0,
                     })
         except Exception as ge:
             print(f"Note: grade_registrations lookup skipped on academic reports: {ge}")
@@ -27116,13 +27152,6 @@ def _build_academic_report_payload(cursor, report_type, f):
         return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_all_students_performance':
-        if not lid:
-            return {
-                'title': 'All students — exam performance',
-                'columns': ['position', 'admission_number', 'full_name', 'total_marks', 'mean', 'grade'],
-                'rows': [],
-                'meta': {**meta, 'hint': 'Select a class/level to show performance for every student in that class.'},
-            }
         cols = ['position', 'admission_number', 'full_name']
         default_grade_bands, _subject_grade_bands = _load_grade_bands_for_reports()
         if default_grade_bands:
@@ -27137,7 +27166,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
             INNER JOIN students st ON sm.student_id = st.student_id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
-            WHERE e.academic_level_id = %s
+            WHERE 1=1
         """
         q_no_image = """
             SELECT st.student_id, st.full_name, al.level_name,
@@ -27149,9 +27178,13 @@ def _build_academic_report_payload(cursor, report_type, f):
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
             INNER JOIN students st ON sm.student_id = st.student_id
             LEFT JOIN subjects sub ON e.subject_id = sub.id
-            WHERE e.academic_level_id = %s
+            WHERE 1=1
         """
-        params = [lid]
+        params = []
+        if lid:
+            q += " AND e.academic_level_id = %s"
+            q_no_image += " AND e.academic_level_id = %s"
+            params.append(lid)
         if tid:
             q += " AND e.term_id = %s"
             q_no_image += " AND e.term_id = %s"
@@ -27160,10 +27193,15 @@ def _build_academic_report_payload(cursor, report_type, f):
             q += " AND e.academic_year_id = %s"
             q_no_image += " AND e.academic_year_id = %s"
             params.append(ay)
-        if exam_name:
-            q += " AND e.exam_name = %s"
-            q_no_image += " AND e.exam_name = %s"
-            params.append(exam_name)
+        # Exam filter (supports multi-select)
+        clause, ep = _exam_name_clause_and_params()
+        q += clause
+        q_no_image += clause
+        params.extend(ep)
+        if student_id:
+            q += " AND st.student_id = %s"
+            q_no_image += " AND st.student_id = %s"
+            params.append(student_id)
         q += " ORDER BY st.full_name, sub.subject_name"
         q_no_image += " ORDER BY st.full_name, sub.subject_name"
         include_profile_image = True
@@ -27188,7 +27226,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                     raw_pf = str(r[6] if len(r) > 6 else '').strip()
             else:
                 raw_pf = ''
-            subject_label = str(subject_code or '').strip() or str(subject_name or '').strip() or 'SUBJECT'
+            # Prefer full subject name for column labels (codes are still available elsewhere if needed)
+            subject_label = str(subject_name or '').strip() or str(subject_code or '').strip() or 'SUBJECT'
             if admission_number not in grouped:
                 grouped[admission_number] = {
                     'admission_number': admission_number,
@@ -27313,9 +27352,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND e.academic_year_id = %s"
             params.append(ay)
-        if exam_name:
-            q += " AND e.exam_name = %s"
-            params.append(exam_name)
+        clause, ep = _exam_name_clause_and_params()
+        q += clause
+        params.extend(ep)
         cursor.execute(q, params)
         grp = defaultdict(list)
         for r in cursor.fetchall() or []:
@@ -27360,9 +27399,12 @@ def _build_academic_report_payload(cursor, report_type, f):
         if lid:
             q += " AND e.academic_level_id = %s"
             params.append(lid)
-        if exam_name:
-            q += " AND e.exam_name = %s"
-            params.append(exam_name)
+        clause, ep = _exam_name_clause_and_params()
+        q += clause
+        params.extend(ep)
+        if student_id and report_type == 'exam_subject_performance':
+            q += " AND st.student_id = %s"
+            params.append(student_id)
         cursor.execute(q, params)
         grp_level_subj = defaultdict(list)
         grp_subj = defaultdict(list)
@@ -27484,7 +27526,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 q_no_image += " AND e.academic_year_id = %s"
             if lid:
                 q_no_image += " AND e.academic_level_id = %s"
-            if exam_name:
+            if exam_names:
+                placeholders = ','.join(['%s'] * len(exam_names))
+                q_no_image += f" AND e.exam_name IN ({placeholders})"
+            elif exam_name:
                 q_no_image += " AND e.exam_name = %s"
             if student_id:
                 q_no_image += " AND st.student_id = %s"
@@ -27839,6 +27884,89 @@ def api_academic_reports_generate():
         print(f"api_academic_reports_generate: {e}")
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/api/employee/academic-reports/search-students', methods=['POST'])
+@login_required
+def api_academic_reports_search_students():
+    """Typeahead for academic reports: search learners by name or admission/student id."""
+    if not _reports_access_roles_ok():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+
+    data = request.get_json(silent=True) or {}
+    q = (data.get('q') or '').strip()
+    if len(q) < 1:
+        return jsonify({'success': True, 'students': []})
+
+    def _int_or_none(v):
+        if v is None or v == '' or v == 'null':
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    lid = _int_or_none(data.get('level_id'))
+
+    like_pat = '%' + q + '%'
+
+    sql = """
+        SELECT s.student_id, s.full_name, COALESCE(s.current_grade, '') AS level_name,
+               (
+                   SELECT al.id FROM academic_levels al
+                   WHERE al.level_status = 'active'
+                     AND TRIM(COALESCE(al.level_name, '')) = TRIM(COALESCE(s.current_grade, ''))
+                   ORDER BY al.id ASC
+                   LIMIT 1
+               ) AS academic_level_id
+        FROM students s
+        WHERE (s.full_name LIKE %s OR s.student_id LIKE %s)
+    """
+    params = [like_pat, like_pat]
+    if lid:
+        sql += " AND s.current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
+        params.append(lid)
+    sql += " ORDER BY s.full_name ASC LIMIT 40"
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+
+    students = []
+
+    def _lid_as_int(v):
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            for r in cursor.fetchall() or []:
+                if isinstance(r, dict):
+                    students.append({
+                        'student_id': r.get('student_id'),
+                        'full_name': r.get('full_name'),
+                        'level_name': r.get('level_name') or '',
+                        'academic_level_id': _lid_as_int(r.get('academic_level_id')),
+                    })
+                else:
+                    lid_row = r[3] if len(r) > 3 else None
+                    students.append({
+                        'student_id': r[0],
+                        'full_name': r[1],
+                        'level_name': r[2] if len(r) > 2 else '',
+                        'academic_level_id': _lid_as_int(lid_row),
+                    })
+        return jsonify({'success': True, 'students': students})
+    except Exception as e:
+        print(f"api_academic_reports_search_students: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         connection.close()

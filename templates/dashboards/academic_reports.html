@@ -8,10 +8,50 @@
 
 {% block content %}
 <style>
+/* Class registers & exam entry: stable columns on screen and in print */
+#ar-details-list table.ar-register-table {
+    table-layout: fixed;
+    width: 100%;
+}
 @media print {
     @page {
         size: landscape;
         margin: 10mm;
+    }
+    /*
+      Dashboard shell uses a fixed-height main + inner overflow-y-auto.
+      Browsers often clip print/PDF to that viewport unless we expand for print.
+    */
+    html:has(#ar-preview-wrap),
+    body:has(#ar-preview-wrap),
+    html.ar-print-academic-report,
+    html.ar-print-academic-report body {
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+    main:has(#ar-preview-wrap),
+    html.ar-print-academic-report main.overflow-hidden {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        min-height: 0 !important;
+        flex: none !important;
+        padding-bottom: 0 !important;
+    }
+    main:has(#ar-preview-wrap) > div.overflow-y-auto,
+    html.ar-print-academic-report main.overflow-hidden > div.overflow-y-auto {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+        flex: none !important;
+        min-height: 0 !important;
+    }
+    body:has(#ar-preview-wrap) .max-w-7xl.mx-auto,
+    html.ar-print-academic-report body .max-w-7xl.mx-auto {
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
     body * {
         visibility: hidden !important;
@@ -20,17 +60,27 @@
     #ar-preview-wrap * {
         visibility: visible !important;
     }
+    /* Normal document flow so all pages paginate (absolute used to clip content). */
     #ar-preview-wrap {
-        position: absolute !important;
-        inset: 0 auto auto 0 !important;
+        position: relative !important;
+        inset: auto !important;
+        left: auto !important;
+        top: auto !important;
         width: 100% !important;
+        max-width: none !important;
         margin: 0 !important;
         padding: 0 !important;
+        overflow: visible !important;
+        background: #fff !important;
+        color: #111827 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     .no-print {
         display: none !important;
     }
-    #ar-preview-wrap .overflow-x-auto {
+    #ar-preview-wrap .overflow-x-auto,
+    #ar-preview-wrap .overflow-hidden {
         overflow: visible !important;
     }
     #ar-preview-wrap table {
@@ -47,13 +97,58 @@
         line-height: 1.25 !important;
         padding: 4px 6px !important;
     }
-    #ar-preview-wrap tr {
-        break-inside: avoid !important;
-        page-break-inside: avoid !important;
+    /* Let long tables split across pages (avoiding every-row avoid loses content on some engines). */
+    #ar-preview-wrap tbody tr {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    #ar-preview-wrap thead {
+        display: table-header-group !important;
+    }
+    #ar-preview-wrap tfoot {
+        display: table-footer-group !important;
+    }
+    #ar-preview-wrap details,
+    #ar-preview-wrap summary {
+        display: block !important;
+        overflow: visible !important;
+    }
+    #ar-preview-wrap details > summary {
+        page-break-after: avoid;
     }
     #ar-preview-wrap .rounded-xl,
-    #ar-preview-wrap .rounded-lg {
+    #ar-preview-wrap .rounded-lg,
+    #ar-preview-wrap .rounded-2xl {
         border-radius: 0 !important;
+    }
+    /* Registers / entry lists: fit full width, avoid clipped mark columns */
+    #ar-preview-wrap table.ar-register-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        min-width: 0 !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-num {
+        width: 3.5% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-class {
+        width: 9% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-mark {
+        width: 9% !important;
+    }
+    #ar-preview-wrap table.ar-register-table col.ar-col-entry {
+        width: 7.5% !important;
+    }
+    /* Plain handwriting cells — no inner boxes */
+    #ar-preview-wrap table.ar-register-table td.ar-cell-blank {
+        min-height: 22px !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap .ar-register-sheet {
+        overflow: visible !important;
+        border: none !important;
+        box-shadow: none !important;
     }
     #ar-preview-wrap .shadow-sm,
     #ar-preview-wrap .shadow-md {
@@ -67,153 +162,214 @@
     }
 }
 </style>
-<div class="p-4 lg:p-6 print:p-2 max-w-5xl mx-auto">
-    <div class="mb-6 no-print">
-        <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-            <i class="fas fa-file-export text-brand-primary"></i>
-            Academic reports
-        </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">
-            Choose the report and filters below. The details table updates directly on this page.
-        </p>
-    </div>
+<div class="print:p-2 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+    <!-- Workspace: report selection + filters in a structured grid -->
+    <section class="no-print mb-8 lg:mb-10 rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/40 dark:shadow-none overflow-hidden">
+        <header class="relative px-5 sm:px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+                <div class="flex items-start gap-4">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg shadow-brand-primary/25">
+                        <i class="fas fa-chart-line text-lg" aria-hidden="true"></i>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-primary">Reporting workspace</p>
+                        <h1 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Academic reports</h1>
+                        <p class="mt-1.5 text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+                            Pick a report in the left column, refine scope with filters on the right, then preview and print or export data below.
+                        </p>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2 lg:justify-end">
+                    <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <i class="fas fa-sync-alt text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
+                        Live preview
+                    </span>
+                    <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <i class="fas fa-columns text-slate-500 text-[11px]" aria-hidden="true"></i>
+                        Rows &amp; columns layout
+                    </span>
+                </div>
+            </div>
+        </header>
 
-    <!-- 1) Report to view -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">What do you want to view?</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-                <label for="ar-section" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Section</label>
-                <select id="ar-section" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base">
-                    <option value="class_list">Class lists</option>
-                    <option value="exams">Exams</option>
-                    <option value="timetables">Timetables</option>
-                </select>
-            </div>
-            <div>
-                <label for="ar-report" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Report</label>
-                <select id="ar-report" class="w-full px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-base"></select>
-            </div>
-        </div>
-        <p id="ar-report-desc" class="mt-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-l-4 border-brand-primary/40 pl-3"></p>
-    </div>
+        <div class="p-5 sm:p-8 grid grid-cols-1 xl:grid-cols-12 gap-8 xl:gap-10">
+            <!-- Column A: Report type -->
+            <div class="xl:col-span-5 space-y-6">
+                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-5">
+                    <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2">
+                        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-600 max-w-[2rem]"></span>
+                        Report setup
+                    </h2>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
+                        <div class="sm:col-span-2 xl:col-span-1">
+                            <label for="ar-section" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Section</label>
+                            <select id="ar-section" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                                <option value="class_list">Class lists</option>
+                                <option value="exams">Exams</option>
+                                <option value="timetables">Timetables</option>
+                            </select>
+                        </div>
+                        <div id="ar-wrap-exam-scope" class="hidden sm:col-span-2 xl:col-span-1">
+                            <label for="ar-exam-scope" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Generate as</label>
+                            <select id="ar-exam-scope" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                                <option value="class">Class</option>
+                                <option value="individual">Individual student</option>
+                            </select>
+                            <p class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Class-wide marksheets versus a single learner.</p>
+                        </div>
+                        <div class="sm:col-span-2 xl:col-span-1">
+                            <label for="ar-report" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Report</label>
+                            <select id="ar-report" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition"></select>
+                        </div>
+                    </div>
+                </div>
 
-    <!-- 2) Filters (simplified) -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-4 sm:p-6 mb-5 no-print">
-        <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Filters</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-                <label for="gf-year" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Academic year</label>
-                <select id="gf-year" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">All years</option>
-                    {% for y in academic_years %}
-                    <option value="{{ y.id }}" {% if y.is_current %}selected data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="gf-term" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Term</label>
-                <select id="gf-term" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">Any / not set</option>
-                    {% for t in terms %}
-                    <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}" {% if t.is_current %}selected data-current="1"{% endif %}>{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}{% if t.is_current %} (current){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div>
-                <label for="gf-level" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Class / level</label>
-                <select id="gf-level" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">All classes</option>
-                    {% for lv in academic_levels %}
-                    <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-        </div>
+                <div id="ar-wrap-student" class="hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5 relative">
+                    <label for="gf-student-search" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Find student</label>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2 leading-snug">For individual exam or attendance reports — search by name or ID; class in filters narrows suggestions.</p>
+                    <div class="relative">
+                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400"><i class="fas fa-search text-sm"></i></span>
+                        <input type="search" id="gf-student-search" autocomplete="off" placeholder="Start typing a name or ID…" class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <input type="hidden" id="gf-student" value="">
+                        <div id="gf-student-suggestions" class="hidden absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl z-30"></div>
+                    </div>
+                    <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
+                </div>
 
-        <div id="ar-extra-filters" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 hidden">
-            <div id="ar-wrap-timetable-view" class="hidden">
-                <label for="gf-timetable-view" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Timetable view</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Choose how timetable entries are displayed</p>
-                <select id="gf-timetable-view" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="student">Student view (subject + teacher by class/time)</option>
-                    <option value="teacher">Teacher view (teacher + class by time)</option>
-                </select>
+                <div id="ar-report-desc" class="rounded-xl border-l-4 border-brand-primary bg-brand-primary/[0.06] dark:bg-brand-primary/10 px-4 py-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed"></div>
             </div>
-            <div id="ar-wrap-teacher" class="hidden">
-                <label for="gf-teacher" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Teacher</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Needed for teacher timetable only</p>
-                <select id="gf-teacher" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">Select teacher</option>
-                    {% for te in teachers %}
-                    <option value="{{ te.id }}">{{ te.full_name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div id="ar-wrap-student" class="hidden">
-                <label for="gf-student" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Student ID</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For individual reports only</p>
-                <input type="text" id="gf-student" placeholder="e.g. STU001" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-            </div>
-            <div id="ar-wrap-exam-name" class="hidden">
-                <label for="gf-exam-name" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Exam name</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Used for exam section reports</p>
-                <select id="gf-exam-name" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <option value="">All exams</option>
-                </select>
-            </div>
-            <div id="ar-wrap-register-date" class="hidden">
-                <label for="gf-register-date" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Attendance date</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">Used for attendance register generation</p>
-                <input type="date" id="gf-register-date" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-            </div>
-            <div id="ar-wrap-dates" class="hidden sm:col-span-2 lg:col-span-1">
-                <label class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-1">Date range</label>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">For attendance summaries</p>
-                <div class="flex flex-wrap gap-2 items-center">
-                    <input type="date" id="gf-dfrom" class="flex-1 min-w-[10rem] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                    <span class="text-gray-400 text-sm">to</span>
-                    <input type="date" id="gf-dto" class="flex-1 min-w-[10rem] px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+
+            <!-- Column B: Filters -->
+            <div class="xl:col-span-7 space-y-5 xl:border-l xl:border-slate-200 dark:xl:border-slate-700 xl:pl-10 pt-2 xl:pt-0">
+                <div class="flex items-center gap-2 mb-1">
+                    <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Filters &amp; scope</h2>
+                    <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">Refine rows</span>
+                </div>
+                <p id="ar-filter-hint" class="text-xs text-slate-500 dark:text-slate-400 hidden rounded-lg bg-slate-100 dark:bg-slate-800/80 px-3 py-2 border border-slate-200/80 dark:border-slate-700"></p>
+                <div id="ar-filter-main-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                    <div id="ar-filter-wrap-year" class="hidden">
+                        <label for="gf-year" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Academic year</label>
+                        <select id="gf-year" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="">All years</option>
+                            {% for y in academic_years %}
+                            <option value="{{ y.id }}" {% if y.is_current %}selected data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="ar-filter-wrap-term" class="hidden">
+                        <label for="gf-term" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Term</label>
+                        <select id="gf-term" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="">Any / not set</option>
+                            {% for t in terms %}
+                            <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}" {% if t.is_current %}selected data-current="1"{% endif %}>{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}{% if t.is_current %} (current){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="ar-filter-wrap-exam" class="hidden sm:col-span-2">
+                        <label for="gf-exam-name" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Exam name</label>
+                        <select id="gf-exam-name" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="">Select exam…</option>
+                        </select>
+                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Optional — narrows performance and timetable-related reports.</p>
+                    </div>
+                    <div id="ar-filter-wrap-level" class="sm:col-span-2">
+                        <label for="gf-level" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Class / level</label>
+                        <select id="gf-level" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="">All classes</option>
+                            {% for lv in academic_levels %}
+                            <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div id="ar-extra-filters" class="rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-800/30 p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4 hidden">
+                    <div id="ar-wrap-timetable-view" class="hidden sm:col-span-2">
+                        <label for="gf-timetable-view" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Timetable view</label>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Grid columns follow periods or teachers depending on mode.</p>
+                        <select id="gf-timetable-view" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="student">Student view (subject + teacher by class/time)</option>
+                            <option value="teacher">Teacher view (teacher + class by time)</option>
+                        </select>
+                    </div>
+                    <div id="ar-wrap-teacher" class="hidden sm:col-span-2">
+                        <label for="gf-teacher" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Teacher</label>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Required for teacher timetable reports.</p>
+                        <select id="gf-teacher" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <option value="">Select teacher</option>
+                            {% for te in teachers %}
+                            <option value="{{ te.id }}">{{ te.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="ar-wrap-exam-name" class="hidden"></div>
+                    <div id="ar-wrap-register-date" class="hidden">
+                        <label for="gf-register-date" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Attendance date</label>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Single day column headers on registers.</p>
+                        <input type="date" id="gf-register-date" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                    </div>
+                    <div id="ar-wrap-dates" class="hidden sm:col-span-2">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Date range</label>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Attendance summaries — start and end columns.</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                            <input type="date" id="gf-dfrom" class="min-w-0 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <span class="text-center text-slate-400 text-xs font-medium px-1">to</span>
+                            <input type="date" id="gf-dto" class="min-w-0 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <p id="ar-filter-hint" class="text-xs text-gray-500 dark:text-gray-400 mt-3"></p>
-    </div>
+    </section>
 
-    <!-- 3) Report details -->
-    <div id="ar-preview-wrap" class="mt-5">
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/50">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div class="flex items-start gap-3">
+    <!-- Report preview -->
+    <div id="ar-preview-wrap" class="mt-2 lg:mt-4">
+        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/30 dark:shadow-none overflow-hidden ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
+            <div class="px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">
+                <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+                    <div class="flex items-start gap-4 min-w-0">
                         {% if school_settings.school_logo %}
                         <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
                              alt="{{ school_settings.school_name or 'School logo' }}"
-                             class="w-12 h-12 object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white">
+                             class="w-14 h-14 shrink-0 object-contain rounded-xl border border-slate-200 dark:border-slate-600 bg-white shadow-sm">
                         {% endif %}
-                        <div>
-                            <h2 class="text-sm font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Report details</h2>
-                            <p class="text-xs text-gray-600 dark:text-gray-400">{{ school_settings.school_name or 'School' }}</p>
-                            <p id="ar-generated-at" class="text-xs text-gray-500 dark:text-gray-400">Generated: --</p>
+                        <div class="min-w-0">
+                            <p class="no-print text-[11px] font-bold uppercase tracking-wider text-brand-primary">Preview</p>
+                            <h2 class="text-lg font-bold text-slate-900 dark:text-white truncate">{{ school_settings.school_name or 'School' }}</h2>
+                            <p id="ar-generated-at" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Generated: --</p>
                         </div>
                     </div>
-                    <div class="no-print flex items-center gap-2">
-                        <select id="ar-export-format"
-                                class="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
-                            <option value="csv">CSV</option>
-                            <option value="excel">Excel (.xls)</option>
-                            <option value="pdf_picture">PDF (picture)</option>
-                        </select>
-                        <button type="button"
-                                id="ar-export-btn"
-                                class="inline-flex items-center px-3 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm hover:opacity-95 transition-all">
-                            <i class="fas fa-file-export mr-2"></i>Export
-                        </button>
+                    <div class="no-print flex flex-col gap-3 xl:items-end">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button type="button"
+                                    id="ar-print-save-pdf-btn"
+                                    title="Opens your browser print dialog — choose Save as PDF or a printer"
+                                    class="inline-flex items-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md shadow-brand-primary/20 hover:opacity-95 transition-all">
+                                <i class="fas fa-print mr-2"></i>Print / Save as PDF
+                            </button>
+                            <div class="flex items-center rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-1 gap-1">
+                                <select id="ar-export-format"
+                                        aria-label="Spreadsheet format"
+                                        class="pl-3 pr-8 py-2 rounded-lg border-0 bg-transparent text-slate-900 dark:text-white text-sm focus:ring-0 cursor-pointer">
+                                    <option value="csv">CSV</option>
+                                    <option value="excel">Excel (.xls)</option>
+                                </select>
+                                <button type="button"
+                                        id="ar-export-btn"
+                                        title="Download raw rows for spreadsheets"
+                                        class="inline-flex items-center px-3 py-2 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-white text-sm font-semibold border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-600 transition-all shadow-sm">
+                                    <i class="fas fa-download mr-2 text-slate-500"></i>Spreadsheet
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400 xl:text-right max-w-md leading-snug">
+                            Official PDF: Print dialog → <span class="whitespace-nowrap font-medium text-slate-600 dark:text-slate-300">Save as PDF</span>.
+                        </p>
                     </div>
                 </div>
             </div>
-            <div id="ar-details-list" class="p-4 sm:p-5">
-                <p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>
+            <div id="ar-details-list" class="p-4 sm:p-6 lg:p-8 bg-slate-50/40 dark:bg-slate-950/30">
+                <p class="text-sm text-slate-500 dark:text-slate-400">Loading report details...</p>
             </div>
         </div>
     </div>
@@ -222,6 +378,7 @@
 <script>
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
+  const STUDENT_SEARCH_API = {{ employee_dash_url('api/employee/academic-reports/search-students')|tojson }};
   const PREVIEW_BASE = {{ employee_dash_url('academic-reports/preview')|tojson }};
   const SCHOOL_INFO = {
     name: {{ (school_settings.school_name or 'School')|tojson }},
@@ -264,17 +421,31 @@
   const reportEl = document.getElementById('ar-report');
   const descEl = document.getElementById('ar-report-desc');
   const hintEl = document.getElementById('ar-filter-hint');
+  const examScopeWrap = document.getElementById('ar-wrap-exam-scope');
+  const examScopeEl = document.getElementById('ar-exam-scope');
   const extraWrap = document.getElementById('ar-extra-filters');
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
+  const studentSearchEl = document.getElementById('gf-student-search');
+  const studentHiddenEl = document.getElementById('gf-student');
+  const studentSuggestEl = document.getElementById('gf-student-suggestions');
+  const studentClearBtn = document.getElementById('gf-student-clear');
+  let studentSearchTimer = null;
   const wrapExamName = document.getElementById('ar-wrap-exam-name');
   const wrapRegisterDate = document.getElementById('ar-wrap-register-date');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
   const examNameEl = document.getElementById('gf-exam-name');
+  const levelEl = document.getElementById('gf-level');
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
   const examOptions = {{ (exam_names or [])|tojson|safe }};
+  const levelOptionsCache = (function() {
+    if (!levelEl) return [];
+    return Array.from(levelEl.options || []).map(function(o) {
+      return { value: String(o.value || ''), label: String(o.textContent || '') };
+    });
+  })();
 
   function setGeneratedNow() {
     if (!generatedAtEl) return;
@@ -286,10 +457,69 @@
     return (reportEl.value || '').trim();
   }
 
+  function currentExamScope() {
+    if (!examScopeEl || sectionEl.value !== 'exams') return 'class';
+    const v = String(examScopeEl.value || '').trim().toLowerCase();
+    return v === 'individual' ? 'individual' : 'class';
+  }
+
+  /** Defensive: for Individual student report, keep only rows matching Find student (if API returns extras). */
+  function narrowExamRowsToSelectedStudent(rows) {
+    if (currentReportId() !== 'exam_individual_performance') return rows;
+    const sid = val('gf-student');
+    if (!sid || !Array.isArray(rows)) return rows;
+    const want = String(sid).trim().toLowerCase();
+    if (!want) return rows;
+    return rows.filter(function(row) {
+      const a = String(row.admission_number != null ? row.admission_number : '').trim().toLowerCase();
+      const b = String(row.student_id != null ? row.student_id : '').trim().toLowerCase();
+      return a === want || b === want;
+    });
+  }
+
+  /** Find student UI applies only to these reports — not to "Generate as" individual. */
+  function reportUsesFindStudentPicker(reportType) {
+    return reportType === 'exam_individual_performance' || reportType === 'attendance_individual';
+  }
+
   function fillReportOptions(sectionKey) {
     const cat = CATALOG[sectionKey];
     reportEl.innerHTML = '';
-    (cat.reports || []).forEach(function(r) {
+    const scope = currentExamScope();
+    let reports = (cat.reports || []);
+    if (sectionKey === 'exams') {
+      // Same report types, but descriptions change based on whether user wants class vs individual generation.
+      reports = [
+        {
+          id: 'exam_all_students_performance',
+          label: 'All students',
+          desc: scope === 'class'
+            ? 'Class view: list all students and their marks across subjects (report cards / performance).'
+            : 'Individual view: generate a report card for the selected student.'
+        },
+        {
+          id: 'exam_individual_performance',
+          label: 'Individual student',
+          desc: scope === 'class'
+            ? 'Class view: generate report cards for each student (one card per student).'
+            : 'Individual view: generate a report card for the selected student.'
+        },
+        {
+          id: 'exam_subject_performance',
+          label: 'In subject',
+          desc: scope === 'class'
+            ? 'Class view: list all students and marks for the selected subject.'
+            : 'Individual view: show the selected student’s performance for the selected subject.'
+        },
+        {
+          id: 'exam_teacher_performance',
+          label: 'For teacher',
+          desc: 'Teacher performance report for the selected class and filters.'
+        },
+      ];
+    }
+
+    (reports || []).forEach(function(r) {
       const opt = document.createElement('option');
       opt.value = r.id;
       opt.textContent = r.label;
@@ -307,34 +537,166 @@
     const cat = CATALOG[sk];
     const rep = (cat.reports || []).find(function(x) { return x.id === rid; });
     descEl.textContent = rep ? rep.desc : '';
-    hintEl.textContent = cat ? cat.hint : '';
+  }
+
+  function updateMainFiltersVisibility() {
+    const sk = sectionEl.value;
+    const rid = currentReportId();
+    const wy = document.getElementById('ar-filter-wrap-year');
+    const wt = document.getElementById('ar-filter-wrap-term');
+    const we = document.getElementById('ar-filter-wrap-exam');
+    const wl = document.getElementById('ar-filter-wrap-level');
+    const grid = document.getElementById('ar-filter-main-grid');
+
+    let showYear = false;
+    let showTerm = false;
+    let showExam = false;
+    let showLevel = false;
+
+    if (sk === 'class_list') {
+      showLevel = true;
+    } else if (sk === 'exams') {
+      showYear = true;
+      showTerm = true;
+      showExam = true;
+      showLevel = true;
+    } else if (sk === 'timetables') {
+      showTerm = true;
+      showExam = false;
+      if (rid === 'timetable_teacher') {
+        showYear = false;
+        showLevel = false;
+      } else {
+        showYear = true;
+        showLevel = true;
+      }
+    }
+
+    if (wy) wy.classList.toggle('hidden', !showYear);
+    if (wt) wt.classList.toggle('hidden', !showTerm);
+    if (we) we.classList.toggle('hidden', !showExam);
+    if (wl) wl.classList.toggle('hidden', !showLevel);
+
+    const anyMain = showYear || showTerm || showExam || showLevel;
+    if (grid) grid.classList.toggle('hidden', !anyMain);
+
+    function contextualHint() {
+      if (sk === 'class_list') {
+        if (rid === 'class_list_attendance') return 'Choose class (optional). Set the attendance register date below.';
+        if (rid === 'class_list_exam') return 'Choose class (optional) for exam entry lists, or leave as all classes.';
+        return '';
+      }
+      if (sk === 'exams') return 'Filter exam marks by year, term, class, and optionally one exam.';
+      if (sk === 'timetables') {
+        if (rid === 'timetable_subject') return 'Term is required. Optionally narrow by academic year and class. Timetable layout is below.';
+        if (rid === 'timetable_exam') return 'Optionally narrow exam sessions by term, academic year, and class.';
+        if (rid === 'timetable_teacher') return 'Choose term above, then select the teacher below.';
+        return '';
+      }
+      return '';
+    }
+    const ht = contextualHint();
+    if (hintEl) {
+      hintEl.textContent = ht;
+      hintEl.classList.toggle('hidden', !ht);
+    }
   }
 
   function updateExtraFilters() {
     const rid = currentReportId();
     const needTeacher = rid === 'timetable_teacher';
     const needTimetableView = rid === 'timetable_subject';
-    const needStudent = rid === 'exam_individual_performance' || rid === 'exam_individual';
+    const needStudent = reportUsesFindStudentPicker(rid);
     const needExamName = rid && rid.indexOf('exam_') === 0;
     const needRegisterDate = rid === 'class_list_attendance';
     const needDates = false;
 
-    const anyExtra = needTeacher || needTimetableView || needStudent || needExamName || needRegisterDate || needDates;
+    if (!needStudent) {
+      if (studentHiddenEl) studentHiddenEl.value = '';
+      if (studentSearchEl) studentSearchEl.value = '';
+      hideStudentSuggestions();
+      updateStudentClearVisibility();
+    }
+
+    const anyExtra = needTeacher || needTimetableView || needRegisterDate || needDates;
     extraWrap.classList.toggle('hidden', !anyExtra);
     wrapTimetableView.classList.toggle('hidden', !needTimetableView);
     wrapTeacher.classList.toggle('hidden', !needTeacher);
     wrapStudent.classList.toggle('hidden', !needStudent);
-    wrapExamName.classList.toggle('hidden', !needExamName);
+    if (wrapExamName) wrapExamName.classList.add('hidden');
     wrapRegisterDate.classList.toggle('hidden', !needRegisterDate);
     wrapDates.classList.toggle('hidden', !needDates);
     if (needExamName) {
       syncExamNameOptions();
     }
+
+    // Keep filters live; do not block class selection.
+    if (sectionEl.value === 'exams' && levelEl) {
+      levelEl.disabled = false;
+    }
+
+    updateMainFiltersVisibility();
+  }
+
+  function syncLevelOptionsForSelectedExam() {
+    if (!levelEl) return;
+    const selectedExam = String(val('gf-exam-name') || '').trim();
+    const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
+    const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
+
+    // If no exam selected, restore full list (but UI will keep it disabled anyway).
+    if (!selectedExam) {
+      const prev = String(levelEl.value || '');
+      levelEl.innerHTML = '';
+      levelOptionsCache.forEach(function(o) {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        levelEl.appendChild(opt);
+      });
+      if (Array.from(levelEl.options).some(function(o) { return o.value === prev; })) levelEl.value = prev;
+      return;
+    }
+
+    const allowed = new Set();
+    examOptions.forEach(function(item) {
+      const nameOk = String(item.exam_name || '').trim() === selectedExam;
+      if (!nameOk) return;
+      const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
+      const tOk = !termVal || Number(item.term_id || 0) === termVal;
+      if (!yOk || !tOk) return;
+      const lid = item.academic_level_id;
+      if (lid !== null && lid !== undefined && String(lid).trim() !== '') allowed.add(String(lid));
+    });
+
+    const prev = String(levelEl.value || '');
+    levelEl.innerHTML = '';
+    // Always keep "All classes"
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All classes';
+    levelEl.appendChild(allOpt);
+
+    levelOptionsCache.forEach(function(o) {
+      if (!o.value) return; // skip the cached "All classes" option
+      if (!allowed.size || allowed.has(String(o.value))) {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        levelEl.appendChild(opt);
+      }
+    });
+
+    if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
+      levelEl.value = prev;
+    } else {
+      levelEl.value = '';
+    }
   }
 
   function syncExamNameOptions() {
     if (!examNameEl) return;
-    const previous = examNameEl.value || '';
+    const previous = String(examNameEl.value || '');
     const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
     const levelVal = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
@@ -352,7 +714,7 @@
       return true;
     });
 
-    examNameEl.innerHTML = '<option value="">All exams</option>';
+    examNameEl.innerHTML = '<option value=\"\">Select exam…</option>';
     opts.forEach(function(item) {
       const opt = document.createElement('option');
       opt.value = String(item.exam_name || '');
@@ -362,11 +724,52 @@
     if (previous && Array.from(examNameEl.options).some(function(o) { return o.value === previous; })) {
       examNameEl.value = previous;
     }
+    syncLevelOptionsForSelectedExam();
+  }
+
+  function ensureLevelOptionPresent(levelIdStr, levelLabel) {
+    if (!levelEl || !levelIdStr) return;
+    var exists = Array.from(levelEl.options).some(function(o) { return String(o.value) === levelIdStr; });
+    if (exists) return;
+    var fromCache = levelOptionsCache.find(function(o) { return String(o.value) === levelIdStr; });
+    var label = fromCache ? fromCache.label : (levelLabel || ('Level ' + levelIdStr));
+    var opt = document.createElement('option');
+    opt.value = levelIdStr;
+    opt.textContent = label;
+    var allOpt = Array.from(levelEl.options).find(function(o) { return o.value === ''; });
+    if (allOpt && allOpt.nextSibling) levelEl.insertBefore(opt, allOpt.nextSibling);
+    else levelEl.appendChild(opt);
+  }
+
+  /** After picking a student, match Class / level to their current_grade (re-sync exams afterward). */
+  function setClassLevelForStudent(academicLevelId, levelName) {
+    if (!levelEl || academicLevelId === undefined || academicLevelId === null || academicLevelId === '') return;
+    var idStr = String(academicLevelId);
+    ensureLevelOptionPresent(idStr, levelName);
+    levelEl.value = idStr;
+    syncExamNameOptions();
+    ensureLevelOptionPresent(idStr, levelName);
+    if (Array.from(levelEl.options).some(function(o) { return String(o.value) === idStr; })) {
+      levelEl.value = idStr;
+    }
   }
 
   sectionEl.addEventListener('change', function() {
+    if (examScopeWrap) examScopeWrap.classList.toggle('hidden', sectionEl.value !== 'exams');
+    if (sectionEl.value !== 'exams') {
+      if (studentHiddenEl) studentHiddenEl.value = '';
+      if (studentSearchEl) studentSearchEl.value = '';
+      hideStudentSuggestions();
+      updateStudentClearVisibility();
+    }
     fillReportOptions(sectionEl.value);
   });
+
+    if (examScopeEl) {
+    examScopeEl.addEventListener('change', function() {
+      if (sectionEl.value === 'exams') fillReportOptions('exams');
+    });
+  }
 
   reportEl.addEventListener('change', function() {
     updateReportDescription();
@@ -390,7 +793,7 @@
     const out = { academic_year_id: yi, term_id: ti, level_id: li };
     out.teacher_id = reportType === 'timetable_teacher' && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
     out.timetable_view = reportType === 'timetable_subject' ? (val('gf-timetable-view') || 'student') : null;
-    if (reportType === 'exam_individual_performance' || reportType === 'exam_individual' || reportType === 'attendance_individual') {
+    if (reportUsesFindStudentPicker(reportType)) {
       const sid = val('gf-student');
       out.student_id = sid ? String(sid).trim() : null;
     } else {
@@ -425,72 +828,9 @@
     return PREVIEW_BASE + '?' + q.toString();
   }
 
-  function safeFileBaseName(reportType) {
+  /** Used as document title while printing so Save-as-PDF suggests a sensible filename (browser-dependent). */
+  function reportFileStem(reportType) {
     return String(reportType || 'report').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60);
-  }
-
-  function ensureScript(src, testFn) {
-    return new Promise(function(resolve, reject) {
-      try {
-        if (testFn && testFn()) return resolve();
-        var existing = Array.from(document.querySelectorAll('script')).find(function(s) { return s.src === src; });
-        if (existing) {
-          existing.addEventListener('load', function() { resolve(); }, { once: true });
-          existing.addEventListener('error', function() { reject(new Error('Failed to load ' + src)); }, { once: true });
-          return;
-        }
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = true;
-        s.onload = function() { resolve(); };
-        s.onerror = function() { reject(new Error('Failed to load ' + src)); };
-        document.head.appendChild(s);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  }
-
-  async function exportPdfPicture(reportType) {
-    const target = document.getElementById('ar-preview-wrap');
-    if (!target) throw new Error('Report preview is not available.');
-
-    await ensureScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js', function() {
-      return typeof window.html2canvas === 'function';
-    });
-    await ensureScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js', function() {
-      return !!(window.jspdf && window.jspdf.jsPDF);
-    });
-
-    const canvas = await window.html2canvas(target, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      scrollX: 0,
-      scrollY: -window.scrollY
-    });
-
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    const margin = 8;
-    const drawW = pageW - (margin * 2);
-    const drawH = (canvas.height * drawW) / canvas.width;
-
-    let remainingH = drawH;
-    let y = margin;
-    pdf.addImage(imgData, 'PNG', margin, y, drawW, drawH);
-    remainingH -= (pageH - margin * 2);
-    while (remainingH > 0) {
-      pdf.addPage();
-      y = margin - (drawH - remainingH);
-      pdf.addImage(imgData, 'PNG', margin, y, drawW, drawH);
-      remainingH -= (pageH - margin * 2);
-    }
-
-    pdf.save(safeFileBaseName(reportType) + '.pdf');
   }
 
   function escapeHtml(value) {
@@ -516,30 +856,48 @@
     const columns = Array.isArray(bundle.columns) ? bundle.columns : [];
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     if (!rows.length || !columns.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No data found for this report and filters.</p>';
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
     }
     const head = columns.map(function(c) {
-      return '<th class="text-left py-2 px-3 font-semibold whitespace-nowrap border-b border-gray-200 dark:border-gray-700">' + escapeHtml(c.replaceAll('_', ' ')) + '</th>';
+      return '<th scope="col" class="text-left py-3 px-4 text-[11px] font-bold uppercase tracking-wider text-white/95 whitespace-nowrap bg-slate-800 dark:bg-slate-950 border-b border-slate-700 dark:border-slate-800">' + escapeHtml(c.replaceAll('_', ' ')) + '</th>';
     }).join('');
-    const body = rows.map(function(row) {
+    const body = rows.map(function(row, ri) {
+      const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/40' : ' bg-white dark:bg-slate-900';
       const cells = columns.map(function(c) {
-        return '<td class="py-2 px-3 border-b border-gray-100 dark:border-gray-800 whitespace-nowrap">' + escapeHtml(row[c]) + '</td>';
+        return '<td class="py-2.5 px-4 align-middle text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 whitespace-nowrap">' + escapeHtml(row[c]) + '</td>';
       }).join('');
-      return '<tr>' + cells + '</tr>';
+      return '<tr class="' + zebra + '">' + cells + '</tr>';
     }).join('');
-    return '<div class="overflow-x-auto"><table class="w-full text-sm min-w-[720px]"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+    return '' +
+      '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="w-full text-sm min-w-[720px] border-collapse">' +
+          '<thead><tr>' + head + '</tr></thead>' +
+          '<tbody>' + body + '</tbody>' +
+        '</table>' +
+      '</div>';
   }
 
   function renderAllStudentsPerformance(bundle) {
-    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    let rows = Array.isArray(bundle.rows) ? bundle.rows.slice() : [];
+    rows = narrowExamRowsToSelectedStudent(rows);
     if (!rows.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No data found for this report and filters.</p>';
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
     }
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
     const ew = meta.exam_window || {};
     const examsCovered = (ew.exam_count != null && ew.exam_count !== '') ? String(ew.exam_count) : '-';
     const bands = Array.isArray(meta.grade_bands) ? meta.grade_bands : [];
+    function gradeMeaning(code) {
+      const c = String(code || '').trim().toLowerCase();
+      if (!c) return '';
+      for (let i = 0; i < bands.length; i++) {
+        const b = bands[i] || {};
+        const bc = String(b.code || b.label || '').trim().toLowerCase();
+        if (bc && bc === c) return String(b.meaning || '').trim();
+      }
+      return '';
+    }
     const gradeLegend = bands.length
       ? bands.map(function(g) {
           const code = String(g.code || g.label || '').trim();
@@ -549,8 +907,43 @@
       : 'Configured grade settings';
 
     const subjectColumns = Array.isArray(meta.subject_columns) ? meta.subject_columns : [];
-    const cards = rows.map(function(row) {
+
+    function classKeyForRow(row) {
+      return String((row && row.level_name) || af.class_level || '').trim() || '—';
+    }
+
+    // Group by class to avoid one long list when "All classes" is selected.
+    const groupedByClass = {};
+    rows.forEach(function(row) {
+      const ck = classKeyForRow(row);
+      if (!groupedByClass[ck]) groupedByClass[ck] = [];
+      groupedByClass[ck].push(row);
+    });
+
+    /** Sort and assign position within one class (ties share the same rank). */
+    function rankStudentsWithinClass(list) {
+      const sorted = list.slice().sort(function(a, b) {
+        const tt = (parseFloat(b.total_marks) || 0) - (parseFloat(a.total_marks) || 0);
+        if (tt !== 0) return tt;
+        const mm = (parseFloat(b.mean) || 0) - (parseFloat(a.mean) || 0);
+        if (mm !== 0) return mm;
+        return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+      });
+      let lastKey = null;
+      let currentPosition = 0;
+      return sorted.map(function(item, index) {
+        const rk = [parseFloat(item.total_marks) || 0, parseFloat(item.mean) || 0];
+        if (!lastKey || rk[0] !== lastKey[0] || rk[1] !== lastKey[1]) {
+          currentPosition = index + 1;
+          lastKey = rk;
+        }
+        return { row: item, position: currentPosition };
+      });
+    }
+
+    function renderStudentCard(row, classPosition) {
       const grade = String(row.grade || '-');
+      const meaning = gradeMeaning(grade);
       const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
       const photoBlock = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
@@ -559,175 +952,379 @@
           '</div>';
       const subjectRows = subjectColumns.map(function(subjectName, idx) {
         const mark = row[subjectName];
+        const zebra = idx % 2 === 1 ? ' bg-slate-50/70 dark:bg-slate-800/25' : '';
         return '' +
-          '<tr class="border-b border-gray-100 dark:border-gray-700">' +
-            '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">' + (idx + 1) + '</td>' +
-            '<td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">' + escapeHtml(af.exam_name || 'All exams') + '</td>' +
-            '<td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">' + (mark === '' || mark === null || mark === undefined ? '-' : escapeHtml(mark)) + '</td>' +
+          '<tr class="' + zebra + '">' +
+            '<td class="px-4 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400">' + (idx + 1) + '</td>' +
+            '<td class="px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-white">' + escapeHtml(subjectName) + '</td>' +
+            '<td class="px-4 py-2.5 text-sm text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">' + (mark === '' || mark === null || mark === undefined ? '—' : escapeHtml(mark)) + '</td>' +
           '</tr>';
       }).join('');
       return '' +
-        '<div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden mb-6 bg-white dark:bg-gray-800">' +
-          '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">' +
-            '<div class="flex items-center justify-between gap-3">' +
-              '<div>' +
-                '<h3 class="text-base font-bold">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
-                '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
-                '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.phone || '') + ((SCHOOL_INFO.email ? ' | ' + SCHOOL_INFO.email : '')) + '</p>' +
+        '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden mb-8 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/50 dark:shadow-none ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+          '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-5 py-4">' +
+            '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">' +
+              '<div class="min-w-0">' +
+                '<p class="text-[10px] font-bold uppercase tracking-widest text-white/80">Official transcript preview</p>' +
+                '<h3 class="text-lg font-bold tracking-tight truncate">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
+                '<p class="text-xs text-white/85 mt-1">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
+                '<p class="text-xs text-white/85">' + escapeHtml(SCHOOL_INFO.phone || '') + ((SCHOOL_INFO.email ? ' · ' + SCHOOL_INFO.email : '')) + '</p>' +
               '</div>' +
-              '<div class="flex items-center gap-2">' +
+              '<div class="flex items-center gap-3 shrink-0">' +
                 (SCHOOL_INFO.logo
-                  ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">'
-                  : '<div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>') +
-                '<span class="text-xs font-semibold px-2 py-1 rounded bg-white/20">Position #' + escapeHtml(row.position || '-') + '</span>' +
+                  ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-16 h-16 object-contain rounded-xl border border-white/30 bg-white shadow-md">'
+                  : '<div class="w-16 h-16 rounded-xl border-2 border-dashed border-white/40 bg-white/10"></div>') +
+                '<div class="text-right">' +
+                  '<p class="text-[10px] uppercase font-semibold text-white/75">Rank</p>' +
+                  '<p class="text-2xl font-black tabular-nums">' + escapeHtml(classPosition != null ? classPosition : (row.position || '-')) + '</p>' +
+                '</div>' +
               '</div>' +
             '</div>' +
           '</div>' +
-          '<div class="p-4">' +
-            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">' +
-                '<p class="text-xs text-gray-500 dark:text-gray-400">Student</p>' +
-                '<p class="font-semibold text-gray-900 dark:text-white">' + escapeHtml(row.full_name || '-') + '</p>' +
-                '<p class="text-xs text-gray-600 dark:text-gray-400">Admission No: ' + escapeHtml(row.admission_number || '-') + '</p>' +
-                '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: ' + escapeHtml(row.level_name || af.class_level || '-') + '</p>' +
+          '<div class="p-5 sm:p-6">' +
+            '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-5">' +
+              '<div class="lg:col-span-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50 p-4">' +
+                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Learner</p>' +
+                '<p class="text-lg font-bold text-slate-900 dark:text-white mt-1">' + escapeHtml(row.full_name || '-') + '</p>' +
+                '<div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">' +
+                  '<div><span class="text-slate-500 dark:text-slate-400 block">Class</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(row.level_name || af.class_level || '-') + '</span></div>' +
+                  '<div><span class="text-slate-500 dark:text-slate-400 block">Year</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.academic_year || '-') + '</span></div>' +
+                  '<div><span class="text-slate-500 dark:text-slate-400 block">Term</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.term || '-') + '</span></div>' +
+                  '<div><span class="text-slate-500 dark:text-slate-400 block">Exams</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(examsCovered) + '</span></div>' +
+                '</div>' +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">' +
+              '<div class="lg:col-span-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-center bg-white dark:bg-slate-900">' +
                 photoBlock +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">' +
-                '<p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>' +
-                '<p class="text-xs text-gray-600 dark:text-gray-400">Year: ' + escapeHtml(af.academic_year || '-') + ' | Term: ' + escapeHtml(af.term || '-') + '</p>' +
-                '<p class="text-xs text-gray-600 dark:text-gray-400">Exam: ' + escapeHtml(af.exam_name || '-') + '</p>' +
-                '<p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: ' + escapeHtml(examsCovered) + '</p>' +
+              '<div class="lg:col-span-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 p-4">' +
+                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Session context</p>' +
+                '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-700 dark:text-slate-300">' +
+                  '<div class="flex gap-2"><span class="text-slate-400 shrink-0 w-14">Exam</span><span class="font-medium">' + escapeHtml(af.exam_name || '-') + '</span></div>' +
+                  '<div class="flex gap-2"><span class="text-slate-400 shrink-0 w-14">Period</span><span class="font-medium">' + escapeHtml(af.academic_year || '-') + ' · ' + escapeHtml(af.term || '-') + '</span></div>' +
+                '</div>' +
               '</div>' +
             '</div>' +
-            '<div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 mb-4">' +
-              '<table class="w-full min-w-[480px]">' +
-                '<thead class="bg-gray-50 dark:bg-gray-900/40">' +
-                  '<tr>' +
-                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>' +
-                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Exam name</th>' +
-                    '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>' +
+            '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 mb-5 shadow-sm">' +
+              '<table class="w-full min-w-[480px] border-collapse">' +
+                '<thead>' +
+                  '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
+                    '<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider w-12">#</th>' +
+                    '<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider">Subject</th>' +
+                    '<th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider w-28">Marks</th>' +
                   '</tr>' +
                 '</thead>' +
-                '<tbody>' + subjectRows + '</tbody>' +
+                '<tbody class="divide-y divide-slate-100 dark:divide-slate-800">' + subjectRows + '</tbody>' +
               '</table>' +
             '</div>' +
-            '<div class="grid grid-cols-3 gap-2">' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Total Marks</p>' +
-                '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(row.total_marks || '-') + '</p>' +
+            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
+                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total marks</p>' +
+                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(row.total_marks || '-') + '</p>' +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Mean</p>' +
-                '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(row.mean || '-') + '</p>' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
+                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mean</p>' +
+                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(row.mean || '-') + '</p>' +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-                '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Grade</p>' +
-                '<p><span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold ' + gradePill + '">' + escapeHtml(grade) + '</span></p>' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
+                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</p>' +
+                '<p class="mt-2"><span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></p>' +
               '</div>' +
             '</div>' +
-            '<div class="mt-4 text-xs text-gray-600 dark:text-gray-400">' +
-              '<span class="font-semibold">Grade scale:</span> ' + gradeLegend +
+            '<div class="rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 px-4 py-3 text-xs text-slate-600 dark:text-slate-400 mb-5">' +
+              '<span class="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Grade scale · </span>' + gradeLegend +
             '</div>' +
-            '<div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-              '<p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>' +
-              '<p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>' +
+            '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5">' +
+              '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Teacher comments</p>' +
+              '<p class="text-xs text-slate-600 dark:text-slate-400 mb-3"><span class="font-semibold text-slate-700 dark:text-slate-300">Descriptor:</span> ' + escapeHtml(meaning || '—') + '</p>' +
+              '<div class="border-t border-dashed border-slate-300 dark:border-slate-600 pt-3 min-h-[4rem]">' +
+                '<p class="text-[11px] text-slate-400 uppercase tracking-wide mb-1">Written remarks</p>' +
+                '<p class="text-sm text-slate-400">_______________________________________________________________________________</p>' +
+              '</div>' +
             '</div>' +
-            '<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-                '<p class="font-semibold uppercase mb-6">Parent acknowledgement</p>' +
-                '<p>Signature: ____________________</p>' +
-                '<p class="mt-2">Date: ____________________</p>' +
+            '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-700 dark:text-slate-300">' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
+                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Parent acknowledgement</p>' +
+                '<p>Signature: _________________________________</p>' +
+                '<p class="mt-3">Date: _____________________________________</p>' +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-                '<p class="font-semibold uppercase mb-6">Class teacher</p>' +
-                '<p>Signature: ____________________</p>' +
-                '<p class="mt-2">Date: ____________________</p>' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
+                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Class teacher</p>' +
+                '<p>Signature: _________________________________</p>' +
+                '<p class="mt-3">Date: _____________________________________</p>' +
               '</div>' +
-              '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-                '<p class="font-semibold uppercase mb-6">Principal signature / stamp</p>' +
-                '<p>Signature: ____________________</p>' +
-                '<p class="mt-2">Date: ____________________</p>' +
+              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
+                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Principal</p>' +
+                '<p>Signature / stamp: __________________________</p>' +
+                '<p class="mt-3">Date: _____________________________________</p>' +
               '</div>' +
             '</div>' +
           '</div>' +
         '</div>';
-    }).join('');
-    return '<div class="space-y-6">' + cards + '</div>';
+    }
+
+    function renderClassTable(className, list) {
+      const head = '' +
+        '<thead>' +
+          '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
+            '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">#</th>' +
+            '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap min-w-[10rem]">Student</th>' +
+            subjectColumns.map(function(subjectName) {
+              return '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">' + escapeHtml(subjectName) + '</th>';
+            }).join('') +
+            '<th scope="col" class="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Total</th>' +
+            '<th scope="col" class="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Mean</th>' +
+            '<th scope="col" class="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Grade</th>' +
+          '</tr>' +
+        '</thead>';
+
+      const ranked = rankStudentsWithinClass(list);
+      const body = ranked.map(function(entry, ri) {
+        const row = entry.row;
+        const pos = entry.position;
+        const grade = String(row.grade || '-');
+        const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
+        const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : ' bg-white dark:bg-slate-900';
+        return '' +
+          '<tr class="' + zebra + ' border-b border-slate-100 dark:border-slate-800">' +
+            '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap align-middle">' + escapeHtml(pos) + '</td>' +
+            '<td class="px-3 py-2.5 text-sm text-slate-900 dark:text-white whitespace-nowrap align-middle">' +
+              '<span class="font-semibold">' + escapeHtml(row.full_name || '-') + '</span>' +
+            '</td>' +
+            subjectColumns.map(function(subjectName) {
+              const mark = row[subjectName];
+              return '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-800 dark:text-slate-200 whitespace-nowrap align-middle">' +
+                (mark === '' || mark === null || mark === undefined ? '—' : escapeHtml(mark)) +
+              '</td>';
+            }).join('') +
+            '<td class="px-3 py-2.5 text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap text-right align-middle">' + escapeHtml(row.total_marks || '-') + '</td>' +
+            '<td class="px-3 py-2.5 text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap text-right align-middle">' + escapeHtml(row.mean || '-') + '</td>' +
+            '<td class="px-3 py-2.5 text-sm whitespace-nowrap text-center align-middle"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></td>' +
+          '</tr>';
+      }).join('');
+
+      return '' +
+        '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+          '<table class="w-full text-sm min-w-[980px] border-collapse">' +
+            head +
+            '<tbody>' + body + '</tbody>' +
+          '</table>' +
+        '</div>';
+    }
+
+    const classBlocks = Object.keys(groupedByClass).sort(function(a, b) {
+      if (a === b) return 0;
+      if (a === '—') return 1;
+      if (b === '—') return -1;
+      return a.localeCompare(b);
+    }).map(function(className) {
+      const list = groupedByClass[className] || [];
+      const scope = currentExamScope();
+      const inner = scope === 'class'
+        ? renderClassTable(className, list)
+        : rankStudentsWithinClass(list).map(function(entry) {
+            return renderStudentCard(entry.row, entry.position);
+          }).join('');
+      return '' +
+        '<details class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]" open>' +
+          '<summary class="cursor-pointer select-none list-none px-5 py-4 bg-gradient-to-r from-slate-50 to-slate-100/70 dark:from-slate-800 dark:to-slate-800/60 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 [&::-webkit-details-marker]:hidden">' +
+            '<div class="flex items-center gap-3 min-w-0">' +
+              '<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25">' +
+                '<i class="fas fa-users text-sm" aria-hidden="true"></i>' +
+              '</span>' +
+              '<div class="min-w-0">' +
+                '<p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Class cohort</p>' +
+                '<p class="text-base font-bold text-slate-900 dark:text-white truncate">' + escapeHtml(className) + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<span class="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 shadow-sm">' +
+              '<i class="fas fa-user-graduate text-brand-primary text-[11px]" aria-hidden="true"></i>' +
+              escapeHtml(String(list.length)) + ' students' +
+            '</span>' +
+          '</summary>' +
+          '<div class="p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-950/20 ' + (scope === 'class' ? '' : 'space-y-6') + '">' + inner + '</div>' +
+        '</details>';
+    }).join('<div class="h-4"></div>');
+
+    return '<div class="space-y-4">' + classBlocks + '</div>';
+  }
+
+  /** School / class / timestamp lines for register sheets (repeats in thead when printing). */
+  function sheetMeta(bundle, rows) {
+    const meta = bundle.meta || {};
+    const af = meta.applied_filters || {};
+    let classLabel = String(af.class_level || '').trim();
+    if (!classLabel && rows.length && rows[0]) classLabel = String(rows[0].current_grade || '').trim();
+    if (!classLabel) {
+      const lv = document.getElementById('gf-level');
+      if (lv && lv.options && lv.selectedIndex >= 0) {
+        const ot = String(lv.options[lv.selectedIndex].text || '').trim();
+        if (ot && ot.indexOf('All classes') === -1) classLabel = ot;
+      }
+    }
+    let genLine = '';
+    const ga = document.getElementById('ar-generated-at');
+    if (ga && ga.textContent) genLine = String(ga.textContent).replace(/^Generated:\s*/i, '').trim();
+    if (!genLine || genLine === '--') genLine = new Date().toLocaleString();
+    return {
+      schoolHtml: escapeHtml(SCHOOL_INFO.name || 'School'),
+      classHtml: escapeHtml(classLabel),
+      genHtml: escapeHtml(genLine),
+    };
   }
 
   function renderAttendanceRegister(bundle) {
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     if (!rows.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No students found for this class and filters.</p>';
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
     const registerDate = (document.getElementById('gf-register-date') || {}).value
       || ((bundle.meta || {}).applied_filters || {}).date_from
       || '';
     const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
-    const header = '' +
-      '<div class="mb-3">' +
-        '<p class="text-sm font-semibold text-gray-900 dark:text-white">Attendance register</p>' +
-        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Date: ' + escapeHtml(registerDate || 'Not set') + '</p>' +
-      '</div>';
+    const ctx = sheetMeta(bundle, rows);
+    const colCount = 2 + (hasClass ? 1 : 0) + 3;
+    const colgroup = '' +
+      '<colgroup>' +
+        '<col class="ar-col-num">' +
+        '<col>' +
+        (hasClass ? '<col class="ar-col-class">' : '') +
+        '<col class="ar-col-mark">' +
+        '<col class="ar-col-mark">' +
+        '<col class="ar-col-mark">' +
+      '</colgroup>';
+    const theadBanner =
+      '<tr>' +
+        '<th colspan="' + colCount + '" class="border border-slate-300 bg-white px-3 py-2 text-center align-middle">' +
+          '<div class="text-base font-bold text-slate-900 dark:text-white tracking-tight">' + ctx.schoolHtml + '</div>' +
+        '</th>' +
+      '</tr>' +
+      '<tr>' +
+        '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
+          '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
+            '<span><span class="font-semibold">Attendance register</span>' + (ctx.classHtml ? ' · Class: ' + ctx.classHtml : '') + '</span>' +
+            '<span class="text-slate-500 dark:text-slate-400">Session date: ' + escapeHtml(registerDate || 'Not set') + ' · Printed: ' + ctx.genHtml + '</span>' +
+          '</div>' +
+        '</th>' +
+      '</tr>';
     const tableHead = '' +
-      '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">#</th>' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student ID</th>' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student Name</th>' +
-        (hasClass ? '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Class</th>' : '') +
-        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Morning</th>' +
-        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Afternoon</th>' +
-        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Evening</th>' +
-      '</tr></thead>';
-    const box = '<span class="inline-block w-4 h-4 border border-gray-500 dark:border-gray-300 rounded-sm"></span>';
+      '<thead>' +
+        theadBanner +
+        '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">#</th>' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Learner</th>' +
+          (hasClass ? '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Class</th>' : '') +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">M</th>' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">A</th>' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">E</th>' +
+        '</tr>' +
+      '</thead>';
+    const blankCell = '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[2rem]">&nbsp;</td>';
     const body = rows.map(function(row, idx) {
-      return '<tr>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + (idx + 1) + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.student_id || '') + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + escapeHtml(row.full_name || '') + '</td>' +
-        (hasClass ? '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + box + '</td>' +
+      const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
+      return '<tr class="' + zebra + '">' +
+        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
+        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-white align-middle break-words">' + escapeHtml(row.full_name || '') + '</td>' +
+        (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 whitespace-nowrap align-middle">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
+        blankCell + blankCell + blankCell +
       '</tr>';
     }).join('');
-    return header + '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700"><table class="w-full min-w-[760px] border-collapse">' + tableHead + '<tbody>' + body + '</tbody></table></div>';
+    const tfoot = '' +
+      '<tfoot>' +
+        '<tr>' +
+          '<td colspan="' + colCount + '" class="border border-slate-300 border-t-2 border-t-slate-500 bg-slate-50 dark:bg-slate-800/50 px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">' +
+            '<div class="flex flex-wrap justify-between gap-4">' +
+              '<span>Class teacher: ________________________________</span>' +
+              '<span>Date: ______________</span>' +
+            '</div>' +
+          '</td>' +
+        '</tr>' +
+      '</tfoot>';
+    return '' +
+      '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '</div>';
   }
 
   function renderExamEntryRegister(bundle) {
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     if (!rows.length) {
-      return '<p class="text-sm text-gray-500 dark:text-gray-400">No students found for this class and filters.</p>';
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
+    const ENTRY_COLS = 5;
     const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
-    const header = '' +
-      '<div class="mb-3">' +
-        '<p class="text-sm font-semibold text-gray-900 dark:text-white">Exam entry list</p>' +
-        '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Two mark columns are provided for manual entry.</p>' +
-      '</div>';
+    const ctx = sheetMeta(bundle, rows);
+    const colCount = 2 + (hasClass ? 1 : 0) + ENTRY_COLS;
+    let colgroupInner = '';
+    for (let i = 0; i < ENTRY_COLS; i++) {
+      colgroupInner += '<col class="ar-col-entry">';
+    }
+    const colgroup = '' +
+      '<colgroup>' +
+        '<col class="ar-col-num">' +
+        '<col>' +
+        (hasClass ? '<col class="ar-col-class">' : '') +
+        colgroupInner +
+      '</colgroup>';
+    let entryHeaderCells = '';
+    for (let j = 1; j <= ENTRY_COLS; j++) {
+      entryHeaderCells += '<th scope="col" class="border border-slate-700 px-1 py-2 text-center text-[10px] font-bold tabular-nums">' + j + '</th>';
+    }
+    const theadBanner =
+      '<tr>' +
+        '<th colspan="' + colCount + '" class="border border-slate-300 bg-white px-3 py-2 text-center align-middle">' +
+          '<div class="text-base font-bold text-slate-900 dark:text-white tracking-tight">' + ctx.schoolHtml + '</div>' +
+        '</th>' +
+      '</tr>' +
+      '<tr>' +
+        '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
+          '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
+            '<span><span class="font-semibold">Exam entry sheet</span>' + (ctx.classHtml ? ' · Class: ' + ctx.classHtml : '') + '</span>' +
+            '<span class="text-slate-500 dark:text-slate-400">Printed: ' + ctx.genHtml + '</span>' +
+          '</div>' +
+        '</th>' +
+      '</tr>';
     const tableHead = '' +
-      '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">#</th>' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student ID</th>' +
-        '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Student Name</th>' +
-        (hasClass ? '<th class="text-left py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Class</th>' : '') +
-        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Mark 1</th>' +
-        '<th class="text-center py-2 px-2 font-semibold text-xs border border-gray-300 dark:border-gray-600">Mark 2</th>' +
-      '</tr></thead>';
-    const markBox = '<span class="inline-block w-20 h-6 border border-gray-500 dark:border-gray-300 rounded-sm bg-white dark:bg-gray-800"></span>';
+      '<thead>' +
+        theadBanner +
+        '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider">#</th>' +
+          '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Learner</th>' +
+          (hasClass ? '<th scope="col" class="border border-slate-700 px-2 py-2 text-left text-[10px] font-bold uppercase tracking-wider">Class</th>' : '') +
+          entryHeaderCells +
+        '</tr>' +
+      '</thead>';
+    let entryCells = '';
+    for (let k = 0; k < ENTRY_COLS; k++) {
+      entryCells += '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[1.75rem]">&nbsp;</td>';
+    }
     const body = rows.map(function(row, idx) {
-      return '<tr>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + (idx + 1) + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.student_id || '') + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs">' + escapeHtml(row.full_name || '') + '</td>' +
-        (hasClass ? '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-xs whitespace-nowrap">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + markBox + '</td>' +
-        '<td class="py-2 px-2 border border-gray-200 dark:border-gray-700 text-center">' + markBox + '</td>' +
+      const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
+      return '<tr class="' + zebra + '">' +
+        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
+        '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-white align-middle break-words">' + escapeHtml(row.full_name || '') + '</td>' +
+        (hasClass ? '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-[11px] text-slate-700 dark:text-slate-300 whitespace-nowrap align-middle">' + escapeHtml(row.current_grade || '-') + '</td>' : '') +
+        entryCells +
       '</tr>';
     }).join('');
-    return header + '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700"><table class="w-full min-w-[760px] border-collapse">' + tableHead + '<tbody>' + body + '</tbody></table></div>';
+    const tfoot = '' +
+      '<tfoot>' +
+        '<tr>' +
+          '<td colspan="' + colCount + '" class="border border-slate-300 border-t-2 border-t-slate-500 bg-slate-50 dark:bg-slate-800/50 px-3 py-3 text-[11px] text-slate-700 dark:text-slate-300">' +
+            '<div class="flex flex-wrap justify-between gap-4">' +
+              '<span>Class teacher: ________________________________</span>' +
+              '<span>Date: ______________</span>' +
+            '</div>' +
+            '<div class="mt-2 flex flex-wrap justify-between gap-4">' +
+              '<span>Exam officer / HoD: ________________________________</span>' +
+              '<span>Signature: ______________</span>' +
+            '</div>' +
+          '</td>' +
+        '</tr>' +
+      '</tfoot>';
+    return '' +
+      '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '</div>';
   }
 
   function renderExamTimetable(bundle) {
@@ -1224,7 +1821,8 @@
   }
 
   function renderIndividualStudentPerformanceForm(bundle) {
-    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    let rows = Array.isArray(bundle.rows) ? bundle.rows.slice() : [];
+    rows = narrowExamRowsToSelectedStudent(rows);
     if (!rows.length) {
       return '<p class="text-sm text-gray-500 dark:text-gray-400">No student marks found for the selected filters.</p>';
     }
@@ -1331,7 +1929,6 @@
             '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">' +
               '<p class="text-xs text-gray-500 dark:text-gray-400">Student</p>' +
               '<p class="font-semibold text-gray-900 dark:text-white">' + escapeHtml(first.full_name || '-') + '</p>' +
-              '<p class="text-xs text-gray-600 dark:text-gray-400">ID: ' + escapeHtml(first.student_id || '-') + '</p>' +
               '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: ' + escapeHtml(first.level_name || '-') + '</p>' +
             '</div>' +
             '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">' +
@@ -1413,13 +2010,22 @@
   async function loadDetails() {
     const reportType = currentReportId();
     if (!reportType || !detailsListEl) return;
+
+    const needsStudentPick = reportUsesFindStudentPicker(reportType);
+    if (needsStudentPick && !val('gf-student')) {
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a student in <span class="font-medium text-gray-700 dark:text-gray-300">Find student</span>, or choose another report.</p>';
+      setGeneratedNow();
+      return;
+    }
+
     detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Loading report details...</p>';
     try {
+      const filters = getFiltersForReport(reportType);
       const res = await fetch(API, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report_type: reportType, format: 'json', filters: getFiltersForReport(reportType) }),
+        body: JSON.stringify({ report_type: reportType, format: 'json', filters: filters }),
       });
       const data = await res.json().catch(function() { return {}; });
       if (!res.ok || data.success === false) {
@@ -1432,6 +2038,7 @@
         rows: Array.isArray(data.rows) ? data.rows : [],
         meta: data.meta || {},
       };
+      setGeneratedNow();
       detailsListEl.innerHTML =
         (reportType === 'exam_all_students_performance'
           ? renderAllStudentsPerformance(bundle)
@@ -1446,12 +2053,105 @@
           ? renderExamTimetable(bundle)
           : (reportType === 'timetable_subject'
               ? renderSubjectClassTimetable(bundle)
-              : (reportType === 'timetable_teacher' ? renderTeacherTimetable(bundle) : renderTable(bundle))))))));
-      setGeneratedNow();
+              : (reportType === 'timetable_teacher'               ? renderTeacherTimetable(bundle) : renderTable(bundle))))))));
     } catch (e) {
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
       setGeneratedNow();
     }
+  }
+
+  function hideStudentSuggestions() {
+    if (!studentSuggestEl) return;
+    studentSuggestEl.classList.add('hidden');
+    studentSuggestEl.innerHTML = '';
+  }
+
+  function updateStudentClearVisibility() {
+    if (!studentClearBtn || !studentHiddenEl) return;
+    studentClearBtn.classList.toggle('hidden', !String(studentHiddenEl.value || '').trim());
+  }
+
+  function clearStudentSelection(skipReload) {
+    if (studentHiddenEl) studentHiddenEl.value = '';
+    if (studentSearchEl) studentSearchEl.value = '';
+    hideStudentSuggestions();
+    updateStudentClearVisibility();
+    if (!skipReload) loadDetails();
+  }
+
+  function renderStudentSuggestions(students) {
+    if (!studentSuggestEl) return;
+    studentSuggestEl.innerHTML = '';
+    if (!students.length) {
+      var empty = document.createElement('div');
+      empty.className = 'px-3 py-2 text-xs text-gray-500 dark:text-gray-400';
+      empty.textContent = 'No matches';
+      studentSuggestEl.appendChild(empty);
+      studentSuggestEl.classList.remove('hidden');
+      return;
+    }
+    students.forEach(function(s) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700';
+      var sid = s.student_id != null ? String(s.student_id) : '';
+      btn.addEventListener('click', function(ev) {
+        ev.preventDefault();
+        if (studentHiddenEl) studentHiddenEl.value = sid;
+        if (studentSearchEl) studentSearchEl.value = s.full_name ? String(s.full_name) : '';
+        if (s.academic_level_id !== undefined && s.academic_level_id !== null && s.academic_level_id !== '') {
+          setClassLevelForStudent(s.academic_level_id, s.level_name);
+        }
+        hideStudentSuggestions();
+        updateStudentClearVisibility();
+        loadDetails();
+      });
+      var t1 = document.createElement('span');
+      t1.className = 'font-medium text-gray-900 dark:text-white block truncate';
+      t1.textContent = s.full_name || '—';
+      btn.appendChild(t1);
+      if (s.level_name && String(s.level_name).trim()) {
+        var t2 = document.createElement('span');
+        t2.className = 'text-xs text-gray-500 dark:text-gray-400 block truncate';
+        t2.textContent = String(s.level_name);
+        btn.appendChild(t2);
+      }
+      studentSuggestEl.appendChild(btn);
+    });
+    studentSuggestEl.classList.remove('hidden');
+  }
+
+  async function fetchStudentSuggestions() {
+    if (!studentSearchEl || !STUDENT_SEARCH_API) return;
+    var q = String(studentSearchEl.value || '').trim();
+    if (q.length < 1) {
+      hideStudentSuggestions();
+      return;
+    }
+    try {
+      var payload = { q: q };
+      var lidStr = val('gf-level');
+      if (lidStr) payload.level_id = parseInt(lidStr, 10);
+      var res = await fetch(STUDENT_SEARCH_API, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      var data = await res.json().catch(function() { return {}; });
+      if (!res.ok || data.success === false) {
+        hideStudentSuggestions();
+        return;
+      }
+      renderStudentSuggestions(Array.isArray(data.students) ? data.students : []);
+    } catch (e) {
+      hideStudentSuggestions();
+    }
+  }
+
+  function scheduleStudentSearch() {
+    clearTimeout(studentSearchTimer);
+    studentSearchTimer = setTimeout(fetchStudentSuggestions, 280);
   }
 
   const termEl = document.getElementById('gf-term');
@@ -1477,33 +2177,63 @@
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', syncExamNameOptions);
   });
-  const studentInput = document.getElementById('gf-student');
-  if (studentInput) {
-    studentInput.addEventListener('change', loadDetails);
-    studentInput.addEventListener('input', loadDetails);
+  if (studentSearchEl) {
+    studentSearchEl.addEventListener('input', function() {
+      if (studentHiddenEl && String(studentHiddenEl.value || '').trim()) {
+        studentHiddenEl.value = '';
+        updateStudentClearVisibility();
+        loadDetails();
+      }
+      scheduleStudentSearch();
+    });
+    studentSearchEl.addEventListener('focus', function() {
+      if (String(studentSearchEl.value || '').trim().length >= 1) fetchStudentSuggestions();
+    });
+  }
+  if (studentClearBtn) {
+    studentClearBtn.addEventListener('click', function() { clearStudentSelection(false); });
+  }
+  document.addEventListener('click', function(ev) {
+    if (!wrapStudent || wrapStudent.classList.contains('hidden')) return;
+    if (wrapStudent.contains(ev.target)) return;
+    hideStudentSuggestions();
+  });
+  updateStudentClearVisibility();
+  function scrollAcademicReportPaneToTop() {
+    var inner = document.querySelector('main.overflow-hidden > div.overflow-y-auto');
+    if (inner) inner.scrollTop = 0;
+    window.scrollTo(0, 0);
+  }
+  window.addEventListener('beforeprint', function() {
+    if (!document.getElementById('ar-preview-wrap')) return;
+    document.documentElement.classList.add('ar-print-academic-report');
+    scrollAcademicReportPaneToTop();
+  });
+  window.addEventListener('afterprint', function() {
+    document.documentElement.classList.remove('ar-print-academic-report');
+  });
+  const printSavePdfBtn = document.getElementById('ar-print-save-pdf-btn');
+  if (printSavePdfBtn) {
+    printSavePdfBtn.addEventListener('click', function() {
+      const reportType = currentReportId();
+      if (!reportType) return;
+      var prevTitle = document.title;
+      var day = new Date().toISOString().slice(0, 10);
+      document.title = reportFileStem(reportType) + '_' + day;
+      scrollAcademicReportPaneToTop();
+      window.print();
+      window.setTimeout(function() {
+        document.title = prevTitle;
+      }, 250);
+    });
   }
   const exportBtn = document.getElementById('ar-export-btn');
   const exportFmtEl = document.getElementById('ar-export-format');
   if (exportBtn) {
-    exportBtn.addEventListener('click', async function() {
+    exportBtn.addEventListener('click', function() {
       const reportType = currentReportId();
       if (!reportType) return;
       const fmt = exportFmtEl ? (exportFmtEl.value || 'csv') : 'csv';
-      if (fmt === 'pdf_picture') {
-        const oldHtml = exportBtn.innerHTML;
-        exportBtn.disabled = true;
-        exportBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Exporting...';
-        try {
-          await exportPdfPicture(reportType);
-        } catch (e) {
-          alert('Could not export PDF picture. Please try again.');
-          console.error(e);
-        } finally {
-          exportBtn.disabled = false;
-          exportBtn.innerHTML = oldHtml;
-        }
-        return;
-      }
       window.location.href = buildExportUrl(reportType, fmt);
     });
   }
