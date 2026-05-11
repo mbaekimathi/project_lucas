@@ -150,6 +150,11 @@
         border: none !important;
         box-shadow: none !important;
     }
+    /* Separate sheets when printing “All classes” */
+    #ar-preview-wrap .ar-register-class-wrap.ar-register-follow {
+        page-break-before: always !important;
+        break-before: page !important;
+    }
     #ar-preview-wrap .shadow-sm,
     #ar-preview-wrap .shadow-md {
         box-shadow: none !important;
@@ -1148,6 +1153,15 @@
     return '<div class="space-y-4">' + classBlocks + '</div>';
   }
 
+  /** Backend splits all-classes lists into cohorts; fallback keeps one blob. */
+  function registerSectionsFromBundle(bundle) {
+    const meta = bundle.meta || {};
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    const secs = meta.class_sections;
+    if (Array.isArray(secs) && secs.length) return secs;
+    return [{ class_name: '', rows: rows }];
+  }
+
   /** School / class / timestamp lines for register sheets (repeats in thead when printing). */
   function sheetMeta(bundle, rows) {
     const meta = bundle.meta || {};
@@ -1172,16 +1186,19 @@
     };
   }
 
-  function renderAttendanceRegister(bundle) {
-    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
-    if (!rows.length) {
-      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
-    }
+  function renderAttendanceRegisterSection(bundle, sectionRows, opts) {
+    opts = opts || {};
+    const omitClassColumn = !!opts.omitClassColumn;
+    const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
+    const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
+
     const registerDate = (document.getElementById('gf-register-date') || {}).value
       || ((bundle.meta || {}).applied_filters || {}).date_from
       || '';
-    const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
-    const ctx = sheetMeta(bundle, rows);
+    const hasClass = !omitClassColumn && sectionRows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
+    const ctx = sheetMeta(bundle, sectionRows);
+    const bannerClassHtml = (omitClassColumn && sectionTitleRaw) ? escapeHtml(sectionTitleRaw) : ctx.classHtml;
+
     const colCount = 2 + (hasClass ? 1 : 0) + 3;
     const colgroup = '' +
       '<colgroup>' +
@@ -1201,7 +1218,9 @@
       '<tr>' +
         '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
           '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
-            '<span><span class="font-semibold">Attendance register</span>' + (ctx.classHtml ? ' · Class: ' + ctx.classHtml : '') + '</span>' +
+            '<span><span class="font-semibold">Attendance register</span>' +
+            (bannerClassHtml ? ' · Class: <span class="font-semibold">' + bannerClassHtml + '</span>' : '') +
+            '</span>' +
             '<span class="text-slate-500 dark:text-slate-400">Session date: ' + escapeHtml(registerDate || 'Not set') + ' · Printed: ' + ctx.genHtml + '</span>' +
           '</div>' +
         '</th>' +
@@ -1219,7 +1238,7 @@
         '</tr>' +
       '</thead>';
     const blankCell = '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[2rem]">&nbsp;</td>';
-    const body = rows.map(function(row, idx) {
+    const body = sectionRows.map(function(row, idx) {
       const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
       return '<tr class="' + zebra + '">' +
         '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
@@ -1239,23 +1258,55 @@
           '</td>' +
         '</tr>' +
       '</tfoot>';
+    const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
+      '<div class="' + wrapCls + '">' +
       '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
         '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '</div>' +
       '</div>';
   }
 
-  function renderExamEntryRegister(bundle) {
+  function renderAttendanceRegister(bundle) {
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     if (!rows.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
+    const sections = registerSectionsFromBundle(bundle);
+    const blocks = [];
+    let rendered = 0;
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i] || {};
+      const title = String(sec.class_name || '').trim();
+      const secRows = Array.isArray(sec.rows) ? sec.rows : [];
+      if (!secRows.length) continue;
+      blocks.push(renderAttendanceRegisterSection(bundle, secRows, {
+        omitClassColumn: title.length > 0,
+        sectionTitle: title.length ? title : null,
+        sectionIndex: rendered,
+      }));
+      rendered++;
+    }
+    if (!blocks.length) {
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
+    }
+    return '<div class="space-y-8">' + blocks.join('') + '</div>';
+  }
+
+  function renderExamEntryRegisterSection(bundle, sectionRows, opts) {
+    opts = opts || {};
+    const omitClassColumn = !!opts.omitClassColumn;
+    const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
+    const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
     const ENTRY_COLS = 5;
-    const hasClass = rows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
-    const ctx = sheetMeta(bundle, rows);
+
+    const hasClass = !omitClassColumn && sectionRows.some(function(r) { return String(r.current_grade || '').trim() !== ''; });
+    const ctx = sheetMeta(bundle, sectionRows);
+    const bannerClassHtml = (omitClassColumn && sectionTitleRaw) ? escapeHtml(sectionTitleRaw) : ctx.classHtml;
+
     const colCount = 2 + (hasClass ? 1 : 0) + ENTRY_COLS;
     let colgroupInner = '';
-    for (let i = 0; i < ENTRY_COLS; i++) {
+    for (let ic = 0; ic < ENTRY_COLS; ic++) {
       colgroupInner += '<col class="ar-col-entry">';
     }
     const colgroup = '' +
@@ -1278,7 +1329,9 @@
       '<tr>' +
         '<th colspan="' + colCount + '" class="border border-slate-300 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 align-middle">' +
           '<div class="flex flex-wrap justify-between gap-2 text-[11px] text-slate-700 dark:text-slate-300">' +
-            '<span><span class="font-semibold">Exam entry sheet</span>' + (ctx.classHtml ? ' · Class: ' + ctx.classHtml : '') + '</span>' +
+            '<span><span class="font-semibold">Exam entry sheet</span>' +
+            (bannerClassHtml ? ' · Class: <span class="font-semibold">' + bannerClassHtml + '</span>' : '') +
+            '</span>' +
             '<span class="text-slate-500 dark:text-slate-400">Printed: ' + ctx.genHtml + '</span>' +
           '</div>' +
         '</th>' +
@@ -1297,7 +1350,7 @@
     for (let k = 0; k < ENTRY_COLS; k++) {
       entryCells += '<td class="ar-cell-blank border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 p-0 align-middle min-h-[1.75rem]">&nbsp;</td>';
     }
-    const body = rows.map(function(row, idx) {
+    const body = sectionRows.map(function(row, idx) {
       const zebra = idx % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : '';
       return '<tr class="' + zebra + '">' +
         '<td class="border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-center text-[10px] tabular-nums text-slate-600 dark:text-slate-400 align-middle">' + (idx + 1) + '</td>' +
@@ -1321,10 +1374,39 @@
           '</td>' +
         '</tr>' +
       '</tfoot>';
+    const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
+      '<div class="' + wrapCls + '">' +
       '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
         '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '</div>' +
       '</div>';
+  }
+
+  function renderExamEntryRegister(bundle) {
+    const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    if (!rows.length) {
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
+    }
+    const sections = registerSectionsFromBundle(bundle);
+    const blocks = [];
+    let rendered = 0;
+    for (let i = 0; i < sections.length; i++) {
+      const sec = sections[i] || {};
+      const title = String(sec.class_name || '').trim();
+      const secRows = Array.isArray(sec.rows) ? sec.rows : [];
+      if (!secRows.length) continue;
+      blocks.push(renderExamEntryRegisterSection(bundle, secRows, {
+        omitClassColumn: title.length > 0,
+        sectionTitle: title.length ? title : null,
+        sectionIndex: rendered,
+      }));
+      rendered++;
+    }
+    if (!blocks.length) {
+      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
+    }
+    return '<div class="space-y-8">' + blocks.join('') + '</div>';
   }
 
   function renderExamTimetable(bundle) {
