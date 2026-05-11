@@ -21974,7 +21974,7 @@ def attendance():
 def exams_assessments():
     """Exams & Assessments page.
 
-    - Coordinators/principals: see all academic levels.
+    - Coordinators/principals/secretary: see all academic levels.
     - Teachers: see only allocated classes (and their subjects).
     """
     user_role = session.get('role', '').lower()
@@ -21984,8 +21984,9 @@ def exams_assessments():
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
     
-    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal or is_secretary):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
 
