@@ -570,8 +570,8 @@
                 </div>
                 {% if ta.get('overall_mean') is not none and ta.get('overall_rank') is not none %}
                 <p class="text-3xl font-bold mt-2">Rank <span class="text-amber-300">{{ ta.get('overall_rank') }}</span><span class="text-lg font-semibold text-slate-400"> / {{ ta.get('overall_teachers_count', 0) }}</span></p>
-                <p class="text-sm text-slate-300 mt-1">By average <strong>scaled %</strong> (raw ÷ subject exam total × 100) for students in your assigned subject–class pairs this term.</p>
-                <p class="text-xs text-slate-400 mt-3">Your cohort mean: <span class="font-bold text-white">{{ ta.overall_mean }}%</span></p>
+                <p class="text-sm text-slate-300 mt-1">By average <strong>scaled marks (/100)</strong> (raw ÷ subject exam total × 100) for students in your assigned subject–class pairs this term.</p>
+                <p class="text-xs text-slate-400 mt-3">Your cohort mean: <span class="font-bold text-white">{{ ta.overall_mean }}/100</span></p>
                 {% else %}
                 <p class="text-sm text-slate-400 mt-3">Ranking appears when there are enough saved marks this term for teachers with class assignments.</p>
                 {% endif %}
@@ -586,7 +586,7 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white">Subject performance (your classes)</h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Mean <strong>scaled %</strong> per subject (uses each subject&apos;s Exam total marks) for in-session students where you teach that subject at that level — this term&apos;s exams only.</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Mean <strong>scaled marks (/100)</strong> per subject (uses each subject&apos;s Exam total marks) for in-session students where you teach that subject at that level — this term&apos;s exams only.</p>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -595,7 +595,7 @@
                         <tr>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Subject</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Code</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Mean %</th>
+                            <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Mean /100</th>
                             <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Mark entries</th>
                         </tr>
                     </thead>
@@ -604,7 +604,7 @@
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                             <td class="px-4 py-3 text-gray-900 dark:text-white">{{ sr.subject_name or '—' }}</td>
                             <td class="px-4 py-3 text-gray-600 dark:text-gray-300">{{ sr.subject_code or '—' }}</td>
-                            <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{% if sr.mean_marks is not none %}{{ sr.mean_marks }}%{% else %}—{% endif %}</td>
+                            <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{% if sr.mean_marks is not none %}{{ sr.mean_marks }}/100{% else %}—{% endif %}</td>
                             <td class="px-4 py-3 text-right text-gray-600 dark:text-gray-300">{{ sr.mark_count }}</td>
                         </tr>
                         {% endfor %}
@@ -622,7 +622,7 @@
                 </div>
                 <div>
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white">Class ranking in exams</h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Each of your classes compared to all classes with marks this term (by cohort mean scaled %).</p>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Each of your classes compared to all classes with marks this term (by cohort mean scaled marks /100).</p>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -630,7 +630,7 @@
                     <thead class="bg-gray-50 dark:bg-gray-700/40">
                         <tr>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600 dark:text-gray-300">Class</th>
-                            <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Cohort mean %</th>
+                            <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Cohort mean /100</th>
                             <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">School rank</th>
                             <th class="px-4 py-3 text-right font-semibold text-gray-600 dark:text-gray-300">Mark count</th>
                         </tr>
@@ -639,7 +639,7 @@
                         {% for cr in ta.class_rank_rows %}
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                             <td class="px-4 py-3 text-gray-900 dark:text-white font-medium">{{ cr.level_name or '—' }}</td>
-                            <td class="px-4 py-3 text-right text-gray-900 dark:text-white">{{ cr.avg_m }}%</td>
+                            <td class="px-4 py-3 text-right text-gray-900 dark:text-white">{{ cr.avg_m }}/100</td>
                             <td class="px-4 py-3 text-right">
                                 <span class="inline-flex items-center gap-1 font-semibold text-rose-700 dark:text-rose-300">{{ cr.school_rank }}<span class="text-gray-500 font-normal text-xs">/ {{ cr.levels_compared }}</span></span>
                             </td>

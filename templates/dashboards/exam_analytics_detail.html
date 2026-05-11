@@ -102,13 +102,13 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             <div x-show="activeTab === 'students_marks'" x-cloak>
                 <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                     <i class="fas fa-user-graduate text-green-600 mr-2"></i>
-                    Students in this level (scaled %)
+                    Students in this level (scaled marks /100)
                 </h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Each subject uses its <strong>Exam total marks</strong> from Exam subject settings: report value = raw ÷ total × 100.</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Each subject uses its <strong>Exam total marks</strong> from Exam subject settings: report value = raw ÷ total × 100 (shown as marks out of 100).</p>
                 {% if students_marks and students_marks|length > 0 and distinct_subjects and distinct_subjects|length > 0 %}
                 <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
                     <i class="fas fa-chart-line text-green-600 mr-2"></i>Class mean (all entries, %):
-                    <span class="text-green-700 dark:text-green-400">{{ "%.2f"|format(class_mean|float) }}%</span>
+                    <span class="text-green-700 dark:text-green-400">{{ "%.2f"|format(class_mean|float) }}/100</span>
                     {% if class_mean_grade %}
                     <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ class_mean_grade }})</span>
                     {% endif %}
@@ -119,10 +119,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <tr>
                                 <th class="sticky-col sticky-col-1 px-2 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 w-10">#</th>
                                 <th class="sticky-col sticky-col-2 px-3 py-3 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 min-w-[140px]">Student Name</th>
-                                {% for subj in distinct_subjects %}
+                                {% set ds_students = distinct_subjects_students if distinct_subjects_students is defined else distinct_subjects %}
+                                {% for subj in ds_students %}
                                 <th class="px-1 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase min-w-[72px]" title="{{ subj.subject_name or '—' }}">{{ (subj.subject_name or '—')[:15] }}{% if (subj.subject_name or '')|length > 15 %}…{% endif %}</th>
                                 {% endfor %}
-                                <th class="px-3 py-3 text-center text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 min-w-[70px]">Avg %</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 min-w-[70px]">Avg /100</th>
                                 <th class="px-3 py-3 text-center text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 min-w-[60px]">Rank</th>
                             </tr>
                         </thead>
@@ -137,12 +138,12 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 {% for m in sm.marks_list %}
                                 <td class="px-1 py-2 text-center text-gray-900 dark:text-white font-semibold text-base">
                                     {% if m.marks is not none %}
-                                        {{ "%.1f"|format(m.marks|float) }}%{% if m.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ m.grade }})</span>{% endif %}
+                                        {{ "%.1f"|format(m.marks|float) }}{% if m.get('is_combined') %}/100{% else %}/100{% endif %}{% if m.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ m.grade }})</span>{% endif %}
                                     {% else %}—{% endif %}
                                 </td>
                                 {% endfor %}
                                 <td class="px-3 py-2 text-center text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20">
-                                    {{ "%.1f"|format(sm.total_marks|float) }}%
+                                    {{ "%.1f"|format(sm.total_marks|float) }}/100
                                     {% if sm.total_grade %}
                                     <span class="block text-xs font-bold text-emerald-800 dark:text-emerald-300">({{ sm.total_grade }})</span>
                                     {% endif %}
@@ -182,7 +183,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                     <tr>
                                         <th class="p-3 text-left font-semibold">#</th>
                                         <th class="p-3 text-left font-semibold">Student</th>
-                                        <th class="p-3 text-right font-semibold">Avg % (Grade)</th>
+                                        <th class="p-3 text-right font-semibold">Avg /100 (Grade)</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -195,7 +196,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                         <td class="p-3 text-gray-900 dark:text-white">{{ s.full_name }} <span class="text-gray-500 dark:text-gray-400 font-normal">({{ s.student_id }})</span></td>
                                         <td class="p-3 text-right font-medium text-gray-900 dark:text-white">
                                             {% if s.marks is not none %}
-                                                {{ "%.2f"|format(s.marks|float) }}%{% if s.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ s.grade }})</span>{% endif %}
+                                                {{ "%.2f"|format(s.marks|float) }}/100{% if s.grade %} <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">({{ s.grade }})</span>{% endif %}
                                             {% else %}—{% endif %}
                                         </td>
                                     </tr>

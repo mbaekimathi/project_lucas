@@ -23347,6 +23347,73 @@ def exam_analytics_detail(exam_id):
                     'subject_name': slot.get('subject_name') or '—',
                     'slot_ids': [slot['id']]
                 })
+
+        # For curriculum coordinator, show combined subjects as one converted-mark column (out of 100) on the Students Marks tab.
+        # Keep other tabs (subject analytics / teacher analytics) using the original per-subject list.
+        distinct_subjects_students = distinct_subjects
+        if is_academic_coordinator:
+            try:
+                with connection.cursor() as cur_combo:
+                    ensure_subject_exam_total_marks_column(cur_combo)
+                    ensure_subject_exam_combination_tables(cur_combo)
+                    subject_ids = [int(s.get('subject_id')) for s in distinct_subjects if s.get('subject_id') is not None]
+                    exam_total_by_id = {}
+                    if subject_ids:
+                        placeholders = ','.join(['%s'] * len(subject_ids))
+                        cur_combo.execute(
+                            f"SELECT id, exam_total_marks, subject_code FROM subjects WHERE id IN ({placeholders})",
+                            tuple(subject_ids),
+                        )
+                        for rr in (cur_combo.fetchall() or []):
+                            sid = rr.get('id') if isinstance(rr, dict) else rr[0]
+                            etm = rr.get('exam_total_marks') if isinstance(rr, dict) else (rr[1] if len(rr) > 1 else None)
+                            sc = rr.get('subject_code') if isinstance(rr, dict) else (rr[2] if len(rr) > 2 else '')
+                            if sid is not None:
+                                exam_total_by_id[int(sid)] = {'exam_total_marks': etm, 'subject_code': sc or ''}
+                    slot_ids_by_subject = {int(s['subject_id']): list(s.get('slot_ids') or []) for s in distinct_subjects if s.get('subject_id') is not None}
+
+                    subjects_for_merge = []
+                    for s in distinct_subjects:
+                        sid = s.get('subject_id')
+                        if sid is None:
+                            continue
+                        extra = exam_total_by_id.get(int(sid)) or {}
+                        subjects_for_merge.append({
+                            'id': int(sid),
+                            'subject_name': s.get('subject_name') or '—',
+                            'subject_code': extra.get('subject_code') or '',
+                            'exam_total_marks': extra.get('exam_total_marks'),
+                        })
+                    combos_loaded = fetch_subject_exam_combinations(cur_combo)
+                    merged_rows = merge_subjects_with_exam_combinations(subjects_for_merge, combos_loaded) if subjects_for_merge else distinct_subjects
+
+                    distinct_subjects_students = []
+                    for mr in merged_rows or []:
+                        rid = int(mr.get('id'))
+                        if rid > 0:
+                            distinct_subjects_students.append({
+                                'subject_id': rid,
+                                'subject_name': mr.get('subject_name') or '—',
+                                'slot_ids': slot_ids_by_subject.get(rid) or [],
+                                'is_combined': False,
+                            })
+                        else:
+                            member_ids = mr.get('columnMembers') or []
+                            weights = []
+                            for mid in member_ids:
+                                extra = exam_total_by_id.get(int(mid)) or {}
+                                weights.append(subject_exam_max_raw_marks(extra.get('exam_total_marks')))
+                            distinct_subjects_students.append({
+                                'subject_id': rid,  # negative synthetic id
+                                'subject_name': mr.get('subject_name') or '—',
+                                'slot_ids': [],
+                                'member_subject_ids': [int(x) for x in member_ids],
+                                'member_weights': weights,
+                                'is_combined': True,
+                            })
+            except Exception as ce:
+                print(f"Note: combined subject columns skipped in exam_analytics_detail: {ce}")
+                distinct_subjects_students = distinct_subjects
         # All slot (exam) ids for this exam name/year/term/level – marks may be stored under any of these (e.g. exams-assessments uses one exam_id per name)
         all_slot_ids = [s['id'] for s in slots]
         # Students Marks: ALL students in this level, one column per subject (look up by subject_id + any exam_id in this exam so all subjects show)
@@ -23446,10 +23513,43 @@ def exam_analytics_detail(exam_id):
                     sid = srow.get('student_id') if isinstance(srow, dict) else srow[0]
                     full_name = (srow.get('full_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else sid)) if srow else sid
                     marks_list = []
-                    for subj in distinct_subjects:
+                    for subj in distinct_subjects_students:
                         total_for_subject = None
+                        # Combined synthetic column (curriculum coordinator only): compute final converted combined mark out of 100
+                        if subj.get('is_combined'):
+                            member_ids = subj.get('member_subject_ids') or []
+                            member_weights = subj.get('member_weights') or []
+                            contributions = []
+                            for idx_m, mid in enumerate(member_ids):
+                                w = member_weights[idx_m] if idx_m < len(member_weights) else 0.0
+                                if w <= 0:
+                                    continue
+                                placeholders = ','.join(['%s'] * len(all_slot_ids)) if all_slot_ids else ''
+                                pcts_m = []
+                                if all_slot_ids:
+                                    cur2.execute("""
+                                        SELECT sm.marks, sub.exam_total_marks
+                                        FROM student_marks sm
+                                        INNER JOIN subjects sub ON sm.subject_id = sub.id
+                                        WHERE sm.student_id = %s AND sm.subject_id = %s AND sm.exam_id IN (""" + placeholders + """)
+                                    """, [sid, mid] + all_slot_ids)
+                                    for mrow in (cur2.fetchall() or []):
+                                        mval = mrow.get('marks') if isinstance(mrow, dict) else (mrow[0] if mrow and len(mrow) > 0 else None)
+                                        etm = mrow.get('exam_total_marks') if isinstance(mrow, dict) else (mrow[1] if mrow and len(mrow) > 1 else None)
+                                        if mval is None:
+                                            continue
+                                        try:
+                                            p = raw_mark_to_percentage(float(mval), etm)
+                                        except (TypeError, ValueError):
+                                            p = None
+                                        if p is not None:
+                                            pcts_m.append(p)
+                                p_avg = round(sum(pcts_m) / len(pcts_m), 2) if pcts_m else None
+                                if p_avg is not None:
+                                    contributions.append((p_avg * float(w)) / 100.0)
+                            total_for_subject = round(sum(contributions), 2) if contributions else None
                         # Look up by (student_id, subject_id) and exam_id IN all slots – so marks saved under any slot (e.g. same exam_id for all subjects on exams-assessments) are found
-                        if all_slot_ids and subj.get('subject_id') is not None:
+                        elif all_slot_ids and subj.get('subject_id') is not None:
                             placeholders = ','.join(['%s'] * len(all_slot_ids))
                             cur2.execute("""
                                 SELECT sm.marks, sub.exam_total_marks
@@ -23492,10 +23592,19 @@ def exam_analytics_detail(exam_id):
                                             pcts_fb.append(p)
                             total_for_subject = round(sum(pcts_fb) / len(pcts_fb), 2) if pcts_fb else None
                         grade_value = _grade_for_mark(subj.get('subject_id'), total_for_subject)
-                        marks_list.append({'subject_name': subj['subject_name'], 'marks': total_for_subject, 'grade': grade_value})
+                        marks_list.append({
+                            'subject_name': subj['subject_name'],
+                            'marks': total_for_subject,
+                            'grade': grade_value,
+                            'is_combined': bool(subj.get('is_combined')),
+                        })
                     students_marks.append({'student_id': sid, 'full_name': full_name, 'marks_list': marks_list})
                 for sm in students_marks:
-                    pct_vals = [m.get('marks') for m in sm['marks_list'] if m.get('marks') is not None]
+                    pct_vals = [
+                        m.get('marks')
+                        for m in sm['marks_list']
+                        if m.get('marks') is not None and not m.get('is_combined')
+                    ]
                     scored_subjects = len(pct_vals)
                     if scored_subjects > 0:
                         sm['total_marks'] = round(sum(pct_vals) / float(scored_subjects), 2)
@@ -23617,7 +23726,23 @@ def exam_analytics_detail(exam_id):
         return redirect(url_for('exam_analytics'))
     finally:
         connection.close()
-    return render_template('dashboards/exam_analytics_detail.html', role=user_role, exam=exam_summary, slots=slots, distinct_subjects=distinct_subjects, top_teachers=top_teachers, exam_id=exam_id, levels=levels, selected_level_id=selected_level_id, students_marks=students_marks, subject_analytics=subject_analytics, class_mean=class_mean, class_mean_grade=class_mean_grade)
+    return render_template(
+        'dashboards/exam_analytics_detail.html',
+        role=user_role,
+        exam=exam_summary,
+        slots=slots,
+        distinct_subjects=distinct_subjects,
+        distinct_subjects_students=distinct_subjects_students,
+        top_teachers=top_teachers,
+        exam_id=exam_id,
+        levels=levels,
+        selected_level_id=selected_level_id,
+        students_marks=students_marks,
+        subject_analytics=subject_analytics,
+        class_mean=class_mean,
+        class_mean_grade=class_mean_grade,
+        is_academic_coordinator=is_academic_coordinator,
+    )
 
 # Exam Analytics - single class/subject analytics (mean grade, position, top teachers)
 @app.route('/dashboard/employee/exam-analytics/exam/<int:exam_id>/slot/<int:slot_id>')
