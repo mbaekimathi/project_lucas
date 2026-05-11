@@ -450,15 +450,20 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="sticky-col sticky-col-2 px-1.5 py-2 sm:px-3 sm:py-3 text-left text-[10px] sm:text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700">Student</th>
                             {% for subject in subjects %}
                             {% set raw_code = ((subject.subject_code or '')|trim|upper) %}
-                            {% if raw_code %}
-                                {% set subj_lbl = raw_code[:5] %}
+                            {% if subject.combination_id %}
+                                {# Combined column: show ALL member codes (joined in subject_code) #}
+                                {% set subj_lbl = raw_code if raw_code else ((subject.subject_name|upper) if subject.subject_name else '') %}
                             {% else %}
-                                {% set subj_lbl = (subject.subject_name[:4]|upper) if subject.subject_name else '' %}
+                                {% if raw_code %}
+                                    {% set subj_lbl = raw_code[:5] %}
+                                {% else %}
+                                    {% set subj_lbl = (subject.subject_name[:4]|upper) if subject.subject_name else '' %}
+                                {% endif %}
                             {% endif %}
                             {% set subj_max = subject_exam_max_map.get(subject.id, 100) %}
                             {% if subject.combination_id %}
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom"
-                                title="{{ subject.subject_name }} — unified % (0–100); each paper scaled using its exam total from Exam subject settings">{{ subj_lbl[:10] }}{% if subj_lbl|length > 10 %}…{% endif %}</th>
+                                title="{{ subject.subject_name }} — unified % (0–100); each paper scaled using its exam total from Exam subject settings">{{ subj_lbl }}</th>
                             {% else %}
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }} — enter marks out of {{ subj_max }}">{{ subj_lbl }}</th>
                             {% endif %}
