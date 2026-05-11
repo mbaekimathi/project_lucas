@@ -11,10 +11,18 @@
 
 {% block extra_head %}
 <style>
+/* Responsive sizing variables (keeps sticky offsets consistent) */
+.marks-sheet-page {
+    --ms-idx-w: 2.5rem;
+    --ms-student-w: clamp(10.5rem, 22vw, 16rem);
+    --ms-total-w: 3.25rem;
+    --ms-rank-w: 3rem;
+}
+
 /* Sticky columns */
 .sticky-col { position: sticky; z-index: 10; }
 .sticky-col-1 { left: 0; }
-.sticky-col-2 { left: 2.5rem; }
+.sticky-col-2 { left: var(--ms-idx-w); }
 thead .sticky-col { z-index: 20; }
 
 /* Row backgrounds for sticky cells */
@@ -35,13 +43,18 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     max-width: 100%;
     table-layout: fixed;
 }
-.marks-sheet-table col.marks-col-idx { width: 2.5rem; }
-.marks-sheet-table col.marks-col-student { width: 22%; }
+.marks-sheet-table col.marks-col-idx { width: var(--ms-idx-w); }
+.marks-sheet-table col.marks-col-student { width: var(--ms-student-w); }
+.marks-sheet-table col.marks-col-total { width: var(--ms-total-w); }
+.marks-sheet-table col.marks-col-rank { width: var(--ms-rank-w); }
+
+/* Small screens: stop over-squeezing columns; allow gentle horizontal scroll */
 @media (max-width: 767px) {
-    .marks-sheet-table col.marks-col-student { width: 26%; }
+    .marks-sheet-table { min-width: 760px; }
 }
-.marks-sheet-table col.marks-col-total { width: 2.65rem; }
-.marks-sheet-table col.marks-col-rank { width: 2.35rem; }
+@media (max-width: 420px) {
+    .marks-sheet-table { min-width: 680px; }
+}
 .marks-sheet-table .marks-th-subject,
 .marks-sheet-table .marks-td-subject {
     padding-left: 0.125rem;
