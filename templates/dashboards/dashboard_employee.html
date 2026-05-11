@@ -347,6 +347,11 @@
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
+    <a href="/curriculum-coordinator/exams-assessments"
+       class="sidebar-item">
+        <i class="fas fa-clipboard-list w-5"></i>
+        <span>Exams &amp; Assessments</span>
+    </a>
     <a href="{{ employee_dash_url('communication') }}" 
        class="sidebar-item {% if request.endpoint == 'communication' or request.path.endswith('/communication') %}sidebar-item-active{% endif %}">
         <i class="fas fa-comments w-5"></i>
