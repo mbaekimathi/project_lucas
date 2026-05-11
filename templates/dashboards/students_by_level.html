@@ -828,16 +828,20 @@ function marksSheet() {
         getMarkNumeric(studentId, subjectId) {
             const members = this.getCombinationMembers(subjectId);
             if (members && members.length) {
-                let sum = 0;
-                let cnt = 0;
+                // Weighted average converted mark (/100) across member papers.
+                // Weight by each paper's exam total marks so the combined converted mark stays in 0–100.
+                let weightedSum = 0;
+                let weightSum = 0;
                 for (const mid of members) {
                     const raw = this._rawStoredMark(studentId, mid);
                     if (raw !== null) {
-                        sum += (100 * raw) / this.subjectExamMaxFor(mid);
-                        cnt += 1;
+                        const w = this.subjectExamMaxFor(mid);
+                        const pct = (100 * raw) / w;
+                        weightedSum += pct * w;
+                        weightSum += w;
                     }
                 }
-                return cnt ? sum / cnt : null;
+                return weightSum ? (weightedSum / weightSum) : null;
             }
             return this._rawStoredMark(studentId, subjectId);
         },
