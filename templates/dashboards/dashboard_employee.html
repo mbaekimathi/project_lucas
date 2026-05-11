@@ -347,8 +347,8 @@
         <i class="fas fa-user-graduate w-5"></i>
         <span>Student Management</span>
     </a>
-    <a href="/curriculum-coordinator/exams-assessments"
-       class="sidebar-item">
+    <a href="{{ employee_dash_url('exams-assessments') }}"
+       class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">
         <i class="fas fa-clipboard-list w-5"></i>
         <span>Exams &amp; Assessments</span>
     </a>
