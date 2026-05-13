@@ -45,6 +45,8 @@ load_project_env()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
+# Used when the user checks "Remember me" on login (browser session cookie otherwise).
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
 
 
 @app.template_global()
@@ -4117,6 +4119,7 @@ def login():
                 default_role=role if role in ('employee', 'parent', 'student') else '',
                 login_error=message,
                 login_code=code,
+                remember_me=bool(request.form.get('remember_me')),
             )
 
         if not role or not password:
@@ -4185,6 +4188,7 @@ def login():
                                         'Thank you for your service! Your account has been retired.'
                                     )
                                 if status == 'active':
+                                    session.permanent = bool(request.form.get('remember_me'))
                                     session['user_id'] = employee['id']
                                     session['email'] = employee['email']
                                     session['full_name'] = employee['full_name']
@@ -4227,6 +4231,7 @@ def login():
                                 'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
                             )
                         else:
+                            session.permanent = bool(request.form.get('remember_me'))
                             session['user_id'] = user['id']
                             session['email'] = user['email']
                             session['full_name'] = user['full_name']
@@ -12392,9 +12397,20 @@ def student_management():
                     connection.close()
                 except:
                     pass  # Connection might already be closed
-    
+
+    students_for_json = []
+    for row in students:
+        d = dict(row)
+        for k, val in list(d.items()):
+            if isinstance(val, (datetime, date_cls)):
+                d[k] = val.isoformat() if val else None
+            elif val is not None and not isinstance(val, (bool, int, float, str)):
+                d[k] = str(val)
+        students_for_json.append(d)
+
     return render_template('dashboards/student_management.html', 
                          students=students,
+                         students_for_json=students_for_json,
                          can_add=can_add,
                          can_edit=can_edit,
                          can_delete=can_delete)
