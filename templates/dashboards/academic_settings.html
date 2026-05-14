@@ -4,19 +4,18 @@
 
 {% block sidebar_content %}
 <div class="space-y-2">
-    <!-- Back to Fees Link -->
-    <a href="{{ employee_dash_url('student-fees') }}" 
-       class="w-full sidebar-item">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span class="font-medium">Back to Fees</span>
+    <a href="{{ employee_dash_url('academic-settings') }}"
+       class="w-full sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-calendar-alt w-5" aria-hidden="true"></i>
+        <span class="{% if request.endpoint == 'academic_settings' %}font-semibold{% else %}font-medium{% endif %}">Academic settings</span>
+        {% if request.endpoint == 'academic_settings' %}
+        <i class="fas fa-check-circle ml-auto text-green-500" aria-hidden="true"></i>
+        {% endif %}
     </a>
-    
-    <!-- Academic Settings Link -->
-    <a href="{{ employee_dash_url('academic-settings') }}" 
-       class="w-full sidebar-item active">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span class="font-semibold">Academic Settings</span>
-        <i class="fas fa-check-circle ml-auto text-green-500"></i>
+    <a href="{{ employee_dash_url('academic-schedule-management') }}"
+       class="w-full sidebar-item {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clock w-5" aria-hidden="true"></i>
+        <span class="font-medium">Academic schedule management</span>
     </a>
 </div>
 {% endblock %}
@@ -55,14 +54,6 @@
                 <i class="fas fa-calendar-week text-sm sm:text-base"></i>
                 <span class="whitespace-nowrap hidden sm:inline">Term Settings</span>
                 <span class="whitespace-nowrap sm:hidden">Terms</span>
-            </button>
-            <button @click="activeSubSection = 'academic-schedule-management'"
-                    :class="activeSubSection === 'academic-schedule-management' ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg' : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/50'"
-                    type="button"
-               class="flex-shrink-0 py-2.5 sm:py-3 px-3 sm:px-5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center space-x-1.5 sm:space-x-2 min-w-fit bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-900/50">
-                <i class="fas fa-clock text-sm sm:text-base"></i>
-                <span class="whitespace-nowrap hidden sm:inline">Academic Schedule Management</span>
-                <span class="whitespace-nowrap sm:hidden">Schedules</span>
             </button>
         </nav>
     </div>
@@ -680,21 +671,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <!-- Academic Schedule Management Section -->
-    <div x-show="activeSubSection === 'academic-schedule-management'" x-cloak style="display: none;">
-        <div class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-orange-200 dark:border-orange-800">
-            <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                <i class="fas fa-clock text-orange-600 mr-2"></i>
-                Academic Schedule Management
-            </h3>
-            <p class="text-gray-600 dark:text-gray-400 text-sm">Manage study days, class slots, activities, and level-based schedule profiles without leaving this page.</p>
-        </div>
-
-        {% set settings = schedule_settings %}
-        {% set settings_profiles = schedule_profiles %}
-        {% include "dashboards/_academic_schedule_management_form.html" %}
     </div>
 
     <!-- Term Settings Section -->

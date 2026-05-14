@@ -2,6 +2,31 @@
 
 {% block title %}Reports - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% block extra_head %}
+<style>
+    .reports-filter-card {
+        background: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(250,250,252,0.98) 100%);
+        box-shadow: 0 4px 24px -4px rgba(128, 0, 32, 0.08), 0 0 0 1px rgba(128, 0, 32, 0.06);
+    }
+    .dark .reports-filter-card {
+        background: linear-gradient(145deg, rgba(31, 41, 55, 0.98) 0%, rgba(17, 24, 39, 0.98) 100%);
+        box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+    .reports-filter-select {
+        min-height: 2.75rem;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1.125rem;
+        padding-right: 2.5rem;
+    }
+    .dark .reports-filter-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    }
+</style>
+{% endblock %}
+
 {% block sidebar_content %}
 <a href="{{ employee_dash_url('reports') }}" 
    class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
@@ -9,14 +34,18 @@
     <span>Reports</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
-<a href="{{ employee_dash_url('academic-reports') }}" class="sidebar-item">
+<a href="{{ employee_dash_url('academic-reports') }}"
+   class="sidebar-item {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Academic Reports</span>
+    {% if request.endpoint in ('academic_reports', 'academic_report_preview') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% if not sidebar_hide_accounts_fees|default(false) %}
 <a href="{{ employee_dash_url('student-fees') }}" class="sidebar-item">
     <i class="fas fa-file-invoice-dollar w-5"></i>
     <span>Accounts / Fees</span>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
@@ -26,129 +55,94 @@
             <i class="fas fa-chart-bar text-brand-primary mr-2 sm:mr-3"></i>
             Reports
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Filter first, then review class and subject performance in one view.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches).</p>
     </div>
 
-    {% set snap = stats_snapshot|default({'active_students': 0, 'teachers': 0, 'subjects': 0}) %}
-
     <div class="mb-6">
-        <div class="bg-white/95 dark:bg-gray-800/95 backdrop-blur rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6">
-            <div class="flex items-center justify-between gap-3 mb-4">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
-                    <i class="fas fa-filter text-brand-primary mr-2"></i>
-                    Report Filters
-                </h2>
-                <a href="{{ url_for('reports') }}" class="text-xs sm:text-sm px-3 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
-                    Current Term Defaults
+        <div class="reports-filter-card rounded-2xl border border-gray-200/90 dark:border-gray-600/60 p-5 sm:p-7 md:p-8 backdrop-blur-sm">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-gray-200/90 dark:border-gray-600/50">
+                <div class="flex items-start gap-3 sm:gap-4 min-w-0">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-md shadow-brand-primary/20">
+                        <i class="fas fa-sliders-h text-white text-sm" aria-hidden="true"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">Report filters</h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed max-w-xl">Set year, term, and exam scope, then pick a class or keep all classes. Changes apply after a short pause or when you use the buttons below.</p>
+                    </div>
+                </div>
+                <a href="{{ url_for('reports') }}"
+                   class="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-brand-primary/40 hover:text-brand-primary dark:hover:border-brand-primary/50 dark:hover:text-brand-primary/90 transition-all shadow-sm">
+                    <i class="fas fa-rotate-left text-xs opacity-80" aria-hidden="true"></i>
+                    Current term defaults
                 </a>
             </div>
 
-            <form method="GET" action="{{ url_for('reports') }}" id="reports-filter-form" class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
-                    <div>
-                        <label for="academic_year_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Academic Year</label>
-                        <select name="academic_year_id" id="academic_year_id" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+            <form method="GET" action="{{ url_for('reports') }}" id="reports-filter-form" class="pt-6 space-y-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+                    <div class="flex flex-col gap-2 min-w-0">
+                        <label for="academic_year_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Academic year</label>
+                        <select name="academic_year_id" id="academic_year_id"
+                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
                             <option value="">All years</option>
                             {% for year in academic_years %}
-                            <option value="{{ year.id }}" {% if selected_academic_year_id == year.id %}selected{% endif %}>{{ year.year_name }}{% if year.is_current %} (Current){% endif %}</option>
+                            <option value="{{ year.id }}" {% if selected_academic_year_id == year.id %}selected{% endif %}>{{ year.year_name }}{% if year.is_current %} · Current{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div>
-                        <label for="term_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Term</label>
-                        <select name="term_id" id="term_id" class="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                    <div class="flex flex-col gap-2 min-w-0">
+                        <label for="term_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Term</label>
+                        <select name="term_id" id="term_id"
+                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
                             <option value="">All terms</option>
                             {% for term in terms %}
-                            <option value="{{ term.id }}" {% if selected_term_id == term.id %}selected{% endif %}>{{ term.term_name }}{% if term.academic_year_id %} - Year {{ term.academic_year_id }}{% endif %}</option>
+                            <option value="{{ term.id }}" {% if selected_term_id == term.id %}selected{% endif %}>{{ term.term_name }}{% if term.academic_year_id %} · Year {{ term.academic_year_id }}{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="sm:col-span-2 lg:col-span-1 lg:col-start-4 flex items-end gap-2">
-                        <button type="submit" class="w-full px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold transition-all shadow-md flex items-center justify-center">
-                            <i class="fas fa-sync-alt mr-2"></i>
-                            Generate
-                        </button>
-                        <a href="{{ url_for('reports') }}" class="px-4 py-2.5 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors">
-                            Reset
-                        </a>
+                    <div class="flex flex-col gap-2 min-w-0">
+                        <label for="exam_i" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Exam</label>
+                        <select name="exam_i" id="exam_i"
+                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
+                            <option value="-1" {% if (selected_exam_i|default(-1)) == -1 %}selected{% endif %}>All exams (combined)</option>
+                            {% for opt in exam_group_options|default([]) %}
+                            <option value="{{ loop.index0 }}" {% if (selected_exam_i|default(-1)) == loop.index0 %}selected{% endif %}>
+                                {{ opt.exam_name }}{% if opt.exam_type %} — {{ opt.exam_type }}{% endif %}{% if opt.is_school_current %} · School default{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
 
-                <div>
-                    <p class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Class / Level</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Pick one class for focused analysis, or keep <strong>All classes</strong> for the full report.</p>
-                    <div class="max-h-52 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40 p-3">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-                            <label class="block cursor-pointer">
-                                <input type="radio" name="level_id" value="" class="peer sr-only" {% if selected_level_id is none %}checked{% endif %}>
-                                <span class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-brand-primary/50 peer-checked:border-brand-primary peer-checked:ring-2 peer-checked:ring-brand-primary/25 peer-checked:bg-brand-primary/10 dark:peer-checked:bg-brand-primary/15">
-                                    <span class="font-medium text-gray-900 dark:text-white">All classes</span>
-                                </span>
-                            </label>
+                <div class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-600 bg-gray-50/90 dark:bg-gray-900/40 px-4 py-4 sm:px-5 sm:py-5">
+                    <div class="flex flex-col gap-2 max-w-3xl">
+                        <label for="level_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Class / level</label>
+                        <select name="level_id" id="level_id"
+                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
+                            <option value="" {% if selected_level_id is none %}selected{% endif %}>All classes — full school report</option>
                             {% for level in academic_levels %}
-                            <label class="block cursor-pointer">
-                                <input type="radio" name="level_id" value="{{ level.id }}" class="peer sr-only" {% if selected_level_id == level.id %}checked{% endif %}>
-                                <span class="flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 hover:border-brand-primary/50 peer-checked:border-brand-primary peer-checked:ring-2 peer-checked:ring-brand-primary/25 peer-checked:bg-brand-primary/10 dark:peer-checked:bg-brand-primary/15">
-                                    <span class="text-gray-900 dark:text-white">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-500 dark:text-gray-400">({{ level.level_category }})</span>{% endif %}</span>
-                                </span>
-                            </label>
+                            <option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>
+                                {{ level.level_name }}{% if level.level_category %} · {{ level.level_category }}{% endif %}
+                            </option>
                             {% endfor %}
-                        </div>
+                        </select>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">One class narrows tables to that grade; all classes rolls every active level into the same view.</p>
                     </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-gray-100 dark:border-gray-700/80">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:shadow-brand-primary/25 transition-all min-w-[8.5rem]">
+                        <i class="fas fa-chart-line text-sm" aria-hidden="true"></i>
+                        Generate
+                    </button>
+                    <a href="{{ url_for('reports') }}"
+                       class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-semibold border-2 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Reset
+                    </a>
                 </div>
             </form>
         </div>
     </div>
-
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
-            <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
-                <i class="fas fa-user-graduate text-blue-600 dark:text-blue-400 text-xl"></i>
-            </div>
-            <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Active students</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.active_students|int) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Enrolled (in session)</p>
-            </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
-            <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
-                <i class="fas fa-chalkboard-teacher text-amber-600 dark:text-amber-400 text-xl"></i>
-            </div>
-            <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Teachers</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.teachers|int) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Active teaching staff</p>
-            </div>
-        </div>
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-md p-5 flex items-center gap-4">
-            <div class="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center shrink-0">
-                <i class="fas fa-book text-emerald-600 dark:text-emerald-400 text-xl"></i>
-            </div>
-            <div>
-                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Subjects</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{{ "{:,}".format(snap.subjects|int) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Registered (active)</p>
-            </div>
-        </div>
-    </div>
-
-    {% if report_data is not none and report_data|length > 0 %}
-    {% set rollup = namespace(subjects=0, entries=0, students=0) %}
-    {% for class_report in report_data %}
-        {% set rollup.subjects = rollup.subjects + (class_report.subjects|length) %}
-        {% set rollup.entries = rollup.entries + (class_report.total_marks_entries|default(0)|int) %}
-        {% set rollup.students = rollup.students + (class_report.student_count|default(0)|int) %}
-    {% endfor %}
-    <div class="mb-6 bg-gradient-to-r from-brand-primary/10 to-brand-secondary/10 dark:from-brand-primary/20 dark:to-brand-secondary/20 rounded-xl border border-brand-primary/20 dark:border-brand-secondary/30 p-4 sm:p-5">
-        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-700 dark:text-gray-200">
-            <span class="font-semibold"><i class="fas fa-check-circle mr-2 text-green-600"></i>{{ report_data|length }} class report(s)</span>
-            <span><i class="fas fa-users mr-2"></i>{{ rollup.students }} students covered</span>
-            <span><i class="fas fa-book mr-2"></i>{{ rollup.subjects }} subject sections</span>
-            <span><i class="fas fa-pen mr-2"></i>{{ rollup.entries }} mark entries</span>
-        </div>
-    </div>
-    {% endif %}
 
     {% if report_data is not none %}
     {% if report_data|length > 0 %}
@@ -194,6 +188,22 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    {% if class_report.subjects %}
+                    <tfoot>
+                        <tr class="bg-gray-50 dark:bg-gray-900/60 border-t-2 border-gray-300 dark:border-gray-600 font-semibold text-gray-900 dark:text-white">
+                            <td class="py-3 px-2">Overall (class)</td>
+                            <td class="text-right py-3 px-2">
+                                <span class="{% if class_report.class_mean >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_mean }}</span>
+                            </td>
+                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ class_report.class_max if class_report.class_max is not none else '—' }}</td>
+                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ class_report.class_min if class_report.class_min is not none else '—' }}</td>
+                            <td class="text-right py-3 px-2 text-gray-600 dark:text-gray-400">{{ class_report.total_marks_entries|default(0) }}</td>
+                            <td class="text-right py-3 px-2">
+                                <span class="{% if class_report.class_pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_pass_rate|default(0) }}%</span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
                 </table>
                 {% if not class_report.subjects %}
                 <p class="text-center text-gray-500 dark:text-gray-400 py-8">No exam data recorded for this class in the selected period.</p>
@@ -223,20 +233,6 @@
     </div>
     {% endif %}
 
-    {% if academic_levels %}
-    <div class="p-4 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700">
-        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-            <i class="fas fa-layer-group text-brand-primary"></i>
-            Class quick links
-        </p>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Open attendance, exam, and fee details for a specific class.</p>
-        <div class="flex flex-wrap gap-2">
-            {% for level in academic_levels %}
-            <a href="{{ url_for('reports_class_detail', level_id=level.id) }}" class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 hover:border-brand-primary hover:text-brand-primary transition-colors">{{ level.level_name }}{% if level.level_category %} <span class="text-gray-400 font-normal">({{ level.level_category }})</span>{% endif %}</a>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
 </div>
 
 <script>
@@ -248,7 +244,7 @@
         if (timer) clearTimeout(timer);
         timer = setTimeout(function() { form.submit(); }, 220);
     }
-    form.querySelectorAll('select[name="academic_year_id"], select[name="term_id"], input[name="level_id"]').forEach(function(el) {
+    form.querySelectorAll('select[name="academic_year_id"], select[name="term_id"], select[name="exam_i"], select[name="level_id"]').forEach(function(el) {
         el.addEventListener('change', scheduleSubmit);
     });
 })();

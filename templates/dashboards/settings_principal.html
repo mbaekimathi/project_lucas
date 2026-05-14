@@ -10,7 +10,13 @@
     <a href="{{ employee_dash_url('academic-settings') }}"
        class="sidebar-item w-full {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5" aria-hidden="true"></i>
-        <span>Academic Settings</span>
+        <span>Academic settings</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
+    </a>
+    <a href="{{ employee_dash_url('academic-schedule-management') }}"
+       class="sidebar-item w-full {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clock w-5" aria-hidden="true"></i>
+        <span>Academic schedule management</span>
         <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
     </a>
     {% set _cc_settings_role = (request.view_args.get('role', '') if request.view_args else '')|lower|replace('-', ' ') %}

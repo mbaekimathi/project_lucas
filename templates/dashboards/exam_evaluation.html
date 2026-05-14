@@ -773,20 +773,25 @@
 
     <!-- Registered Exam Allocations: open full timetables on dedicated page -->
     <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
-                    <i class="fas fa-list text-white"></i>
-                </div>
-                Registered Exam Allocations
-            </h2>
-            <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm">
-                <span x-text="uniqueExams.length"></span> exam(s)
-            </span>
+        <div class="flex flex-col gap-4 mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center min-w-0">
+                    <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md shrink-0">
+                        <i class="fas fa-list text-white"></i>
+                    </div>
+                    Registered Exam Allocations
+                </h2>
+                <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm shrink-0 self-start sm:self-center">
+                    <span x-text="uniqueExams.length"></span> exam(s)
+                </span>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                Click the <i class="fas fa-star text-amber-500" aria-hidden="true"></i> on a row to set the <strong>school-wide current exam</strong> (used as the default on class marks sheets when possible).
+            </p>
+            <p class="text-sm text-gray-600 dark:text-gray-400">
+                Use <strong>Allocation</strong> on each exam to open that exam page and set its timetable.
+            </p>
         </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Use <strong>Allocation</strong> on each exam to open that exam page and set its timetable.
-        </p>
 
         <div x-show="errorMessage" x-cloak class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 rounded-lg flex items-center shadow-sm">
             <i class="fas fa-exclamation-circle text-red-600 dark:text-red-400 mr-3 text-xl"></i>
@@ -809,6 +814,7 @@
             <div class="md:hidden space-y-4">
                 <template x-for="exam in uniqueExams" :key="'card-' + exam._key">
                     <div class="allocation-card rounded-xl p-4 sm:p-5 cursor-pointer transition-shadow hover:shadow-md min-w-0"
+                         :class="registeredCurrentExamKey && exam._key === registeredCurrentExamKey ? 'ring-2 ring-brand-primary ring-offset-2 dark:ring-offset-gray-900' : ''"
                          @click="window.location.href = registeredExamDetailUrl(exam)">
                         <div class="flex items-start justify-between gap-3 mb-3">
                             <div class="min-w-0 flex-1">
@@ -816,10 +822,21 @@
                                    @click.stop
                                    class="text-base font-bold text-gray-900 dark:text-white hover:text-brand-primary break-words"
                                    x-text="exam.exam_name"></a>
+                                <span x-show="registeredCurrentExamKey && exam._key === registeredCurrentExamKey"
+                                      class="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-white bg-brand-primary px-1.5 py-0.5 rounded">Current</span>
                                 <span x-show="exam.is_locked" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold align-middle" title="Locked">
                                     <i class="fas fa-lock"></i>
                                 </span>
                             </div>
+                            <button type="button"
+                                    @click.stop="setCurrentRegisteredExam(exam)"
+                                    :disabled="savingRegisteredCurrentExam"
+                                    class="shrink-0 inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-amber-200 dark:border-amber-700/60 bg-white dark:bg-gray-900 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :title="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as current exam'">
+                                <i class="text-lg" aria-hidden="true"
+                                   :class="registeredCurrentExamKey === exam._key ? 'fas fa-star' : 'far fa-star'"></i>
+                                <span class="sr-only" x-text="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as school-wide current exam'"></span>
+                            </button>
                         </div>
                         <dl class="grid grid-cols-1 gap-2 text-sm mb-4">
                             <div class="flex flex-wrap gap-x-2 gap-y-1">
@@ -855,7 +872,31 @@
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                             </div>
+                            <div class="flex items-center justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
+                                <span x-show="marksLockDeadlinePassed(exam) && exam.marks_lock_at"
+                                      class="text-amber-600 dark:text-amber-400"
+                                      title="Deadline reached">
+                                    <i class="fas fa-lock text-sm" aria-hidden="true"></i>
+                                </span>
+                                <button type="button"
+                                        @click.stop="openMarksLockModal(exam)"
+                                        :disabled="lockingExam || savingMarksLockKey === exam._key"
+                                        title="Marks entry deadline"
+                                        class="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-900 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed">
+                                    <i class="fas fa-calendar-alt text-lg" aria-hidden="true"></i>
+                                    <span class="sr-only">Marks entry deadline</span>
+                                </button>
+                                <template x-if="exam.marks_lock_at">
+                                    <button type="button"
+                                            @click.stop="clearMarksLockSchedule(exam)"
+                                            :disabled="lockingExam || savingMarksLockKey === exam._key"
+                                            class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed px-1">
+                                        Clear deadline
+                                    </button>
+                                </template>
+                            </div>
                             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pt-1">
+                                <span class="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Allocation lock</span>
                                 <span x-show="exam.is_locked"
                                       class="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
                                     <i class="fas fa-lock mr-0.5"></i>Locked
@@ -882,6 +923,10 @@
                     <table class="w-full border-collapse min-w-[720px]">
                     <thead>
                         <tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-12" title="School-wide current exam">
+                                <i class="fas fa-star opacity-95" aria-hidden="true"></i>
+                                <span class="sr-only">Current</span>
+                            </th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Exam Name</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Type</th>
                             <th class="p-3 sm:p-4 text-left text-xs sm:text-sm font-bold">Year</th>
@@ -890,18 +935,37 @@
                                 Allocation
                             </th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
-                            <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Lock</th>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-14"
+                                title="Marks entry deadline">
+                                <i class="fas fa-calendar-alt opacity-95" aria-hidden="true"></i>
+                                <span class="sr-only">Marks entry deadline</span>
+                            </th>
+                            <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Allocation lock</th>
                         </tr>
                     </thead>
                     <tbody>
                         <template x-for="exam in uniqueExams" :key="exam._key">
                             <tr class="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50/80 dark:hover:bg-gray-800/40 transition-colors cursor-pointer"
+                                :class="registeredCurrentExamKey && exam._key === registeredCurrentExamKey ? 'bg-brand-primary/5 dark:bg-brand-primary/10' : ''"
                                 @click="window.location.href = registeredExamDetailUrl(exam)">
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                    <button type="button"
+                                            @click="setCurrentRegisteredExam(exam)"
+                                            :disabled="savingRegisteredCurrentExam"
+                                            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-amber-200/80 dark:border-amber-700/50 bg-white dark:bg-gray-900 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                                            :title="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as current exam'">
+                                        <i class="text-base" aria-hidden="true"
+                                           :class="registeredCurrentExamKey === exam._key ? 'fas fa-star' : 'far fa-star'"></i>
+                                        <span class="sr-only" x-text="registeredCurrentExamKey === exam._key ? 'Current exam' : 'Set as school-wide current exam'"></span>
+                                    </button>
+                                </td>
                                 <td class="p-3 sm:p-4 align-middle">
                                     <a :href="registeredExamDetailUrl(exam)"
                                        @click.stop
                                        class="text-sm font-semibold text-gray-900 dark:text-white hover:text-brand-primary hover:underline break-words"
                                        x-text="exam.exam_name"></a>
+                                    <span x-show="registeredCurrentExamKey && exam._key === registeredCurrentExamKey"
+                                          class="ml-2 text-[10px] font-bold uppercase tracking-wide text-white bg-brand-primary px-1.5 py-0.5 rounded whitespace-nowrap">Current</span>
                                     <span x-show="exam.is_locked" class="ml-2 text-amber-600 dark:text-amber-400 text-xs font-bold whitespace-nowrap" title="Locked">
                                         <i class="fas fa-lock"></i>
                                     </span>
@@ -935,6 +999,31 @@
                                         </button>
                                     </div>
                                 </td>
+                                <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
+                                    <div class="inline-flex items-center justify-center gap-2 flex-wrap">
+                                        <span x-show="marksLockDeadlinePassed(exam) && exam.marks_lock_at"
+                                              class="text-amber-600 dark:text-amber-400"
+                                              title="Deadline reached">
+                                            <i class="fas fa-lock text-sm" aria-hidden="true"></i>
+                                        </span>
+                                        <button type="button"
+                                                @click="openMarksLockModal(exam)"
+                                                :disabled="lockingExam || savingMarksLockKey === exam._key"
+                                                title="Marks entry deadline"
+                                                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-600 bg-white dark:bg-gray-900 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed">
+                                            <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                                            <span class="sr-only">Marks entry deadline</span>
+                                        </button>
+                                        <template x-if="exam.marks_lock_at">
+                                            <button type="button"
+                                                    @click="clearMarksLockSchedule(exam)"
+                                                    :disabled="lockingExam || savingMarksLockKey === exam._key"
+                                                    class="text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                                                Clear deadline
+                                            </button>
+                                        </template>
+                                    </div>
+                                </td>
                                 <td class="p-3 sm:p-4 align-middle text-right" @click.stop>
                                     <div class="flex flex-col items-end gap-1">
                                         <span x-show="exam.is_locked"
@@ -961,6 +1050,127 @@
             </div>
         </div>
     </div>
+
+<!-- Marks entry deadline (datetime picker in modal; icon opens only before deadline) -->
+<div x-show="marksLockModalExam"
+     x-cloak
+     class="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6"
+     @keydown.escape.window="if (marksLockModalExam && !savingMarksLockKey) closeMarksLockModal()">
+    <div class="absolute inset-0 bg-gray-900/70 dark:bg-black/75 backdrop-blur-md"
+         @click="if (!savingMarksLockKey) closeMarksLockModal()"
+         aria-hidden="true"></div>
+    <div class="relative w-full max-w-md rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-emerald-200/80 dark:border-emerald-800/60 shadow-2xl"
+         @click.stop>
+        <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-4">
+            <h3 class="text-lg font-bold flex items-center gap-2">
+                <i class="fas fa-calendar-alt" aria-hidden="true"></i>
+                Marks entry closes
+            </h3>
+            <p class="text-xs text-white/85 mt-1 break-words" x-text="marksLockModalExam ? marksLockModalExam.exam_name : ''"></p>
+        </div>
+        <div class="p-5 space-y-4">
+            <template x-if="marksLockModalExam && marksLockDeadlinePassed(marksLockModalExam) && marksLockModalExam.marks_lock_at">
+                <div class="space-y-3">
+                    <p class="text-sm text-gray-600 dark:text-gray-300">This deadline has passed. Clear it to set a new one.</p>
+                    <div class="flex flex-wrap justify-end gap-2">
+                        <button type="button"
+                                @click="closeMarksLockModal()"
+                                class="modern-btn px-4 py-2 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold">
+                            Close
+                        </button>
+                        <template x-if="marksLockModalExam && marksLockModalExam.marks_lock_at">
+                            <button type="button"
+                                    @click="clearMarksLockFromModal()"
+                                    :disabled="!!savingMarksLockKey"
+                                    class="modern-btn px-4 py-2 rounded-xl bg-gray-200 text-gray-900 dark:bg-gray-600 dark:text-white text-sm font-semibold disabled:opacity-50">
+                                Clear deadline
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </template>
+            <template x-if="marksLockModalExam && !marksLockDeadlinePassed(marksLockModalExam)">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Date and time</label>
+                        <input type="datetime-local"
+                               class="w-full text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-gray-900 dark:text-white"
+                               x-model="marksLockModalDraft">
+                    </div>
+                    <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 flex-wrap">
+                        <button type="button"
+                                @click="closeMarksLockModal()"
+                                :disabled="!!savingMarksLockKey"
+                                class="modern-btn px-4 py-2.5 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 text-sm font-semibold">
+                            Cancel
+                        </button>
+                        <template x-if="marksLockModalExam && marksLockModalExam.marks_lock_at">
+                            <button type="button"
+                                    @click="clearMarksLockFromModal()"
+                                    :disabled="!!savingMarksLockKey"
+                                    class="modern-btn px-4 py-2.5 rounded-xl bg-gray-200 text-gray-900 dark:bg-gray-600 dark:text-white text-sm font-semibold disabled:opacity-50">
+                                Clear deadline
+                            </button>
+                        </template>
+                        <button type="button"
+                                @click="saveMarksLockFromModal()"
+                                :disabled="!!savingMarksLockKey || !marksLockModalDraft"
+                                class="modern-btn px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 text-sm font-semibold inline-flex items-center justify-center gap-2">
+                            <i class="fas fa-spinner fa-spin" x-show="savingMarksLockKey"></i>
+                            <span x-text="savingMarksLockKey ? 'Saving…' : 'Save'"></span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<!-- Unlock exam: must set marks-entry deadline (future) -->
+<div x-show="unlockModalExam"
+     x-cloak
+     class="fixed inset-0 z-[122] flex items-center justify-center p-4 sm:p-6"
+     @keydown.escape.window="if (unlockModalExam && !lockingExam) closeUnlockModal()">
+    <div class="absolute inset-0 bg-gray-900/70 dark:bg-black/75 backdrop-blur-md"
+         @click="if (!lockingExam) closeUnlockModal()"
+         aria-hidden="true"></div>
+    <div class="relative w-full max-w-md rounded-2xl overflow-hidden bg-white dark:bg-gray-900 border border-amber-200/80 dark:border-amber-800/60 shadow-2xl"
+         @click.stop>
+        <div class="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-5 py-4">
+            <h3 class="text-lg font-bold flex items-center gap-2">
+                <i class="fas fa-unlock" aria-hidden="true"></i>
+                Unlock exam
+            </h3>
+            <p class="text-xs text-white/85 mt-1 break-words" x-text="unlockModalExam ? unlockModalExam.exam_name : ''"></p>
+        </div>
+        <div class="p-5 space-y-4">
+            <p class="text-sm text-gray-600 dark:text-gray-300">
+                Set when marks entry closes (must be in the future).
+            </p>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Marks entry closes</label>
+                <input type="datetime-local"
+                       class="w-full text-sm rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-gray-900 dark:text-white"
+                       x-model="unlockModalDeadline">
+            </div>
+            <div class="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-1">
+                <button type="button"
+                        @click="closeUnlockModal()"
+                        :disabled="!!lockingExam"
+                        class="modern-btn px-4 py-2.5 rounded-xl border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 text-sm font-semibold">
+                    Cancel
+                </button>
+                <button type="button"
+                        @click="submitUnlockWithDeadline()"
+                        :disabled="!!lockingExam || !unlockModalDeadline"
+                        class="modern-btn px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50 text-sm font-semibold inline-flex items-center justify-center gap-2">
+                    <i class="fas fa-spinner fa-spin" x-show="lockingExam"></i>
+                    <span x-text="lockingExam ? 'Saving…' : 'Unlock'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Edit Registration Modal -->
 <div x-show="editingRegistration"
@@ -1274,6 +1484,7 @@
 <script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
 <script type="application/json" id="exam-open-edit-id">{{ open_edit_id|default(none)|tojson|safe }}</script>
 <script type="application/json" id="exam-data-session-presets">{{ session_presets|default({})|tojson|safe }}</script>
+<script type="application/json" id="exam-registered-current">{{ registered_current_exam|tojson|safe }}</script>
 
 <script>
 function examEvaluation() {
@@ -1288,6 +1499,17 @@ function examEvaluation() {
 
         savingExam: false,
         lockingExam: false,
+        savingMarksLockKey: '',
+        marksLockDrafts: {},
+        marksLockModalExam: null,
+        marksLockModalDraft: '',
+        unlockModalExam: null,
+        unlockModalDeadline: '',
+        marksLockTick: Date.now(),
+        _marksLockTimer: null,
+        registeredCurrentExamKey: '',
+        _lastSavedRegisteredCurrentKey: '',
+        savingRegisteredCurrentExam: false,
         successMessage: '',
         errorMessage: '',
         clientConflictMessage: '',
@@ -1381,6 +1603,133 @@ function examEvaluation() {
             if (this.registrationMode === 'manual') {
                 this.addAllocation();
             }
+
+            this.marksLockTick = Date.now();
+            this._marksLockTimer = setInterval(() => { this.marksLockTick = Date.now(); }, 30000);
+            this.syncRegisteredCurrentExamKeyFromServer();
+        },
+
+        syncRegisteredCurrentExamKeyFromServer() {
+            let cur = null;
+            try {
+                cur = JSON.parse(document.getElementById('exam-registered-current')?.textContent || 'null');
+            } catch (e) {
+                cur = null;
+            }
+            if (!cur || cur.exam_name == null) {
+                this.registeredCurrentExamKey = '';
+                this._lastSavedRegisteredCurrentKey = '';
+                return;
+            }
+            const wantN = String(cur.exam_name).trim().toUpperCase();
+            const wantAy = String(cur.academic_year_id ?? '');
+            const wantT = String(cur.term_id ?? '');
+            const wantTyp = (cur.exam_type !== undefined && cur.exam_type !== null)
+                ? String(cur.exam_type).trim().toUpperCase()
+                : null;
+            const hit = this.uniqueExams.find((ex) => {
+                const nameOk = String(ex.exam_name || '').trim().toUpperCase() === wantN
+                    && String(ex.academic_year_id ?? '') === wantAy
+                    && String(ex.term_id ?? '') === wantT;
+                if (!nameOk) return false;
+                if (wantTyp === null) return true;
+                return String(ex.exam_type || '').trim().toUpperCase() === wantTyp;
+            });
+            this.registeredCurrentExamKey = hit ? hit._key : '';
+            this._lastSavedRegisteredCurrentKey = this.registeredCurrentExamKey;
+            this.$nextTick(() => {
+                const el = document.getElementById('registered-exam-focus');
+                if (el) {
+                    el.value = this.registeredCurrentExamKey;
+                }
+            });
+        },
+
+        async setCurrentRegisteredExam(exam) {
+            if (!exam || !exam._key || this.savingRegisteredCurrentExam) return;
+            if (
+                this.registeredCurrentExamKey === exam._key
+                && this._lastSavedRegisteredCurrentKey === exam._key
+            ) {
+                return;
+            }
+            this.registeredCurrentExamKey = exam._key;
+            await this.persistRegisteredCurrentExam(null);
+        },
+
+        async persistRegisteredCurrentExam(event) {
+            const url = '{{ employee_dash_url('exam-evaluation/set-registered-current-exam') }}';
+            if (event && event.target && 'value' in event.target) {
+                this.registeredCurrentExamKey = event.target.value;
+            }
+            this.errorMessage = '';
+            this.successMessage = '';
+            await this.$nextTick();
+            const key = this.registeredCurrentExamKey;
+            this.savingRegisteredCurrentExam = true;
+            try {
+                let body;
+                if (!key) {
+                    body = JSON.stringify({ clear: true });
+                } else {
+                    const ex = this.uniqueExams.find((e) => e._key === key);
+                    if (!ex) {
+                        this.errorMessage = 'Selected exam not found.';
+                        this.registeredCurrentExamKey = this._lastSavedRegisteredCurrentKey;
+                        return;
+                    }
+                    body = JSON.stringify({
+                        exam_name: ex.exam_name,
+                        exam_type: ex.exam_type,
+                        academic_year_id: ex.academic_year_id,
+                        term_id: ex.term_id,
+                    });
+                }
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body,
+                });
+                const ct = (response.headers.get('content-type') || '').toLowerCase();
+                let data = null;
+                if (ct.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    this.errorMessage = 'Unexpected server response.';
+                    this.registeredCurrentExamKey = this._lastSavedRegisteredCurrentKey;
+                    return;
+                }
+                if (!data.success) {
+                    this.errorMessage = data.message || 'Could not save.';
+                    this.registeredCurrentExamKey = this._lastSavedRegisteredCurrentKey;
+                    return;
+                }
+                this._lastSavedRegisteredCurrentKey = this.registeredCurrentExamKey;
+                const el = document.getElementById('exam-registered-current');
+                if (el) {
+                    if (!this.registeredCurrentExamKey) {
+                        el.textContent = 'null';
+                    } else {
+                        const ex = this.uniqueExams.find((e) => e._key === this.registeredCurrentExamKey);
+                        if (ex) {
+                            el.textContent = JSON.stringify({
+                                exam_name: String(ex.exam_name || '').trim().toUpperCase(),
+                                exam_type: String(ex.exam_type || '').trim().toUpperCase(),
+                                academic_year_id: ex.academic_year_id,
+                                term_id: ex.term_id,
+                            });
+                        }
+                    }
+                }
+                this.successMessage = data.message || 'Saved.';
+                setTimeout(() => { this.successMessage = ''; }, 3500);
+            } catch (e) {
+                this.errorMessage = 'Network error.';
+                this.registeredCurrentExamKey = this._lastSavedRegisteredCurrentKey;
+            } finally {
+                this.savingRegisteredCurrentExam = false;
+            }
         },
 
         registeredExamDetailUrl(exam) {
@@ -1388,6 +1737,7 @@ function examEvaluation() {
             params.set('academic_year_id', exam.academic_year_id ?? '');
             params.set('term_id', exam.term_id ?? '');
             params.set('exam_name', exam.exam_name ?? '');
+            params.set('exam_type', exam.exam_type != null ? String(exam.exam_type) : '');
             const base = {{ employee_dash_url('exam-evaluation/registered')|tojson }};
             return base + (params.toString() ? ('?' + params.toString()) : '');
         },
@@ -1673,32 +2023,42 @@ function examEvaluation() {
         },
 
         get uniqueExams() {
-            const seen = new Set();
-            const out = [];
+            const byKey = new Map();
             for (const e of this.exams) {
-                const key = (e.exam_name || '') + '|' + String(e.academic_year_id ?? '') + '|' + String(e.term_id ?? '');
-                if (seen.has(key)) continue;
-                seen.add(key);
+                const typ = String(e.exam_type || '').trim().toUpperCase();
+                const key = (e.exam_name || '') + '|' + typ + '|' + String(e.academic_year_id ?? '') + '|' + String(e.term_id ?? '');
+                if (!byKey.has(key)) byKey.set(key, []);
+                byKey.get(key).push(e);
+            }
+            const out = [];
+            for (const [key, arr] of byKey.entries()) {
+                let maxMla = null;
+                for (const ex of arr) {
+                    const m = ex.marks_lock_at || null;
+                    if (m && (!maxMla || String(m) > String(maxMla))) maxMla = m;
+                }
+                const rep = arr[0];
                 out.push({
-                    id: e.id,
-                    exam_name: e.exam_name,
-                    exam_type: e.exam_type,
-                    year_name: e.year_name,
-                    term_name: e.term_name,
-                    academic_year_id: e.academic_year_id,
-                    term_id: e.term_id,
-                    academic_level_id: e.academic_level_id,
-                    subject_id: e.subject_id,
-                    supervisor_id: e.supervisor_id,
-                    exam_date: e.exam_date,
-                    venue: e.venue,
-                    session_type: e.session_type,
-                    start_time: e.start_time,
-                    end_time: e.end_time,
-                    duration_minutes: e.duration_minutes,
-                    level_name: e.level_name,
-                    level_category: e.level_category,
-                    is_locked: !!e.is_locked,
+                    id: rep.id,
+                    exam_name: rep.exam_name,
+                    exam_type: rep.exam_type,
+                    year_name: rep.year_name,
+                    term_name: rep.term_name,
+                    academic_year_id: rep.academic_year_id,
+                    term_id: rep.term_id,
+                    academic_level_id: rep.academic_level_id,
+                    subject_id: rep.subject_id,
+                    supervisor_id: rep.supervisor_id,
+                    exam_date: rep.exam_date,
+                    venue: rep.venue,
+                    session_type: rep.session_type,
+                    start_time: rep.start_time,
+                    end_time: rep.end_time,
+                    duration_minutes: rep.duration_minutes,
+                    level_name: rep.level_name,
+                    level_category: rep.level_category,
+                    is_locked: arr.some((x) => !!x.is_locked),
+                    marks_lock_at: maxMla,
                     _key: key
                 });
             }
@@ -2061,9 +2421,11 @@ function examEvaluation() {
                 return;
             }
             const wantLock = !exam.is_locked;
-            const msg = wantLock
-                ? 'Lock this exam? While locked, allocations cannot be added, edited, deleted, or given new supervisor rows.'
-                : 'Unlock this exam? Staff will be able to change allocations again.';
+            if (!wantLock) {
+                this.openUnlockModal(exam);
+                return;
+            }
+            const msg = 'Lock exam allocations? While locked, timetable rows cannot be added, edited, deleted, or given new supervisors. (Teachers can still enter marks until the marks-entry deadline, if any.)';
             if (!confirm(msg)) return;
 
             this.lockingExam = true;
@@ -2077,12 +2439,12 @@ function examEvaluation() {
                         exam_name: exam.exam_name,
                         academic_year_id: parseInt(exam.academic_year_id, 10),
                         term_id: parseInt(exam.term_id, 10),
-                        locked: wantLock
+                        locked: true
                     })
                 });
                 const result = await response.json();
                 if (result.success) {
-                    this.successMessage = result.message || (wantLock ? 'Exam locked.' : 'Exam unlocked.');
+                    this.successMessage = result.message || 'Exam locked.';
                     setTimeout(() => window.location.reload(), 900);
                 } else {
                     this.errorMessage = result.message || 'Could not update lock.';
@@ -2092,6 +2454,220 @@ function examEvaluation() {
                 this.errorMessage = 'Could not update lock. Please try again.';
             } finally {
                 this.lockingExam = false;
+            }
+        },
+
+        _defaultFutureDeadlineLocal() {
+            const d = new Date(Date.now() + 86400000);
+            const p = (n) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+        },
+
+        openUnlockModal(exam) {
+            if (!exam) return;
+            this.unlockModalExam = exam;
+            if (exam.marks_lock_at && !this.marksLockDeadlinePassed(exam)) {
+                this.unlockModalDeadline = this.marksLockInputValue(exam) || this._defaultFutureDeadlineLocal();
+            } else {
+                this.unlockModalDeadline = this._defaultFutureDeadlineLocal();
+            }
+            this.errorMessage = '';
+        },
+
+        closeUnlockModal() {
+            this.unlockModalExam = null;
+            this.unlockModalDeadline = '';
+        },
+
+        async submitUnlockWithDeadline() {
+            const exam = this.unlockModalExam;
+            if (!exam) return;
+            const raw = (this.unlockModalDeadline || '').trim();
+            if (!raw) {
+                this.errorMessage = 'Set a marks-entry deadline.';
+                return;
+            }
+            const iso = raw.length === 16 ? `${raw}:00` : raw;
+            const t = new Date(String(iso).replace(' ', 'T'));
+            if (Number.isNaN(t.getTime()) || t.getTime() <= Date.now()) {
+                this.errorMessage = 'Deadline must be in the future.';
+                return;
+            }
+            this.lockingExam = true;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/set-lock') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exam_name: exam.exam_name,
+                        academic_year_id: parseInt(exam.academic_year_id, 10),
+                        term_id: parseInt(exam.term_id, 10),
+                        locked: false,
+                        marks_lock_at: iso
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.closeUnlockModal();
+                    this.successMessage = result.message || 'Exam unlocked.';
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not unlock.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not unlock. Please try again.';
+            } finally {
+                this.lockingExam = false;
+            }
+        },
+
+        formatMarksLockDisplay(iso) {
+            if (!iso) return '';
+            try {
+                const d = new Date(String(iso).replace(' ', 'T'));
+                if (Number.isNaN(d.getTime())) return String(iso);
+                return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+            } catch (e) {
+                return String(iso);
+            }
+        },
+
+        _marksLockMs(iso) {
+            if (!iso) return null;
+            const s = String(iso).trim().replace(' ', 'T');
+            const d = new Date(s.length === 16 ? `${s}:00` : s);
+            if (Number.isNaN(d.getTime())) return null;
+            return d.getTime();
+        },
+
+        marksLockDeadlinePassed(exam) {
+            void this.marksLockTick;
+            if (!exam || !exam.marks_lock_at) return false;
+            const t = this._marksLockMs(exam.marks_lock_at);
+            if (t === null) return false;
+            return t <= Date.now();
+        },
+
+        openMarksLockModal(exam) {
+            if (!exam) return;
+            this.marksLockModalExam = exam;
+            const k = exam._key;
+            this.marksLockModalDraft = Object.prototype.hasOwnProperty.call(this.marksLockDrafts, k)
+                ? (this.marksLockDrafts[k] || '')
+                : (this.marksLockInputValue(exam) || '');
+        },
+
+        async clearMarksLockFromModal() {
+            const exam = this.marksLockModalExam;
+            if (!exam || !exam.marks_lock_at) return;
+            await this.clearMarksLockSchedule(exam);
+        },
+
+        closeMarksLockModal() {
+            this.marksLockModalExam = null;
+            this.marksLockModalDraft = '';
+        },
+
+        async saveMarksLockFromModal() {
+            const exam = this.marksLockModalExam;
+            if (!exam) return;
+            if (this.marksLockDeadlinePassed(exam)) {
+                this.closeMarksLockModal();
+                return;
+            }
+            this.marksLockDrafts[exam._key] = (this.marksLockModalDraft || '').trim();
+            await this.saveMarksLockSchedule(exam);
+        },
+
+        marksLockInputValue(exam) {
+            if (!exam || !exam._key) return '';
+            const k = exam._key;
+            if (Object.prototype.hasOwnProperty.call(this.marksLockDrafts, k)) return this.marksLockDrafts[k] || '';
+            if (!exam.marks_lock_at) return '';
+            const s = String(exam.marks_lock_at).trim().replace(' ', 'T');
+            return s.length >= 16 ? s.slice(0, 16) : '';
+        },
+
+        async saveMarksLockSchedule(exam) {
+            if (!exam || exam.academic_year_id == null || exam.term_id == null) {
+                this.errorMessage = 'Cannot save deadline: missing year or term on this record.';
+                return;
+            }
+            if (this.marksLockDeadlinePassed(exam)) {
+                this.errorMessage = 'This marks-entry deadline has already passed. Clear it first if you need to schedule a new window.';
+                return;
+            }
+            const k = exam._key;
+            const raw = Object.prototype.hasOwnProperty.call(this.marksLockDrafts, k)
+                ? (this.marksLockDrafts[k] || '').trim()
+                : this.marksLockInputValue(exam).trim();
+            if (!raw) {
+                this.errorMessage = 'Choose a date and time for the marks-entry deadline.';
+                return;
+            }
+            this.savingMarksLockKey = k;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/set-lock') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exam_name: exam.exam_name,
+                        academic_year_id: parseInt(exam.academic_year_id, 10),
+                        term_id: parseInt(exam.term_id, 10),
+                        marks_lock_at: raw.length === 16 ? `${raw}:00` : raw
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Marks entry deadline saved.';
+                    delete this.marksLockDrafts[k];
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not save deadline.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not save deadline. Please try again.';
+            } finally {
+                this.savingMarksLockKey = '';
+            }
+        },
+
+        async clearMarksLockSchedule(exam) {
+            if (!exam || !exam.marks_lock_at) return;
+            if (!confirm('Clear the marks-entry deadline? Teachers will not be auto-blocked by this schedule.')) return;
+            this.savingMarksLockKey = exam._key;
+            this.errorMessage = '';
+            this.successMessage = '';
+            try {
+                const response = await fetch('{{ employee_dash_url('exam-evaluation/set-lock') }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        exam_name: exam.exam_name,
+                        academic_year_id: parseInt(exam.academic_year_id, 10),
+                        term_id: parseInt(exam.term_id, 10),
+                        marks_lock_at: null
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    this.successMessage = result.message || 'Deadline cleared.';
+                    delete this.marksLockDrafts[exam._key];
+                    setTimeout(() => window.location.reload(), 900);
+                } else {
+                    this.errorMessage = result.message || 'Could not clear deadline.';
+                }
+            } catch (e) {
+                console.error(e);
+                this.errorMessage = 'Could not clear deadline. Please try again.';
+            } finally {
+                this.savingMarksLockKey = '';
             }
         },
 

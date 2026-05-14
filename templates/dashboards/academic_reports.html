@@ -275,7 +275,7 @@
                         <select id="gf-exam-name" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
                             <option value="">Select exam…</option>
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Optional — narrows performance and timetable-related reports.</p>
+                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Optional — narrows exam reports. The school current exam is preselected when it matches year and term; leave Select exam… for all exams in scope, or pick any other exam anytime.</p>
                     </div>
                     <div id="ar-filter-wrap-level" class="sm:col-span-2">
                         <label for="gf-level" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Class / level</label>
@@ -445,6 +445,48 @@
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
   const examOptions = {{ (exam_names or [])|tojson|safe }};
+  const EXAM_PICK_SEP = '\x1f';
+  const registeredCurrentExam = {{ (registered_current_exam or None)|tojson|safe }};
+  /** When true, user chose "Select exam…" (no filter); do not re-apply school current exam after year/term/level sync. */
+  var userChoseNoExamFilter = false;
+
+  function splitExamPick(rv) {
+    if (rv === null || rv === undefined) return { exam_name: null, exam_type: null };
+    var s = String(rv).trim();
+    if (!s) return { exam_name: null, exam_type: null };
+    var i = s.indexOf(EXAM_PICK_SEP);
+    if (i < 0) return { exam_name: s, exam_type: null };
+    return {
+      exam_name: s.slice(0, i).trim() || null,
+      exam_type: (s.slice(i + EXAM_PICK_SEP.length) || '').trim() || null
+    };
+  }
+
+  function tryApplyRegisteredExamPick() {
+    if (!registeredCurrentExam || !examNameEl) return;
+    var yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
+    var termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
+    if (!yearVal || !termVal) return;
+    if (parseInt(registeredCurrentExam.academic_year_id, 10) !== yearVal) return;
+    if (parseInt(registeredCurrentExam.term_id, 10) !== termVal) return;
+    var wantName = String(registeredCurrentExam.exam_name || '').trim().toUpperCase();
+    var wantType = registeredCurrentExam.exam_type;
+    for (var i = 0; i < examNameEl.options.length; i++) {
+      var o = examNameEl.options[i];
+      if (!o.value) continue;
+      var pick = splitExamPick(o.value);
+      var pn = String(pick.exam_name || '').trim().toUpperCase();
+      if (pn !== wantName) continue;
+      if (wantType == null || wantType === '') {
+        examNameEl.selectedIndex = i;
+        return;
+      }
+      if (String(pick.exam_type || '').trim().toUpperCase() === String(wantType).trim().toUpperCase()) {
+        examNameEl.selectedIndex = i;
+        return;
+      }
+    }
+  }
   const levelOptionsCache = (function() {
     if (!levelEl) return [];
     return Array.from(levelEl.options || []).map(function(o) {
@@ -645,7 +687,9 @@
 
   function syncLevelOptionsForSelectedExam() {
     if (!levelEl) return;
-    const selectedExam = String(val('gf-exam-name') || '').trim();
+    var ep = splitExamPick(val('gf-exam-name'));
+    var selectedExam = ep.exam_name || '';
+    var selectedType = String(ep.exam_type || '').trim().toUpperCase();
     const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
 
@@ -664,9 +708,14 @@
     }
 
     const allowed = new Set();
+    var selExamNorm = String(selectedExam || '').trim().toUpperCase();
     examOptions.forEach(function(item) {
-      const nameOk = String(item.exam_name || '').trim() === selectedExam;
+      const nameOk = String(item.exam_name || '').trim().toUpperCase() === selExamNorm;
       if (!nameOk) return;
+      if (selectedType) {
+        var it = String(item.exam_type || '').trim().toUpperCase();
+        if (it !== selectedType) return;
+      }
       const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
       const tOk = !termVal || Number(item.term_id || 0) === termVal;
       if (!yOk || !tOk) return;
@@ -684,12 +733,12 @@
 
     levelOptionsCache.forEach(function(o) {
       if (!o.value) return; // skip the cached "All classes" option
-      if (!allowed.size || allowed.has(String(o.value))) {
-        const opt = document.createElement('option');
-        opt.value = o.value;
-        opt.textContent = o.label;
-        levelEl.appendChild(opt);
-      }
+      var keep = !allowed.size || allowed.has(String(o.value)) || (prev && String(o.value) === prev);
+      if (!keep) return;
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      levelEl.appendChild(opt);
     });
 
     if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
@@ -713,21 +762,29 @@
       const lOk = !levelVal || Number(item.academic_level_id || 0) === levelVal;
       return yOk && tOk && lOk;
     }).filter(function(item) {
-      const key = String(item.exam_name || '').trim();
-      if (!key || seen.has(key.toLowerCase())) return false;
-      seen.add(key.toLowerCase());
+      const rawName = String(item.exam_name || '').trim();
+      const typ = String(item.exam_type || '').trim();
+      const key = (rawName + EXAM_PICK_SEP + typ).toLowerCase();
+      if (!rawName || seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
 
     examNameEl.innerHTML = '<option value=\"\">Select exam…</option>';
     opts.forEach(function(item) {
       const opt = document.createElement('option');
-      opt.value = String(item.exam_name || '');
-      opt.textContent = String(item.exam_name || '');
+      const rawName = String(item.exam_name || '').trim();
+      const typ = String(item.exam_type || '').trim();
+      opt.value = rawName + EXAM_PICK_SEP + typ;
+      opt.textContent = typ ? (rawName + ' — ' + typ) : rawName;
       examNameEl.appendChild(opt);
     });
     if (previous && Array.from(examNameEl.options).some(function(o) { return o.value === previous; })) {
       examNameEl.value = previous;
+    } else if (userChoseNoExamFilter) {
+      examNameEl.value = '';
+    } else {
+      tryApplyRegisteredExamPick();
     }
     syncLevelOptionsForSelectedExam();
   }
@@ -804,7 +861,14 @@
     } else {
       out.student_id = null;
     }
-    out.exam_name = reportType && reportType.indexOf('exam_') === 0 ? (val('gf-exam-name') || null) : null;
+    if (reportType && reportType.indexOf('exam_') === 0) {
+      var ep = splitExamPick(val('gf-exam-name'));
+      out.exam_name = ep.exam_name || null;
+      out.exam_type = ep.exam_type || null;
+    } else {
+      out.exam_name = null;
+      out.exam_type = null;
+    }
     if (reportType === 'class_list_attendance') {
       const registerDate = val('gf-register-date');
       out.date_from = registerDate || null;
@@ -886,7 +950,14 @@
     let rows = Array.isArray(bundle.rows) ? bundle.rows.slice() : [];
     rows = narrowExamRowsToSelectedStudent(rows);
     if (!rows.length) {
-      return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
+      var mh0 = (bundle.meta && bundle.meta.hint) ? String(bundle.meta.hint).trim() : '';
+      var hint0 = mh0
+        ? '<p class="text-sm text-slate-600 dark:text-slate-300 mt-3 max-w-xl mx-auto leading-relaxed">' + escapeHtml(mh0) + '</p>'
+        : '';
+      return '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">' +
+        '<p class="text-sm text-slate-500 dark:text-slate-400">No data found for this report and filters.</p>' +
+        hint0 +
+        '</div>';
     }
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
@@ -914,6 +985,8 @@
     const subjectColumns = Array.isArray(meta.subject_columns) ? meta.subject_columns : [];
 
     function classKeyForRow(row) {
+      var g = String((row && row.current_grade) || '').trim();
+      if (g) return g;
       return String((row && row.level_name) || af.class_level || '').trim() || '—';
     }
 
@@ -923,6 +996,15 @@
       const ck = classKeyForRow(row);
       if (!groupedByClass[ck]) groupedByClass[ck] = [];
       groupedByClass[ck].push(row);
+    });
+
+    var extraClassLabels = Array.isArray(meta.all_class_labels) ? meta.all_class_labels : [];
+    extraClassLabels.forEach(function(ln) {
+      var k = String(ln || '').trim();
+      if (!k) return;
+      if (!Object.prototype.hasOwnProperty.call(groupedByClass, k)) {
+        groupedByClass[k] = [];
+      }
     });
 
     /** Sort and assign position within one class (ties share the same rank). */
@@ -992,7 +1074,7 @@
                 '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Learner</p>' +
                 '<p class="text-lg font-bold text-slate-900 dark:text-white mt-1">' + escapeHtml(row.full_name || '-') + '</p>' +
                 '<div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">' +
-                  '<div><span class="text-slate-500 dark:text-slate-400 block">Class</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(row.level_name || af.class_level || '-') + '</span></div>' +
+                  '<div><span class="text-slate-500 dark:text-slate-400 block">Class</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml((row.current_grade && String(row.current_grade).trim()) ? row.current_grade : (row.level_name || af.class_level || '-')) + '</span></div>' +
                   '<div><span class="text-slate-500 dark:text-slate-400 block">Year</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.academic_year || '-') + '</span></div>' +
                   '<div><span class="text-slate-500 dark:text-slate-400 block">Term</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.term || '-') + '</span></div>' +
                   '<div><span class="text-slate-500 dark:text-slate-400 block">Exams</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(examsCovered) + '</span></div>' +
@@ -1068,6 +1150,9 @@
     }
 
     function renderClassTable(className, list) {
+      if (!list.length) {
+        return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-lg border border-dashed border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 px-4 py-8 text-center">No students with marks in this class for the selected exam filters.</p>';
+      }
       const head = '' +
         '<thead>' +
           '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
@@ -1081,6 +1166,43 @@
             '<th scope="col" class="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Grade</th>' +
           '</tr>' +
         '</thead>';
+
+      function numOrNull(v) {
+        if (v === '' || v === null || v === undefined) return null;
+        var n = parseFloat(v);
+        return isNaN(n) ? null : n;
+      }
+
+      function meanOf(getter) {
+        var vals = [];
+        list.forEach(function(row) {
+          var n = getter(row);
+          if (n !== null) vals.push(n);
+        });
+        if (!vals.length) return '—';
+        var x = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
+        return (Math.round(x * 100) / 100).toFixed(2);
+      }
+
+      /** Subject columns: left-aligned to match header + body marks. */
+      function subjectMeanCellClass(valStr) {
+        var base = 'px-3 py-2.5 text-sm font-semibold tabular-nums text-left whitespace-nowrap align-middle ';
+        if (valStr === '—') return base + 'text-slate-500 dark:text-slate-400';
+        var c = parseFloat(valStr);
+        if (c >= 70) return base + 'text-green-600 dark:text-green-400';
+        if (c >= 50) return base + 'text-amber-600 dark:text-amber-400';
+        return base + 'text-red-600 dark:text-red-400';
+      }
+
+      /** Total / Mean footer: right-aligned to match those columns. */
+      function summaryMeanCellClass(valStr) {
+        var base = 'px-3 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap align-middle ';
+        if (valStr === '—') return base + 'text-slate-500 dark:text-slate-400';
+        var c = parseFloat(valStr);
+        if (c >= 70) return base + 'text-green-600 dark:text-green-400';
+        if (c >= 50) return base + 'text-amber-600 dark:text-amber-400';
+        return base + 'text-red-600 dark:text-red-400';
+      }
 
       const ranked = rankStudentsWithinClass(list);
       const body = ranked.map(function(entry, ri) {
@@ -1097,7 +1219,7 @@
             '</td>' +
             subjectColumns.map(function(subjectName) {
               const mark = row[subjectName];
-              return '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-800 dark:text-slate-200 whitespace-nowrap align-middle">' +
+              return '<td class="px-3 py-2.5 text-sm tabular-nums text-left text-slate-800 dark:text-slate-200 whitespace-nowrap align-middle">' +
                 (mark === '' || mark === null || mark === undefined ? '—' : escapeHtml(mark)) +
               '</td>';
             }).join('') +
@@ -1107,11 +1229,33 @@
           '</tr>';
       }).join('');
 
+      var subjectFooterCells = subjectColumns.map(function(subjectName) {
+        var m = meanOf(function(row) { return numOrNull(row[subjectName]); });
+        return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
+      }).join('');
+
+      var totalMeanStr = meanOf(function(row) { return numOrNull(row.total_marks); });
+      var rowMeanAvgStr = meanOf(function(row) { return numOrNull(row.mean); });
+
+      const foot = list.length && subjectColumns.length
+        ? '<tfoot>' +
+            '<tr class="bg-slate-200/95 dark:bg-slate-800 border-t-2 border-slate-400 dark:border-slate-500 text-slate-900 dark:text-slate-100">' +
+              '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap align-middle"></td>' +
+              '<td class="px-3 py-2.5 text-sm font-bold text-left text-slate-900 dark:text-slate-100 whitespace-nowrap align-middle">Subject mean</td>' +
+              subjectFooterCells +
+              '<td class="' + summaryMeanCellClass(totalMeanStr) + '">' + escapeHtml(totalMeanStr) + '</td>' +
+              '<td class="' + summaryMeanCellClass(rowMeanAvgStr) + '">' + escapeHtml(rowMeanAvgStr) + '</td>' +
+              '<td class="px-3 py-2.5 text-sm text-center align-middle text-slate-500 dark:text-slate-400">—</td>' +
+            '</tr>' +
+          '</tfoot>'
+        : '';
+
       return '' +
         '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
           '<table class="w-full text-sm min-w-[980px] border-collapse">' +
             head +
             '<tbody>' + body + '</tbody>' +
+            foot +
           '</table>' +
         '</div>';
     }
@@ -2253,7 +2397,13 @@
   });
   ['gf-year', 'gf-level', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', loadDetails);
+    if (el) el.addEventListener('change', function() {
+      if (id === 'gf-exam-name') {
+        userChoseNoExamFilter = !String(el.value || '').trim();
+        syncLevelOptionsForSelectedExam();
+      }
+      loadDetails();
+    });
   });
   ['gf-year', 'gf-level', 'gf-term'].forEach(function(id) {
     const el = document.getElementById(id);

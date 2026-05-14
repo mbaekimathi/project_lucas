@@ -19,6 +19,74 @@
     --ms-rank-w: 3rem;
 }
 
+/* Marks lock countdown — teleported to body so it sits above app chrome (main is z-10, header z-50) */
+.marks-lock-countdown-portal {
+    position: fixed;
+    z-index: 100;
+    top: calc(var(--app-header-offset, 4.5rem) + 0.5rem);
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: 0.02em;
+    border: 1px solid rgb(125 211 252);
+    background: rgba(240, 249, 255, 0.98);
+    color: rgb(12 74 110);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    font-variant-numeric: tabular-nums;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.marks-lock-countdown-portal:hover {
+    filter: brightness(1.03);
+}
+.marks-lock-countdown-portal:focus {
+    outline: 2px solid rgb(14 165 233);
+    outline-offset: 2px;
+}
+.marks-lock-countdown-portal--urgent {
+    border-color: rgb(251 191 36);
+    background: rgba(255, 251, 235, 0.98);
+    color: rgb(120 53 15);
+    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35);
+}
+.marks-lock-countdown-portal--urgent:hover {
+    filter: brightness(1.02);
+}
+.marks-lock-countdown-portal--urgent:focus {
+    outline-color: rgb(217 119 6);
+}
+@media (min-width: 768px) {
+    .marks-lock-countdown-portal {
+        font-size: 1.25rem;
+        padding: 0.4rem 0.85rem;
+        right: max(1rem, env(safe-area-inset-right, 0px));
+    }
+}
+.dark .marks-lock-countdown-portal {
+    background: rgba(12, 74, 110, 0.96);
+    border-color: rgba(56, 189, 248, 0.45);
+    color: rgb(224 242 254);
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+.dark .marks-lock-countdown-portal:focus {
+    outline-color: rgb(56 189 248);
+}
+.dark .marks-lock-countdown-portal--urgent {
+    background: rgba(69, 26, 3, 0.92);
+    border-color: rgba(251, 191, 36, 0.55);
+    color: rgb(254 243 199);
+    box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+}
+.dark .marks-lock-countdown-portal--urgent:focus {
+    outline-color: rgb(251 191 36);
+}
+
 /* Sticky columns */
 .sticky-col { position: sticky; z-index: 10; }
 .sticky-col-1 { left: 0; }
@@ -334,7 +402,60 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
 {% block content %}
 <div x-data="marksSheet()" x-init="init()" class="marks-sheet-page min-h-screen bg-gray-50 dark:bg-gray-900 min-w-0">
-    
+    <template x-teleport="body">
+        <div x-show="marksCountdownVisible"
+             x-cloak
+             class="marks-lock-countdown-portal"
+             :class="{ 'marks-lock-countdown-portal--urgent': marksCountdownUrgentLessThan24h }"
+             role="button"
+             tabindex="0"
+             aria-label="Marks entry countdown. Tap for details."
+             @click="marksCountdownInfoModalOpen = true"
+             @keydown.enter.prevent="marksCountdownInfoModalOpen = true"
+             @keydown.space.prevent="marksCountdownInfoModalOpen = true"
+             x-text="teacherMarksCountdownLabel"></div>
+    </template>
+    <template x-teleport="body">
+        <div x-show="marksCountdownInfoModalOpen"
+             x-cloak
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[102] p-4"
+             @click.self="marksCountdownInfoModalOpen = false"
+             @keydown.escape.window="marksCountdownInfoModalOpen && (marksCountdownInfoModalOpen = false)">
+            <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-left border border-sky-200 dark:border-sky-800/80"
+                 @click.stop role="dialog" aria-modal="true" aria-labelledby="marks-countdown-info-title">
+                <button type="button"
+                        @click="marksCountdownInfoModalOpen = false"
+                        class="absolute top-3 right-3 flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-colors touch-manipulation"
+                        aria-label="Close">
+                    <i class="fas fa-times text-lg" aria-hidden="true"></i>
+                </button>
+                <div class="w-14 h-14 rounded-full bg-sky-100 dark:bg-sky-900/50 flex items-center justify-center mb-4 ring-4 ring-sky-200/50 dark:ring-sky-800/50">
+                    <i class="fas fa-clock text-2xl text-sky-700 dark:text-sky-300" aria-hidden="true"></i>
+                </div>
+                <h3 id="marks-countdown-info-title" class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-3 pr-10">Marks entry countdown</h3>
+                <div class="space-y-3 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                    <p>
+                        Your curriculum office has set an <strong class="text-gray-800 dark:text-gray-200">official closing date and time</strong> for entering marks for this exam. The number in the corner is the <strong class="text-gray-800 dark:text-gray-200">time left</strong> before that moment.
+                    </p>
+                    <p>
+                        Until the countdown reaches zero you can <strong class="text-gray-800 dark:text-gray-200">add, edit, or clear</strong> marks for the subjects you are assigned. After it hits zero, marks entry is turned off for teachers on this sheet so records stay consistent.
+                    </p>
+                    <p x-show="selectedExamMarksLockDisplay" class="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                        <span class="font-semibold text-slate-800 dark:text-slate-200">Closes:</span>
+                        <span x-text="selectedExamMarksLockDisplay"></span>
+                    </p>
+                    <p class="text-xs text-slate-500 dark:text-slate-500">
+                        If the timer turns <strong class="text-amber-800 dark:text-amber-300">amber</strong>, less than 24 hours remain. If you need the window extended or a correction after closing, contact the curriculum office.
+                    </p>
+                </div>
+                <button type="button"
+                        @click="marksCountdownInfoModalOpen = false"
+                        class="mt-6 w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-sky-600 to-sky-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+                    OK
+                </button>
+            </div>
+        </div>
+    </template>
     <!-- Top bar: title + filters (behavior unchanged) -->
     <header class="marks-toolbar-shell">
         <div class="marks-toolbar-shell__bg" aria-hidden="true"></div>
@@ -428,7 +549,15 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 
     <!-- Main Content: avoid overflow-x-hidden so nested horizontal scroll works on mobile -->
     <div class="p-2 sm:p-4 w-full max-w-full min-w-0">
+        {% set is_cc = (role or '')|lower == 'curriculum coordinator' or ((viewing_as_employee_role or '')|lower == 'curriculum coordinator') %}
+        {% if not can_edit and is_cc %}
+        <div class="mb-3 rounded-xl border border-sky-200/90 bg-sky-50/90 dark:border-sky-800/80 dark:bg-sky-950/40 px-3 py-2.5 sm:px-4 sm:py-3 text-xs sm:text-sm text-sky-900 dark:text-sky-100">
+            <p class="font-semibold"><i class="fas fa-eye mr-2 opacity-80" aria-hidden="true"></i>View only</p>
+            <p class="mt-1 text-sky-800/95 dark:text-sky-200/90 leading-relaxed">Curriculum coordinators cannot change marks here. Entry is done by teachers allocated to each subject (or the head of institution).</p>
+        </div>
+        {% endif %}
         {% if students and subjects %}
+        {% set combined_subjects = subjects|selectattr('combination_id')|list %}
         
         <!-- Info Message -->
         <div x-show="!selectedExam" class="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -437,12 +566,36 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             </p>
         </div>
         <div x-show="selectedExam" class="mb-3 p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+            {% if marks_summary_column == 'total_raw' %}
+            Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings).{% if combined_subjects|length > 0 %} Combined columns (joined with <strong>/</strong>) use one <strong>unified % (0–100)</strong> applied proportionally to each paper.{% endif %} The <strong>Total</strong> column is the <strong>sum of raw marks</strong> for this exam (each paper counted once).
+            {% elif combined_subjects|length > 0 %}
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). Combined columns (joined with <strong>/</strong>) use one <strong>unified % (0–100)</strong> applied proportionally to each paper. The <strong>Avg%</strong> column is the mean of column percentages.
+            {% else %}
+            Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
+            {% endif %}
+            <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
+                Use <strong>Student order</strong> below to sort rows by name or by the <strong>Total</strong> / <strong>Avg%</strong> value for the selected exam. The <strong>Rnk</strong> column is still the overall rank by that summary score.
+            </p>
         </div>
 
         <p class="marks-scroll-hint mb-2 text-xs text-gray-500 dark:text-gray-400 px-1">
             <i class="fas fa-table mr-1"></i>Columns shrink to fit your screen. <strong>Swipe sideways</strong> only if you zoom in or have many subjects.
         </p>
+
+        <div class="mb-3 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3 rounded-xl border border-slate-200/90 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/50 px-3 py-2.5 sm:px-4">
+            <label for="marks-student-sort" class="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-2">
+                <i class="fas fa-sort text-slate-400" aria-hidden="true"></i>
+                Student order
+            </label>
+            <select id="marks-student-sort"
+                    x-model="studentSort"
+                    class="w-full sm:w-auto sm:min-w-[14rem] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-medium py-2 px-3 shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation">
+                <option value="name_asc">Name · A → Z</option>
+                <option value="name_desc">Name · Z → A</option>
+                <option value="marks_asc">Marks · lowest first ({{ 'total' if marks_summary_column == 'total_raw' else 'avg %' }})</option>
+                <option value="marks_desc">Marks · highest first ({{ 'total' if marks_summary_column == 'total_raw' else 'avg %' }})</option>
+            </select>
+        </div>
 
         <!-- Marks grid: same table on phones and desktop (horizontal scroll on narrow screens) -->
         <div class="marks-sheet-wrap mb-4 w-full min-w-0 bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
@@ -481,17 +634,20 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }} — enter marks out of {{ subj_max }}">{{ subj_lbl }}</th>
                             {% endif %}
                             {% endfor %}
+                            {% if marks_summary_column == 'total_raw' %}
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of raw marks for this exam (each subject paper counted once)">Total</th>
+                            {% else %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
+                            {% endif %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight">Rnk</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {% for student in students %}
-                        {% set student_row_idx = loop.index0 %}
+                        <template x-for="(student, rowIdx) in sortedStudents()" :key="student.student_id">
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td class="sticky-col sticky-col-1 px-1 py-1.5 sm:px-2 sm:py-2 text-center text-[11px] sm:text-sm text-gray-500 dark:text-gray-400 font-medium tabular-nums">{{ loop.index }}</td>
+                            <td class="sticky-col sticky-col-1 px-1 py-1.5 sm:px-2 sm:py-2 text-center text-[11px] sm:text-sm text-gray-500 dark:text-gray-400 font-medium tabular-nums" x-text="rowIdx + 1"></td>
                             <td class="sticky-col sticky-col-2 px-1.5 py-1.5 sm:px-3 sm:py-2 min-w-0">
-                                <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2">{{ student.full_name }}</span>
+                                <span class="font-medium text-gray-900 dark:text-white text-xs sm:text-sm leading-snug max-md:line-clamp-2" x-text="student.full_name"></span>
                             </td>
                             {% for subject in subjects %}
                             <td class="marks-td-subject py-1 sm:py-1 text-center align-middle">
@@ -499,30 +655,30 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 <input type="text"
                                        inputmode="decimal"
                                        maxlength="8"
-                                       data-row-index="{{ student_row_idx }}"
+                                       :data-row-index="rowIdx"
                                        data-col-index="{{ loop.index0 }}"
-                                       :value="getMark('{{ student.student_id }}', {{ subject.id }})"
-                                       @blur="saveMark('{{ student.student_id }}', {{ subject.id }}, $event.target.value)"
+                                       :value="getMark(student.student_id, {{ subject.id }})"
+                                       @blur="saveMark(student.student_id, {{ subject.id }}, $event.target.value)"
                                        @keydown.enter="handleEnterKey($event)"
                                        @keydown.up.prevent="handleArrowKey($event)"
                                        @keydown.down.prevent="handleArrowKey($event)"
                                        @keydown.left.prevent="handleArrowKey($event)"
                                        @keydown.right.prevent="handleArrowKey($event)"
                                        @keypress="allowMarkChar($event)"
-                                       :disabled="!selectedExam || examIsLocked"
-                                       :class="getStatusClass('{{ student.student_id }}', {{ subject.id }})"
+                                       :disabled="!selectedExam || marksInputsDisabled"
+                                       :class="getStatusClass(student.student_id, {{ subject.id }})"
                                        class="mark-input touch-manipulation"
                                        autocomplete="off"
                                        enterkeyhint="next">
                                 {% else %}
-                                <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getMark('{{ student.student_id }}', {{ subject.id }}) || '-'"></span>
+                                <span class="inline-block w-full text-gray-900 dark:text-white font-semibold text-xs sm:text-sm tabular-nums" x-text="getMark(student.student_id, {{ subject.id }}) || '-'"></span>
                                 {% endif %}
                             </td>
                             {% endfor %}
-                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-xs sm:text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 leading-tight tabular-nums" x-text="getTotal('{{ student.student_id }}') || '-'"></td>
-                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight" x-text="getRank('{{ student.student_id }}') || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-xs sm:text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 leading-tight tabular-nums" x-text="getTotal(student.student_id) || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight" x-text="getRank(student.student_id) || '-'"></td>
                         </tr>
-                        {% endfor %}
+                        </template>
                     </tbody>
                     <tfoot class="bg-gray-50 dark:bg-gray-900/40 border-t-2 border-gray-300 dark:border-gray-600">
                         <tr>
@@ -532,7 +688,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-indigo-700 dark:text-indigo-300 tabular-nums"
                                 x-text="getSubjectMean({{ subject.id }})"></td>
                             {% endfor %}
-                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 tabular-nums"
+                                x-text="summaryColumnFooterMean()"></td>
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                         </tr>
                         <tr>
@@ -566,13 +723,40 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                 <div class="w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center mx-auto mb-5 ring-4 ring-amber-200/60 dark:ring-amber-800/50">
                     <i class="fas fa-lock text-4xl text-amber-700 dark:text-amber-300" aria-hidden="true"></i>
                 </div>
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam is locked</h3>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Exam allocations are locked</h3>
                 <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
-                    This exam has been locked from Exam Registration. Marks cannot be viewed or edited here until an administrator unlocks it.
+                    This exam has been locked from Exam Registration (timetable allocations). Marks cannot be viewed or edited here until an administrator unlocks allocations.
                 </p>
                 <button type="button" @click="lockedModal = false"
                         class="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
                     OK
+                </button>
+            </div>
+        </div>
+
+        <!-- Marks entry period closed (teacher) — closable popup -->
+        <div x-show="marksPeriodClosedModalOpen" x-cloak
+             class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[61] p-4"
+             @click.self="closeMarksPeriodClosedModal()"
+             @keydown.escape.window="marksPeriodClosedModalOpen && closeMarksPeriodClosedModal()">
+            <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-left border border-rose-200 dark:border-rose-900/80"
+                 @click.stop role="alertdialog" aria-modal="true" aria-labelledby="marks-closed-title">
+                <button type="button"
+                        @click="closeMarksPeriodClosedModal()"
+                        class="absolute top-3 right-3 sm:top-4 sm:right-4 flex h-10 w-10 items-center justify-center rounded-full text-gray-500 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-white dark:hover:bg-gray-700 transition-colors touch-manipulation"
+                        aria-label="Close">
+                    <i class="fas fa-times text-lg" aria-hidden="true"></i>
+                </button>
+                <div class="w-16 h-16 rounded-full bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center mb-4 ring-4 ring-rose-200/50 dark:ring-rose-900/40">
+                    <i class="fas fa-stop-circle text-3xl text-rose-600 dark:text-rose-400" aria-hidden="true"></i>
+                </div>
+                <h3 id="marks-closed-title" class="text-xl font-bold text-gray-900 dark:text-white mb-2 pr-10">Marks entry period is over</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+                    This exam's marks window has closed. You can still view marks below; changes are disabled. Contact the curriculum office if something must be corrected.
+                </p>
+                <button type="button" @click="closeMarksPeriodClosedModal()"
+                        class="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all">
+                    Got it
                 </button>
             </div>
         </div>
@@ -608,6 +792,9 @@ function marksSheet() {
         loading: false,
         saveStatus: {},
         lockedModal: false,
+        marksPeriodClosedModalOpen: false,
+        dismissedMarksClosedForExamId: '',
+        marksCountdownInfoModalOpen: false,
         examList: {{ (exams or [])|tojson|safe }},
         academicYears: {{ (academic_years or [])|tojson|safe }},
         terms: {{ (terms or [])|tojson|safe }},
@@ -617,14 +804,145 @@ function marksSheet() {
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
 
         subjectIds: [{% for s in subjects %}{{ s.id }}{% if not loop.last %},{% endif %}{% endfor %}],
-        studentIds: [{% for s in students %}'{{ s.student_id }}'{% if not loop.last %},{% endif %}{% endfor %}],
+        studentsList: {{ (students or [])|tojson|safe }},
+        /** Row order: name A–Z / Z–A, or summary marks low→high / high→low (uses Total or Avg% for the selected exam). */
+        studentSort: 'name_asc',
+
+        get studentIdList() {
+            return (this.studentsList || []).map((s) => s.student_id);
+        },
+
         levelId: {{ academic_level.id }},
         canEdit: {{ 'true' if can_edit else 'false' }},
+        isTeacherMarks: {{ 'true' if is_teacher else 'false' }},
+        _tick: 0,
+        marksEntryReadonly: false,
+        /** 'avg_pct' or 'total_raw' (curriculum coordinator: sum of raw marks). */
+        summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
 
         get examIsLocked() {
             if (!this.selectedExam) return false;
             const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
             return !!(ex && ex.is_locked);
+        },
+
+        _marksLockMs(iso) {
+            if (!iso) return null;
+            const t = new Date(String(iso).replace(' ', 'T')).getTime();
+            return Number.isNaN(t) ? null : t;
+        },
+
+        _marksEntryDeadlineOpen(ex) {
+            if (!ex || !ex.marks_lock_at) return true;
+            const end = this._marksLockMs(ex.marks_lock_at);
+            return end === null || Date.now() < end;
+        },
+
+        get selectedExamHasMarksDeadline() {
+            if (!this.selectedExam) return false;
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            return !!(ex && ex.marks_lock_at);
+        },
+
+        get teacherMarksPeriodClosed() {
+            void this._tick;
+            if (!this.isTeacherMarks || !this.selectedExam) return false;
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            if (!ex || !ex.marks_lock_at) return false;
+            const end = this._marksLockMs(ex.marks_lock_at);
+            return end !== null && Date.now() >= end;
+        },
+
+        get teacherMarksCountdownLabel() {
+            void this._tick;
+            if (!this.isTeacherMarks || !this.selectedExam) return '';
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            if (!ex || !ex.marks_lock_at) return '';
+            const end = this._marksLockMs(ex.marks_lock_at);
+            if (end === null || Date.now() >= end) return '';
+            let sec = Math.max(0, Math.floor((end - Date.now()) / 1000));
+            const d = Math.floor(sec / 86400); sec -= d * 86400;
+            const h = Math.floor(sec / 3600); sec -= h * 3600;
+            const m = Math.floor(sec / 60); sec -= m * 60;
+            const parts = [];
+            if (d) parts.push(`${d}d`);
+            parts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`);
+            return parts.join(' ');
+        },
+
+        get marksCountdownSecondsRemaining() {
+            void this._tick;
+            if (!this.isTeacherMarks || !this.selectedExam) return null;
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            if (!ex || !ex.marks_lock_at) return null;
+            const end = this._marksLockMs(ex.marks_lock_at);
+            if (end === null || Date.now() >= end) return null;
+            return Math.max(0, Math.floor((end - Date.now()) / 1000));
+        },
+
+        get marksCountdownUrgentLessThan24h() {
+            void this._tick;
+            const s = this.marksCountdownSecondsRemaining;
+            return s !== null && s > 0 && s < 86400;
+        },
+
+        get selectedExamMarksLockDisplay() {
+            if (!this.selectedExam) return '';
+            const ex = this.examList.find(e => String(e.id) === String(this.selectedExam));
+            if (!ex || !ex.marks_lock_at) return '';
+            try {
+                const raw = String(ex.marks_lock_at).trim().replace(' ', 'T');
+                const d = new Date(raw.length === 16 ? `${raw}:00` : raw);
+                if (Number.isNaN(d.getTime())) return String(ex.marks_lock_at);
+                return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+            } catch (e) {
+                return String(ex.marks_lock_at);
+            }
+        },
+
+        get marksCountdownVisible() {
+            void this._tick;
+            if (!this.isTeacherMarks || !this.selectedExam) return false;
+            if (!this.selectedExamHasMarksDeadline || this.teacherMarksPeriodClosed) return false;
+            return !!this.teacherMarksCountdownLabel;
+        },
+
+        get marksInputsDisabled() {
+            void this._tick;
+            if (!this.selectedExam || !this.canEdit) return true;
+            if (this.examIsLocked) return true;
+            if (this.isTeacherMarks && (this.marksEntryReadonly || this.teacherMarksPeriodClosed)) return true;
+            return false;
+        },
+
+        sortedStudents() {
+            const base = (this.studentsList || []).slice();
+            if (!base.length) return base;
+            const tieName = (a, b) => String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+            if (this.studentSort === 'name_asc') {
+                base.sort((a, b) => tieName(a, b));
+                return base;
+            }
+            if (this.studentSort === 'name_desc') {
+                base.sort((a, b) => tieName(b, a));
+                return base;
+            }
+            if (this.studentSort === 'marks_asc' || this.studentSort === 'marks_desc') {
+                const dir = this.studentSort === 'marks_asc' ? 1 : -1;
+                base.sort((a, b) => {
+                    const va = this.getSummaryScoreNumeric(a.student_id);
+                    const vb = this.getSummaryScoreNumeric(b.student_id);
+                    const aNull = va === null || va === undefined;
+                    const bNull = vb === null || vb === undefined;
+                    if (aNull && bNull) return tieName(a, b);
+                    if (aNull) return 1;
+                    if (bNull) return -1;
+                    const cmp = (va - vb) * dir;
+                    if (cmp !== 0) return cmp;
+                    return tieName(a, b);
+                });
+            }
+            return base;
         },
 
         subjectExamMaxFor(subjectId) {
@@ -722,8 +1040,12 @@ function marksSheet() {
             );
             const hasSelectedExam = scopedExams.some(e => String(e.id) === String(this.selectedExam));
             if (!hasSelectedExam) {
-                const unlocked = scopedExams.filter(e => !e.is_locked);
-                const pool = unlocked.length ? unlocked : scopedExams;
+                const notAllocLocked = scopedExams.filter(e => !e.is_locked);
+                let pool = notAllocLocked.length ? notAllocLocked : scopedExams;
+                if (this.isTeacherMarks) {
+                    const openMarks = pool.filter(e => this._marksEntryDeadlineOpen(e));
+                    if (openMarks.length) pool = openMarks;
+                }
                 const byAnchor = pool.find(e => String(e.id) === String(this.defaultExamId));
                 this.selectedExam = byAnchor ? String(byAnchor.id) : this.chooseDefaultExam(pool);
             }
@@ -741,6 +1063,22 @@ function marksSheet() {
             this.enforceDefaults();
             await this.onExamSelected();
             this.syncDefaultsFromUi();
+            setInterval(() => {
+                this._tick = Date.now();
+                this._maybeOpenMarksPeriodClosedModal();
+            }, 1000);
+        },
+
+        closeMarksPeriodClosedModal() {
+            if (!this.marksPeriodClosedModalOpen) return;
+            this.marksPeriodClosedModalOpen = false;
+            if (this.selectedExam) this.dismissedMarksClosedForExamId = String(this.selectedExam);
+        },
+
+        _maybeOpenMarksPeriodClosedModal() {
+            if (!this.isTeacherMarks || !this.selectedExam || !this.teacherMarksPeriodClosed) return;
+            if (String(this.dismissedMarksClosedForExamId) === String(this.selectedExam)) return;
+            this.marksPeriodClosedModalOpen = true;
         },
 
         async onAcademicYearChange() {
@@ -824,6 +1162,9 @@ function marksSheet() {
         },
 
         async onExamSelected() {
+            this.marksEntryReadonly = false;
+            this.marksPeriodClosedModalOpen = false;
+            this.marksCountdownInfoModalOpen = false;
             if (!this.selectedExam) {
                 await this.loadMarks();
                 return;
@@ -859,6 +1200,52 @@ function marksSheet() {
             return this._rawStoredMark(studentId, subjectId);
         },
 
+        /** Sum of raw marks for this exam, one count per paper (combined columns sum their members). */
+        getStudentTotalRawMarks(studentId) {
+            if (!this.selectedExam) return null;
+            let total = 0;
+            let any = false;
+            for (const subjectId of this.subjectIds) {
+                const members = this.getCombinationMembers(subjectId);
+                if (members && members.length) {
+                    for (const mid of members) {
+                        const raw = this._rawStoredMark(studentId, mid);
+                        if (raw !== null) {
+                            total += raw;
+                            any = true;
+                        }
+                    }
+                } else {
+                    const raw = this._rawStoredMark(studentId, subjectId);
+                    if (raw !== null) {
+                        total += raw;
+                        any = true;
+                    }
+                }
+            }
+            if (!any) return null;
+            return Math.round(total * 100) / 100;
+        },
+
+        /** Numeric value used for the summary column and ranking (mean % or raw total). */
+        getSummaryScoreNumeric(studentId) {
+            if (!this.selectedExam) return null;
+            if (this.summaryMode === 'total_raw') {
+                return this.getStudentTotalRawMarks(studentId);
+            }
+            let sumPct = 0;
+            let count = 0;
+            for (const subjectId of this.subjectIds) {
+                const raw = this.getMarkNumeric(studentId, subjectId);
+                if (raw !== null) {
+                    const mx = this.subjectExamMaxFor(subjectId);
+                    sumPct += (100 * raw) / mx;
+                    count += 1;
+                }
+            }
+            return count ? (sumPct / count) : null;
+        },
+
         getMark(studentId, subjectId) {
             const members = this.getCombinationMembers(subjectId);
             const n = this.getMarkNumeric(studentId, subjectId);
@@ -873,24 +1260,35 @@ function marksSheet() {
 
         getTotal(studentId) {
             if (!this.selectedExam) return null;
-            let sumPct = 0;
-            let count = 0;
-            for (const subjectId of this.subjectIds) {
-                const raw = this.getMarkNumeric(studentId, subjectId);
-                if (raw !== null) {
-                    const mx = this.subjectExamMaxFor(subjectId);
-                    sumPct += (100 * raw) / mx;
-                    count += 1;
+            const n = this.getSummaryScoreNumeric(studentId);
+            if (n === null) return null;
+            if (this.summaryMode === 'total_raw') {
+                if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
+                return String(Number(n.toFixed(2)));
+            }
+            return n.toFixed(1);
+        },
+
+        summaryColumnFooterMean() {
+            if (!this.selectedExam) return '—';
+            if (this.summaryMode !== 'total_raw') return '—';
+            let sum = 0;
+            let c = 0;
+            for (const sid of this.studentIdList) {
+                const t = this.getStudentTotalRawMarks(sid);
+                if (t !== null) {
+                    sum += t;
+                    c += 1;
                 }
             }
-            return count ? (sumPct / count).toFixed(1) : null;
+            return c ? (sum / c).toFixed(1) : '—';
         },
 
         getRank(studentId) {
             if (!this.selectedExam) return null;
             
-            const totals = this.studentIds
-                .map(id => ({ id, total: this.getTotal(id) }))
+            const totals = this.studentIdList
+                .map(id => ({ id, total: this.getSummaryScoreNumeric(id) }))
                 .filter(x => x.total !== null)
                 .sort((a, b) => b.total - a.total);
             
@@ -929,7 +1327,7 @@ function marksSheet() {
             const mx = this.subjectExamMaxFor(subjectId);
             let sumPct = 0;
             let count = 0;
-            for (const studentId of this.studentIds) {
+            for (const studentId of this.studentIdList) {
                 const raw = this.getMarkNumeric(studentId, subjectId);
                 if (raw !== null) {
                     sumPct += (100 * raw) / mx;
@@ -983,7 +1381,7 @@ function marksSheet() {
             // Move vertically in the same subject column:
             // Enter = down, Shift+Enter = up.
             this.$nextTick(() => {
-                const maxRows = this.studentIds.length;
+                const maxRows = this.studentIdList.length;
                 let nextRow = movingUp ? rowIndex - 1 : rowIndex + 1;
 
                 while (nextRow >= 0 && nextRow < maxRows) {
@@ -1002,7 +1400,7 @@ function marksSheet() {
             const currentInput = event.target;
             const rowIndex = Number(currentInput.dataset.rowIndex);
             const colIndex = Number(currentInput.dataset.colIndex);
-            const maxRows = this.studentIds.length;
+            const maxRows = this.studentIdList.length;
             const maxCols = this.subjectIds.length;
 
             let rowStep = 0;
@@ -1032,7 +1430,7 @@ function marksSheet() {
         },
 
         async saveCombinationMark(studentId, columnSubjectId, value) {
-            if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
+            if (!this.selectedExam || !this.canEdit || this.marksInputsDisabled) return;
             const members = this.getCombinationMembers(columnSubjectId);
             if (!members || !members.length) return;
             const cid = Math.abs(Number(columnSubjectId));
@@ -1077,6 +1475,10 @@ function marksSheet() {
                     this.lockedModal = true;
                     this.selectedExam = '';
                     this.saveStatus[key] = 'error';
+                } else if (response.status === 403 && result.marks_period_closed) {
+                    this.marksEntryReadonly = true;
+                    this.saveStatus[key] = 'error';
+                    await this.loadMarks();
                 } else {
                     this.saveStatus[key] = result.success ? 'saved' : 'error';
                     if (!result.success) await this.loadMarks();
@@ -1089,7 +1491,7 @@ function marksSheet() {
         },
 
         async saveMark(studentId, subjectId, value) {
-            if (!this.selectedExam || !this.canEdit || this.examIsLocked) return;
+            if (!this.selectedExam || !this.canEdit || this.marksInputsDisabled) return;
 
             if (this.getCombinationMembers(subjectId)) {
                 return this.saveCombinationMark(studentId, subjectId, value);
@@ -1141,6 +1543,10 @@ function marksSheet() {
                     this.lockedModal = true;
                     this.selectedExam = '';
                     this.saveStatus[key] = 'error';
+                } else if (response.status === 403 && result.marks_period_closed) {
+                    this.marksEntryReadonly = true;
+                    this.saveStatus[key] = 'error';
+                    await this.loadMarks();
                 } else {
                     this.saveStatus[key] = result.success ? 'saved' : 'error';
                     if (!result.success) await this.loadMarks();
@@ -1157,6 +1563,7 @@ function marksSheet() {
             if (!this.selectedExam) {
                 // Never show stale/all-exam marks when no exam is selected.
                 this.marks = {};
+                this.marksEntryReadonly = false;
                 return;
             }
             this.loading = true;
@@ -1177,9 +1584,11 @@ function marksSheet() {
                     this.marks = {};
                 } else if (result.success) {
                     this.marks = result.marks || {};
+                    this.marksEntryReadonly = !!result.teacher_marks_readonly;
                     if (result.subject_exam_max && typeof result.subject_exam_max === 'object') {
                         this.subjectExamMax = { ...this.subjectExamMax, ...result.subject_exam_max };
                     }
+                    this.$nextTick(() => this._maybeOpenMarksPeriodClosedModal());
                 }
             } catch (error) {
                 console.error('Load error:', error);

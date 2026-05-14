@@ -11,6 +11,7 @@ import json
 import secrets
 import copy
 import time
+from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
 from env_loader import load_project_env
@@ -111,10 +112,13 @@ def employee_dashboard_path(subpath: str = '') -> str:
 
 @app.template_global()
 def employee_staff_settings_url(settings_role: str, **query) -> str:
-    """Prefixed staff settings URL: /<session-slug>/settings/<encoded role>[?query]."""
+    """Prefixed staff settings URL: /<session-slug>/settings/<role slug>[?query]; curriculum coordinator timetable uses curriculum-timetable-settings."""
     r = (settings_role or 'employee').strip()
-    role_path_segment = role_to_slug(r)
-    base = employee_dashboard_path(f'settings/{role_path_segment}')
+    if role_to_slug(r) == role_to_slug('curriculum coordinator'):
+        base = employee_dashboard_path('curriculum-timetable-settings')
+    else:
+        role_path_segment = role_to_slug(r)
+        base = employee_dashboard_path(f'settings/{role_path_segment}')
     filtered = {k: v for k, v in query.items() if v is not None and str(v) != ''}
     if filtered:
         return base + '?' + urlencode(filtered)
@@ -715,6 +719,39 @@ def ensure_subject_exam_total_marks_column(cursor):
         print(f"ensure_subject_exam_total_marks_column: {e}")
 
 
+def ensure_subject_exam_display_order_columns(cursor):
+    """Column order for marks sheets, curriculum pages, and reports (combined subjects share one order)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM subjects LIKE 'exam_display_order'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE subjects
+                ADD COLUMN exam_display_order INT NULL
+                COMMENT 'Sort key for exam/marks columns; combined subjects share the same value'
+                AFTER exam_total_marks
+                """
+            )
+            print("OK: Added subjects.exam_display_order")
+    except Exception as e:
+        print(f"ensure_subject_exam_display_order_columns (subjects): {e}")
+    try:
+        ensure_subject_exam_combination_tables(cursor)
+        cursor.execute("SHOW COLUMNS FROM subject_exam_combinations LIKE 'display_order'")
+        if not cursor.fetchone():
+            cursor.execute(
+                """
+                ALTER TABLE subject_exam_combinations
+                ADD COLUMN display_order INT NULL
+                COMMENT 'Sort key for combined column among other subjects'
+                AFTER totals_snapshot_json
+                """
+            )
+            print("OK: Added subject_exam_combinations.display_order")
+    except Exception as e:
+        print(f"ensure_subject_exam_display_order_columns (combinations): {e}")
+
+
 def subject_exam_max_raw_marks(exam_total_marks_value):
     """Positive maximum raw marks for exam entry; default 100 when unset, zero, or invalid."""
     try:
@@ -884,23 +921,41 @@ def restore_subject_totals_from_combination_snapshot(cursor, snapshot_json_str):
 
 
 def fetch_subject_exam_combinations(cursor):
-    """Return [{'id': combo_id, 'member_subject_ids': [..ordered..]}, ...]."""
+    """Return [{'id': combo_id, 'member_subject_ids': [..ordered..], 'display_order': int|None}, ...]."""
     ensure_subject_exam_combination_tables(cursor)
-    cursor.execute("""
-        SELECT combination_id, subject_id, sort_order
-        FROM subject_exam_combination_members
-        ORDER BY combination_id ASC, sort_order ASC, subject_id ASC
-    """)
+    ensure_subject_exam_display_order_columns(cursor)
+    cursor.execute(
+        """
+        SELECT m.combination_id, m.subject_id, m.sort_order, c.display_order
+        FROM subject_exam_combination_members m
+        INNER JOIN subject_exam_combinations c ON c.id = m.combination_id
+        ORDER BY COALESCE(c.display_order, c.id) ASC, c.id ASC, m.sort_order ASC, m.subject_id ASC
+        """
+    )
     grouped = {}
+    disp = {}
     for row in cursor.fetchall() or []:
         cid = row.get('combination_id') if isinstance(row, dict) else row[0]
         sid = row.get('subject_id') if isinstance(row, dict) else row[1]
+        dord = row.get('display_order') if isinstance(row, dict) else (row[3] if len(row) > 3 else None)
         if cid is None or sid is None:
             continue
         cid = int(cid)
         sid = int(sid)
         grouped.setdefault(cid, []).append(sid)
-    return [{'id': cid, 'member_subject_ids': mids} for cid, mids in sorted(grouped.items())]
+        if dord is not None:
+            try:
+                disp[cid] = int(dord)
+            except (TypeError, ValueError):
+                pass
+    def _combo_key(item):
+        cid, mids = item
+        return (disp.get(cid) if cid in disp else 10**9 + cid, cid)
+
+    return [
+        {'id': cid, 'member_subject_ids': mids, 'display_order': disp.get(cid)}
+        for cid, mids in sorted(grouped.items(), key=_combo_key)
+    ]
 
 
 def merge_subjects_with_exam_combinations(subjects, combinations):
@@ -910,6 +965,19 @@ def merge_subjects_with_exam_combinations(subjects, combinations):
     """
     if not subjects or not combinations:
         return subjects
+
+    def _sub_sort_key(s):
+        sid = int(s['id'])
+        eo = s.get('exam_display_order')
+        try:
+            eo_n = int(eo)
+        except (TypeError, ValueError):
+            eo_n = None
+        if eo_n is None:
+            return (1, 10**9 + sid, str(s.get('subject_name') or '').lower(), sid)
+        return (0, eo_n, str(s.get('subject_name') or '').lower(), sid)
+
+    subjects = sorted((dict(s) for s in subjects), key=_sub_sort_key)
     by_id = {int(s['id']): dict(s) for s in subjects}
     original_order = [int(s['id']) for s in subjects]
     id_set = set(original_order)
@@ -955,6 +1023,13 @@ def merge_subjects_with_exam_combinations(subjects, combinations):
         for mid in mids:
             cd = (by_id[mid].get('subject_code') or '').strip()
             code_parts.append(cd if cd else ((by_id[mid].get('subject_name') or '')[:12] or '—'))
+        combo_ord_vals = []
+        for mid in mids:
+            eo_m = by_id.get(mid, {}).get('exam_display_order')
+            try:
+                combo_ord_vals.append(int(eo_m))
+            except (TypeError, ValueError):
+                combo_ord_vals.append(10**9 + int(mid))
         combo_row = {
             'id': -cid,
             'subject_name': names,
@@ -964,11 +1039,204 @@ def merge_subjects_with_exam_combinations(subjects, combinations):
             'exam_total_marks': 100.0,
             'combination_id': cid,
             'member_subject_ids': list(mids),
+            'exam_display_order': min(combo_ord_vals) if combo_ord_vals else (10**9 + cid),
         }
         out.append(combo_row)
         for mid in mids:
             consumed.add(mid)
     return out
+
+
+def _build_exam_column_order_slots(name_map, combinations_raw):
+    """Flat list for UI: standalone subjects + combined groups (one row per combination)."""
+    member_set = set()
+    for c in combinations_raw or []:
+        for mid in c.get('member_subject_ids') or []:
+            try:
+                member_set.add(int(mid))
+            except (TypeError, ValueError):
+                continue
+    slots = []
+    for sid, info in name_map.items():
+        sid = int(sid)
+        if sid in member_set:
+            continue
+        eo = info.get('exam_display_order')
+        try:
+            o = int(eo)
+        except (TypeError, ValueError):
+            o = 10**9 + sid
+        slots.append(
+            {
+                'type': 'subject',
+                'id': sid,
+                'label': (info.get('subject_name') or '').strip() or '—',
+                '_ord': o,
+            }
+        )
+    for c in combinations_raw or []:
+        mids = c.get('member_subject_ids') or []
+        if len(mids) < 2:
+            continue
+        try:
+            cid = int(c['id'])
+        except (TypeError, ValueError):
+            continue
+        label_parts = []
+        for mid in mids:
+            inf = name_map.get(int(mid))
+            label_parts.append((inf.get('subject_name') or '').strip() or '—' if inf else '—')
+        label = '/'.join(label_parts)
+        dord = c.get('display_order')
+        try:
+            o = int(dord) if dord is not None else None
+        except (TypeError, ValueError):
+            o = None
+        if o is None:
+            ovals = []
+            for mid in mids:
+                inf = name_map.get(int(mid))
+                ev = inf.get('exam_display_order') if inf else None
+                try:
+                    ovals.append(int(ev))
+                except (TypeError, ValueError):
+                    ovals.append(10**9 + int(mid))
+            o = min(ovals) if ovals else 10**9 + cid
+        slots.append({'type': 'combo', 'id': cid, 'label': label, '_ord': o})
+    slots.sort(key=lambda z: (z['_ord'], str(z.get('label') or '').lower()))
+    for s in slots:
+        s.pop('_ord', None)
+    return slots
+
+
+def ensure_exams_marks_lock_at_column(cursor):
+    """Adds marks_lock_at (optional deadline after which teachers may not change marks)."""
+    try:
+        cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
+    except Exception as e:
+        msg = str(e).lower()
+        if 'duplicate column' not in msg and 'already exists' not in msg:
+            print(f"Note: exams.marks_lock_at column: {e}")
+
+
+def _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id):
+    """
+    Allocation lock and marks-entry deadline are shared across all subject rows
+    for the same level + exam_name + academic_year_id + term_id.
+    Returns (max_is_locked: int 0|1, marks_lock_at: datetime|None).
+    """
+    cursor.execute("""
+        SELECT academic_level_id, exam_name, academic_year_id, term_id
+        FROM exams WHERE id = %s LIMIT 1
+    """, (exam_id,))
+    g = cursor.fetchone()
+    if not g:
+        return 0, None
+    if isinstance(g, dict):
+        lvl = g.get('academic_level_id')
+        name = (g.get('exam_name') or '').strip()
+        ay = g.get('academic_year_id')
+        term = g.get('term_id')
+    else:
+        lvl, name, ay, term = g[0], (g[1] or '').strip(), g[2], g[3]
+    if not name or ay is None or term is None:
+        return 0, None
+    cursor.execute("""
+        SELECT MAX(COALESCE(is_locked, 0)) AS mx, MAX(marks_lock_at) AS mla
+        FROM exams
+        WHERE academic_level_id = %s AND exam_name = %s AND academic_year_id = %s AND term_id = %s
+    """, (lvl, name, ay, term))
+    r = cursor.fetchone()
+    if not r:
+        return 0, None
+    if isinstance(r, dict):
+        mx = int(r.get('mx') or 0)
+        mla = r.get('mla')
+    else:
+        mx = int(r[0] or 0)
+        mla = r[1] if len(r) > 1 else None
+    return (1 if mx else 0), mla
+
+
+def _marks_lock_deadline_passed(marks_lock_at):
+    if not marks_lock_at:
+        return False
+    try:
+        now = datetime.now()
+        dt = marks_lock_at
+        if isinstance(dt, date_cls) and not isinstance(dt, datetime):
+            dt = datetime.combine(dt, datetime.min.time())
+        if getattr(dt, 'tzinfo', None) is not None and dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        return dt <= now
+    except Exception:
+        return False
+
+
+def ensure_registered_current_exam_column(cursor):
+    try:
+        cursor.execute(
+            "ALTER TABLE school_settings ADD COLUMN registered_current_exam_json TEXT NULL "
+            "COMMENT 'JSON: exam_name, academic_year_id, term_id for school-wide current exam'"
+        )
+    except Exception as e:
+        msg = str(e).lower()
+        if 'duplicate' not in msg and 'already exists' not in msg:
+            print(f"ensure_registered_current_exam_column: {e}")
+
+
+def load_registered_current_exam_dict(cursor):
+    """Returns dict exam_name (upper), exam_type (upper str or None if legacy JSON), academic_year_id, term_id or None."""
+    try:
+        ensure_registered_current_exam_column(cursor)
+        cursor.execute(
+            "SELECT registered_current_exam_json FROM school_settings ORDER BY id DESC LIMIT 1"
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        raw = row.get('registered_current_exam_json') if isinstance(row, dict) else (row[0] if row else None)
+        if raw is None or (isinstance(raw, str) and not str(raw).strip()):
+            return None
+        j = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(j, dict):
+            return None
+        name = (j.get('exam_name') or '').strip().upper()
+        try:
+            ay = int(j.get('academic_year_id') or 0)
+            tid = int(j.get('term_id') or 0)
+        except (TypeError, ValueError):
+            return None
+        if not name or ay <= 0 or tid <= 0:
+            return None
+        out = {'exam_name': name, 'academic_year_id': ay, 'term_id': tid}
+        if 'exam_type' in j:
+            out['exam_type'] = (j.get('exam_type') or '').strip().upper()
+        else:
+            out['exam_type'] = None
+        return out
+    except Exception as e:
+        print(f"load_registered_current_exam_dict: {e}")
+        return None
+
+
+def apply_marks_lock_deadline_auto_lock(cursor):
+    """
+    When marks_lock_at is in the past, set allocation lock so the exam row matches
+    the closed marks window (coordinators can still unlock manually if needed).
+    """
+    try:
+        ensure_exams_marks_lock_at_column(cursor)
+        cursor.execute("""
+            UPDATE exams
+            SET is_locked = 1,
+                locked_at = CURRENT_TIMESTAMP
+            WHERE marks_lock_at IS NOT NULL
+              AND marks_lock_at <= NOW()
+              AND COALESCE(is_locked, 0) = 0
+        """)
+    except Exception as e:
+        print(f"apply_marks_lock_deadline_auto_lock: {e}")
 
 
 def _default_exam_session_presets():
@@ -1683,6 +1951,7 @@ def init_db():
             """)
             try:
                 ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_combination_tables(cursor)
             except Exception as e:
                 print(f"Migration note (subjects.exam_total_marks): {e}")
@@ -1926,6 +2195,10 @@ def init_db():
                 cursor.execute("ALTER TABLE exams ADD COLUMN locked_at TIMESTAMP NULL")
             except Exception as e:
                 print(f"Note: exams.locked_at may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE exams ADD COLUMN marks_lock_at DATETIME NULL")
+            except Exception as e:
+                print(f"Note: exams.marks_lock_at may already exist: {e}")
             
             # Create exam_supervisors table
             cursor.execute("""
@@ -5257,9 +5530,9 @@ def student_fees_view():
     return redirect(student_dashboard_path())
 
 
-def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
-    """KPIs for the teacher home dashboard for the current term (marks, attendance, exams)."""
-    empty = {
+def _teacher_dashboard_analytics_empty():
+    """Default shape for teacher dashboard KPIs (used when nothing computed or on error)."""
+    return {
         'student_count': 0,
         'timetable_slot_count': 0,
         'distinct_class_group_count': 0,
@@ -5272,6 +5545,11 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
         'overall_rank': None,
         'overall_teachers_count': 0,
     }
+
+
+def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
+    """KPIs for the teacher home dashboard for the current term (marks, attendance, exams)."""
+    empty = _teacher_dashboard_analytics_empty()
     try:
         teacher_id = int(teacher_id)
         term_id = int(term_id)
@@ -5305,14 +5583,17 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
 
         if level_ids:
             ph = ','.join(['%s'] * len(level_ids))
-            # Students table may not have academic_level_id (it stores grade label in current_grade).
-            # Prefer academic_level_id if it exists; otherwise join via current_grade -> academic_levels.level_name.
+            # Resolve cohort level: academic_level_id when set, else map current_grade -> academic_levels.
+            # (Marks queries must use the same rule or subject means / ranks stay empty.)
             try:
                 cursor.execute(
                     f"""
                     SELECT COUNT(DISTINCT s.student_id) AS c
                     FROM students s
-                    WHERE s.status = 'in session' AND s.academic_level_id IN ({ph})
+                    LEFT JOIN academic_levels al_sg
+                      ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al_sg.level_name))
+                    WHERE s.status = 'in session'
+                      AND COALESCE(s.academic_level_id, al_sg.id) IN ({ph})
                     """,
                     level_ids,
                 )
@@ -5339,7 +5620,10 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
                     f"""
                     SELECT COUNT(*) AS c FROM student_attendance_records sar
                     INNER JOIN students s ON s.student_id = sar.student_id AND s.status = 'in session'
-                    WHERE sar.term_id = %s AND sar.present = 1 AND s.academic_level_id IN ({ph})
+                    LEFT JOIN academic_levels al_sg
+                      ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al_sg.level_name))
+                    WHERE sar.term_id = %s AND sar.present = 1
+                      AND COALESCE(s.academic_level_id, al_sg.id) IN ({ph})
                     """,
                     [term_id] + level_ids,
                 )
@@ -5434,26 +5718,52 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
                 print(f"Teacher dashboard exam supervisor count skipped: {sup_e} / {sup_e2}")
         out['exams_supervise_duty_count'] = sup_count
 
-        cursor.execute(
-            """
-            SELECT sub.subject_name, sub.subject_code,
-                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
-                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS mean_marks,
-                   COUNT(sm.marks) AS mark_count
-            FROM student_marks sm
-            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
-            INNER JOIN subjects sub ON sm.subject_id = sub.id
-            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
-            INNER JOIN teacher_subject_assignments tsa
-              ON tsa.teacher_id = %s
-             AND tsa.subject_id = sm.subject_id
-             AND tsa.academic_level_id = st.academic_level_id
-            WHERE sm.marks IS NOT NULL
-            GROUP BY sub.id, sub.subject_name, sub.subject_code
-            ORDER BY sub.subject_name
-            """,
-            (term_id, teacher_id),
-        )
+        try:
+            cursor.execute(
+                """
+                SELECT sub.subject_name, sub.subject_code,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS mean_marks,
+                       COUNT(sm.marks) AS mark_count
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                LEFT JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN teacher_subject_assignments tsa
+                  ON tsa.teacher_id = %s
+                 AND tsa.subject_id = sm.subject_id
+                 AND tsa.academic_level_id = COALESCE(st.academic_level_id, al_st.id)
+                WHERE sm.marks IS NOT NULL
+                GROUP BY sub.id, sub.subject_name, sub.subject_code
+                ORDER BY sub.subject_name
+                """,
+                (term_id, teacher_id),
+            )
+        except Exception:
+            cursor.execute(
+                """
+                SELECT sub.subject_name, sub.subject_code,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS mean_marks,
+                       COUNT(sm.marks) AS mark_count
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                INNER JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN teacher_subject_assignments tsa
+                  ON tsa.teacher_id = %s
+                 AND tsa.subject_id = sm.subject_id
+                 AND tsa.academic_level_id = al_st.id
+                WHERE sm.marks IS NOT NULL
+                GROUP BY sub.id, sub.subject_name, sub.subject_code
+                ORDER BY sub.subject_name
+                """,
+                (term_id, teacher_id),
+            )
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
                 mean_m = r.get('mean_marks')
@@ -5476,21 +5786,42 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
                 'mark_count': int(cnt or 0),
             })
 
-        cursor.execute(
-            """
-            SELECT st.academic_level_id, al.level_name,
-                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
-                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m, COUNT(*) AS cnt
-            FROM student_marks sm
-            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
-            INNER JOIN subjects sub ON sm.subject_id = sub.id
-            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
-            INNER JOIN academic_levels al ON al.id = st.academic_level_id
-            WHERE sm.marks IS NOT NULL
-            GROUP BY st.academic_level_id, al.level_name
-            """,
-            (term_id,),
-        )
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(st.academic_level_id, al_st.id) AS academic_level_id, al.level_name,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m, COUNT(*) AS cnt
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                LEFT JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN academic_levels al ON al.id = COALESCE(st.academic_level_id, al_st.id)
+                WHERE sm.marks IS NOT NULL
+                GROUP BY COALESCE(st.academic_level_id, al_st.id), al.level_name
+                """,
+                (term_id,),
+            )
+        except Exception:
+            cursor.execute(
+                """
+                SELECT al_st.id AS academic_level_id, al.level_name,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m, COUNT(*) AS cnt
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                INNER JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN academic_levels al ON al.id = al_st.id
+                WHERE sm.marks IS NOT NULL
+                GROUP BY al_st.id, al.level_name
+                """,
+                (term_id,),
+            )
         level_avgs = []
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
@@ -5536,22 +5867,45 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
                     'levels_compared': total_levels,
                 })
 
-        cursor.execute(
-            """
-            SELECT tsa.teacher_id,
-                   AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
-                       / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m
-            FROM student_marks sm
-            INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
-            INNER JOIN subjects sub ON sm.subject_id = sub.id
-            INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
-            INNER JOIN teacher_subject_assignments tsa
-              ON tsa.subject_id = sm.subject_id AND tsa.academic_level_id = st.academic_level_id
-            WHERE sm.marks IS NOT NULL
-            GROUP BY tsa.teacher_id
-            """,
-            (term_id,),
-        )
+        try:
+            cursor.execute(
+                """
+                SELECT tsa.teacher_id,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                LEFT JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN teacher_subject_assignments tsa
+                  ON tsa.subject_id = sm.subject_id
+                 AND tsa.academic_level_id = COALESCE(st.academic_level_id, al_st.id)
+                WHERE sm.marks IS NOT NULL
+                GROUP BY tsa.teacher_id
+                """,
+                (term_id,),
+            )
+        except Exception:
+            cursor.execute(
+                """
+                SELECT tsa.teacher_id,
+                       AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                           / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS avg_m
+                FROM student_marks sm
+                INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
+                INNER JOIN students st ON st.student_id = sm.student_id AND st.status = 'in session'
+                INNER JOIN academic_levels al_st
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al_st.level_name))
+                INNER JOIN teacher_subject_assignments tsa
+                  ON tsa.subject_id = sm.subject_id AND tsa.academic_level_id = al_st.id
+                WHERE sm.marks IS NOT NULL
+                GROUP BY tsa.teacher_id
+                """,
+                (term_id,),
+            )
         teacher_avgs = []
         for r in cursor.fetchall() or []:
             tid = r.get('teacher_id') if isinstance(r, dict) else (r[0] if r else None)
@@ -5631,7 +5985,7 @@ def dashboard_employee():
     teacher_class_timetable = []
     teacher_timetable_grid = {}
     teacher_exam_timetable = []
-    teacher_dashboard_analytics = {}
+    teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
     timetable_days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
     if is_teacher_view:
@@ -5742,19 +6096,22 @@ def dashboard_employee():
                         # Students table doesn't store academic_level_id; it stores a grade label in current_grade.
                         # Map "in session" counts to academic_levels via current_grade -> level_name.
                         in_session_by_level = {}
-                        cursor.execute("""
-                            SELECT al.id AS academic_level_id, COUNT(*) AS in_session_count
-                            FROM students st
-                            JOIN academic_levels al
-                              ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
-                            WHERE st.status = 'in session'
-                            GROUP BY al.id
-                        """)
-                        for row in (cursor.fetchall() or []):
-                            level_id = row.get('academic_level_id') if isinstance(row, dict) else (row[0] if len(row) > 0 else None)
-                            count_val = row.get('in_session_count', 0) if isinstance(row, dict) else (row[1] if len(row) > 1 else 0)
-                            if level_id is not None:
-                                in_session_by_level[level_id] = int(count_val or 0)
+                        try:
+                            cursor.execute("""
+                                SELECT al.id AS academic_level_id, COUNT(*) AS in_session_count
+                                FROM students st
+                                JOIN academic_levels al
+                                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
+                                WHERE st.status = 'in session'
+                                GROUP BY al.id
+                            """)
+                            for row in (cursor.fetchall() or []):
+                                level_id = row.get('academic_level_id') if isinstance(row, dict) else (row[0] if len(row) > 0 else None)
+                                count_val = row.get('in_session_count', 0) if isinstance(row, dict) else (row[1] if len(row) > 1 else 0)
+                                if level_id is not None:
+                                    in_session_by_level[level_id] = int(count_val or 0)
+                        except Exception as _isle:
+                            print(f"Teacher dashboard in_session_by_level skipped: {_isle}")
 
                         if current_term_id and teacher_id:
                             try:
@@ -5765,7 +6122,7 @@ def dashboard_employee():
                                 import traceback
                                 print(f"Error computing teacher dashboard analytics (early): {ae}")
                                 print(traceback.format_exc())
-                                teacher_dashboard_analytics = {}
+                                teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
 
                             cursor.execute("""
                                 SELECT DISTINCT t.id, t.day_of_week, t.time_slot, al.level_name,
@@ -14225,7 +14582,7 @@ def profile(role):
 
 @app.route('/settings/<role>')
 @login_required
-def settings(role):
+def settings(role, _from_timetable_page=False):
     """Settings page for each role"""
     role = (role or '').strip().lower().replace('-', ' ')
     user_role = session.get('role', '').lower()
@@ -14245,6 +14602,13 @@ def settings(role):
         if user_role not in schedule_management_roles:
             flash('You do not have permission to access this page.', 'error')
             return redirect(url_for('home'))
+
+        if not _from_timetable_page:
+            dest = employee_staff_settings_url('curriculum coordinator')
+            qs = request.query_string.decode('utf-8') if request.query_string else ''
+            if qs:
+                dest += ('&' if '?' in dest else '?') + qs
+            return redirect(dest)
 
         # Curriculum Coordinator settings (academic schedule management).
         connection = get_db_connection()
@@ -14441,6 +14805,14 @@ def settings(role):
     else:
         flash('Invalid role.', 'error')
         return redirect(url_for('home'))
+
+
+@app.route('/dashboard/employee/curriculum-timetable-settings')
+@login_required
+def curriculum_timetable_settings():
+    """Timetable / academic schedule profiles (canonical URL; legacy /settings/curriculum-coordinator redirects here)."""
+    return settings('curriculum coordinator', _from_timetable_page=True)
+
 
 # Profile Update Routes
 @app.route('/profile/employee/update', methods=['POST'])
@@ -14987,10 +15359,10 @@ def save_academic_coordinator_settings():
     finally:
         connection.close()
 
-    if return_to == 'academic-settings':
+    if return_to in ('academic-settings', 'academic-schedule-management'):
         if str(saved_profile_id).isdigit():
-            return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=saved_profile_id))
-        return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+            return redirect(url_for('academic_schedule_management', profile_id=saved_profile_id))
+        return redirect(url_for('academic_schedule_management'))
 
     if str(saved_profile_id).isdigit():
         return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=saved_profile_id))
@@ -15051,8 +15423,8 @@ def toggle_academic_coordinator_profile_status(profile_id):
     finally:
         connection.close()
 
-    if return_to == 'academic-settings':
-        return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=profile_id))
+    if return_to in ('academic-settings', 'academic-schedule-management'):
+        return redirect(url_for('academic_schedule_management', profile_id=profile_id))
     return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=profile_id))
 
 @app.route('/settings/curriculum-coordinator/delete/<int:profile_id>', methods=['POST'])
@@ -15082,16 +15454,16 @@ def delete_academic_coordinator_settings(profile_id):
 
             if profile_count <= 1:
                 flash('Cannot delete the only remaining schedule profile.', 'error')
-                if return_to == 'academic-settings':
-                    return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=profile_id))
+                if return_to in ('academic-settings', 'academic-schedule-management'):
+                    return redirect(url_for('academic_schedule_management', profile_id=profile_id))
                 return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=profile_id))
 
             cursor.execute("DELETE FROM academic_coordinator_settings WHERE id = %s", (profile_id,))
 
             if cursor.rowcount == 0:
                 flash('Schedule profile not found.', 'error')
-                if return_to == 'academic-settings':
-                    return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+                if return_to in ('academic-settings', 'academic-schedule-management'):
+                    return redirect(url_for('academic_schedule_management'))
                 return redirect(employee_staff_settings_url('curriculum coordinator'))
 
             cursor.execute("""
@@ -15113,10 +15485,10 @@ def delete_academic_coordinator_settings(profile_id):
     finally:
         connection.close()
 
-    if return_to == 'academic-settings':
+    if return_to in ('academic-settings', 'academic-schedule-management'):
         if next_profile_id:
-            return redirect(url_for('academic_settings', tab='academic-schedule-management', profile_id=next_profile_id))
-        return redirect(url_for('academic_settings', tab='academic-schedule-management'))
+            return redirect(url_for('academic_schedule_management', profile_id=next_profile_id))
+        return redirect(url_for('academic_schedule_management'))
 
     if next_profile_id:
         return redirect(employee_staff_settings_url('curriculum coordinator', profile_id=next_profile_id))
@@ -15645,8 +16017,114 @@ def system_settings():
                          login_settings=login_settings,
                          general_data=general_data)
 
+
+def _load_schedule_profiles_and_settings(cursor, selected_profile_id: str):
+    """Load schedule profile list + selected profile row for academic schedule management UI."""
+    schedule_settings = {}
+    schedule_profiles = []
+    try:
+        try:
+            cursor.execute("""
+                SELECT id, profile_name, applicable_levels, is_active
+                FROM academic_coordinator_settings
+                ORDER BY is_active DESC, updated_at DESC, id DESC
+            """)
+            has_is_active = True
+        except Exception:
+            cursor.execute("""
+                SELECT id, profile_name, applicable_levels
+                FROM academic_coordinator_settings
+                ORDER BY updated_at DESC, id DESC
+            """)
+            has_is_active = False
+        raw_profiles = cursor.fetchall() or []
+        for row in raw_profiles:
+            if isinstance(row, dict):
+                raw_levels = row.get('applicable_levels') or '[]'
+                profile_id = row.get('id')
+                profile_name = row.get('profile_name') or f'Profile {profile_id}'
+                is_active = bool(row.get('is_active')) if has_is_active else False
+            else:
+                raw_levels = row[2] if row[2] else '[]'
+                profile_id = row[0]
+                profile_name = row[1] if row[1] else f'Profile {profile_id}'
+                is_active = bool(row[3]) if has_is_active and len(row) > 3 else False
+            try:
+                parsed_levels = json.loads(raw_levels)
+            except Exception:
+                parsed_levels = []
+            schedule_profiles.append({
+                'id': profile_id,
+                'profile_name': profile_name,
+                'applicable_levels': parsed_levels,
+                'is_active': is_active
+            })
+
+        if selected_profile_id.isdigit():
+            selected_id = int(selected_profile_id)
+        elif schedule_profiles:
+            active_profile = next((p for p in schedule_profiles if p.get('is_active')), None)
+            selected_id = active_profile['id'] if active_profile else schedule_profiles[0]['id']
+        else:
+            selected_id = None
+        if selected_id:
+            cursor.execute("""
+                SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                FROM academic_coordinator_settings
+                WHERE id = %s
+                LIMIT 1
+            """, (selected_id,))
+        else:
+            cursor.execute("""
+                SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
+                FROM academic_coordinator_settings
+                ORDER BY updated_at DESC, id DESC
+                LIMIT 1
+            """)
+        srow = cursor.fetchone()
+        if srow:
+            if isinstance(srow, dict):
+                schedule_settings = dict(srow)
+                try:
+                    schedule_settings['applicable_levels'] = json.loads(schedule_settings.get('applicable_levels') or '[]')
+                except Exception:
+                    schedule_settings['applicable_levels'] = []
+                try:
+                    schedule_settings['class_times'] = json.loads(schedule_settings.get('class_time_allocation') or '[]')
+                except Exception:
+                    schedule_settings['class_times'] = []
+                try:
+                    schedule_settings['activities'] = json.loads(schedule_settings.get('activity_time_allocation') or '[]')
+                except Exception:
+                    schedule_settings['activities'] = []
+            else:
+                try:
+                    parsed_levels = json.loads(srow[3] if srow[3] else '[]')
+                except Exception:
+                    parsed_levels = []
+                try:
+                    parsed_class_times = json.loads(srow[4] if srow[4] else '[]')
+                except Exception:
+                    parsed_class_times = []
+                try:
+                    parsed_activities = json.loads(srow[6] if srow[6] else '[]')
+                except Exception:
+                    parsed_activities = []
+                schedule_settings = {
+                    'id': srow[0],
+                    'profile_name': srow[1] if srow[1] else '',
+                    'study_days': srow[2] if srow[2] else '',
+                    'applicable_levels': parsed_levels,
+                    'class_times': parsed_class_times,
+                    'class_duration': srow[5] if srow[5] else 60,
+                    'activities': parsed_activities
+                }
+    except Exception as e:
+        print(f"Note: schedule settings unavailable: {e}")
+    return schedule_settings, schedule_profiles
+
+
 @app.route('/dashboard/employee/academic-settings')
-@app.route('/dashboard/employee/academic-schedule-management')
 @login_required
 def academic_settings():
     """Academic settings page for accountants - shows only Academic Levels, Years, and Terms"""
@@ -15680,16 +16158,19 @@ def academic_settings():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     
+    if request.args.get('tab', '').strip().lower() == 'academic-schedule-management':
+        pid = request.args.get('profile_id', '').strip()
+        if pid.isdigit():
+            return redirect(employee_dashboard_path(f'academic-schedule-management?profile_id={pid}'))
+        return redirect(employee_dashboard_path('academic-schedule-management'))
+    
     # Get academic levels, academic years, and terms
     connection = get_db_connection()
     academic_levels = []
     academic_years = []
     terms = []
-    schedule_settings = {}
-    schedule_profiles = []
     current_academic_year = None
     today = datetime.now().date()
-    selected_profile_id = request.args.get('profile_id', '').strip()
     
     if connection:
         try:
@@ -15763,106 +16244,6 @@ def academic_settings():
                     print(f"Note: terms table may not exist yet: {e}")
                     terms = []
 
-                # Get schedule profiles and selected schedule settings
-                try:
-                    try:
-                        cursor.execute("""
-                            SELECT id, profile_name, applicable_levels, is_active
-                            FROM academic_coordinator_settings
-                            ORDER BY is_active DESC, updated_at DESC, id DESC
-                        """)
-                        has_is_active = True
-                    except Exception:
-                        cursor.execute("""
-                            SELECT id, profile_name, applicable_levels
-                            FROM academic_coordinator_settings
-                            ORDER BY updated_at DESC, id DESC
-                        """)
-                        has_is_active = False
-                    raw_profiles = cursor.fetchall() or []
-                    for row in raw_profiles:
-                        if isinstance(row, dict):
-                            raw_levels = row.get('applicable_levels') or '[]'
-                            profile_id = row.get('id')
-                            profile_name = row.get('profile_name') or f'Profile {profile_id}'
-                            is_active = bool(row.get('is_active')) if has_is_active else False
-                        else:
-                            raw_levels = row[2] if row[2] else '[]'
-                            profile_id = row[0]
-                            profile_name = row[1] if row[1] else f'Profile {profile_id}'
-                            is_active = bool(row[3]) if has_is_active and len(row) > 3 else False
-                        try:
-                            parsed_levels = json.loads(raw_levels)
-                        except Exception:
-                            parsed_levels = []
-                        schedule_profiles.append({
-                            'id': profile_id,
-                            'profile_name': profile_name,
-                            'applicable_levels': parsed_levels,
-                            'is_active': is_active
-                        })
-
-                    if selected_profile_id.isdigit():
-                        selected_id = int(selected_profile_id)
-                    elif schedule_profiles:
-                        active_profile = next((p for p in schedule_profiles if p.get('is_active')), None)
-                        selected_id = active_profile['id'] if active_profile else schedule_profiles[0]['id']
-                    else:
-                        selected_id = None
-                    if selected_id:
-                        cursor.execute("""
-                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
-                            FROM academic_coordinator_settings
-                            WHERE id = %s
-                            LIMIT 1
-                        """, (selected_id,))
-                    else:
-                        cursor.execute("""
-                            SELECT id, profile_name, study_days, applicable_levels, class_time_allocation, class_duration, activity_time_allocation
-                            FROM academic_coordinator_settings
-                            ORDER BY updated_at DESC, id DESC
-                            LIMIT 1
-                        """)
-                    srow = cursor.fetchone()
-                    if srow:
-                        if isinstance(srow, dict):
-                            schedule_settings = dict(srow)
-                            try:
-                                schedule_settings['applicable_levels'] = json.loads(schedule_settings.get('applicable_levels') or '[]')
-                            except Exception:
-                                schedule_settings['applicable_levels'] = []
-                            try:
-                                schedule_settings['class_times'] = json.loads(schedule_settings.get('class_time_allocation') or '[]')
-                            except Exception:
-                                schedule_settings['class_times'] = []
-                            try:
-                                schedule_settings['activities'] = json.loads(schedule_settings.get('activity_time_allocation') or '[]')
-                            except Exception:
-                                schedule_settings['activities'] = []
-                        else:
-                            try:
-                                parsed_levels = json.loads(srow[3] if srow[3] else '[]')
-                            except Exception:
-                                parsed_levels = []
-                            try:
-                                parsed_class_times = json.loads(srow[4] if srow[4] else '[]')
-                            except Exception:
-                                parsed_class_times = []
-                            try:
-                                parsed_activities = json.loads(srow[6] if srow[6] else '[]')
-                            except Exception:
-                                parsed_activities = []
-                            schedule_settings = {
-                                'id': srow[0],
-                                'profile_name': srow[1] if srow[1] else '',
-                                'study_days': srow[2] if srow[2] else '',
-                                'applicable_levels': parsed_levels,
-                                'class_times': parsed_class_times,
-                                'class_duration': srow[5] if srow[5] else 60,
-                                'activities': parsed_activities
-                            }
-                except Exception as e:
-                    print(f"Note: schedule settings unavailable: {e}")
         except Exception as e:
             print(f"Error fetching academic settings: {e}")
         finally:
@@ -15874,9 +16255,71 @@ def academic_settings():
                          terms=terms,
                          current_academic_year=current_academic_year,
                          today=today,
-                         role=user_role,
-                         schedule_settings=schedule_settings,
-                         schedule_profiles=schedule_profiles)
+                         role=user_role)
+
+@app.route('/dashboard/employee/academic-schedule-management')
+@login_required
+def academic_schedule_management():
+    """Academic schedule profiles: study days, class slots, and activities (standalone page)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_technician = user_role == 'technician'
+    has_view_fees_permission = check_permission_or_role(
+        'view_student_fees',
+        ['accountant', 'head of institution', 'deputy head of institution'],
+    )
+    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
+    has_coordinator_academic_access = check_permission_or_role(
+        'view_academic_levels',
+        ['curriculum coordinator'],
+    )
+    if not (
+        is_technician
+        or has_view_fees_permission
+        or has_manage_fees_permission
+        or has_coordinator_academic_access
+    ):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    selected_profile_id = request.args.get('profile_id', '').strip()
+    connection = get_db_connection()
+    academic_levels = []
+    schedule_settings = {}
+    schedule_profiles = []
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT id, level_category, level_name, level_description, level_status
+                    FROM academic_levels
+                    ORDER BY level_category, level_name ASC
+                """)
+                for row in cursor.fetchall() or []:
+                    academic_levels.append({
+                        'id': row.get('id') if isinstance(row, dict) else row[0],
+                        'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
+                        'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
+                        'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
+                        'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
+                    })
+                schedule_settings, schedule_profiles = _load_schedule_profiles_and_settings(
+                    cursor, selected_profile_id
+                )
+        except Exception as e:
+            print(f"Error fetching academic schedule management data: {e}")
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/academic_schedule_management.html',
+        role=user_role,
+        academic_levels=academic_levels,
+        schedule_settings=schedule_settings,
+        schedule_profiles=schedule_profiles,
+    )
+
 
 # Classes & Subjects Route (for academic coordinators)
 @app.route('/dashboard/employee/subject-class-allocation')
@@ -16679,7 +17122,8 @@ def exam_evaluation():
     subjects = []
     teachers = []
     exams = []
-    
+    registered_current_exam = None
+
     if connection:
         try:
             with connection.cursor() as cursor:
@@ -16703,16 +17147,25 @@ def exam_evaluation():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'year_name': row.get('year_name', '') if isinstance(row, dict) else row[1],
                         'start_date': start_date_str,
-                        'end_date': end_date_str
+                        'end_date': end_date_str,
+                        'is_current': bool(row.get('is_current')) if isinstance(row, dict) else (bool(row[5]) if len(row) > 5 else False),
                     })
                 
                 # Get terms
-                cursor.execute("""
-                    SELECT id, term_name, academic_year_id, start_date, end_date, status
-                    FROM terms
-                    WHERE status = 'active'
-                    ORDER BY start_date DESC
-                """)
+                try:
+                    cursor.execute("""
+                        SELECT id, term_name, academic_year_id, start_date, end_date, status, COALESCE(is_current, 0) AS is_current
+                        FROM terms
+                        WHERE status = 'active'
+                        ORDER BY start_date DESC
+                    """)
+                except Exception:
+                    cursor.execute("""
+                        SELECT id, term_name, academic_year_id, start_date, end_date, status
+                        FROM terms
+                        WHERE status = 'active'
+                        ORDER BY start_date DESC
+                    """)
                 terms_results = cursor.fetchall()
                 for row in terms_results:
                     start_date_val = row.get('start_date') if isinstance(row, dict) else (row[3] if len(row) > 3 else None)
@@ -16727,7 +17180,8 @@ def exam_evaluation():
                         'term_name': row.get('term_name', '') if isinstance(row, dict) else row[1],
                         'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else row[2],
                         'start_date': start_date_str,
-                        'end_date': end_date_str
+                        'end_date': end_date_str,
+                        'is_current': bool(row.get('is_current')) if isinstance(row, dict) else bool(row[6] if len(row) > 6 else False),
                     })
                 
                 # Get academic levels
@@ -16819,11 +17273,14 @@ def exam_evaluation():
                 
                 # Get existing exams (each row represents a subject allocation + supervisor)
                 try:
+                    ensure_exams_marks_lock_at_column(cursor)
+                    apply_marks_lock_deadline_auto_lock(cursor)
+                    connection.commit()
                     cursor.execute(f"""
                         SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
                                e.duration_minutes, e.venue, e.status,
                                e.academic_year_id, e.term_id,
-                               COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
+                               COALESCE(e.is_locked, 0) AS is_locked, e.locked_at, e.marks_lock_at,
                                e.academic_level_id, e.subject_id, e.supervisor_id,
                                al.level_name, al.level_category,
                                s.subject_name, s.subject_code,
@@ -16892,6 +17349,12 @@ def exam_evaluation():
                             locked_at_str = lat.strftime('%Y-%m-%d %H:%M:%S')
                         else:
                             locked_at_str = str(lat) if lat else None
+
+                        mla = row.get('marks_lock_at') if isinstance(row, dict) else None
+                        if mla and hasattr(mla, 'strftime'):
+                            marks_lock_at_str = mla.strftime('%Y-%m-%dT%H:%M:%S')
+                        else:
+                            marks_lock_at_str = str(mla) if mla else None
                         
                         exams.append({
                             'id': row.get('id') if isinstance(row, dict) else row[0],
@@ -16908,6 +17371,7 @@ def exam_evaluation():
                             'term_id': row.get('term_id') if isinstance(row, dict) else None,
                             'is_locked': is_locked_flag,
                             'locked_at': locked_at_str,
+                            'marks_lock_at': marks_lock_at_str,
                             'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else None,
                             'subject_id': row.get('subject_id') if isinstance(row, dict) else None,
                             'supervisor_id': row.get('supervisor_id') if isinstance(row, dict) else None,
@@ -16923,6 +17387,7 @@ def exam_evaluation():
                 except Exception as e:
                     print(f"Note: exams table may not exist yet: {e}")
                     exams = []
+                registered_current_exam = load_registered_current_exam_dict(cursor)
         except Exception as e:
             print(f"Error fetching exam data: {e}")
         finally:
@@ -16935,16 +17400,19 @@ def exam_evaluation():
         k: {'start': v[0][:5], 'end': v[1][:5]}
         for k, v in _default_exam_session_presets().items()
     }
-    try:
-        if connection:
-            with connection.cursor() as cursor:
+    conn_presets = get_db_connection()
+    if conn_presets:
+        try:
+            with conn_presets.cursor() as cursor:
                 p = _load_exam_session_presets_from_db(cursor)
                 session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in p.items()}
-    except Exception:
-        session_presets_ui = {
-            k: {'start': v[0][:5], 'end': v[1][:5]}
-            for k, v in _default_exam_session_presets().items()
-        }
+        except Exception:
+            session_presets_ui = {
+                k: {'start': v[0][:5], 'end': v[1][:5]}
+                for k, v in _default_exam_session_presets().items()
+            }
+        finally:
+            conn_presets.close()
 
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
@@ -16955,7 +17423,8 @@ def exam_evaluation():
                          teachers=teachers,
                          exams=exams,
                          open_edit_id=open_edit_id,
-                         session_presets=session_presets_ui)
+                         session_presets=session_presets_ui,
+                         registered_current_exam=registered_current_exam)
 
 
 @app.route('/dashboard/employee/exam-subject-settings', methods=['GET', 'POST'])
@@ -16984,6 +17453,88 @@ def exam_subject_settings():
     combine_hash_redirect = f"{settings_anchor}#combine-exam-subjects"
 
     if request.method == 'POST':
+        order_action = (request.form.get('exam_order_action') or '').strip().lower()
+        if order_action == 'save_order':
+            raw_json = (request.form.get('exam_column_order_json') or '').strip()
+            try:
+                slots = json.loads(raw_json)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                flash('Invalid column order payload.', 'error')
+                return redirect(f"{settings_anchor}#exam-column-order")
+            if not isinstance(slots, list) or not slots:
+                flash('No column order to save.', 'error')
+                return redirect(f"{settings_anchor}#exam-column-order")
+            try:
+                with connection.cursor() as cursor:
+                    ensure_subject_exam_display_order_columns(cursor)
+                    cursor.execute("SELECT id FROM subjects WHERE COALESCE(status, 'active') = 'active'")
+                    valid_sids = {
+                        int(r.get('id') if isinstance(r, dict) else r[0])
+                        for r in (cursor.fetchall() or [])
+                        if (r.get('id') if isinstance(r, dict) else r[0]) is not None
+                    }
+                    combos_loaded = fetch_subject_exam_combinations(cursor)
+                    valid_cids = {int(c['id']) for c in combos_loaded}
+                    member_of = set()
+                    combo_members = {}
+                    for c in combos_loaded:
+                        cid = int(c['id'])
+                        mids = [int(x) for x in (c.get('member_subject_ids') or [])]
+                        combo_members[cid] = mids
+                        for mid in mids:
+                            member_of.add(int(mid))
+                    for slot in slots:
+                        if not isinstance(slot, dict):
+                            raise ValueError('invalid slot')
+                        st = (slot.get('type') or '').strip().lower()
+                        sid = slot.get('id')
+                        try:
+                            sid_int = int(sid)
+                        except (TypeError, ValueError):
+                            raise ValueError('invalid id')
+                        if st not in ('subject', 'combo'):
+                            raise ValueError('invalid type')
+                        if st == 'subject' and sid_int in member_of:
+                            raise ValueError('subject is part of a combination')
+                        if st == 'subject' and sid_int not in valid_sids:
+                            raise ValueError('unknown subject')
+                        if st == 'combo' and sid_int not in valid_cids:
+                            raise ValueError('unknown combination')
+                    for i, slot in enumerate(slots):
+                        st = (slot.get('type') or '').strip().lower()
+                        sid_int = int(slot['id'])
+                        ordv = (i + 1) * 10
+                        if st == 'subject':
+                            cursor.execute(
+                                "UPDATE subjects SET exam_display_order = %s WHERE id = %s",
+                                (ordv, sid_int),
+                            )
+                        else:
+                            cursor.execute(
+                                "UPDATE subject_exam_combinations SET display_order = %s WHERE id = %s",
+                                (ordv, sid_int),
+                            )
+                            for mid in combo_members.get(sid_int, []):
+                                cursor.execute(
+                                    "UPDATE subjects SET exam_display_order = %s WHERE id = %s",
+                                    (ordv, mid),
+                                )
+                    connection.commit()
+                flash('Column order saved. Marks entry and reports use this order.', 'success')
+            except Exception as e:
+                print(f"exam_subject_settings save_order: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not save column order.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(f"{settings_anchor}#exam-column-order")
+
         combine_action = (request.form.get('combine_action') or '').strip().lower()
 
         if combine_action == 'delete':
@@ -17104,12 +17655,24 @@ def exam_subject_settings():
                     combo_id = cursor.lastrowid
                     totals_snapshot = normalize_subject_totals_for_exam_combination(cursor, sid_order)
                     cursor.execute(
+                        "SELECT COALESCE(MAX(COALESCE(display_order, 0)), 0) + 10 AS nx FROM subject_exam_combinations"
+                    )
+                    nxrow = cursor.fetchone()
+                    next_ord = int(
+                        (nxrow.get('nx') if isinstance(nxrow, dict) else (nxrow[0] if nxrow else 0)) or 0
+                    ) or 10
+                    cursor.execute(
                         """
                         UPDATE subject_exam_combinations
-                        SET totals_snapshot_json = %s
+                        SET totals_snapshot_json = %s, display_order = %s
                         WHERE id = %s
                         """,
-                        (json.dumps(totals_snapshot), combo_id),
+                        (json.dumps(totals_snapshot), next_ord, combo_id),
+                    )
+                    ph_ord = ','.join(['%s'] * len(sid_order))
+                    cursor.execute(
+                        f"UPDATE subjects SET exam_display_order = %s WHERE id IN ({ph_ord})",
+                        (next_ord,) + tuple(sid_order),
                     )
                     for order_idx, sid in enumerate(sid_order):
                         cursor.execute(
@@ -17200,31 +17763,60 @@ def exam_subject_settings():
         return redirect(employee_dashboard_path('exam-subject-settings'))
 
     subjects_rows = []
-    subjects_choices = []
+    subjects_by_category = []
     combinations_display = []
+    exam_column_order_slots = []
     try:
         with connection.cursor() as cursor:
             ensure_subject_exam_total_marks_column(cursor)
+            ensure_subject_exam_display_order_columns(cursor)
             ensure_subject_exam_combination_tables(cursor)
+            base_category_order = []
+            try:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT al.level_category AS lc
+                    FROM academic_levels al
+                    WHERE COALESCE(al.level_status, 'active') = 'active'
+                      AND TRIM(COALESCE(al.level_category, '')) <> ''
+                    ORDER BY al.level_category ASC
+                    """
+                )
+                for cr in cursor.fetchall() or []:
+                    lc = cr.get('lc') if isinstance(cr, dict) else cr[0]
+                    if lc and str(lc).strip():
+                        base_category_order.append(str(lc).strip())
+            except Exception:
+                base_category_order = []
+
             cursor.execute(
                 """
-                SELECT s.id, s.subject_name, s.subject_code, s.exam_total_marks
+                SELECT s.id, s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
+                       GROUP_CONCAT(DISTINCT al.level_category ORDER BY al.level_category SEPARATOR '|') AS cat_blob
                 FROM subjects s
+                LEFT JOIN subject_academic_levels sal ON sal.subject_id = s.id
+                LEFT JOIN academic_levels al ON al.id = sal.academic_level_id
+                    AND COALESCE(al.level_status, 'active') = 'active'
                 WHERE COALESCE(s.status, 'active') = 'active'
-                ORDER BY s.subject_name ASC
+                GROUP BY s.id, s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order
                 """
             )
+            _tmp_rows = []
             for row in cursor.fetchall() or []:
                 if isinstance(row, dict):
                     et = row.get('exam_total_marks')
                     sid = row.get('id')
                     sname = row.get('subject_name') or ''
                     scode = row.get('subject_code') or ''
+                    edo = row.get('exam_display_order')
+                    cat_blob = row.get('cat_blob') or ''
                 else:
                     et = row[3] if len(row) > 3 else None
                     sid = row[0]
                     sname = row[1] or ''
                     scode = row[2] or ''
+                    edo = row[4] if len(row) > 4 else None
+                    cat_blob = row[5] if len(row) > 5 else ''
                 et_f = float(et) if et is not None else None
                 mx = subject_exam_max_raw_marks(et_f)
                 if mx >= 50:
@@ -17234,29 +17826,69 @@ def exam_subject_settings():
                 if preview_raw <= 0:
                     preview_raw = 1.0
                 preview_pct = raw_mark_to_percentage(preview_raw, et_f)
-                subjects_rows.append(
+                seen_c = set()
+                level_categories = []
+                for part in str(cat_blob or '').split('|'):
+                    c = part.strip()
+                    if c and c not in seen_c:
+                        seen_c.add(c)
+                        level_categories.append(c)
+                assigned = None
+                for c in base_category_order:
+                    if c in seen_c:
+                        assigned = c
+                        break
+                if assigned is None:
+                    if level_categories:
+                        assigned = sorted(level_categories)[0]
+                    else:
+                        assigned = 'Uncategorized'
+                et_disp = subject_exam_max_raw_marks(et_f)
+                _tmp_rows.append(
                     {
                         'id': sid,
                         'subject_name': sname,
                         'subject_code': scode,
                         'exam_total_marks': et_f,
+                        'exam_display_order': int(edo) if edo is not None and str(edo).strip().isdigit() else (int(edo) if isinstance(edo, int) else None),
                         'effective_max': mx,
                         'preview_example_raw': preview_raw,
                         'preview_example_pct': preview_pct,
+                        'level_categories': level_categories,
+                        'group_category': assigned,
+                        'exam_total_marks_display': et_disp,
                     }
                 )
-            subjects_choices = [
+
+            by_cat = defaultdict(list)
+            for r in _tmp_rows:
+                by_cat[r['group_category']].append(r)
+            keys_set = set(by_cat.keys())
+            section_order = [k for k in base_category_order if k in keys_set]
+            section_order.extend(
+                sorted(k for k in keys_set if k not in section_order and k != 'Uncategorized')
+            )
+            if 'Uncategorized' in keys_set:
+                section_order.append('Uncategorized')
+            subjects_by_category = [
                 {
-                    'id': int(r['id']),
-                    'subject_name': r.get('subject_name') or '',
-                    'subject_code': r.get('subject_code') or '',
-                    'exam_total_marks_display': subject_exam_max_raw_marks(r.get('exam_total_marks')),
+                    'category': k,
+                    'subjects': sorted(
+                        by_cat[k],
+                        key=lambda x: (
+                            int(x.get('exam_display_order') or 10**9),
+                            str(x.get('subject_name') or '').lower(),
+                            int(x['id']),
+                        ),
+                    ),
                 }
-                for r in subjects_rows
+                for k in section_order
             ]
+            subjects_rows = [s for sec in subjects_by_category for s in sec['subjects']]
             sep = '/'
             name_map = {int(r['id']): r for r in subjects_rows}
-            for c in fetch_subject_exam_combinations(cursor):
+            combos_loaded = fetch_subject_exam_combinations(cursor)
+            for c in combos_loaded:
                 mids = c.get('member_subject_ids') or []
                 if len(mids) < 2:
                     continue
@@ -17281,12 +17913,14 @@ def exam_subject_settings():
                     'member_totals': totals,
                     'member_ids': mids,
                 })
+            exam_column_order_slots = _build_exam_column_order_slots(name_map, combos_loaded)
     except Exception as e:
         print(f"exam_subject_settings load: {e}")
         flash('Could not load subjects.', 'error')
         subjects_rows = []
-        subjects_choices = []
+        subjects_by_category = []
         combinations_display = []
+        exam_column_order_slots = []
     finally:
         try:
             connection.close()
@@ -17297,8 +17931,9 @@ def exam_subject_settings():
         'dashboards/exam_subject_settings.html',
         role=user_role,
         subjects_rows=subjects_rows,
-        subjects_choices=subjects_choices,
+        subjects_by_category=subjects_by_category,
         combinations_display=combinations_display,
+        exam_column_order_slots=exam_column_order_slots,
     )
 
 
@@ -17399,18 +18034,18 @@ def exam_timetable_settings():
                     parts = start.split(':')
                     if len(parts) < 2:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
+                        return redirect(employee_staff_settings_url('curriculum coordinator'))
                     try:
                         hh = int(parts[0]); mm = int(parts[1])
                     except Exception:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
+                        return redirect(employee_staff_settings_url('curriculum coordinator'))
                     if hh < 0 or hh > 23 or mm < 0 or mm > 59:
                         flash(f'{k.title()} start time must be HH:MM.', 'error')
-                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
+                        return redirect(employee_staff_settings_url('curriculum coordinator'))
                     if duration <= 0:
                         flash(f'{k.title()} duration must be greater than 0 minutes.', 'error')
-                        return redirect(employee_dashboard_path('settings/curriculum-coordinator'))
+                        return redirect(employee_staff_settings_url('curriculum coordinator'))
 
                     payload[k] = {'start': f"{hh:02d}:{mm:02d}", 'duration_minutes': duration}
 
@@ -17619,6 +18254,8 @@ def exam_evaluation_registered_detail():
         return redirect(url_for('exam_timetable') if is_teacher_effective else url_for('exam_evaluation'))
 
     exam_name_key = exam_name_raw.upper()
+    filter_exam_type = 'exam_type' in request.args
+    exam_type_key = (request.args.get('exam_type') or '').strip().upper() if filter_exam_type else None
     connection = get_db_connection()
     if not connection:
         flash('Database connection failed.', 'error')
@@ -17638,25 +18275,47 @@ def exam_evaluation_registered_detail():
             except Exception:
                 session_presets_ui = {k: {'start': v[0][:5], 'end': v[1][:5]} for k, v in _default_exam_session_presets().items()}
 
-            cursor.execute(f"""
-                SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
-                       e.duration_minutes, e.venue, e.status,
-                       e.academic_year_id, e.term_id,
-                       COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
-                       e.academic_level_id, e.subject_id, e.supervisor_id,
-                       al.level_name, al.level_category,
-                       s.subject_name, s.subject_code,
-                       ay.year_name, t.term_name,
-                       emp.full_name as supervisor_name, {_employee_staff_identity_sql('emp')} as supervisor_employee_id
-                FROM exams e
-                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
-                LEFT JOIN subjects s ON e.subject_id = s.id
-                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
-                LEFT JOIN terms t ON e.term_id = t.id
-                LEFT JOIN employees emp ON e.supervisor_id = emp.id
-                WHERE e.exam_name = %s AND e.academic_year_id = %s AND e.term_id = %s
-                ORDER BY al.level_name ASC, al.level_category ASC, e.exam_date ASC, e.start_time ASC, e.id ASC
-            """, (exam_name_key, academic_year_id, term_id))
+            if filter_exam_type:
+                cursor.execute(f"""
+                    SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
+                           e.duration_minutes, e.venue, e.status,
+                           e.academic_year_id, e.term_id,
+                           COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
+                           e.academic_level_id, e.subject_id, e.supervisor_id,
+                           al.level_name, al.level_category,
+                           s.subject_name, s.subject_code,
+                           ay.year_name, t.term_name,
+                           emp.full_name as supervisor_name, {_employee_staff_identity_sql('emp')} as supervisor_employee_id
+                    FROM exams e
+                    LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                    LEFT JOIN subjects s ON e.subject_id = s.id
+                    LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                    LEFT JOIN terms t ON e.term_id = t.id
+                    LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                    WHERE e.exam_name = %s AND e.academic_year_id = %s AND e.term_id = %s
+                      AND UPPER(TRIM(COALESCE(e.exam_type, ''))) = %s
+                    ORDER BY al.level_name ASC, al.level_category ASC, e.exam_date ASC, e.start_time ASC, e.id ASC
+                """, (exam_name_key, academic_year_id, term_id, exam_type_key))
+            else:
+                cursor.execute(f"""
+                    SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
+                           e.duration_minutes, e.venue, e.status,
+                           e.academic_year_id, e.term_id,
+                           COALESCE(e.is_locked, 0) AS is_locked, e.locked_at,
+                           e.academic_level_id, e.subject_id, e.supervisor_id,
+                           al.level_name, al.level_category,
+                           s.subject_name, s.subject_code,
+                           ay.year_name, t.term_name,
+                           emp.full_name as supervisor_name, {_employee_staff_identity_sql('emp')} as supervisor_employee_id
+                    FROM exams e
+                    LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                    LEFT JOIN subjects s ON e.subject_id = s.id
+                    LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                    LEFT JOIN terms t ON e.term_id = t.id
+                    LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                    WHERE e.exam_name = %s AND e.academic_year_id = %s AND e.term_id = %s
+                    ORDER BY al.level_name ASC, al.level_category ASC, e.exam_date ASC, e.start_time ASC, e.id ASC
+                """, (exam_name_key, academic_year_id, term_id))
             rows = cursor.fetchall()
 
             for row in rows:
@@ -17865,6 +18524,7 @@ def exam_evaluation_registered_detail():
         'academic_year_id': academic_year_id,
         'term_id': term_id,
         'exam_name': (r0.get('exam_name') or exam_name_key),
+        **({'exam_type': request.args.get('exam_type', '')} if filter_exam_type else {}),
     })
 
     analytics = _build_exam_registered_analytics_from_records(records)
@@ -17920,6 +18580,7 @@ def exam_evaluation_registered_analytics():
         'term_id': term_id,
         'exam_name': exam_name_raw,
         'erd_tab': 'analytics',
+        **({'exam_type': request.args.get('exam_type', '')} if 'exam_type' in request.args else {}),
     })
     return redirect(f"{employee_dashboard_path('exam-evaluation/registered')}?{q}")
 
@@ -19521,7 +20182,7 @@ def allocate_exam_supervisor():
 @app.route('/dashboard/employee/exam-evaluation/set-lock', methods=['POST'])
 @login_required
 def set_exam_lock():
-    """Lock or unlock all allocation rows for one exam (same name, year, term)."""
+    """Allocation lock (is_locked) and/or scheduled marks lock deadline (marks_lock_at) for one exam group."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
@@ -19534,16 +20195,49 @@ def set_exam_lock():
 
     data = request.get_json() or {}
     exam_name = (data.get('exam_name') or '').strip().upper()
-    locked_raw = data.get('locked')
     try:
         academic_year_id = int(data.get('academic_year_id', 0))
         term_id = int(data.get('term_id', 0))
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
 
-    if locked_raw is None:
-        return jsonify({'success': False, 'message': 'Missing locked flag'}), 400
-    locked = bool(locked_raw) if not isinstance(locked_raw, str) else locked_raw.lower() in ('1', 'true', 'yes')
+    has_locked = 'locked' in data
+    has_marks_lock = 'marks_lock_at' in data
+
+    if not has_locked and not has_marks_lock:
+        return jsonify({'success': False, 'message': 'Provide locked and/or marks_lock_at'}), 400
+
+    locked = None
+    if has_locked:
+        locked_raw = data.get('locked')
+        locked = bool(locked_raw) if not isinstance(locked_raw, str) else locked_raw.lower() in ('1', 'true', 'yes')
+
+    marks_lock_dt = None
+    marks_lock_clear = False
+    if has_marks_lock:
+        mla_raw = data.get('marks_lock_at')
+        if mla_raw is None or (isinstance(mla_raw, str) and not str(mla_raw).strip()):
+            marks_lock_clear = True
+        else:
+            s = str(mla_raw).strip().replace('Z', '+00:00')
+            try:
+                marks_lock_dt = datetime.fromisoformat(s)
+            except ValueError:
+                return jsonify({'success': False, 'message': 'Invalid marks_lock_at datetime'}), 400
+            if getattr(marks_lock_dt, 'tzinfo', None):
+                marks_lock_dt = marks_lock_dt.replace(tzinfo=None)
+
+    if has_locked and locked is False:
+        if not has_marks_lock or marks_lock_clear or marks_lock_dt is None:
+            return jsonify({
+                'success': False,
+                'message': 'Unlocking requires a marks-entry deadline (date and time in the future).',
+            }), 400
+        if marks_lock_dt <= datetime.now():
+            return jsonify({
+                'success': False,
+                'message': 'Marks-entry deadline must be in the future when unlocking.',
+            }), 400
 
     if not exam_name or academic_year_id <= 0 or term_id <= 0:
         return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
@@ -19552,23 +20246,39 @@ def set_exam_lock():
     if not connection:
         return jsonify({'success': False, 'message': 'Database connection failed'}), 500
 
-    lock_int = 1 if locked else 0
     try:
         with connection.cursor() as cursor:
-            cursor.execute("""
-                UPDATE exams SET
-                    is_locked = %s,
-                    locked_at = CASE WHEN %s = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
-                WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
-            """, (lock_int, lock_int, exam_name, academic_year_id, term_id))
-            n = cursor.rowcount
+            ensure_exams_marks_lock_at_column(cursor)
+            apply_marks_lock_deadline_auto_lock(cursor)
+            n = 0
+            if has_locked:
+                lock_int = 1 if locked else 0
+                cursor.execute("""
+                    UPDATE exams SET
+                        is_locked = %s,
+                        locked_at = CASE WHEN %s = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+                    WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                """, (lock_int, lock_int, exam_name, academic_year_id, term_id))
+                n = cursor.rowcount
+            if has_marks_lock:
+                cursor.execute("""
+                    UPDATE exams SET marks_lock_at = %s
+                    WHERE exam_name = %s AND academic_year_id = %s AND term_id = %s
+                """, (None if marks_lock_clear else marks_lock_dt, exam_name, academic_year_id, term_id))
+                n = max(n, cursor.rowcount)
             if n == 0:
                 return jsonify({'success': False, 'message': 'No allocations found for that exam'}), 404
             connection.commit()
+            msg_parts = []
+            if has_locked:
+                msg_parts.append('Exam allocations locked.' if locked else 'Exam allocations unlocked.')
+            if has_marks_lock:
+                msg_parts.append('Marks entry deadline cleared.' if marks_lock_clear else 'Marks entry deadline saved.')
             return jsonify({
                 'success': True,
-                'message': 'Exam locked.' if locked else 'Exam unlocked.',
-                'locked': locked,
+                'message': ' '.join(msg_parts) if msg_parts else 'Updated.',
+                **({'locked': locked} if has_locked else {}),
+                'marks_lock_at': None if marks_lock_clear else (marks_lock_dt.strftime('%Y-%m-%dT%H:%M:%S') if marks_lock_dt else None),
                 'updated': n
             })
     except Exception as e:
@@ -19580,6 +20290,96 @@ def set_exam_lock():
         except Exception:
             pass
         return jsonify({'success': False, 'message': f'Error updating lock: {str(e)}'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/exam-evaluation/set-registered-current-exam', methods=['POST'])
+@login_required
+def set_registered_current_exam():
+    """Persist school-wide 'current' registered exam (exam_name + exam_type + year + term) for defaults and UI."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+
+    if not (is_academic_coordinator or is_technician or is_principal):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    data = request.get_json() or {}
+    clear = bool(data.get('clear'))
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_registered_current_exam_column(cursor)
+            cursor.execute("SELECT id FROM school_settings ORDER BY id DESC LIMIT 1")
+            row = cursor.fetchone()
+            sid = row.get('id') if isinstance(row, dict) else (row[0] if row else None)
+            if not sid:
+                return jsonify({'success': False, 'message': 'School settings not initialized.'}), 400
+
+            if clear:
+                cursor.execute(
+                    "UPDATE school_settings SET registered_current_exam_json = NULL WHERE id = %s",
+                    (sid,),
+                )
+                connection.commit()
+                invalidate_school_settings_cache()
+                return jsonify({'success': True, 'message': 'School-wide current exam cleared.'})
+
+            exam_name = (data.get('exam_name') or '').strip().upper()
+            exam_type = (data.get('exam_type') or '').strip().upper()
+            try:
+                academic_year_id = int(data.get('academic_year_id', 0))
+                term_id = int(data.get('term_id', 0))
+            except (ValueError, TypeError):
+                return jsonify({'success': False, 'message': 'Invalid year or term'}), 400
+
+            if not exam_name or academic_year_id <= 0 or term_id <= 0:
+                return jsonify({'success': False, 'message': 'Missing exam name, academic year, or term'}), 400
+
+            cursor.execute(
+                """
+                SELECT 1 FROM exams
+                WHERE UPPER(TRIM(exam_name)) = %s
+                  AND academic_year_id = %s
+                  AND term_id = %s
+                  AND UPPER(TRIM(COALESCE(exam_type, ''))) = %s
+                LIMIT 1
+                """,
+                (exam_name, academic_year_id, term_id, exam_type),
+            )
+            if not cursor.fetchone():
+                return jsonify({'success': False, 'message': 'No registered exam matches that selection.'}), 404
+
+            payload = json.dumps({
+                'exam_name': exam_name,
+                'exam_type': exam_type,
+                'academic_year_id': academic_year_id,
+                'term_id': term_id,
+            })
+            cursor.execute(
+                "UPDATE school_settings SET registered_current_exam_json = %s WHERE id = %s",
+                (payload, sid),
+            )
+            connection.commit()
+            invalidate_school_settings_cache()
+            return jsonify({'success': True, 'message': 'School-wide current exam saved.'})
+    except Exception as e:
+        print(f"set_registered_current_exam: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': f'Error saving: {str(e)}'}), 500
     finally:
         connection.close()
 
@@ -23380,15 +24180,23 @@ def exam_analytics_detail(exam_id):
                     if subject_ids:
                         placeholders = ','.join(['%s'] * len(subject_ids))
                         cur_combo.execute(
-                            f"SELECT id, exam_total_marks, subject_code FROM subjects WHERE id IN ({placeholders})",
+                            f"""
+                            SELECT id, exam_total_marks, subject_code, exam_display_order
+                            FROM subjects WHERE id IN ({placeholders})
+                            """,
                             tuple(subject_ids),
                         )
                         for rr in (cur_combo.fetchall() or []):
                             sid = rr.get('id') if isinstance(rr, dict) else rr[0]
                             etm = rr.get('exam_total_marks') if isinstance(rr, dict) else (rr[1] if len(rr) > 1 else None)
                             sc = rr.get('subject_code') if isinstance(rr, dict) else (rr[2] if len(rr) > 2 else '')
+                            edo = rr.get('exam_display_order') if isinstance(rr, dict) else (rr[3] if len(rr) > 3 else None)
                             if sid is not None:
-                                exam_total_by_id[int(sid)] = {'exam_total_marks': etm, 'subject_code': sc or ''}
+                                exam_total_by_id[int(sid)] = {
+                                    'exam_total_marks': etm,
+                                    'subject_code': sc or '',
+                                    'exam_display_order': edo,
+                                }
                     slot_ids_by_subject = {int(s['subject_id']): list(s.get('slot_ids') or []) for s in distinct_subjects if s.get('subject_id') is not None}
 
                     subjects_for_merge = []
@@ -23402,6 +24210,7 @@ def exam_analytics_detail(exam_id):
                             'subject_name': s.get('subject_name') or '—',
                             'subject_code': extra.get('subject_code') or '',
                             'exam_total_marks': extra.get('exam_total_marks'),
+                            'exam_display_order': extra.get('exam_display_order'),
                         })
                     combos_loaded = fetch_subject_exam_combinations(cur_combo)
                     merged_rows = merge_subjects_with_exam_combinations(subjects_for_merge, combos_loaded) if subjects_for_merge else distinct_subjects
@@ -23417,7 +24226,7 @@ def exam_analytics_detail(exam_id):
                                 'is_combined': False,
                             })
                         else:
-                            member_ids = mr.get('columnMembers') or []
+                            member_ids = mr.get('member_subject_ids') or []
                             weights = []
                             for mid in member_ids:
                                 extra = exam_total_by_id.get(int(mid)) or {}
@@ -23910,12 +24719,16 @@ def students_by_academic_level(level_id):
     combination_column_members = {}
     current_year_id = None
     current_term_id = None
-    
+    registered_current_exam_pick = None
+
     if connection:
         try:
             with connection.cursor() as cursor:
                 ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_combination_tables(cursor)
+                ensure_exams_marks_lock_at_column(cursor)
+                registered_current_exam_pick = load_registered_current_exam_dict(cursor)
                 # Get academic level information
                 cursor.execute("""
                     SELECT id, level_category, level_name, level_description, level_status
@@ -23969,41 +24782,41 @@ def students_by_academic_level(level_id):
                 if is_teacher and teacher_id:
                     # Teacher: subjects from exams for this level that they are assigned to, else their assigned subjects
                     cursor.execute("""
-                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
+                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks, s.exam_display_order
                         FROM subjects s
                         INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
                         INNER JOIN teacher_subject_assignments tsa ON tsa.subject_id = s.id AND tsa.academic_level_id = %s AND tsa.teacher_id = %s
                         WHERE s.status = 'active'
-                        ORDER BY s.subject_name ASC
+                        ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
                     """, (level_id, level_id, teacher_id))
                     subjects_results = cursor.fetchall()
                     if not subjects_results:
                         cursor.execute("""
-                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks, s.exam_display_order
                             FROM subjects s
                             INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
                             WHERE tsa.academic_level_id = %s AND tsa.teacher_id = %s AND s.status = 'active'
-                            ORDER BY s.subject_name ASC
+                            ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
                         """, (level_id, teacher_id))
                         subjects_results = cursor.fetchall()
                 else:
                     # Non-teacher: subjects that appear in exams for this level (registered for exams)
                     cursor.execute("""
-                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
+                        SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks, s.exam_display_order
                         FROM subjects s
                         INNER JOIN exams e ON e.subject_id = s.id AND e.academic_level_id = %s
                         WHERE s.status = 'active'
-                        ORDER BY s.subject_name ASC
+                        ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
                     """, (level_id,))
                     subjects_results = cursor.fetchall()
                     if not subjects_results:
                         # Fallback: subjects allocated to this level via subject-class allocation
                         cursor.execute("""
-                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks
+                            SELECT DISTINCT s.id, s.subject_name, s.subject_code, s.description, s.status, s.exam_total_marks, s.exam_display_order
                             FROM subjects s
                             INNER JOIN teacher_subject_assignments tsa ON s.id = tsa.subject_id
                             WHERE tsa.academic_level_id = %s AND s.status = 'active'
-                            ORDER BY s.subject_name ASC
+                            ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC, s.subject_name ASC
                         """, (level_id,))
                         subjects_results = cursor.fetchall()
                 
@@ -24015,6 +24828,7 @@ def students_by_academic_level(level_id):
                         'description': row.get('description') if isinstance(row, dict) else row[3],
                         'status': row.get('status') if isinstance(row, dict) else row[4],
                         'exam_total_marks': row.get('exam_total_marks') if isinstance(row, dict) else (row[5] if len(row) > 5 else None),
+                        'exam_display_order': row.get('exam_display_order') if isinstance(row, dict) else (row[6] if len(row) > 6 else None),
                     })
 
                 subjects_flat = [{**s} for s in subjects]
@@ -24023,7 +24837,13 @@ def students_by_academic_level(level_id):
                     int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
                     for s in subjects_flat
                 }
-                subjects = merge_subjects_with_exam_combinations(subjects_flat, combinations_loaded)
+                # Teachers: one column per subject paper so marks can be entered separately, even when
+                # the same teacher is assigned to every member of an exam combination. Coordinators /
+                # principals / secretary still see merged synthetic columns (unified %).
+                if is_teacher and teacher_id:
+                    subjects = subjects_flat
+                else:
+                    subjects = merge_subjects_with_exam_combinations(subjects_flat, combinations_loaded)
                 
                 # Get exams for this academic level: unique by exam_name only (one row per exam name)
                 # For teachers, only show exams for their assigned subjects
@@ -24069,7 +24889,8 @@ def students_by_academic_level(level_id):
                                 SELECT e.exam_name, MIN(e.id) AS id,
                                        e.academic_year_id, e.term_id,
                                        MAX(e.exam_date) AS exam_date,
-                                       MAX(COALESCE(e.is_locked, 0)) AS is_locked
+                                       MAX(COALESCE(e.is_locked, 0)) AS is_locked,
+                                       MAX(e.marks_lock_at) AS marks_lock_at
                                 FROM exams e
                                 INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
                                     AND e.subject_id = tsa.subject_id
@@ -24081,20 +24902,21 @@ def students_by_academic_level(level_id):
                         else:
                             cursor.execute("""
                                 SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
-                                       MAX(COALESCE(is_locked, 0)) AS is_locked
+                                       MAX(COALESCE(is_locked, 0)) AS is_locked,
+                                       MAX(marks_lock_at) AS marks_lock_at
                                 FROM exams
                                 WHERE academic_level_id = %s
                                 GROUP BY exam_name, academic_year_id, term_id
                                 ORDER BY academic_year_id DESC, term_id DESC, exam_name ASC
                             """, (level_id,))
                     except Exception:
-                        # Backward compatibility when exams.is_locked is missing.
+                        # Backward compatibility when exams.is_locked / marks_lock_at is missing.
                         if is_teacher and teacher_id:
                             cursor.execute("""
                                 SELECT e.exam_name, MIN(e.id) AS id,
                                        e.academic_year_id, e.term_id,
                                        MAX(e.exam_date) AS exam_date,
-                                       0 AS is_locked
+                                       0 AS is_locked, NULL AS marks_lock_at
                                 FROM exams e
                                 INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id 
                                     AND e.subject_id = tsa.subject_id
@@ -24106,7 +24928,7 @@ def students_by_academic_level(level_id):
                         else:
                             cursor.execute("""
                                 SELECT exam_name, MIN(id) AS id, academic_year_id, term_id, MAX(exam_date) AS exam_date,
-                                       0 AS is_locked
+                                       0 AS is_locked, NULL AS marks_lock_at
                                 FROM exams
                                 WHERE academic_level_id = %s
                                 GROUP BY exam_name, academic_year_id, term_id
@@ -24117,13 +24939,19 @@ def students_by_academic_level(level_id):
                         exam_name = (row.get('exam_name', '') or '').strip() if isinstance(row, dict) else (row[0] or '').strip()
                         if not exam_name:
                             continue
+                        mla_raw = row.get('marks_lock_at') if isinstance(row, dict) else (row[6] if len(row) > 6 else None)
+                        if mla_raw and hasattr(mla_raw, 'strftime'):
+                            marks_lock_at_str = mla_raw.strftime('%Y-%m-%dT%H:%M:%S')
+                        else:
+                            marks_lock_at_str = str(mla_raw) if mla_raw else None
                         exams.append({
                             'id': row.get('id') if isinstance(row, dict) else row[1],
                             'exam_name': exam_name,
                             'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
                             'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
                             'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
-                            'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False)
+                            'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
+                            'marks_lock_at': marks_lock_at_str,
                         })
                 except Exception as e:
                     print(f"Error fetching exams: {e}")
@@ -24301,8 +25129,23 @@ def students_by_academic_level(level_id):
     # Default exam: prefer current year+term exam closest to today, else most recent in the same term, else first available
     selected_exam_id = None
     if exams:
+        def marks_entry_window_open(ex):
+            ml = ex.get('marks_lock_at')
+            if not ml:
+                return True
+            try:
+                raw = str(ml).strip().replace('Z', '').replace(' ', 'T')
+                dt = datetime.fromisoformat(raw[:19])
+                return datetime.now() < dt
+            except Exception:
+                return True
+
         unlocked_exams = [e for e in exams if not e.get('is_locked')]
-        exams_for_default = unlocked_exams if unlocked_exams else exams
+        if is_teacher:
+            open_marks = [e for e in unlocked_exams if marks_entry_window_open(e)]
+            exams_for_default = open_marks if open_marks else (unlocked_exams if unlocked_exams else exams)
+        else:
+            exams_for_default = unlocked_exams if unlocked_exams else exams
         selected = None
         current_scope_exams = [
             e for e in exams_for_default
@@ -24314,19 +25157,40 @@ def students_by_academic_level(level_id):
             if not selected:
                 current_scope_exams.sort(key=lambda x: ((x.get('exam_date') or ''), int(x.get('id') or 0)), reverse=True)
                 selected = current_scope_exams[0]
+        if not selected and registered_current_exam_pick:
+            rp = registered_current_exam_pick
+            want_name = (rp.get('exam_name') or '').strip().upper()
+            want_type = rp.get('exam_type')
+            pool_match = [
+                e for e in exams_for_default
+                if str((e.get('exam_name') or '').strip().upper()) == want_name
+                and str(e.get('academic_year_id')) == str(rp.get('academic_year_id'))
+                and str(e.get('term_id')) == str(rp.get('term_id'))
+                and (
+                    want_type is None
+                    or str((e.get('exam_type') or '').strip().upper()) == str(want_type)
+                )
+            ]
+            if pool_match:
+                pool_match.sort(key=lambda x: int(x.get('id') or 0))
+                selected = pool_match[0]
         if not selected:
             selected = exams_for_default[0]
         if selected:
             selected_exam_id = selected.get('id')
 
-    # Academic coordinators and principals can input/edit marks; teachers can edit for their level
-    can_edit = is_teacher or is_academic_coordinator or is_principal
+    # Teachers and principals may enter/edit marks. Curriculum coordinators (and secretary, etc.)
+    # can view the sheet and analytics-style totals but must not change marks here.
+    can_edit = is_teacher or is_principal
 
     subject_exam_max_map = dict(subject_exam_max_map_base)
     for s in subjects:
         if s.get('combination_id'):
             subject_exam_max_map[int(s['id'])] = 100.0
             combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
+
+    # Curriculum coordinator sheet: last summary column = sum of raw marks (each paper once), not mean %.
+    marks_summary_column = 'total_raw' if is_academic_coordinator else 'avg_pct'
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -24345,7 +25209,9 @@ def students_by_academic_level(level_id):
                          subject_grade_bands=subject_grade_bands,
                          subject_exam_max_map=subject_exam_max_map,
                          combination_column_members=combination_column_members,
-                         can_edit=can_edit)
+                         can_edit=can_edit,
+                         marks_summary_column=marks_summary_column,
+                         is_teacher=is_teacher)
 
 # API Endpoint to fetch marks filtered by exam
 @app.route('/dashboard/employee/exams-assessments/get-marks', methods=['POST'])
@@ -24423,19 +25289,26 @@ def get_marks_by_exam():
                         for subj_row in teacher_subjects:
                             teacher_subject_ids.append(subj_row.get('subject_id') if isinstance(subj_row, dict) else subj_row[0])
                     
+                    teacher_marks_readonly = False
+                    marks_lock_at_str = None
                     # Build query based on whether exam_id is provided
                     if exam_id:
-                        cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
-                        exlock = cursor.fetchone()
-                        if not exlock:
+                        ensure_exams_marks_lock_at_column(cursor)
+                        max_il, mla = _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id)
+                        cursor.execute("SELECT 1 FROM exams WHERE id = %s LIMIT 1", (exam_id,))
+                        if not cursor.fetchone():
                             return jsonify({'success': False, 'message': 'Exam not found.'}), 404
-                        el = exlock.get('il') if isinstance(exlock, dict) else exlock[0]
-                        if el:
+                        if max_il:
                             return jsonify({
                                 'success': False,
                                 'message': 'This exam is locked. Marks cannot be viewed or edited.',
                                 'locked': True
                             }), 403
+                        teacher_marks_readonly = bool(is_teacher and _marks_lock_deadline_passed(mla))
+                        if mla and hasattr(mla, 'strftime'):
+                            marks_lock_at_str = mla.strftime('%Y-%m-%dT%H:%M:%S')
+                        elif mla:
+                            marks_lock_at_str = str(mla)
                         # Resolve all exam row IDs belonging to the same logical exam group
                         # (same level + name + year + term). Different roles can receive a different
                         # representative ID for the same group, so we must load by group IDs.
@@ -24581,7 +25454,11 @@ def get_marks_by_exam():
                         'success': True,
                         'marks': student_marks,
                         'subject_exam_max': subject_exam_max_payload,
-                        'message': 'Marks fetched successfully'
+                        'message': 'Marks fetched successfully',
+                        **({
+                            'teacher_marks_readonly': teacher_marks_readonly,
+                            'marks_lock_at': marks_lock_at_str,
+                        } if exam_id else {}),
                     })
             except Exception as e:
                 print(f"Error fetching marks: {e}")
@@ -24634,11 +25511,13 @@ def get_exams_for_filters():
         try:
             exams = []
             with connection.cursor() as cursor:
+                ensure_exams_marks_lock_at_column(cursor)
                 try:
                     if is_teacher and teacher_id:
                         cursor.execute("""
                             SELECT e.exam_name, MIN(e.id) AS id, e.academic_year_id, e.term_id,
-                                   MAX(e.exam_date) AS exam_date, MAX(COALESCE(e.is_locked, 0)) AS is_locked
+                                   MAX(e.exam_date) AS exam_date, MAX(COALESCE(e.is_locked, 0)) AS is_locked,
+                                   MAX(e.marks_lock_at) AS marks_lock_at
                             FROM exams e
                             INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id
                                 AND e.subject_id = tsa.subject_id
@@ -24652,7 +25531,8 @@ def get_exams_for_filters():
                     else:
                         cursor.execute("""
                             SELECT exam_name, MIN(id) AS id, academic_year_id, term_id,
-                                   MAX(exam_date) AS exam_date, MAX(COALESCE(is_locked, 0)) AS is_locked
+                                   MAX(exam_date) AS exam_date, MAX(COALESCE(is_locked, 0)) AS is_locked,
+                                   MAX(marks_lock_at) AS marks_lock_at
                             FROM exams
                             WHERE academic_level_id = %s
                               AND academic_year_id = %s
@@ -24661,11 +25541,12 @@ def get_exams_for_filters():
                             ORDER BY MAX(exam_date) DESC, exam_name ASC
                         """, (level_id, academic_year_id, term_id))
                 except Exception:
-                    # Backward compatibility: older DBs may not have exams.is_locked yet.
+                    # Backward compatibility: older DBs may not have marks_lock_at yet.
                     if is_teacher and teacher_id:
                         cursor.execute("""
                             SELECT e.exam_name, MIN(e.id) AS id, e.academic_year_id, e.term_id,
-                                   MAX(e.exam_date) AS exam_date, 0 AS is_locked
+                                   MAX(e.exam_date) AS exam_date, MAX(COALESCE(e.is_locked, 0)) AS is_locked,
+                                   NULL AS marks_lock_at
                             FROM exams e
                             INNER JOIN teacher_subject_assignments tsa ON e.academic_level_id = tsa.academic_level_id
                                 AND e.subject_id = tsa.subject_id
@@ -24679,7 +25560,8 @@ def get_exams_for_filters():
                     else:
                         cursor.execute("""
                             SELECT exam_name, MIN(id) AS id, academic_year_id, term_id,
-                                   MAX(exam_date) AS exam_date, 0 AS is_locked
+                                   MAX(exam_date) AS exam_date, MAX(COALESCE(is_locked, 0)) AS is_locked,
+                                   NULL AS marks_lock_at
                             FROM exams
                             WHERE academic_level_id = %s
                               AND academic_year_id = %s
@@ -24692,6 +25574,11 @@ def get_exams_for_filters():
                     exam_name = (row.get('exam_name', '') if isinstance(row, dict) else row[0]) or ''
                     if not exam_name.strip():
                         continue
+                    mla_raw = row.get('marks_lock_at') if isinstance(row, dict) else (row[6] if len(row) > 6 else None)
+                    if mla_raw and hasattr(mla_raw, 'strftime'):
+                        marks_lock_at_str = mla_raw.strftime('%Y-%m-%dT%H:%M:%S')
+                    else:
+                        marks_lock_at_str = str(mla_raw) if mla_raw else None
                     exams.append({
                         'id': row.get('id') if isinstance(row, dict) else row[1],
                         'exam_name': exam_name.strip(),
@@ -24699,6 +25586,7 @@ def get_exams_for_filters():
                         'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
                         'exam_date': str(row.get('exam_date')) if isinstance(row, dict) and row.get('exam_date') else (str(row[4]) if len(row) > 4 and row[4] else ''),
                         'is_locked': bool(row.get('is_locked')) if isinstance(row, dict) else bool(row[5] if len(row) > 5 else False),
+                        'marks_lock_at': marks_lock_at_str,
                     })
 
             return jsonify({'success': True, 'exams': exams})
@@ -24717,11 +25605,10 @@ def save_marks():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role == 'teachers' or viewing_as_role == 'teacher'
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
     
-    # Teachers, academic coordinators, and principals can save marks
-    if not (is_teacher or is_academic_coordinator or is_principal):
+    # Teachers and principals can save marks. Curriculum coordinators are view-only on this workflow.
+    if not (is_teacher or is_principal):
         return jsonify({'success': False, 'message': 'You do not have permission to save marks.'}), 403
     
     # Get teacher ID (only used when user is a teacher, for assignment check)
@@ -24754,19 +25641,25 @@ def save_marks():
         try:
             with connection.cursor() as cursor:
                 ensure_subject_exam_total_marks_column(cursor)
-                cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
-                ex_row = cursor.fetchone()
-                if not ex_row:
+                cursor.execute("SELECT 1 FROM exams WHERE id = %s LIMIT 1", (exam_id,))
+                if not cursor.fetchone():
                     return jsonify({'success': False, 'message': 'Exam not found.'}), 404
-                ex_il = ex_row.get('il') if isinstance(ex_row, dict) else ex_row[0]
-                if ex_il:
+                ensure_exams_marks_lock_at_column(cursor)
+                max_il, mla = _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id)
+                if max_il:
                     return jsonify({
                         'success': False,
                         'message': 'This exam is locked. Marks cannot be changed.',
                         'locked': True
                     }), 403
+                if is_teacher and _marks_lock_deadline_passed(mla):
+                    return jsonify({
+                        'success': False,
+                        'message': 'The marks entry period for this exam is over. Contact the curriculum office if you need changes.',
+                        'marks_period_closed': True,
+                    }), 403
 
-                # Teachers must be assigned to this subject and level; coordinators/principals can save any
+                # Teachers must be assigned to this subject and level; principals can save any
                 if is_teacher and teacher_id:
                     cursor.execute("""
                         SELECT id FROM teacher_subject_assignments
@@ -24893,10 +25786,9 @@ def save_combination_marks():
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
 
     is_teacher = user_role == 'teachers' or user_role == 'teacher' or viewing_as_role in ('teachers', 'teacher')
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
 
-    if not (is_teacher or is_academic_coordinator or is_principal):
+    if not (is_teacher or is_principal):
         return jsonify({'success': False, 'message': 'You do not have permission to save marks.'}), 403
 
     teacher_id = None
@@ -24931,18 +25823,25 @@ def save_combination_marks():
         try:
             with connection.cursor() as cursor:
                 ensure_subject_exam_total_marks_column(cursor)
+                ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_combination_tables(cursor)
 
-                cursor.execute("SELECT COALESCE(is_locked, 0) AS il FROM exams WHERE id = %s", (exam_id,))
-                ex_row = cursor.fetchone()
-                if not ex_row:
+                cursor.execute("SELECT 1 FROM exams WHERE id = %s LIMIT 1", (exam_id,))
+                if not cursor.fetchone():
                     return jsonify({'success': False, 'message': 'Exam not found.'}), 404
-                ex_il = ex_row.get('il') if isinstance(ex_row, dict) else ex_row[0]
-                if ex_il:
+                ensure_exams_marks_lock_at_column(cursor)
+                max_il, mla = _exam_group_max_is_locked_and_marks_lock_at(cursor, exam_id)
+                if max_il:
                     return jsonify({
                         'success': False,
                         'message': 'This exam is locked. Marks cannot be changed.',
                         'locked': True,
+                    }), 403
+                if is_teacher and _marks_lock_deadline_passed(mla):
+                    return jsonify({
+                        'success': False,
+                        'message': 'The marks entry period for this exam is over. Contact the curriculum office if you need changes.',
+                        'marks_period_closed': True,
                     }), 403
 
                 cursor.execute("""
@@ -25177,6 +26076,7 @@ def reports():
         if connection:
             try:
                 with connection.cursor() as cursor:
+                    ensure_subject_exam_display_order_columns(cursor)
                     stats_snapshot = _fetch_reports_snapshot_counts(cursor)
                     cursor.execute("""
                         SELECT al.id, al.level_name, al.level_category,
@@ -25218,17 +26118,23 @@ def reports():
     academic_year_id = request.args.get('academic_year_id', type=int)
     has_term_param = 'term_id' in request.args
     has_year_param = 'academic_year_id' in request.args
-    
+    has_exam_i_param = 'exam_i' in request.args
+
     academic_levels = []
     terms = []
     academic_years = []
     report_data = None  # {level_id: {level_name, subjects: [...], class_mean, student_count}}
     stats_snapshot = {'active_students': 0, 'teachers': 0, 'subjects': 0}
-    
+    exam_group_options = []
+    selected_exam_i = -1
+    registered_current_exam = None
+    exam_filter_name_only = False
+
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_subject_exam_display_order_columns(cursor)
                 stats_snapshot = _fetch_reports_snapshot_counts(cursor)
                 # Get academic levels
                 cursor.execute("""
@@ -25281,16 +26187,100 @@ def reports():
                         terms_for_year = list(terms)
                     current_term = next((t for t in terms_for_year if str(t.get('status') or '').strip().lower() == 'current'), None)
                     term_id = (current_term or terms_for_year[0]).get('id')
-                
+
+                registered_current_exam = load_registered_current_exam_dict(cursor)
+                exam_group_options = []
+                try:
+                    cursor.execute("""
+                        SELECT DISTINCT TRIM(e.exam_name) AS en, TRIM(COALESCE(e.exam_type, '')) AS et
+                        FROM exams e
+                        WHERE (%s IS NULL OR e.academic_year_id = %s)
+                          AND (%s IS NULL OR e.term_id = %s)
+                          AND TRIM(COALESCE(e.exam_name, '')) <> ''
+                        ORDER BY en ASC, et ASC
+                    """, (academic_year_id, academic_year_id, term_id, term_id))
+                    for row in cursor.fetchall() or []:
+                        en = (row.get('en') if isinstance(row, dict) else row[0]) or ''
+                        et = (row.get('et') if isinstance(row, dict) else row[1]) or ''
+                        exam_group_options.append({
+                            'exam_name': str(en).strip(),
+                            'exam_type': str(et).strip(),
+                        })
+                except Exception as _eg:
+                    print(f"reports exam_group_options: {_eg}")
+                    exam_group_options = []
+
+                reg = registered_current_exam
+                if has_exam_i_param:
+                    try:
+                        selected_exam_i = int((request.args.get('exam_i') or '-1').strip())
+                    except (TypeError, ValueError):
+                        selected_exam_i = -1
+                    if selected_exam_i < -1 or selected_exam_i >= len(exam_group_options):
+                        selected_exam_i = -1
+                    exam_filter_name_only = False
+                else:
+                    selected_exam_i = -1
+                    exam_filter_name_only = False
+                    if reg and academic_year_id and term_id:
+                        try:
+                            if int(reg.get('academic_year_id') or 0) == int(academic_year_id) and int(reg.get('term_id') or 0) == int(term_id):
+                                want_n = (reg.get('exam_name') or '').strip().upper()
+                                want_typ = reg.get('exam_type')
+                                for i, opt in enumerate(exam_group_options):
+                                    on = (opt.get('exam_name') or '').strip().upper()
+                                    ot = (opt.get('exam_type') or '').strip().upper()
+                                    if on != want_n:
+                                        continue
+                                    if want_typ is None:
+                                        selected_exam_i = i
+                                        exam_filter_name_only = True
+                                        break
+                                    if ot == (want_typ or '').strip().upper():
+                                        selected_exam_i = i
+                                        exam_filter_name_only = False
+                                        break
+                        except (TypeError, ValueError):
+                            pass
+
+                if reg:
+                    rn = (reg.get('exam_name') or '').strip().upper()
+                    rt = reg.get('exam_type')
+                    for opt in exam_group_options:
+                        on = (opt.get('exam_name') or '').strip().upper()
+                        ot = (opt.get('exam_type') or '').strip().upper()
+                        if on != rn:
+                            opt['is_school_current'] = False
+                            continue
+                        if rt is None:
+                            opt['is_school_current'] = True
+                        else:
+                            opt['is_school_current'] = (ot == (rt or '').strip().upper())
+                else:
+                    for opt in exam_group_options:
+                        opt['is_school_current'] = False
+
+                exam_extra_sql = ""
+                exam_extra_params = []
+                if 0 <= selected_exam_i < len(exam_group_options):
+                    opt = exam_group_options[selected_exam_i]
+                    nm = (opt.get('exam_name') or '').strip().upper()
+                    exam_extra_sql = " AND UPPER(TRIM(e.exam_name)) = %s "
+                    exam_extra_params.append(nm)
+                    if not exam_filter_name_only:
+                        tt = (opt.get('exam_type') or '').strip().upper()
+                        exam_extra_sql += " AND UPPER(TRIM(COALESCE(e.exam_type, ''))) = %s "
+                        exam_extra_params.append(tt)
+
                 # Build report if filters provided
                 if level_id or term_id or academic_year_id:
                     levels_to_report = [l for l in academic_levels if not level_id or l['id'] == level_id]
                     report_data = []
-                    
+
                     for lev in levels_to_report:
                         level_name = lev['level_name']
-                        # Get exams for this level (optionally filtered by term/year)
-                        cursor.execute("""
+                        # Get exams for this level (optionally filtered by term/year/exam group)
+                        cursor.execute(f"""
                             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
                                    s.subject_name, s.subject_code, ay.year_name, t.term_name
                             FROM exams e
@@ -25300,8 +26290,9 @@ def reports():
                             WHERE e.academic_level_id = %s
                             AND (%s IS NULL OR e.term_id = %s)
                             AND (%s IS NULL OR e.academic_year_id = %s)
+                            {exam_extra_sql}
                             ORDER BY e.exam_name, s.subject_name
-                        """, (lev['id'], term_id, term_id, academic_year_id, academic_year_id))
+                        """, (lev['id'], term_id, term_id, academic_year_id, academic_year_id, *exam_extra_params))
                         exam_rows = cursor.fetchall() or []
                         
                         # Group by subject - each exam slot is one subject
@@ -25374,13 +26365,22 @@ def reports():
                             })
                         
                         class_mean = round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
-                        
+                        pass_n = sum(1 for m in all_marks_for_class if m >= 50)
+                        class_pass_rate = (
+                            round(100 * pass_n / len(all_marks_for_class), 1) if all_marks_for_class else 0
+                        )
+                        class_max = round(max(all_marks_for_class), 2) if all_marks_for_class else None
+                        class_min = round(min(all_marks_for_class), 2) if all_marks_for_class else None
+
                         report_data.append({
                             'level_id': lev['id'],
                             'level_name': level_name,
                             'level_category': lev.get('level_category', ''),
                             'subjects': subject_list,
                             'class_mean': class_mean,
+                            'class_max': class_max,
+                            'class_min': class_min,
+                            'class_pass_rate': class_pass_rate,
                             'student_count': len(students_in_class),
                             'total_marks_entries': len(all_marks_for_class),
                         })
@@ -25401,7 +26401,11 @@ def reports():
         selected_level_id=level_id,
         selected_term_id=term_id,
         selected_academic_year_id=academic_year_id,
+        selected_exam_i=selected_exam_i,
+        exam_group_options=exam_group_options,
+        registered_current_exam=registered_current_exam,
         stats_snapshot=stats_snapshot,
+        sidebar_hide_accounts_fees=is_academic_coordinator,
     )
 
 
@@ -26362,9 +27366,18 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
         class_mean = (
             round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
         )
+        pass_n = sum(1 for m in all_marks_for_class if m >= 50)
+        class_pass_rate = (
+            round(100 * pass_n / len(all_marks_for_class), 1) if all_marks_for_class else 0
+        )
+        class_max = round(max(all_marks_for_class), 2) if all_marks_for_class else None
+        class_min = round(min(all_marks_for_class), 2) if all_marks_for_class else None
         return {
             'subjects': subject_list,
             'class_mean': class_mean,
+            'class_max': class_max,
+            'class_min': class_min,
+            'class_pass_rate': class_pass_rate,
             'student_count': len(students_in_class),
             'total_marks_entries': len(all_marks_for_class),
         }
@@ -26373,6 +27386,9 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
         return {
             'subjects': [],
             'class_mean': 0,
+            'class_max': None,
+            'class_min': None,
+            'class_pass_rate': 0,
             'student_count': 0,
             'total_marks_entries': 0,
         }
@@ -26431,6 +27447,11 @@ def _coerce_academic_report_filters(f):
     else:
         out['exam_name'] = str(exam_name).strip() or None
     out['exam_names'] = exam_names
+    et = f.get('exam_type')
+    if et is None or et == '' or et == 'null':
+        out['exam_type'] = None
+    else:
+        out['exam_type'] = str(et).strip() or None
     for dk in ('date_from', 'date_to'):
         dv = f.get(dk)
         if dv is None or dv == '' or dv == 'null':
@@ -26701,7 +27722,13 @@ def _build_exam_marks_by_student(rows):
         by_sid[sid]['level_name'] = r.get('level_name') or ''
         by_sid[sid]['marks'].append(r)
     for sid in by_sid:
-        by_sid[sid]['marks'].sort(key=lambda x: (x.get('exam_date') or '', x.get('subject_name') or ''))
+        by_sid[sid]['marks'].sort(
+            key=lambda x: (
+                x.get('exam_date') or '',
+                int(x.get('exam_display_order') or 1000000000),
+                str(x.get('subject_name') or ''),
+            )
+        )
     ordered = sorted(by_sid.items(), key=lambda x: ((x[1]['full_name'] or x[0] or '').lower(), x[0]))
     return [{'student_id': sid, **data} for sid, data in ordered]
 
@@ -26790,6 +27817,7 @@ def _build_academic_report_payload(cursor, report_type, f):
     exam_name = _str_opt(f.get('exam_name'))
     if not exam_name and exam_names:
         exam_name = exam_names[0]
+    exam_type_f = _str_opt(f.get('exam_type'))
     date_from = _str_opt(f.get('date_from'))
     date_to = _str_opt(f.get('date_to'))
 
@@ -26808,10 +27836,19 @@ def _build_academic_report_payload(cursor, report_type, f):
 
     def _exam_name_clause_and_params():
         if exam_names:
-            placeholders = ','.join(['%s'] * len(exam_names))
-            return f" AND e.exam_name IN ({placeholders})", list(exam_names)
+            upex = [str(x).strip() for x in exam_names if str(x).strip()]
+            if not upex:
+                return "", []
+            placeholders = ','.join(['%s'] * len(upex))
+            return f" AND UPPER(TRIM(e.exam_name)) IN ({placeholders})", [x.upper() for x in upex]
         if exam_name:
-            return " AND e.exam_name = %s", [exam_name]
+            en = str(exam_name).strip()
+            if exam_type_f:
+                return (
+                    " AND UPPER(TRIM(e.exam_name)) = UPPER(TRIM(%s)) AND UPPER(TRIM(COALESCE(e.exam_type, ''))) = %s",
+                    [en, exam_type_f.strip().upper()],
+                )
+            return " AND UPPER(TRIM(e.exam_name)) = UPPER(TRIM(%s))", [en]
         return "", []
 
     def _load_grade_bands_for_reports():
@@ -26975,6 +28012,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         'teacher': teacher_name or ('Not selected' if not teacher_id else f"Teacher ID {teacher_id}"),
         'student_id': student_id or 'All students',
         'exam_name': exam_name or 'All exams',
+        'exam_type': (exam_type_f or '') if exam_name else '',
         'date_from': date_from or 'Auto / not set',
         'date_to': date_to or 'Auto / not set',
         'timetable_view': 'Teacher view' if timetable_view == 'teacher' else 'Student view',
@@ -27174,6 +28212,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['grade_bands'] = default_grade_bands
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
+                   TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
                    sm.marks, COALESCE(st.profile_image, '') AS profile_image
@@ -27186,6 +28225,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         """
         q_no_image = """
             SELECT st.student_id, st.full_name, al.level_name,
+                   TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
                    sm.marks
@@ -27229,26 +28269,31 @@ def _build_academic_report_payload(cursor, report_type, f):
         grouped = {}
         subject_names_set = set()
         for r in cursor.fetchall() or []:
-            admission_number = r.get('student_id') if isinstance(r, dict) else r[0]
-            full_name = r.get('full_name') if isinstance(r, dict) else r[1]
-            level_nm = r.get('level_name') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
-            subject_name = r.get('subject_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else '')
-            subject_code = r.get('subject_code') if isinstance(r, dict) else (r[4] if len(r) > 4 else '')
-            mark_val = _float_marks(r.get('marks') if isinstance(r, dict) else (r[5] if len(r) > 5 else None))
-            if include_profile_image:
-                if isinstance(r, dict):
-                    raw_pf = str(r.get('profile_image') or '').strip()
-                else:
-                    raw_pf = str(r[6] if len(r) > 6 else '').strip()
+            if isinstance(r, dict):
+                admission_number = r.get('student_id')
+                full_name = r.get('full_name')
+                level_nm = r.get('level_name')
+                cur_grade = str(r.get('current_grade') or '').strip()
+                subject_name = r.get('subject_name')
+                subject_code = r.get('subject_code')
+                mark_val = _float_marks(r.get('marks'))
+                raw_pf = str(r.get('profile_image') or '').strip() if include_profile_image else ''
             else:
-                raw_pf = ''
-            # Prefer full subject name for column labels (codes are still available elsewhere if needed)
+                admission_number = r[0] if len(r) > 0 else None
+                full_name = r[1] if len(r) > 1 else None
+                level_nm = r[2] if len(r) > 2 else None
+                cur_grade = str(r[3]).strip() if len(r) > 3 and r[3] is not None else ''
+                subject_name = r[4] if len(r) > 4 else None
+                subject_code = r[5] if len(r) > 5 else None
+                mark_val = _float_marks(r[6] if len(r) > 6 else None)
+                raw_pf = str(r[7]).strip() if include_profile_image and len(r) > 7 else ''
             subject_label = str(subject_name or '').strip() or str(subject_code or '').strip() or 'SUBJECT'
             if admission_number not in grouped:
                 grouped[admission_number] = {
                     'admission_number': admission_number,
                     'full_name': full_name,
                     'level_name': level_nm or '',
+                    'current_grade': cur_grade or '',
                     'profile_raw': raw_pf if include_profile_image else '',
                     'subject_marks': {}
                 }
@@ -27258,6 +28303,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                     g0['profile_raw'] = raw_pf
                 if level_nm and not (g0.get('level_name') or '').strip():
                     g0['level_name'] = level_nm or ''
+                if cur_grade and not (g0.get('current_grade') or '').strip():
+                    g0['current_grade'] = cur_grade
             if subject_label:
                 subject_names_set.add(subject_label)
             if mark_val is not None:
@@ -27299,6 +28346,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'student_id': student['admission_number'],
                 'full_name': student['full_name'],
                 'level_name': student.get('level_name') or '',
+                'current_grade': student.get('current_grade') or '',
                 'student_photo': photo_url,
                 'subject_marks': subject_marks_map,
                 'total_marks': total_marks,
@@ -27321,6 +28369,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'student_id': item.get('student_id') or item['admission_number'],
                 'full_name': item['full_name'],
                 'level_name': item.get('level_name') or '',
+                'current_grade': item.get('current_grade') or '',
                 'student_photo': item.get('student_photo') or '',
             }
             for subject_name in subject_columns:
@@ -27332,6 +28381,21 @@ def _build_academic_report_payload(cursor, report_type, f):
                 **flat_row
             })
         meta['subject_columns'] = subject_columns
+        if not lid:
+            try:
+                cursor.execute(
+                    "SELECT level_name FROM academic_levels WHERE level_status = 'active' ORDER BY level_name"
+                )
+                labels = []
+                for lr in cursor.fetchall() or []:
+                    ln = lr.get('level_name') if isinstance(lr, dict) else (lr[0] if lr else None)
+                    if ln and str(ln).strip():
+                        labels.append(str(ln).strip())
+                meta['all_class_labels'] = labels
+            except Exception:
+                meta['all_class_labels'] = []
+        else:
+            meta['all_class_labels'] = []
         return {'title': 'All students — exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_teacher_performance':
@@ -27396,8 +28460,14 @@ def _build_academic_report_payload(cursor, report_type, f):
         return {'title': 'Teacher — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type in ('exam_class_performance', 'exam_subject_performance'):
+        try:
+            ensure_subject_exam_display_order_columns(cursor)
+        except Exception:
+            pass
         q = """
-            SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name, sm.marks
+            SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name, sm.marks,
+                   sub.id AS subject_id,
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -27424,24 +28494,52 @@ def _build_academic_report_payload(cursor, report_type, f):
         cursor.execute(q, params)
         grp_level_subj = defaultdict(list)
         grp_subj = defaultdict(list)
+        subj_ord = {}
+        subj_name_by_id = {}
         for r in cursor.fetchall() or []:
             ln = r.get('level_name') if isinstance(r, dict) else r[0]
             sn = r.get('subject_name') if isinstance(r, dict) else r[1]
             mv = _float_marks(r.get('marks') if isinstance(r, dict) else r[2])
             if mv is None:
                 continue
-            grp_level_subj[(ln, sn)].append(mv)
-            grp_subj[sn].append(mv)
+            sid_raw = r.get('subject_id') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+            eo_raw = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[4] if len(r) > 4 else None)
+            try:
+                eo = int(eo_raw)
+            except (TypeError, ValueError):
+                eo = 1000000000
+            if sid_raw is not None:
+                sid = int(sid_raw)
+                subj_name_by_id[sid] = sn
+                prev = subj_ord.get(sid)
+                subj_ord[sid] = eo if prev is None else min(prev, eo)
+                grp_level_subj[(ln, sid)].append(mv)
+                grp_subj[sid].append(mv)
+            else:
+                grp_level_subj[(ln, sn)].append(mv)
+                grp_subj[sn].append(mv)
+
+        def _level_subj_sort_key(k):
+            ln, k2 = k
+            if isinstance(k2, int):
+                return (str(ln or '').lower(), int(subj_ord.get(k2, 1000000000)), (subj_name_by_id.get(k2) or '').lower(), k2)
+            return (str(ln or '').lower(), 1000000000, str(k2).lower(), 0)
+
+        def _subj_perf_sort_key(k):
+            if isinstance(k, int):
+                return (int(subj_ord.get(k, 1000000000)), (subj_name_by_id.get(k) or '').lower(), k)
+            return (1000000000, str(k).lower(), 0)
 
         if report_type == 'exam_class_performance':
             cols = ['level_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
             rows = []
-            for (ln, sn) in sorted(grp_level_subj.keys()):
-                marks = grp_level_subj[(ln, sn)]
+            for (ln, k2) in sorted(grp_level_subj.keys(), key=_level_subj_sort_key):
+                marks = grp_level_subj[(ln, k2)]
+                disp_name = subj_name_by_id.get(k2, k2) if isinstance(k2, int) else k2
                 pc = sum(1 for x in marks if x >= 50)
                 rows.append({
                     'level_name': ln,
-                    'subject_name': sn,
+                    'subject_name': disp_name,
                     'mean': round(sum(marks) / len(marks), 2),
                     'min': round(min(marks), 2),
                     'max': round(max(marks), 2),
@@ -27459,11 +28557,12 @@ def _build_academic_report_payload(cursor, report_type, f):
             }
         cols = ['subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
         rows = []
-        for sn in sorted(grp_subj.keys()):
-            marks = grp_subj[sn]
+        for k2 in sorted(grp_subj.keys(), key=_subj_perf_sort_key):
+            marks = grp_subj[k2]
+            disp_name = subj_name_by_id.get(k2, k2) if isinstance(k2, int) else k2
             pc = sum(1 for x in marks if x >= 50)
             rows.append({
-                'subject_name': sn,
+                'subject_name': disp_name,
                 'mean': round(sum(marks) / len(marks), 2),
                 'min': round(min(marks), 2),
                 'max': round(max(marks), 2),
@@ -27473,6 +28572,10 @@ def _build_academic_report_payload(cursor, report_type, f):
         return {'title': 'Subject — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type in ('exam_individual', 'exam_individual_performance'):
+        try:
+            ensure_subject_exam_display_order_columns(cursor)
+        except Exception:
+            pass
         if report_type == 'exam_individual_performance':
             if not lid:
                 return {
@@ -27496,7 +28599,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['subject_grade_bands'] = {str(k): v for k, v in subject_grade_bands.items()}
         q = """
             SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
-                   e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id
+                   e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -27520,7 +28624,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if student_id:
             q += " AND st.student_id = %s"
             params.append(student_id)
-        q += " ORDER BY st.full_name, e.exam_date, sub.subject_name LIMIT 3000"
+        q += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
         try:
             cursor.execute(q, params)
             include_profile_image = True
@@ -27528,7 +28632,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
                 SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
-                       e.exam_name, e.exam_date, sm.marks, e.subject_id
+                       e.exam_name, e.exam_date, sm.marks, e.subject_id,
+                       COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
                 FROM student_marks sm
                 INNER JOIN exams e ON sm.exam_id = e.id
                 INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -27549,7 +28654,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 q_no_image += " AND e.exam_name = %s"
             if student_id:
                 q_no_image += " AND st.student_id = %s"
-            q_no_image += " ORDER BY st.full_name, e.exam_date, sub.subject_name LIMIT 3000"
+            q_no_image += " ORDER BY st.full_name, e.exam_date, COALESCE(sub.exam_display_order, 1000000000), sub.subject_name LIMIT 3000"
             cursor.execute(q_no_image, params)
             include_profile_image = False
         rows = []
@@ -27565,10 +28670,13 @@ def _build_academic_report_payload(cursor, report_type, f):
                 except Exception:
                     photo_url = ''
             subject_id_val = None
+            exam_ord_val = None
             if include_profile_image:
                 subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[8] if len(r) > 8 else None)
+                exam_ord_val = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[9] if len(r) > 9 else None)
             else:
                 subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[7] if len(r) > 7 else None)
+                exam_ord_val = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[8] if len(r) > 8 else None)
             grade_code = _grade_from_settings(subject_id_val, r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else None), default_grade_bands, subject_grade_bands)
             rows.append({
                 'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
@@ -27581,6 +28689,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'student_photo': photo_url,
                 'subject_id': subject_id_val,
                 'grade_code': grade_code,
+                'exam_display_order': int(exam_ord_val) if exam_ord_val is not None and str(exam_ord_val).strip().isdigit() else (int(exam_ord_val) if isinstance(exam_ord_val, int) else 1000000000),
             })
         meta['row_limit'] = 3000
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
@@ -27701,6 +28810,7 @@ def academic_reports():
     academic_years = []
     teachers = []
     exam_names = []
+    registered_current_exam = None
 
     connection = get_db_connection()
     if connection:
@@ -27749,24 +28859,34 @@ def academic_reports():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
                     })
+                registered_current_exam = load_registered_current_exam_dict(cursor)
                 cursor.execute("""
-                    SELECT DISTINCT exam_name, academic_year_id, term_id, academic_level_id
-                    FROM exams
-                    WHERE TRIM(COALESCE(exam_name, '')) <> ''
-                    ORDER BY exam_name ASC
+                    SELECT DISTINCT TRIM(e.exam_name) AS exam_name,
+                           TRIM(COALESCE(e.exam_type, '')) AS exam_type,
+                           e.academic_year_id, e.term_id, e.academic_level_id
+                    FROM exams e
+                    WHERE TRIM(COALESCE(e.exam_name, '')) <> ''
+                    ORDER BY exam_name ASC, exam_type ASC
                 """)
                 for row in cursor.fetchall() or []:
                     exam_names.append({
                         'exam_name': row.get('exam_name') if isinstance(row, dict) else row[0],
-                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[1] if len(row) > 1 else None),
-                        'term_id': row.get('term_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
-                        'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
+                        'exam_type': row.get('exam_type') if isinstance(row, dict) else (row[1] if len(row) > 1 else ''),
+                        'academic_year_id': row.get('academic_year_id') if isinstance(row, dict) else (row[2] if len(row) > 2 else None),
+                        'term_id': row.get('term_id') if isinstance(row, dict) else (row[3] if len(row) > 3 else None),
+                        'academic_level_id': row.get('academic_level_id') if isinstance(row, dict) else (row[4] if len(row) > 4 else None),
                     })
         except Exception as e:
             print(f"Error loading academic_reports shell: {e}")
             flash('Error loading report options.', 'error')
         finally:
             connection.close()
+
+    ar_user_role = session.get('role', '').lower()
+    ar_viewing_as = session.get('viewing_as_employee_role', '').lower()
+    ar_is_curriculum_coordinator = (
+        ar_user_role == 'curriculum coordinator' or ar_viewing_as == 'curriculum coordinator'
+    )
 
     return render_template(
         'dashboards/academic_reports.html',
@@ -27776,6 +28896,8 @@ def academic_reports():
         academic_years=academic_years,
         teachers=teachers,
         exam_names=exam_names,
+        registered_current_exam=registered_current_exam,
+        sidebar_hide_accounts_fees=ar_is_curriculum_coordinator,
     )
 
 
@@ -27831,6 +28953,9 @@ def academic_report_preview():
 
     display = _preview_display_context(report_type, bundle)
     simple_view = (request.args.get('simple') or '').strip().lower() in ('1', 'true', 'yes')
+    pv_user_role = session.get('role', '').lower()
+    pv_viewing_as = session.get('viewing_as_employee_role', '').lower()
+    pv_hide_fees = pv_user_role == 'curriculum coordinator' or pv_viewing_as == 'curriculum coordinator'
     return render_template(
         'dashboards/academic_report_preview.html',
         role=session.get('role', '').lower(),
@@ -27850,6 +28975,7 @@ def academic_report_preview():
         exam_by_student=display.get('exam_by_student'),
         class_sections=display.get('class_sections'),
         simple_view=simple_view,
+        sidebar_hide_accounts_fees=pv_hide_fees,
     )
 
 

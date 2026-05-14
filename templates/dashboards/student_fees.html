@@ -78,13 +78,18 @@
         <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
     </a>
 
-    <!-- Student Management Link -->
+    {% set _sf_sess = session.get('role', '')|lower %}
+    {% set _sf_view = session.get('viewing_as_employee_role', '')|lower %}
+    {% set _sf_effective = _sf_view if _sf_sess == 'technician' and _sf_view else _sf_sess %}
+    {% if _sf_effective != 'accountant' %}
+    <!-- Student Management Link (hidden for accountant /accountant/student-fees sidebar) -->
     <a href="{{ employee_dash_url('student-management') }}" 
        class="w-full sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-graduate w-5"></i>
         <span class="font-medium">Student Management</span>
         <i class="fas fa-chevron-right ml-auto"></i>
     </a>
+    {% endif %}
     
     <!-- Add Fee Structure Link -->
     {% if can_add_fee_structure %}
@@ -112,13 +117,15 @@
         <i class="fas fa-chevron-right ml-auto"></i>
     </a>
     
-    <!-- Academic Settings Link -->
+    {% if _sf_effective != 'accountant' %}
+    <!-- Academic Settings Link (hidden for accountant on this page sidebar) -->
     <a href="{{ employee_dash_url('academic-settings') }}" 
-       class="w-full sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+       class="w-full sidebar-item {% if request.endpoint in ('academic_settings', 'academic_schedule_management') %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5"></i>
         <span class="font-medium">Academic Settings</span>
         <i class="fas fa-chevron-right ml-auto"></i>
     </a>
+    {% endif %}
 </div>
 {% endblock %}
 

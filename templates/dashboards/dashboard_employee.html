@@ -30,7 +30,7 @@
         <span>School Settings</span>
     </a>
     <a href="{{ employee_dash_url('academic-settings') }}" 
-       class="sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+       class="sidebar-item {% if request.endpoint in ('academic_settings', 'academic_schedule_management') %}sidebar-item-active{% endif %}">
         <i class="fas fa-book-reader w-5"></i>
         <span>Academic Module</span>
     </a>
@@ -244,20 +244,15 @@
         <i class="fas fa-check-circle w-5"></i>
         <span>Attendance</span>
     </a>
-    <a href="{{ employee_dash_url('communication') }}" 
-       class="sidebar-item {% if request.endpoint == 'communication' or request.path.endswith('/communication') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-comments w-5"></i>
-        <span>Communication</span>
-    </a>
     <a href="{{ employee_dash_url('notifications') }}" 
        class="sidebar-item {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}sidebar-item-active{% endif %}">
         <i class="fas fa-bell w-5"></i>
         <span>Notifications</span>
     </a>
-    <a href="{{ employee_dash_url('settings/curriculum-coordinator') }}"
-       class="sidebar-item {% if request.endpoint == 'settings' and request.view_args and request.view_args.get('role') in ['curriculum coordinator', 'curriculum-coordinator'] %}sidebar-item-active{% endif %}">
+    <a href="{{ employee_staff_settings_url('curriculum coordinator') }}"
+       class="sidebar-item {% if request.endpoint == 'curriculum_timetable_settings' or '/curriculum-timetable-settings' in request.path %}sidebar-item-active{% endif %}">
         <i class="fas fa-sliders-h w-5"></i>
-        <span>Curriculum settings</span>
+        <span>{% if request.endpoint == 'dashboard_employee' %}Curriculum settings{% else %}Timetable settings{% endif %}</span>
     </a>{% elif current_role == 'teachers' %}
     <!-- Teacher Links -->
     <a href="{{ employee_dash_url('my-classes') }}" 
@@ -298,11 +293,6 @@
         <i class="fas fa-money-bill-wave w-5"></i>
         <span>Student Fees</span>
     </a>
-    <a href="{{ employee_dash_url('admission') }}" 
-       class="sidebar-item {% if request.endpoint == 'admission' or request.path == '/admission' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-plus w-5"></i>
-        <span>Register Student</span>
-    </a>
     <a @click.prevent="comingSoonTitle = 'Payments / Invoices'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-file-invoice-dollar w-5"></i>
@@ -323,11 +313,6 @@
        class="sidebar-item">
         <i class="fas fa-file-alt w-5"></i>
         <span>Reports</span>
-    </a>
-    <a href="/technician/system-settings#academic-year"
-       class="sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Academic Year Settings</span>
     </a>
     <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
        class="sidebar-item">

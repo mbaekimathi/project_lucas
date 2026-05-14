@@ -15,15 +15,21 @@
         <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
     </a>
     <a href="{{ employee_staff_settings_url('curriculum coordinator') }}"
-       class="sidebar-item w-full {% if request.endpoint == 'settings' and _cc_settings_role == 'curriculum coordinator' %}sidebar-item-active{% endif %}">
+       class="sidebar-item w-full {% if request.endpoint == 'curriculum_timetable_settings' or (request.endpoint == 'settings' and _cc_settings_role == 'curriculum coordinator') %}sidebar-item-active{% endif %}">
         <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
-        <span>Curriculum coordinator settings</span>
+        <span>Timetable settings</span>
         <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
     </a>
     <a href="{{ employee_dash_url('academic-settings') }}"
        class="sidebar-item w-full {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5" aria-hidden="true"></i>
-        <span>Academic Level Settings</span>
+        <span>Academic level settings</span>
+        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
+    </a>
+    <a href="{{ employee_dash_url('academic-schedule-management') }}"
+       class="sidebar-item w-full {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clock w-5" aria-hidden="true"></i>
+        <span>Academic schedule management</span>
         <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm" aria-hidden="true"></i>
     </a>
 </div>
@@ -731,7 +737,7 @@ function academicCoordinatorSettings() {
             return activities;
         })(),
         activityCounter: {% if settings and settings.activities %}{{ settings.activities|length }}{% else %}0{% endif %},
-        settingsCoordinatorBase: {{ employee_dash_url('settings/curriculum-coordinator')|tojson }},
+        settingsCoordinatorBase: {{ employee_staff_settings_url('curriculum coordinator')|tojson }},
         expandedPreviewProfileIds: [],
         togglingStatusProfileIds: [],
         getSelectedDaysLabel() {

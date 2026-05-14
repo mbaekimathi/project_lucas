@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Academic schedule management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+<div class="space-y-2">
+    <a href="{{ employee_dash_url('academic-settings') }}"
+       class="w-full sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-calendar-alt w-5" aria-hidden="true"></i>
+        <span class="font-medium">Academic settings</span>
+    </a>
+    <a href="{{ employee_dash_url('academic-schedule-management') }}"
+       class="w-full sidebar-item {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clock w-5" aria-hidden="true"></i>
+        <span class="font-semibold">Academic schedule management</span>
+        {% if request.endpoint == 'academic_schedule_management' %}
+        <i class="fas fa-check-circle ml-auto text-green-500" aria-hidden="true"></i>
+        {% endif %}
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 lg:p-6">
+    <div class="mb-4 sm:mb-6">
+        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-clock text-orange-600 mr-2 sm:mr-3" aria-hidden="true"></i>
+            Academic schedule management
+        </h1>
+        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+            Configure study days, class time slots, activities, and schedule profiles linked to academic levels.
+            Use <a href="{{ employee_dash_url('academic-settings') }}" class="text-brand-primary font-medium hover:underline">Academic settings</a> for levels, years, and terms.
+        </p>
+    </div>
+
+    <div class="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-orange-200 dark:border-orange-800">
+        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+            <i class="fas fa-calendar-week text-orange-600 mr-2" aria-hidden="true"></i>
+            Schedule profiles
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400 text-sm">Manage saved profiles and edit days, slots, and activities below.</p>
+    </div>
+
+    {% set settings = schedule_settings %}
+    {% set settings_profiles = schedule_profiles %}
+    {% include "dashboards/_academic_schedule_management_form.html" %}
+</div>
+{% endblock %}

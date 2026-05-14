@@ -143,6 +143,22 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    {% if exam_bundle.subjects|default([])|length > 0 %}
+                    <tfoot>
+                        <tr class="bg-gray-50 dark:bg-gray-900/60 border-t-2 border-gray-300 dark:border-gray-600 font-semibold text-gray-900 dark:text-white">
+                            <td class="py-3 px-3">Overall (class)</td>
+                            <td class="text-right py-3 px-3">
+                                <span class="{% if (exam_bundle.class_mean|default(0)) >= 70 %}text-green-600 dark:text-green-400{% elif (exam_bundle.class_mean|default(0)) >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ exam_bundle.class_mean|default(0) }}</span>
+                            </td>
+                            <td class="text-right py-3 px-3 text-gray-700 dark:text-gray-300">{{ exam_bundle.class_max if exam_bundle.class_max is defined and exam_bundle.class_max is not none else '—' }}</td>
+                            <td class="text-right py-3 px-3 text-gray-700 dark:text-gray-300">{{ exam_bundle.class_min if exam_bundle.class_min is defined and exam_bundle.class_min is not none else '—' }}</td>
+                            <td class="text-right py-3 px-3 text-gray-600 dark:text-gray-400">{{ exam_bundle.total_marks_entries|default(0) }}</td>
+                            <td class="text-right py-3 px-3">
+                                <span class="{% if (exam_bundle.class_pass_rate|default(0)) >= 70 %}text-green-600 dark:text-green-400{% elif (exam_bundle.class_pass_rate|default(0)) >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ exam_bundle.class_pass_rate|default(0) }}%</span>
+                            </td>
+                        </tr>
+                    </tfoot>
+                    {% endif %}
                 </table>
             </div>
         </div>
