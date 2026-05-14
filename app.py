@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, has_request_context
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, make_response, has_request_context, send_from_directory
 from flask_mail import Mail, Message
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -3153,6 +3153,444 @@ def ensure_users_portal_login_schema(cursor):
         print(f"ensure_users_portal_login_schema index: {e}")
 
 
+def _normalize_parent_admission(raw):
+    """Uppercase trimmed admission / student_id for lookups."""
+    return (raw or '').strip().upper()
+
+
+def _parent_admission_pattern_ok(admission_key):
+    if not admission_key:
+        return False
+    if len(admission_key) < 2 or len(admission_key) > 32:
+        return False
+    return bool(re.match(r'^[A-Z0-9]+$', admission_key))
+
+
+def _fetch_student_parent_by_admission(cursor, admission_raw):
+    """Student + parent row for portal flows. Join is case/space-insensitive on student_id.
+
+    If a student exists but no matching parents row (or join failed due to casing), inserts a minimal
+    parents row so parent portal registration can proceed, then returns the joined row.
+    """
+    ak = _normalize_parent_admission(admission_raw)
+    if not _parent_admission_pattern_ok(ak):
+        return None
+
+    join_on = (
+        "UPPER(TRIM(CAST(p.student_id AS CHAR(64)))) = UPPER(TRIM(CAST(s.student_id AS CHAR(64))))"
+    )
+    where_student = "UPPER(TRIM(CAST(s.student_id AS CHAR(64)))) = %s"
+
+    left_sql = f"""
+        SELECT s.student_id, s.full_name AS student_name, s.date_of_birth, s.status,
+               p.full_name AS parent_name, p.email AS parent_email, p.phone AS parent_phone,
+               p.id AS parent_id
+        FROM students s
+        LEFT JOIN parents p ON {join_on}
+        WHERE {where_student}
+        LIMIT 1
+    """
+
+    def _run_left():
+        cursor.execute(left_sql, (ak,))
+        return cursor.fetchone()
+
+    row = _run_left()
+    if not row:
+        return None
+
+    if row.get('parent_id') is not None:
+        return row
+
+    sid = (row.get('student_id') or ak).strip()
+    stu_name = (row.get('student_name') or 'Student').strip() or 'Student'
+    guard_name = (f'Guardian - {stu_name}')[:250]
+
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM parents
+            WHERE UPPER(TRIM(CAST(student_id AS CHAR(64)))) = UPPER(TRIM(CAST(%s AS CHAR(64))))
+            LIMIT 1
+            """,
+            (sid,),
+        )
+        if cursor.fetchone():
+            row = _run_left()
+            return row
+
+        cursor.execute(
+            """
+            INSERT INTO parents (student_id, full_name, phone, email, relationship, emergency_contact)
+            VALUES (%s, %s, '070000000000', NULL, 'GUARDIAN', '070000000000')
+            """,
+            (sid, guard_name),
+        )
+        try:
+            cursor.connection.commit()
+        except Exception as ce:
+            print(f"_fetch_student_parent_by_admission commit after parent insert: {ce}")
+        row = _run_left()
+        return row
+    except Exception as ex:
+        print(f"_fetch_student_parent_by_admission ensure parent: {ex}")
+        return _run_left()
+
+
+def _fetch_parent_portal_user(cursor, admission_raw):
+    """Parent portal user: match stored student_id (child admission) or legacy 6-digit login_code."""
+    admission_key = _normalize_parent_admission(admission_raw)
+    if not admission_key:
+        return None
+    clauses = ["UPPER(TRIM(COALESCE(u.student_id,''))) = %s"]
+    params = [admission_key]
+    ar = (admission_raw or '').strip()
+    if ar.isdigit() and len(ar) == 6:
+        clauses.append("(u.login_code IS NOT NULL AND u.login_code = %s)")
+        params.append(ar)
+        clauses.append(
+            "(u.student_id IS NOT NULL AND CHAR_LENGTH(u.student_id) >= 6 AND RIGHT(u.student_id, 6) = %s)"
+        )
+        params.append(ar)
+    sql = "SELECT u.* FROM users u WHERE u.role = 'parent' AND (" + " OR ".join(clauses) + ") LIMIT 1"
+    cursor.execute(sql, params)
+    return cursor.fetchone()
+
+
+def _student_display_initials(full_name):
+    name = (full_name or '').strip()
+    if not name:
+        return '?'
+    parts = name.split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[-1][0]).upper()
+    return name[:2].upper()
+
+
+def _parent_dashboard_spotlight_student(
+    cursor, *, is_technician, viewing_as_parent, selected_student_id, parent_email, user_id
+):
+    """One student row for /parent header: technician selection, else users.student_id, else first child by parent email."""
+    target_sid = ''
+    if is_technician and viewing_as_parent:
+        target_sid = (selected_student_id or '').strip()
+    else:
+        if user_id:
+            cursor.execute(
+                "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+                (user_id,),
+            )
+            ur = cursor.fetchone()
+            if ur and (ur.get('student_id') or '').strip():
+                target_sid = ur.get('student_id').strip()
+        pem = (parent_email or '').strip()
+        if not target_sid and pem:
+            cursor.execute(
+                """
+                SELECT s.student_id FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s AND s.status = 'in session'
+                ORDER BY s.full_name ASC
+                LIMIT 1
+                """,
+                (pem,),
+            )
+            fr = cursor.fetchone()
+            if fr and (fr.get('student_id') or '').strip():
+                target_sid = fr.get('student_id').strip()
+    if not target_sid:
+        return None
+
+    has_img_col = False
+    try:
+        cursor.execute("SHOW COLUMNS FROM students LIKE 'profile_image'")
+        has_img_col = bool(cursor.fetchone())
+    except Exception:
+        has_img_col = False
+
+    if has_img_col:
+        cursor.execute(
+            """
+            SELECT student_id, full_name, current_grade, gender, date_of_birth, status, profile_image
+            FROM students WHERE student_id = %s LIMIT 1
+            """,
+            (target_sid,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT student_id, full_name, current_grade, gender, date_of_birth, status
+            FROM students WHERE student_id = %s LIMIT 1
+            """,
+            (target_sid,),
+        )
+    srow = cursor.fetchone()
+    if not srow:
+        return None
+
+    dob = srow.get('date_of_birth')
+    dob_str = ''
+    if dob and hasattr(dob, 'strftime'):
+        dob_str = dob.strftime('%d %b %Y')
+    elif dob:
+        dob_str = str(dob)[:10]
+
+    prof = ''
+    if has_img_col:
+        prof = (srow.get('profile_image') or '').strip()
+
+    full_name = (srow.get('full_name') or '').strip()
+    return {
+        'student_id': (srow.get('student_id') or '').strip(),
+        'full_name': full_name,
+        'current_grade': (srow.get('current_grade') or '').strip(),
+        'gender': (srow.get('gender') or '').strip(),
+        'status': (srow.get('status') or '').strip(),
+        'date_of_birth_formatted': dob_str,
+        'profile_image': prof or None,
+        'initials': _student_display_initials(full_name),
+    }
+
+
+def _spotlight_academic_level_id(cursor, student_grade):
+    """Resolve academic_levels.id for a grade label (tolerates level_status vs status)."""
+    if not (student_grade or '').strip():
+        return None
+    g = student_grade.strip()
+    attempts = [
+        (
+            """
+            SELECT al.id FROM academic_levels al
+            WHERE al.level_name = %s AND COALESCE(al.level_status, 'active') = 'active'
+            LIMIT 1
+            """,
+            (g,),
+        ),
+        (
+            """
+            SELECT al.id FROM academic_levels al
+            WHERE al.level_name = %s AND COALESCE(al.status, 'active') = 'active'
+            LIMIT 1
+            """,
+            (g,),
+        ),
+        (
+            "SELECT al.id FROM academic_levels al WHERE al.level_name = %s LIMIT 1",
+            (g,),
+        ),
+    ]
+    for sql, params in attempts:
+        try:
+            cursor.execute(sql, params)
+            r = cursor.fetchone()
+            if r and r.get('id'):
+                return r.get('id')
+        except Exception:
+            continue
+    return None
+
+
+def _spotlight_fee_balance_for_student(cursor, student_id):
+    """Active fee structure + payments for one student (aligned with parent_student_fees)."""
+    base = {
+        'has_structure': False,
+        'fee_name': None,
+        'total_amount': 0.0,
+        'total_paid': 0.0,
+        'balance': 0.0,
+    }
+    st = None
+    try:
+        cursor.execute(
+            """
+            SELECT current_grade, LOWER(TRIM(COALESCE(student_category, ''))) AS student_category
+            FROM students WHERE student_id = %s LIMIT 1
+            """,
+            (student_id,),
+        )
+        st = cursor.fetchone()
+    except Exception:
+        try:
+            cursor.execute(
+                "SELECT current_grade FROM students WHERE student_id = %s LIMIT 1",
+                (student_id,),
+            )
+            st = cursor.fetchone()
+        except Exception:
+            return base
+    if not st:
+        return base
+    student_grade = (st.get('current_grade') or '').strip()
+    student_category = (st.get('student_category') or '').strip().lower() if isinstance(st, dict) else ''
+    if not student_grade:
+        return base
+
+    academic_level_id = _spotlight_academic_level_id(cursor, student_grade)
+    if not academic_level_id:
+        return base
+
+    fee_structure_result = None
+    try:
+        if student_category == 'self sponsored':
+            cursor.execute(
+                """
+                SELECT fs.id, fs.fee_name, fs.total_amount, fs.status
+                FROM fee_structures fs
+                WHERE fs.academic_level_id = %s
+                  AND fs.status = 'active'
+                  AND (fs.category = 'self sponsored' OR fs.category = 'both')
+                ORDER BY
+                  CASE WHEN fs.category = 'self sponsored' THEN 1 WHEN fs.category = 'both' THEN 2 ELSE 3 END,
+                  fs.created_at DESC
+                LIMIT 1
+                """,
+                (academic_level_id,),
+            )
+            fee_structure_result = cursor.fetchone()
+        elif student_category == 'sponsored':
+            cursor.execute(
+                """
+                SELECT fs.id, fs.fee_name, fs.total_amount, fs.status
+                FROM fee_structures fs
+                WHERE fs.academic_level_id = %s
+                  AND fs.status = 'active'
+                  AND (fs.category = 'sponsored' OR fs.category = 'both')
+                ORDER BY
+                  CASE WHEN fs.category = 'sponsored' THEN 1 WHEN fs.category = 'both' THEN 2 ELSE 3 END,
+                  fs.created_at DESC
+                LIMIT 1
+                """,
+                (academic_level_id,),
+            )
+            fee_structure_result = cursor.fetchone()
+        elif student_category == 'both':
+            cursor.execute(
+                """
+                SELECT fs.id, fs.fee_name, fs.total_amount, fs.status
+                FROM fee_structures fs
+                WHERE fs.academic_level_id = %s
+                  AND fs.status = 'active'
+                ORDER BY
+                  CASE
+                    WHEN fs.category = 'both' THEN 1
+                    WHEN fs.category = 'self sponsored' THEN 2
+                    WHEN fs.category = 'sponsored' THEN 3
+                    ELSE 4
+                  END,
+                  fs.created_at DESC
+                LIMIT 1
+                """,
+                (academic_level_id,),
+            )
+            fee_structure_result = cursor.fetchone()
+        else:
+            cursor.execute(
+                """
+                SELECT fs.id, fs.fee_name, fs.total_amount, fs.status
+                FROM fee_structures fs
+                WHERE fs.academic_level_id = %s
+                  AND fs.status = 'active'
+                  AND fs.category = 'both'
+                ORDER BY fs.created_at DESC
+                LIMIT 1
+                """,
+                (academic_level_id,),
+            )
+            fee_structure_result = cursor.fetchone()
+    except Exception as ex:
+        print(f"_spotlight_fee_balance_for_student fee_structure: {ex}")
+        return base
+
+    if not fee_structure_result:
+        return base
+
+    total_amount = float(fee_structure_result.get('total_amount', 0) or 0)
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+        FROM student_payments WHERE student_id = %s
+        """,
+        (student_id,),
+    )
+    pr = cursor.fetchone()
+    total_paid = float(pr.get('total_paid', 0) if pr else 0)
+    balance = total_amount - total_paid
+    return {
+        'has_structure': True,
+        'fee_name': fee_structure_result.get('fee_name') or 'Fees',
+        'total_amount': total_amount,
+        'total_paid': total_paid,
+        'balance': balance,
+    }
+
+
+def _spotlight_subjects_for_student(cursor, student_id):
+    """Subjects from class assignments for the student's grade, else distinct subjects from marks."""
+    out = []
+    cursor.execute("SELECT current_grade FROM students WHERE student_id = %s LIMIT 1", (student_id,))
+    rw = cursor.fetchone()
+    grade = (rw.get('current_grade') or '').strip() if rw else ''
+    if grade:
+        try:
+            cursor.execute("SHOW TABLES LIKE 'teacher_subject_assignments'")
+            if cursor.fetchone():
+                cursor.execute(
+                    """
+                    SELECT DISTINCT s.subject_name, COALESCE(s.subject_code, '') AS subject_code
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+                    INNER JOIN subjects s ON s.id = tsa.subject_id
+                    WHERE al.level_name = %s
+                    ORDER BY s.subject_name
+                    """,
+                    (grade,),
+                )
+                for r in cursor.fetchall() or []:
+                    out.append(
+                        {
+                            'subject_name': (r.get('subject_name') or 'Subject').strip(),
+                            'subject_code': (r.get('subject_code') or '').strip(),
+                        }
+                    )
+        except Exception as ex:
+            print(f"_spotlight_subjects_for_student tsa: {ex}")
+    if not out:
+        try:
+            cursor.execute(
+                """
+                SELECT DISTINCT sub.subject_name, COALESCE(sub.subject_code, '') AS subject_code
+                FROM student_marks sm
+                INNER JOIN subjects sub ON sub.id = sm.subject_id
+                WHERE sm.student_id = %s
+                ORDER BY sub.subject_name
+                """,
+                (student_id,),
+            )
+            for r in cursor.fetchall() or []:
+                out.append(
+                    {
+                        'subject_name': (r.get('subject_name') or 'Subject').strip(),
+                        'subject_code': (r.get('subject_code') or '').strip(),
+                    }
+                )
+        except Exception:
+            pass
+    return out
+
+
+def _parse_dob_submitted(value):
+    """Parse HTML date or common formats to a date object."""
+    if not value:
+        return None
+    s = str(value).strip()
+    for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
 def lookup_account_for_password_reset(email):
     """Find account by email: employees first, then users (parent/student). Returns id, email, full_name, account_type."""
     email_norm = normalize_login_email(email)
@@ -3832,6 +4270,64 @@ This is an automated message. Please do not reply to this email.
         return False
 
 # Routes
+
+
+@app.route('/manifest.webmanifest')
+def web_app_manifest():
+    """Web App Manifest for PWA install (Chrome, Edge, Android; partial on Safari)."""
+    s = get_school_settings()
+    name = (s.get('school_name') or 'School Portal').strip() or 'School Portal'
+    short = name[:12] if len(name) > 12 else name
+    theme = (s.get('primary_color') or '#800020').strip()
+    if not theme.startswith('#') or len(theme) not in (4, 7):
+        theme = '#800020'
+    manifest = {
+        'name': name,
+        'short_name': short,
+        'description': 'School portal and management',
+        'start_url': '/',
+        'scope': '/',
+        'display': 'standalone',
+        'orientation': 'any',
+        'background_color': '#ffffff',
+        'theme_color': theme,
+        'icons': [
+            {
+                'src': url_for('static', filename='pwa/icon-192.png'),
+                'sizes': '192x192',
+                'type': 'image/png',
+                'purpose': 'any',
+            },
+            {
+                'src': url_for('static', filename='pwa/icon-512.png'),
+                'sizes': '512x512',
+                'type': 'image/png',
+                'purpose': 'any',
+            },
+            {
+                'src': url_for('static', filename='pwa/icon-512.png'),
+                'sizes': '512x512',
+                'type': 'image/png',
+                'purpose': 'maskable',
+            },
+        ],
+    }
+    body = json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
+    resp = make_response(body)
+    resp.headers['Content-Type'] = 'application/manifest+json; charset=utf-8'
+    resp.headers['Cache-Control'] = 'public, max-age=300'
+    return resp
+
+
+@app.route('/sw.js')
+def pwa_service_worker():
+    """Serve the service worker from site root so default scope is /."""
+    resp = make_response(send_from_directory(app.static_folder, 'sw.js'))
+    resp.headers['Content-Type'] = 'application/javascript; charset=utf-8'
+    resp.headers['Cache-Control'] = 'public, max-age=0'
+    return resp
+
+
 @app.route('/')
 def home():
     # Staff who signed in via the employee portal have employees.employee_id in session (not parent/student users).
@@ -4374,6 +4870,350 @@ def check_staff_number():
                 pass
 
 
+@app.route('/api/parent-portal/check-admission', methods=['GET'])
+def api_parent_portal_check_admission():
+    """Live validation: admission exists (parent row created if missing), and no parent users row yet."""
+    raw = (request.args.get('q') or '').strip()
+    admission_key = _normalize_parent_admission(raw)
+    if not admission_key:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'empty',
+                'message': 'Enter your child’s admission ID.',
+            }
+        )
+    if not _parent_admission_pattern_ok(admission_key):
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'invalid_format',
+                'message': 'Use 2–32 letters or numbers only (e.g. STU001).',
+            }
+        )
+    connection = get_db_connection()
+    if not connection:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'server',
+                'message': 'Service unavailable. Try again in a moment.',
+            }
+        ), 503
+    try:
+        with connection.cursor() as cursor:
+            ensure_users_portal_login_schema(cursor)
+            connection.commit()
+            row = _fetch_student_parent_by_admission(cursor, raw)
+            if not row:
+                return jsonify(
+                    {
+                        'ok': False,
+                        'ready': False,
+                        'reason': 'not_found',
+                        'message': 'No student with that admission ID in our records. Check spelling (letters and numbers only) or contact the school.',
+                    }
+                )
+            sid = (row.get('student_id') or admission_key).strip()
+            if _fetch_parent_portal_user(cursor, raw):
+                return jsonify(
+                    {
+                        'ok': False,
+                        'ready': False,
+                        'reason': 'portal_exists',
+                        'message': 'A parent portal account already exists for this admission. Sign in or use Forgot password.',
+                        'login_url': url_for('login', role='parent', admission=sid),
+                    }
+                )
+            return jsonify(
+                {
+                    'ok': True,
+                    'ready': True,
+                    'reason': 'ready',
+                    'message': 'Admission verified. Continuing…',
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'student_id': sid,
+                }
+            )
+    except Exception as e:
+        print(f"api_parent_portal_check_admission: {e}")
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'server',
+                'message': 'Could not verify right now. Try again.',
+            }
+        ), 500
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+@app.route('/parent/portal-setup', methods=['GET', 'POST'])
+def parent_portal_setup():
+    """First-time parent portal: admission ID → verify child DOB → email + password (creates users row)."""
+    admission_prefill = (request.args.get('admission') or '').strip()
+
+    if request.method == 'POST':
+        action = (request.form.get('setup_action') or '').strip()
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return redirect(url_for('parent_portal_setup'))
+        try:
+            with connection.cursor() as cursor:
+                ensure_users_portal_login_schema(cursor)
+                connection.commit()
+                if action == 'admission':
+                    raw = (request.form.get('admission') or '').strip()
+                    ak = _normalize_parent_admission(raw)
+                    if not _parent_admission_pattern_ok(ak):
+                        error = 'Enter a valid admission ID (letters and numbers only, e.g. STU001).'
+                    else:
+                        row = _fetch_student_parent_by_admission(cursor, raw)
+                        if not row:
+                            error = 'We could not find a student with that admission ID and a parent/guardian on file. Check the ID or contact the school.'
+                        else:
+                            if _fetch_parent_portal_user(cursor, raw):
+                                session.pop('parent_portal_student_id', None)
+                                session.pop('parent_portal_dob_ok', None)
+                                flash(
+                                    'A parent portal account already exists for this admission. Sign in with your admission ID and password, or use Forgot password.',
+                                    'info',
+                                )
+                                return redirect(url_for('login', role='parent', admission=row.get('student_id') or ak))
+                            canonical_sid = (row.get('student_id') or ak).strip()
+                            session['parent_portal_student_id'] = canonical_sid
+                            session.pop('parent_portal_dob_ok', None)
+                            return redirect(url_for('parent_portal_setup'))
+                elif action == 'dob':
+                    sid = session.get('parent_portal_student_id')
+                    if not sid:
+                        error = 'Session expired. Enter the admission ID again.'
+                    else:
+                        dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
+                        if dob_in is None:
+                            error = 'Enter a valid date of birth.'
+                        else:
+                            row = _fetch_student_parent_by_admission(cursor, sid)
+                            if not row:
+                                error = 'Record not found. Start again with the admission ID.'
+                                session.pop('parent_portal_student_id', None)
+                                session.pop('parent_portal_dob_ok', None)
+                            else:
+                                db_dob = row.get('date_of_birth')
+                                if db_dob is None:
+                                    error = 'Date of birth is not on file for this student. Please contact the school.'
+                                else:
+                                    if hasattr(db_dob, 'date'):
+                                        db_dob = db_dob.date()
+                                    if dob_in != db_dob:
+                                        error = (
+                                            'That date of birth does not match our records. Try again or contact the school.'
+                                        )
+                                    else:
+                                        session['parent_portal_dob_ok'] = '1'
+                                        return redirect(url_for('parent_portal_setup'))
+                elif action == 'account':
+                    sid = session.get('parent_portal_student_id')
+                    if not sid or session.get('parent_portal_dob_ok') != '1':
+                        error = 'Session expired or date of birth not verified. Start again from the admission step.'
+                    else:
+                        email = normalize_login_email(request.form.get('email', ''))
+                        pw = request.form.get('new_password', '')
+                        pw2 = request.form.get('confirm_password', '')
+                        if not email or '@' not in email:
+                            error = 'Enter a valid email address.'
+                        elif len(pw) < 6:
+                            error = 'Password must be at least 6 characters.'
+                        elif pw != pw2:
+                            error = 'Password and confirmation do not match.'
+                        else:
+                            row = _fetch_student_parent_by_admission(cursor, sid)
+                            if not row:
+                                error = 'Record not found. Start again with the admission ID.'
+                                session.pop('parent_portal_student_id', None)
+                                session.pop('parent_portal_dob_ok', None)
+                            elif _fetch_parent_portal_user(cursor, sid):
+                                session.pop('parent_portal_student_id', None)
+                                session.pop('parent_portal_dob_ok', None)
+                                flash('An account already exists for this admission. Please sign in.', 'info')
+                                return redirect(url_for('login', role='parent', admission=sid))
+                            else:
+                                parent_name = (row.get('parent_name') or 'Parent').strip() or 'Parent'
+                                ph = generate_password_hash(pw)
+                                canonical_sid = (row.get('student_id') or sid).strip()
+                                try:
+                                    cursor.execute(
+                                        """
+                                        INSERT INTO users (full_name, email, password_hash, login_code, student_id, role)
+                                        VALUES (%s, %s, %s, NULL, %s, 'parent')
+                                        """,
+                                        (parent_name, email, ph, canonical_sid),
+                                    )
+                                    cursor.execute(
+                                        "UPDATE parents SET email = %s WHERE student_id = %s",
+                                        (email, canonical_sid),
+                                    )
+                                    connection.commit()
+                                except IntegrityError:
+                                    connection.rollback()
+                                    error = (
+                                        'That email is already used by another account. '
+                                        'Use a different email or sign in and use Forgot password if this is yours.'
+                                    )
+                                except Exception as ex:
+                                    connection.rollback()
+                                    print(f"parent_portal_setup insert: {ex}")
+                                    error = 'Could not create your account. Please try again or contact the school.'
+                                else:
+                                    session.pop('parent_portal_student_id', None)
+                                    session.pop('parent_portal_dob_ok', None)
+                                    flash(
+                                        'Your parent portal account is ready. Sign in with your child\'s admission ID and the password you chose.',
+                                        'success',
+                                    )
+                                    return redirect(url_for('login', role='parent', admission=canonical_sid))
+                else:
+                    error = 'Invalid step.'
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('parent_portal_setup'))
+
+    student_id_sess = session.get('parent_portal_student_id')
+    dob_ok = session.get('parent_portal_dob_ok') == '1'
+    if student_id_sess and dob_ok:
+        step = 3
+    elif student_id_sess:
+        step = 2
+    else:
+        step = 1
+
+    return render_template(
+        'parent_portal_setup.html',
+        step=step,
+        admission_prefill=admission_prefill,
+        student_id_display=student_id_sess or '',
+    )
+
+
+@app.route('/login/parent-register', methods=['POST'])
+def login_parent_register():
+    """Create parent portal account from login page (admission + DOB + email + password), then sign in."""
+    admission_raw = (request.form.get('admission') or '').strip()
+    email = normalize_login_email(request.form.get('email', ''))
+    pw = request.form.get('new_password', '')
+    pw2 = request.form.get('confirm_password', '')
+    remember = bool(request.form.get('remember_me'))
+
+    def _back(admission_val=''):
+        q = {'role': 'parent'}
+        if admission_val:
+            q['admission'] = admission_val
+        return redirect(url_for('login', **q))
+
+    ak = _normalize_parent_admission(admission_raw)
+    if not _parent_admission_pattern_ok(ak):
+        flash('Enter a valid admission ID (letters and numbers only, e.g. STU001).', 'error')
+        return _back(admission_raw)
+
+    dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
+    if dob_in is None:
+        flash('Enter your child’s date of birth.', 'error')
+        return _back(admission_raw)
+
+    if not email or '@' not in email:
+        flash('Enter a valid email address.', 'error')
+        return _back(admission_raw)
+    if len(pw) < 6:
+        flash('Password must be at least 6 characters.', 'error')
+        return _back(admission_raw)
+    if pw != pw2:
+        flash('Password and confirmation do not match.', 'error')
+        return _back(admission_raw)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error. Please try again later.', 'error')
+        return _back(admission_raw)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_users_portal_login_schema(cursor)
+            connection.commit()
+            row = _fetch_student_parent_by_admission(cursor, admission_raw)
+            if not row:
+                flash('No student with that admission ID in our records. Check spelling or contact the school.', 'error')
+                return _back()
+            canonical_sid = (row.get('student_id') or ak).strip()
+            db_dob = row.get('date_of_birth')
+            if db_dob is not None and hasattr(db_dob, 'date'):
+                db_dob = db_dob.date()
+            if db_dob is None:
+                flash('Date of birth is not on file for this student. Please contact the school.', 'error')
+                return _back(canonical_sid)
+            if dob_in != db_dob:
+                flash('That date of birth does not match our records.', 'error')
+                return _back(canonical_sid)
+            if _fetch_parent_portal_user(cursor, admission_raw):
+                flash('A parent account already exists for this admission. Sign in with your password below.', 'info')
+                return _back(canonical_sid)
+
+            parent_name = (row.get('parent_name') or 'Parent').strip() or 'Parent'
+            ph = generate_password_hash(pw)
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO users (full_name, email, password_hash, login_code, student_id, role)
+                    VALUES (%s, %s, %s, NULL, %s, 'parent')
+                    """,
+                    (parent_name, email, ph, canonical_sid),
+                )
+                new_id = cursor.lastrowid
+                cursor.execute(
+                    "UPDATE parents SET email = %s WHERE student_id = %s",
+                    (email, canonical_sid),
+                )
+                connection.commit()
+            except IntegrityError:
+                connection.rollback()
+                flash(
+                    'That email is already used by another account. Use a different email or Forgot password.',
+                    'error',
+                )
+                return _back(canonical_sid)
+            except Exception as ex:
+                connection.rollback()
+                print(f'login_parent_register: {ex}')
+                flash('Could not create your account. Please try again.', 'error')
+                return _back(canonical_sid)
+
+        session.permanent = remember
+        session['user_id'] = new_id
+        session['email'] = email
+        session['full_name'] = parent_name
+        session['role'] = 'parent'
+        flash(f'Welcome, {parent_name}! Your parent portal is ready.', 'success')
+        return redirect(parent_dashboard_path())
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -4386,25 +5226,47 @@ def login():
             or request.form.get('admission_number', '').strip()
         )
 
-        def render_login_error(message):
+        def render_login_error(message, parent_setup_hint=False, parent_setup_admission=''):
             return render_template(
                 'login.html',
                 default_role=role if role in ('employee', 'parent', 'student') else '',
                 login_error=message,
                 login_code=code,
                 remember_me=bool(request.form.get('remember_me')),
+                parent_setup_hint=parent_setup_hint,
+                default_admission=(code.strip() if role == 'parent' else ''),
+                parent_setup_admission=parent_setup_admission,
             )
 
-        if not role or not password:
-            return render_login_error('Please fill in all required fields.')
-
+        if not role:
+            return render_login_error('Please select who you are signing in as.')
         if role not in ('employee', 'parent', 'student'):
             return render_login_error('Invalid role selected.')
-
         if not code:
+            if role == 'parent':
+                return render_login_error(
+                    "Enter your child's student admission ID (the ID on the admission confirmation, e.g. STU001)."
+                )
             return render_login_error('Please enter your six-digit code.')
-        if not code.isdigit() or len(code) != 6:
-            return render_login_error('Your sign-in code must be exactly 6 digits.')
+
+        if role == 'employee':
+            if not password:
+                return render_login_error('Please enter your password.')
+            if not code.isdigit() or len(code) != 6:
+                return render_login_error('Your sign-in code must be exactly 6 digits.')
+        elif role == 'student':
+            if not password:
+                return render_login_error('Please enter your password.')
+            if not code.isdigit() or len(code) != 6:
+                return render_login_error('Your sign-in code must be exactly 6 digits.')
+        else:
+            if not password:
+                return render_login_error('Please enter your password.')
+            adm_key = _normalize_parent_admission(code)
+            if not _parent_admission_pattern_ok(adm_key):
+                return render_login_error(
+                    'Enter a valid admission ID (letters and numbers only, such as STU001).'
+                )
 
         connection = get_db_connection()
         if connection:
@@ -4478,6 +5340,42 @@ def login():
                             return render_login_error(
                                 'No employee account matches this code. Check your six-digit employee code and try again.'
                             )
+                    elif role == 'parent':
+                        user = _fetch_parent_portal_user(cursor, code)
+                        if not user:
+                            sp = _fetch_student_parent_by_admission(cursor, code)
+                            if sp:
+                                return render_template(
+                                    'login.html',
+                                    default_role='parent',
+                                    login_error=(
+                                        'No portal account is registered for this admission yet, or you still need to '
+                                        'set your password. Use first-time parent setup: confirm your child\'s date of birth, '
+                                        'then enter your email and choose a password.'
+                                    ),
+                                    login_code=code,
+                                    remember_me=bool(request.form.get('remember_me')),
+                                    parent_setup_hint=True,
+                                    default_admission=code.strip(),
+                                    parent_setup_admission=code.strip(),
+                                )
+                            return render_login_error(
+                                'No parent portal account matches this admission ID. Check the ID or contact the school.'
+                            )
+                        if not (
+                            check_password_hash(user['password_hash'], raw_password)
+                            or check_password_hash(user['password_hash'], password)
+                        ):
+                            return render_login_error(
+                                'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
+                            )
+                        session.permanent = bool(request.form.get('remember_me'))
+                        session['user_id'] = user['id']
+                        session['email'] = user['email']
+                        session['full_name'] = user['full_name']
+                        session['role'] = user['role']
+                        flash(f'Welcome back, {user["full_name"]}!', 'success')
+                        return redirect(parent_dashboard_path())
                     else:
                         cursor.execute(
                             """
@@ -4499,22 +5397,20 @@ def login():
                                 'No account matches this six-digit code for the role you selected. '
                                 'If you were given a portal code, use that; students may also try the last six characters of their student ID.'
                             )
-                        elif not (check_password_hash(user['password_hash'], raw_password) or check_password_hash(user['password_hash'], password)):
+                        if not (
+                            check_password_hash(user['password_hash'], raw_password)
+                            or check_password_hash(user['password_hash'], password)
+                        ):
                             return render_login_error(
                                 'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
                             )
-                        else:
-                            session.permanent = bool(request.form.get('remember_me'))
-                            session['user_id'] = user['id']
-                            session['email'] = user['email']
-                            session['full_name'] = user['full_name']
-                            session['role'] = user['role']
-                            flash(f'Welcome back, {user["full_name"]}!', 'success')
-                            if role == 'parent':
-                                return redirect(parent_dashboard_path())
-                            if role == 'student':
-                                return redirect(student_dashboard_path())
-                            return redirect(url_for(f'dashboard_{role}'))
+                        session.permanent = bool(request.form.get('remember_me'))
+                        session['user_id'] = user['id']
+                        session['email'] = user['email']
+                        session['full_name'] = user['full_name']
+                        session['role'] = user['role']
+                        flash(f'Welcome back, {user["full_name"]}!', 'success')
+                        return redirect(student_dashboard_path())
             except Exception as e:
                 print(f"Login error: {e}")
                 return render_login_error('An error occurred during login. Please try again.')
@@ -4531,7 +5427,17 @@ def login():
     role = request.args.get('role', '')
     if role not in ('employee', 'parent', 'student'):
         role = ''
-    return render_template('login.html', default_role=role, login_code='')
+    adm = (request.args.get('admission') or '').strip()
+    return render_template(
+        'login.html',
+        default_role=role,
+        login_code=adm,
+        remember_me=False,
+        parent_setup_hint=False,
+        default_admission=adm,
+        parent_setup_admission='',
+        login_error=None,
+    )
 
 
 @app.route('/retrieve-password', methods=['GET', 'POST'])
@@ -4763,127 +5669,76 @@ def dashboard_parent():
                         except:
                             pass
     
-    # Fetch parent's children and their fee information
-    connection = get_db_connection()
-    children = []
-    
-    if connection and parent_email:
+    # Parent home (/parent): spotlight student + analytics (fees, subjects, exams).
+    spotlight_student = None
+    spotlight_fee = None
+    spotlight_subjects = []
+    spotlight_exam = None
+    spotlight_conn = get_db_connection()
+    if spotlight_conn:
         try:
-            with connection.cursor() as cursor:
-                # Get all students linked to this parent (by email)
-                cursor.execute("""
-                    SELECT DISTINCT s.id, s.student_id, s.full_name, s.current_grade, s.status,
-                           p.full_name as parent_name, p.phone as parent_phone, p.email as parent_email
-                    FROM students s
-                    INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.status = 'in session'
-                    ORDER BY s.full_name ASC
-                """, (parent_email,))
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        student_grade = row.get('current_grade', '')
-                        student_id = row.get('student_id', '')
-                        
-                        # Find the academic level for this student's grade
-                        academic_level = None
-                        fee_structure = None
-                        total_paid = 0.0
-                        balance = 0.0
-                        
-                        if student_grade:
-                            # Try to match student's current_grade with academic_levels.level_name
-                            cursor.execute("""
-                                SELECT al.id, al.level_category, al.level_name, al.level_description
-                                FROM academic_levels al
-                                WHERE al.level_name = %s AND al.level_status = 'active'
-                                LIMIT 1
-                            """, (student_grade,))
-                            level_result = cursor.fetchone()
-                            
-                            if level_result:
-                                academic_level_id = level_result.get('id')
-                                academic_level = {
-                                    'id': academic_level_id,
-                                    'level_category': level_result.get('level_category', ''),
-                                    'level_name': level_result.get('level_name', ''),
-                                    'level_description': level_result.get('level_description', '')
-                                }
-                                
-                                # Find active fee structure for this academic level
-                                # Get the most recent active fee structure
-                                cursor.execute("""
-                                    SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                           fs.payment_deadline, fs.total_amount, fs.status,
-                                           fs.academic_year_id, fs.term_id
-                                    FROM fee_structures fs
-                                    WHERE fs.academic_level_id = %s 
-                                      AND fs.status = 'active'
-                                    ORDER BY fs.created_at DESC
-                                    LIMIT 1
-                                """, (academic_level_id,))
-                                fee_structure_result = cursor.fetchone()
-                                
-                                if fee_structure_result:
-                                    payment_deadline = fee_structure_result.get('payment_deadline')
-                                    # Format payment_deadline if it's a date object
-                                    if payment_deadline and hasattr(payment_deadline, 'strftime'):
-                                        payment_deadline_formatted = payment_deadline.strftime('%B %d, %Y')
-                                    elif payment_deadline:
-                                        payment_deadline_formatted = str(payment_deadline)
-                                    else:
-                                        payment_deadline_formatted = None
-                                    
-                                    fee_structure = {
-                                        'id': fee_structure_result.get('id'),
-                                        'fee_name': fee_structure_result.get('fee_name', ''),
-                                        'total_amount': float(fee_structure_result.get('total_amount', 0)),
-                                        'payment_deadline': payment_deadline,
-                                        'payment_deadline_formatted': payment_deadline_formatted,
-                                        'status': fee_structure_result.get('status', '')
-                                    }
-                                    
-                                    # Calculate total paid and balance
-                                    cursor.execute("""
-                                        SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-                                        FROM student_payments
-                                        WHERE student_id = %s
-                                    """, (student_id,))
-                                    payment_result = cursor.fetchone()
-                                    total_paid = float(payment_result.get('total_paid', 0) if payment_result else 0)
-                                    balance = fee_structure['total_amount'] - total_paid
-                        
-                        child_dict = {
-                            'id': row.get('id'),
-                            'student_id': student_id,
-                            'full_name': row.get('full_name', ''),
-                            'current_grade': student_grade,
-                            'status': row.get('status', ''),
-                            'academic_level': academic_level,
-                            'fee_structure': fee_structure,
-                            'total_paid': total_paid,
-                            'balance': balance
-                        }
-                        children.append(child_dict)
+            with spotlight_conn.cursor() as spotlight_cursor:
+                raw = _parent_dashboard_spotlight_student(
+                    spotlight_cursor,
+                    is_technician=is_technician,
+                    viewing_as_parent=(viewing_as == 'parent'),
+                    selected_student_id=selected_student_id,
+                    parent_email=parent_email,
+                    user_id=session.get('user_id'),
+                )
+                if raw:
+                    row = dict(raw)
+                    row['student_photo_url'] = None
+                    if row.get('profile_image'):
+                        try:
+                            row['student_photo_url'] = url_for('static', filename=str(row['profile_image']))
+                        except Exception:
+                            row['student_photo_url'] = None
+                    row.pop('profile_image', None)
+                    spotlight_student = row
+                    sid = spotlight_student.get('student_id')
+                    if sid:
+                        try:
+                            spotlight_fee = _spotlight_fee_balance_for_student(spotlight_cursor, sid)
+                        except Exception as fe:
+                            print(f"dashboard_parent spotlight fee: {fe}")
+                            spotlight_fee = {'has_structure': False}
+                        try:
+                            spotlight_subjects = _spotlight_subjects_for_student(spotlight_cursor, sid)
+                        except Exception as se:
+                            print(f"dashboard_parent spotlight subjects: {se}")
+                            spotlight_subjects = []
         except Exception as e:
-            print(f"Error fetching parent's children: {e}")
-            import traceback
-            traceback.print_exc()
-            flash('Error loading children information. Please try again.', 'error')
+            print(f"dashboard_parent spotlight: {e}")
+            spotlight_student = None
         finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass
-    
+            try:
+                spotlight_conn.close()
+            except Exception:
+                pass
+
+    if spotlight_student and spotlight_student.get('student_id'):
+        try:
+            ep = _fetch_student_progress_payload(spotlight_student['student_id'])
+            by_ex = ep.get('by_exam') or []
+            spotlight_exam = {
+                'summary': ep.get('summary'),
+                'by_subject': ep.get('by_subject') or [],
+                'by_exam_recent': list(reversed(by_ex[-8:])) if by_ex else [],
+            }
+        except Exception as ee:
+            print(f"dashboard_parent spotlight exam: {ee}")
+            spotlight_exam = None
+
     return render_template('dashboards/dashboard_parent.html',
                          is_technician=is_technician,
                          current_view_role=current_view_role,
-                         children=children,
                          all_students=all_students if is_technician and viewing_as == 'parent' else [],
-                         selected_student_id=selected_student_id)
+                         selected_student_id=selected_student_id,
+                         spotlight_student=spotlight_student,
+                         spotlight_fee=spotlight_fee,
+                         spotlight_subjects=spotlight_subjects,
+                         spotlight_exam=spotlight_exam)
 
 @app.route('/dashboard/parent/student-fees')
 @login_required
@@ -6258,6 +7113,26 @@ def dashboard_employee():
                          timetable_days_order=timetable_days_order,
                          teacher_exam_timetable=teacher_exam_timetable,
                          teacher_dashboard_analytics=teacher_dashboard_analytics)
+
+
+@app.route('/dashboard/employee/tpad')
+@login_required
+def employee_tpad():
+    """Teacher Professional Appraisal & Development (TPAD) — staff and leadership."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    effective = viewing_as_role if is_technician and viewing_as_role else user_role
+    allowed = effective in (
+        'deputy head of institution', 'head of institution', 'super admin',
+        'teachers', 'teacher',
+    )
+    if not allowed:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    return render_template('dashboards/tpad.html')
+
 
 # Exams and Grades Route (for teachers) — canonical UI lives on exam_timetable.
 @app.route('/dashboard/employee/exams-and-grades')
@@ -13584,6 +14459,16 @@ def _fetch_parent_attendance_analytics(student_id, req_args):
     from collections import defaultdict
     from datetime import date as date_type
 
+    def _truthy(val):
+        if val is None:
+            return False
+        if isinstance(val, bool):
+            return val
+        try:
+            return int(val) != 0
+        except (TypeError, ValueError):
+            return str(val).lower() in ('true', 'yes', 't', '1')
+
     student = None
     academic_years = []
     terms = []
@@ -13622,44 +14507,119 @@ def _fetch_parent_attendance_analytics(student_id, req_args):
                         'is_current': r.get('is_current') if isinstance(r, dict) else (r[2] if len(r) > 2 else False),
                     })
 
-                cursor.execute("""
-                    SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
-                    FROM terms t
-                    LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
-                    ORDER BY t.academic_year_id DESC, t.id DESC
-                """)
                 terms_all = []
-                for r in cursor.fetchall() or []:
-                    terms_all.append({
-                        'id': r.get('id') if isinstance(r, dict) else r[0],
-                        'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
-                        'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
-                        'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
-                    })
+                try:
+                    cursor.execute(
+                        """
+                        SELECT t.id, t.term_name, t.academic_year_id, ay.year_name, COALESCE(t.is_current, 0) AS is_current
+                        FROM terms t
+                        LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                        ORDER BY t.academic_year_id DESC, t.start_date DESC, t.id DESC
+                        """
+                    )
+                    for r in cursor.fetchall() or []:
+                        terms_all.append(
+                            {
+                                'id': r.get('id') if isinstance(r, dict) else r[0],
+                                'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                                'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                                'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                                'is_current': _truthy(r.get('is_current') if isinstance(r, dict) else (r[4] if len(r) > 4 else False)),
+                            }
+                        )
+                except Exception:
+                    cursor.execute(
+                        """
+                        SELECT t.id, t.term_name, t.academic_year_id, ay.year_name
+                        FROM terms t
+                        LEFT JOIN academic_years ay ON t.academic_year_id = ay.id
+                        ORDER BY t.academic_year_id DESC, t.start_date DESC, t.id DESC
+                        """
+                    )
+                    for r in cursor.fetchall() or []:
+                        terms_all.append(
+                            {
+                                'id': r.get('id') if isinstance(r, dict) else r[0],
+                                'term_name': r.get('term_name') if isinstance(r, dict) else r[1],
+                                'academic_year_id': r.get('academic_year_id') if isinstance(r, dict) else r[2],
+                                'year_name': r.get('year_name') if isinstance(r, dict) else (r[3] if len(r) > 3 else ''),
+                                'is_current': False,
+                            }
+                        )
 
-                terms = [t for t in terms_all if t.get('academic_year_id') == academic_year_id] if academic_year_id else list(terms_all)
+                if term_id and not academic_year_id:
+                    for tx in terms_all:
+                        if tx.get('id') == term_id:
+                            academic_year_id = tx.get('academic_year_id')
+                            break
+
+                if not academic_year_id:
+                    cursor.execute(
+                        """
+                        SELECT id FROM academic_years
+                        WHERE COALESCE(is_current, 0) = 1
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """
+                    )
+                    ay_row = cursor.fetchone()
+                    if ay_row:
+                        academic_year_id = (
+                            ay_row.get('id') if isinstance(ay_row, dict) else ay_row[0]
+                        )
+
+                terms = (
+                    [t for t in terms_all if t.get('academic_year_id') == academic_year_id]
+                    if academic_year_id
+                    else list(terms_all)
+                )
                 if academic_year_id and not terms:
                     terms = list(terms_all)
 
                 if not term_id:
-                    cursor.execute("""
-                        SELECT t.id FROM terms t
-                        INNER JOIN academic_years ay ON t.academic_year_id = ay.id
-                        WHERE ay.is_current = 1
-                        ORDER BY t.id ASC
-                        LIMIT 1
-                    """)
-                    tr = cursor.fetchone()
-                    if tr:
-                        term_id = tr.get('id') if isinstance(tr, dict) else tr[0]
-                    if not term_id and terms:
-                        term_id = terms[0]['id']
-                    elif not term_id and terms_all:
-                        term_id = terms_all[0]['id']
+                    tid = None
+                    if academic_year_id:
+                        for t in terms:
+                            if _truthy(t.get('is_current')):
+                                tid = t.get('id')
+                                break
+                    if not tid:
+                        cursor.execute(
+                            """
+                            SELECT t.id FROM terms t
+                            WHERE COALESCE(t.is_current, 0) = 1
+                            ORDER BY t.id DESC
+                            LIMIT 1
+                            """
+                        )
+                        g = cursor.fetchone()
+                        if g:
+                            cand = g.get('id') if isinstance(g, dict) else g[0]
+                            if not academic_year_id or any(t.get('id') == cand for t in terms):
+                                tid = cand
+                    if not tid and academic_year_id:
+                        cursor.execute(
+                            """
+                            SELECT id FROM terms
+                            WHERE academic_year_id = %s
+                            ORDER BY start_date DESC, id DESC
+                            LIMIT 1
+                            """,
+                            (academic_year_id,),
+                        )
+                        g2 = cursor.fetchone()
+                        if g2:
+                            tid = g2.get('id') if isinstance(g2, dict) else g2[0]
+                    if not tid and terms:
+                        tid = terms[0].get('id')
+                    elif not tid and terms_all:
+                        tid = terms_all[0].get('id')
+                    term_id = tid
 
                 if term_id and academic_year_id:
                     if not any(t.get('id') == term_id for t in terms):
-                        term_id = terms[0]['id'] if terms else term_id
+                        fb = next((t for t in terms if _truthy(t.get('is_current'))), None)
+                        term_id = fb.get('id') if fb else (terms[0].get('id') if terms else term_id)
 
                 if term_id:
                     cursor.execute("""
@@ -14060,23 +15020,239 @@ def _parent_dashboard_auth():
     }
 
 
-def _fetch_student_progress_payload(student_id):
-    """Load student marks and aggregates for progress / exam report (staff and parent views)."""
-    student = None
-    progress_data = []
+def _compute_progress_aggregates(progress_data):
+    """Build by_subject, by_period, by_exam, summary from progress rows (each with marks, year, term, exam, subject)."""
     by_subject = []
     by_period = []
     by_exam = []
-    summary = None
+    summary = {
+        'overall_mean': 0,
+        'pass_rate': 0,
+        'total_entries': 0,
+        'best_subject': None,
+        'best_mean': None,
+        'weakest_subject': None,
+        'weakest_mean': None,
+    }
+
+    subject_marks = {}
+    for p in progress_data:
+        if p.get('marks') is not None:
+            sn = p.get('subject_name') or 'N/A'
+            if sn not in subject_marks:
+                subject_marks[sn] = []
+            subject_marks[sn].append(p['marks'])
+    for sn, vals in sorted(subject_marks.items()):
+        by_subject.append(
+            {
+                'subject_name': sn,
+                'mean': round(sum(vals) / len(vals), 1),
+                'count': len(vals),
+                'min': round(min(vals), 1),
+                'max': round(max(vals), 1),
+            }
+        )
+
+    period_marks = {}
+    for p in progress_data:
+        if p.get('marks') is not None:
+            label = (p.get('year_name') or '') + ' ' + (p.get('term_name') or '')
+            label = label.strip() or 'Unknown'
+            if label not in period_marks:
+                period_marks[label] = []
+            period_marks[label].append(p['marks'])
+    for label, vals in sorted(period_marks.items(), reverse=True):
+        by_period.insert(0, {'label': label, 'mean': round(sum(vals) / len(vals), 1), 'count': len(vals)})
+
+    exam_order = []
+    exam_rows = {}
+    for p in progress_data:
+        key = (p.get('year_name') or '', p.get('term_name') or '', p.get('exam_name') or '', p.get('exam_id') or 0)
+        if key not in exam_rows:
+            exam_rows[key] = []
+            exam_order.append(key)
+        exam_rows[key].append(p)
+    for key in exam_order:
+        rows = exam_rows[key]
+        marks_list = [r['marks'] for r in rows if r.get('marks') is not None]
+        subj_list = []
+        for r in rows:
+            if r.get('marks') is not None:
+                subj_list.append({'subject_name': r['subject_name'], 'marks': r['marks']})
+        if not subj_list:
+            continue
+        subj_list.sort(key=lambda x: x['subject_name'])
+        first = rows[0]
+        parts = [x for x in (first.get('year_name'), first.get('term_name'), first.get('exam_name')) if x]
+        label = ' · '.join(parts) if parts else 'Unknown'
+        mean = round(sum(marks_list) / len(marks_list), 1)
+        pass_count = sum(1 for m in marks_list if m >= 50)
+        pr = round(100 * pass_count / len(marks_list), 0)
+        ed = first.get('exam_date')
+        exam_date_str = ''
+        if ed and hasattr(ed, 'strftime'):
+            exam_date_str = ed.strftime('%Y-%m-%d')
+        elif ed:
+            exam_date_str = str(ed)[:10]
+        by_exam.append(
+            {
+                'label': label,
+                'year_name': first.get('year_name'),
+                'term_name': first.get('term_name'),
+                'exam_name': first.get('exam_name'),
+                'exam_id': first.get('exam_id'),
+                'exam_date_str': exam_date_str,
+                'mean': mean,
+                'count': len(marks_list),
+                'pass_rate': pr,
+                'subjects': subj_list,
+            }
+        )
+
+    all_marks = [p['marks'] for p in progress_data if p.get('marks') is not None]
+    total = len(all_marks)
+    if total:
+        summary['overall_mean'] = round(sum(all_marks) / total, 1)
+        pass_count = sum(1 for m in all_marks if m >= 50)
+        summary['pass_rate'] = round(100 * pass_count / total, 0)
+        summary['total_entries'] = total
+        best = max(by_subject, key=lambda x: x['mean']) if by_subject else None
+        weakest = min(by_subject, key=lambda x: x['mean']) if by_subject else None
+        summary['best_subject'] = best['subject_name'] if best else None
+        summary['best_mean'] = best['mean'] if best else None
+        summary['weakest_subject'] = weakest['subject_name'] if weakest else None
+        summary['weakest_mean'] = weakest['mean'] if weakest else None
+
+    return {
+        'by_subject': by_subject,
+        'by_period': by_period,
+        'by_exam': by_exam,
+        'summary': summary,
+    }
+
+
+def _explicit_exam_progress_query(args):
+    """True if the request includes filter query keys or all=1 (skip implicit current year/term/exam defaults)."""
+    if not args:
+        return False
+    if str(args.get('all') or '').strip().lower() in ('1', 'true', 'yes'):
+        return True
+    fk = ('academic_year_id', 'term_id', 'exam_id', 'subject_id')
+    try:
+        return bool(set(args.keys()) & set(fk))
+    except Exception:
+        return False
+
+
+def _norm_db_int(value):
+    """Normalize MySQL / PyMySQL numeric ids for comparisons and dict keys (handles Decimal, str, int)."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pick_default_exam_id_for_progress(exams_by_id, year_id, term_id, registered_current_exam):
+    """Pick one exam id: prefer today in scope, else registered current exam name match, else latest by date."""
+    pool = list(exams_by_id.values()) if exams_by_id else []
+    if not pool:
+        return None
+    yk = _norm_db_int(year_id)
+    tk = _norm_db_int(term_id)
+    if yk is not None and tk is not None:
+        scoped = [e for e in pool if _norm_db_int(e.get('academic_year_id')) == yk and _norm_db_int(e.get('term_id')) == tk]
+    elif yk is not None:
+        scoped = [e for e in pool if _norm_db_int(e.get('academic_year_id')) == yk]
+    else:
+        scoped = pool
+    if not scoped:
+        scoped = pool
+    today_str = date_cls.today().isoformat()
+    for e in scoped:
+        eds = (e.get('exam_date_str') or '')[:10]
+        if eds == today_str:
+            return _norm_db_int(e.get('id'))
+    if registered_current_exam:
+        want_name = (registered_current_exam.get('exam_name') or '').strip().upper()
+        want_ay = registered_current_exam.get('academic_year_id')
+        want_tid = registered_current_exam.get('term_id')
+        want_type = registered_current_exam.get('exam_type')
+        for e in sorted(scoped, key=lambda x: int(x.get('id') or 0)):
+            en = (e.get('exam_name') or '').strip().upper()
+            if en != want_name:
+                continue
+            if want_ay is not None and _norm_db_int(e.get('academic_year_id')) != _norm_db_int(want_ay):
+                continue
+            if want_tid is not None and _norm_db_int(e.get('term_id')) != _norm_db_int(want_tid):
+                continue
+            if want_type is not None and str((e.get('exam_type') or '').strip().upper()) != str(want_type):
+                continue
+            return _norm_db_int(e.get('id'))
+    scoped_sorted = sorted(scoped, key=lambda x: ((x.get('exam_date_str') or ''), x.get('id') or 0), reverse=True)
+    return _norm_db_int(scoped_sorted[0].get('id')) if scoped_sorted else None
+
+
+def _fetch_student_progress_payload(student_id, filter_args=None, use_implicit_school_defaults=False):
+    """Load student marks and aggregates for progress / exam report (staff and parent views).
+
+    When filter_args is set (e.g. request.args), optional GET filters narrow aggregates:
+    academic_year_id, term_id, exam_id, subject_id.
+
+    If use_implicit_school_defaults is True (parent exam progress), a visit with no filter query keys
+    defaults to the school's current academic year, current term, and a sensible current exam for that scope.
+    Use ?all=1 on the URL to show all marks without those defaults.
+    """
+
+    def _row_dict_get(d, *names):
+        if not isinstance(d, dict):
+            return None
+        for n in names:
+            if n in d:
+                return d[n]
+        lower_map = {str(k).lower(): k for k in d}
+        for n in names:
+            lk = str(n).lower()
+            if lk in lower_map:
+                return d[lower_map[lk]]
+        return None
+
+    def _rows_as_dicts(cursor_obj, seq):
+        """Normalize PyMySQL rows to dicts (handles tuple rows if cursorclass is not DictCursor)."""
+        if not seq:
+            return []
+        desc = getattr(cursor_obj, 'description', None) or []
+        keys = [d[0] for d in desc] if desc else []
+        out = []
+        for item in seq:
+            if isinstance(item, dict):
+                out.append(item)
+            elif isinstance(item, (list, tuple)) and keys:
+                out.append({keys[i]: item[i] for i in range(min(len(keys), len(item)))})
+        return out
+
+    sid_param = (student_id or '').strip()
+    student = None
+    progress_data = []
+    exam_dropdown_rows = []
+    school_default_year_id = None
+    school_default_term_id = None
+    registered_current_exam = None
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
                 ensure_subject_exam_total_marks_column(cursor)
-                cursor.execute("""
+                cursor.execute(
+                    """
                     SELECT s.student_id, s.full_name, s.current_grade, s.status
-                    FROM students s WHERE s.student_id = %s
-                """, (student_id,))
+                    FROM students s
+                    WHERE LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s))
+                    LIMIT 1
+                    """,
+                    (sid_param,),
+                )
                 row = cursor.fetchone()
                 if row:
                     student = {
@@ -14087,119 +15263,131 @@ def _fetch_student_progress_payload(student_id):
                     }
 
                 if student:
-                    cursor.execute("""
-                        SELECT ay.year_name, t.term_name, e.exam_name, sub.subject_name, sub.subject_code,
-                               sub.exam_total_marks, sm.marks
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT id FROM academic_years
+                            WHERE is_current = TRUE AND status = 'active'
+                            ORDER BY id DESC LIMIT 1
+                            """
+                        )
+                        yrow = cursor.fetchone()
+                        if yrow:
+                            school_default_year_id = yrow.get('id') if isinstance(yrow, dict) else yrow[0]
+                        if school_default_year_id:
+                            cursor.execute(
+                                """
+                                SELECT id FROM terms
+                                WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                                ORDER BY id DESC LIMIT 1
+                                """,
+                                (school_default_year_id,),
+                            )
+                            trow = cursor.fetchone()
+                            if trow:
+                                school_default_term_id = trow.get('id') if isinstance(trow, dict) else trow[0]
+                        if not school_default_term_id and school_default_year_id:
+                            cursor.execute(
+                                """
+                                SELECT id FROM terms
+                                WHERE status = 'active' AND academic_year_id = %s
+                                ORDER BY is_current DESC, id DESC LIMIT 1
+                                """,
+                                (school_default_year_id,),
+                            )
+                            trow2 = cursor.fetchone()
+                            if trow2:
+                                school_default_term_id = trow2.get('id') if isinstance(trow2, dict) else trow2[0]
+                        if not school_default_year_id:
+                            cursor.execute(
+                                "SELECT id FROM academic_years WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+                            )
+                            y2 = cursor.fetchone()
+                            if y2:
+                                school_default_year_id = y2.get('id') if isinstance(y2, dict) else y2[0]
+                        registered_current_exam = load_registered_current_exam_dict(cursor)
+                        school_default_year_id = _norm_db_int(school_default_year_id)
+                        school_default_term_id = _norm_db_int(school_default_term_id)
+                    except Exception as _sdef:
+                        print(f"_fetch_student_progress_payload school term defaults: {_sdef}")
+
+                    # Distinct exams for filter UI (reliable keys; separate from wide marks row shape).
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT DISTINCT COALESCE(e.id, sm.exam_id) AS exam_id,
+                                   e.exam_name, e.exam_type, e.exam_date,
+                                   e.academic_year_id AS exam_academic_year_id, e.term_id AS exam_term_id,
+                                   ay.year_name, t.term_name
+                            FROM student_marks sm
+                            LEFT JOIN exams e ON sm.exam_id = e.id
+                            LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                            LEFT JOIN terms t ON e.term_id = t.id
+                            WHERE TRIM(sm.student_id) = TRIM(%s) AND sm.exam_id IS NOT NULL
+                            ORDER BY COALESCE(e.exam_date, sm.updated_at) DESC, COALESCE(e.id, sm.exam_id) DESC
+                            """,
+                            (student['student_id'],),
+                        )
+                        exam_dropdown_rows = _rows_as_dicts(cursor, cursor.fetchall() or [])
+                    except Exception as _exd:
+                        print(f"_fetch_student_progress_payload exam_dropdown: {_exd}")
+                        exam_dropdown_rows = []
+
+                    cursor.execute(
+                        """
+                        SELECT ay.year_name, t.term_name, e.exam_name, e.exam_type, sub.subject_name, sub.subject_code,
+                               sub.exam_total_marks, sm.marks,
+                               COALESCE(e.id, sm.exam_id) AS exam_id,
+                               e.academic_year_id AS exam_academic_year_id,
+                               e.term_id AS exam_term_id, e.exam_date AS exam_date,
+                               sm.subject_id AS subject_id
                         FROM student_marks sm
-                        INNER JOIN exams e ON sm.exam_id = e.id
-                        INNER JOIN subjects sub ON sm.subject_id = sub.id
+                        LEFT JOIN exams e ON sm.exam_id = e.id
+                        LEFT JOIN subjects sub ON sm.subject_id = sub.id
                         LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
                         LEFT JOIN terms t ON e.term_id = t.id
-                        WHERE sm.student_id = %s
-                        ORDER BY ay.year_name, t.term_name, e.exam_name, sub.subject_name
-                    """, (student_id,))
-                    raw = cursor.fetchall() or []
+                        WHERE TRIM(sm.student_id) = TRIM(%s)
+                        ORDER BY COALESCE(e.exam_date, sm.updated_at) DESC, ay.year_name, t.term_name, e.exam_name, sub.subject_name
+                        """,
+                        (student['student_id'],),
+                    )
+                    raw = _rows_as_dicts(cursor, cursor.fetchall() or [])
                     for r in raw:
-                        year_name = r.get('year_name') if isinstance(r, dict) else r[0]
-                        term_name = r.get('term_name') if isinstance(r, dict) else r[1]
-                        exam_name = r.get('exam_name') if isinstance(r, dict) else r[2]
-                        subject_name = (r.get('subject_name') or r.get('subject_code') or 'N/A') if isinstance(r, dict) else (r[3] or r[4] or 'N/A')
-                        exam_total_marks = r.get('exam_total_marks') if isinstance(r, dict) else r[5]
-                        marks_val = r.get('marks') if isinstance(r, dict) else r[6]
+                        if not isinstance(r, dict):
+                            continue
+                        year_name = _row_dict_get(r, 'year_name')
+                        term_name = _row_dict_get(r, 'term_name')
+                        exam_name = _row_dict_get(r, 'exam_name')
+                        exam_type = _row_dict_get(r, 'exam_type')
+                        subject_name = _row_dict_get(r, 'subject_name') or _row_dict_get(r, 'subject_code') or 'N/A'
+                        exam_total_marks = _row_dict_get(r, 'exam_total_marks')
+                        marks_val = _row_dict_get(r, 'marks')
+                        exam_id = _row_dict_get(r, 'exam_id')
+                        exam_academic_year_id = _row_dict_get(r, 'exam_academic_year_id')
+                        exam_term_id = _row_dict_get(r, 'exam_term_id')
+                        exam_date = _row_dict_get(r, 'exam_date')
+                        subject_id = _row_dict_get(r, 'subject_id')
                         try:
                             m_raw = float(marks_val) if marks_val is not None else None
                         except (TypeError, ValueError):
                             m_raw = None
                         m_pct = raw_mark_to_percentage(m_raw, exam_total_marks) if m_raw is not None else None
-                        progress_data.append({
-                            'year_name': year_name,
-                            'term_name': term_name,
-                            'exam_name': exam_name,
-                            'subject_name': subject_name,
-                            'marks': m_pct,
-                            'marks_raw': m_raw,
-                        })
-
-                    subject_marks = {}
-                    for p in progress_data:
-                        if p['marks'] is not None:
-                            sn = p['subject_name']
-                            if sn not in subject_marks:
-                                subject_marks[sn] = []
-                            subject_marks[sn].append(p['marks'])
-                    by_subject = []
-                    for sn, vals in sorted(subject_marks.items()):
-                        by_subject.append({
-                            'subject_name': sn,
-                            'mean': round(sum(vals) / len(vals), 1),
-                            'count': len(vals),
-                            'min': round(min(vals), 1),
-                            'max': round(max(vals), 1),
-                        })
-
-                    period_marks = {}
-                    for p in progress_data:
-                        if p['marks'] is not None:
-                            label = (p['year_name'] or '') + ' ' + (p['term_name'] or '')
-                            label = label.strip() or 'Unknown'
-                            if label not in period_marks:
-                                period_marks[label] = []
-                            period_marks[label].append(p['marks'])
-                    by_period = []
-                    for label, vals in sorted(period_marks.items(), reverse=True):
-                        by_period.insert(0, {'label': label, 'mean': round(sum(vals) / len(vals), 1), 'count': len(vals)})
-
-                    exam_order = []
-                    exam_rows = {}
-                    for p in progress_data:
-                        key = (p['year_name'] or '', p['term_name'] or '', p['exam_name'] or '')
-                        if key not in exam_rows:
-                            exam_rows[key] = []
-                            exam_order.append(key)
-                        exam_rows[key].append(p)
-                    for key in exam_order:
-                        rows = exam_rows[key]
-                        marks_list = [r['marks'] for r in rows if r['marks'] is not None]
-                        subj_list = []
-                        for r in rows:
-                            if r['marks'] is not None:
-                                subj_list.append({'subject_name': r['subject_name'], 'marks': r['marks']})
-                        if not subj_list:
-                            continue
-                        subj_list.sort(key=lambda x: x['subject_name'])
-                        first = rows[0]
-                        parts = [x for x in (first.get('year_name'), first.get('term_name'), first.get('exam_name')) if x]
-                        label = ' · '.join(parts) if parts else 'Unknown'
-                        mean = round(sum(marks_list) / len(marks_list), 1)
-                        pass_count = sum(1 for m in marks_list if m >= 50)
-                        pr = round(100 * pass_count / len(marks_list), 0)
-                        by_exam.append({
-                            'label': label,
-                            'year_name': first.get('year_name'),
-                            'term_name': first.get('term_name'),
-                            'exam_name': first.get('exam_name'),
-                            'mean': mean,
-                            'count': len(marks_list),
-                            'pass_rate': pr,
-                            'subjects': subj_list,
-                        })
-
-                    all_marks = [p['marks'] for p in progress_data if p['marks'] is not None]
-                    total = len(all_marks)
-                    overall_mean = round(sum(all_marks) / total, 1) if total else 0
-                    pass_count = sum(1 for m in all_marks if m >= 50)
-                    pass_rate = round(100 * pass_count / total, 0) if total else 0
-                    best = max(by_subject, key=lambda x: x['mean']) if by_subject else None
-                    weakest = min(by_subject, key=lambda x: x['mean']) if by_subject else None
-                    summary = {
-                        'overall_mean': overall_mean,
-                        'pass_rate': pass_rate,
-                        'total_entries': total,
-                        'best_subject': best['subject_name'] if best else None,
-                        'best_mean': best['mean'] if best else None,
-                        'weakest_subject': weakest['subject_name'] if weakest else None,
-                        'weakest_mean': weakest['mean'] if weakest else None,
-                    }
+                        progress_data.append(
+                            {
+                                'year_name': year_name,
+                                'term_name': term_name,
+                                'exam_name': exam_name,
+                                'exam_type': exam_type,
+                                'subject_name': subject_name,
+                                'marks': m_pct,
+                                'marks_raw': m_raw,
+                                'exam_id': _norm_db_int(exam_id),
+                                'exam_academic_year_id': _norm_db_int(exam_academic_year_id),
+                                'exam_term_id': _norm_db_int(exam_term_id),
+                                'exam_date': exam_date,
+                                'subject_id': _norm_db_int(subject_id),
+                            }
+                        )
         except Exception as e:
             print(f"Error fetching student progress: {e}")
             raise
@@ -14210,13 +15398,266 @@ def _fetch_student_progress_payload(student_id):
                 except Exception:
                     pass
 
+    def _opt_int(args, key):
+        if not args:
+            return None
+        try:
+            v = args.get(key)
+        except TypeError:
+            return None
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    years_map = {}
+    terms_map = {}
+    exams_map = {}
+    subjects_map = {}
+    for p in progress_data:
+        yid = _norm_db_int(p.get('exam_academic_year_id'))
+        if yid is not None:
+            years_map[yid] = p.get('year_name') or f'Year {yid}'
+        tid = _norm_db_int(p.get('exam_term_id'))
+        if tid is not None:
+            terms_map[tid] = {
+                'id': tid,
+                'term_name': p.get('term_name') or 'Term',
+                'year_name': p.get('year_name') or '',
+                'academic_year_id': yid,
+            }
+        eid = _norm_db_int(p.get('exam_id'))
+        if eid is not None and eid not in exams_map:
+            parts = [x for x in (p.get('year_name'), p.get('term_name'), p.get('exam_name')) if x]
+            ed = p.get('exam_date')
+            eds = ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else '')
+            exams_map[eid] = {
+                'id': eid,
+                'label': ' · '.join(parts) if parts else f'Exam {eid}',
+                'exam_date_str': eds,
+                'academic_year_id': _norm_db_int(p.get('exam_academic_year_id')),
+                'term_id': _norm_db_int(p.get('exam_term_id')),
+                'exam_name': (p.get('exam_name') or ''),
+                'exam_type': (p.get('exam_type') or ''),
+            }
+        sid = _norm_db_int(p.get('subject_id'))
+        if sid is not None:
+            subjects_map[sid] = p.get('subject_name') or 'Subject'
+
+    for r in exam_dropdown_rows:
+        yid = _norm_db_int(_row_dict_get(r, 'exam_academic_year_id'))
+        if yid is not None:
+            yn = _row_dict_get(r, 'year_name')
+            years_map[yid] = yn or years_map.get(yid) or f'Year {yid}'
+        tid = _norm_db_int(_row_dict_get(r, 'exam_term_id'))
+        if tid is not None:
+            prev = terms_map.get(tid) or {}
+            terms_map[tid] = {
+                'id': tid,
+                'term_name': _row_dict_get(r, 'term_name') or prev.get('term_name') or 'Term',
+                'year_name': _row_dict_get(r, 'year_name') or prev.get('year_name') or '',
+                'academic_year_id': yid if yid is not None else _norm_db_int(prev.get('academic_year_id')),
+            }
+        eid = _norm_db_int(_row_dict_get(r, 'exam_id'))
+        if eid is None:
+            continue
+        parts = [x for x in (_row_dict_get(r, 'year_name'), _row_dict_get(r, 'term_name'), _row_dict_get(r, 'exam_name')) if x]
+        ed = _row_dict_get(r, 'exam_date')
+        eds = ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else '')
+        exams_map[eid] = {
+            'id': eid,
+            'label': ' · '.join(parts) if parts else f'Exam {eid}',
+            'exam_date_str': eds,
+            'academic_year_id': _norm_db_int(_row_dict_get(r, 'exam_academic_year_id')),
+            'term_id': _norm_db_int(_row_dict_get(r, 'exam_term_id')),
+            'exam_name': (_row_dict_get(r, 'exam_name') or ''),
+            'exam_type': (_row_dict_get(r, 'exam_type') or ''),
+        }
+
+    exam_filter_academic_years = [
+        {'id': k, 'year_name': years_map[k]} for k in sorted(years_map.keys(), reverse=True)
+    ]
+
+    fa_year = None
+    fa_term = None
+    fa_exam = None
+    fa_subj = None
+    implicit_default_fallback = False
+
+    if use_implicit_school_defaults:
+        if filter_args and str(filter_args.get('all') or '').strip().lower() in ('1', 'true', 'yes'):
+            pass
+        elif not _explicit_exam_progress_query(filter_args):
+            fa_year = school_default_year_id if school_default_year_id in years_map else None
+            fa_term = school_default_term_id if school_default_term_id in terms_map else None
+            fa_subj = None
+            fa_exam = _pick_default_exam_id_for_progress(exams_map, fa_year, fa_term, registered_current_exam)
+            if fa_exam is not None and fa_exam not in exams_map:
+                fa_exam = None
+        elif filter_args:
+            fa_year = _norm_db_int(_opt_int(filter_args, 'academic_year_id'))
+            fa_term = _norm_db_int(_opt_int(filter_args, 'term_id'))
+            fa_exam = _norm_db_int(_opt_int(filter_args, 'exam_id'))
+            fa_subj = _norm_db_int(_opt_int(filter_args, 'subject_id'))
+    elif filter_args:
+        fa_year = _norm_db_int(_opt_int(filter_args, 'academic_year_id'))
+        fa_term = _norm_db_int(_opt_int(filter_args, 'term_id'))
+        fa_exam = _norm_db_int(_opt_int(filter_args, 'exam_id'))
+        fa_subj = _norm_db_int(_opt_int(filter_args, 'subject_id'))
+
+    # Align filters so year/term/exam/subject stay consistent (exam drives year+term; term implies year).
+    if fa_exam is not None:
+        ex = exams_map.get(fa_exam)
+        if ex:
+            ey = _norm_db_int(ex.get('academic_year_id'))
+            et = _norm_db_int(ex.get('term_id'))
+            if ey is not None:
+                fa_year = ey
+            if et is not None:
+                fa_term = et
+        else:
+            fa_exam = None
+    if fa_year is None and fa_term is not None:
+        te = terms_map.get(fa_term)
+        if te:
+            fa_year = _norm_db_int(te.get('academic_year_id'))
+    if fa_term is not None:
+        te = terms_map.get(fa_term)
+        if not te:
+            fa_term = None
+        else:
+            ty = _norm_db_int(te.get('academic_year_id'))
+            if fa_year is not None and ty is not None and ty != fa_year:
+                fa_term = None
+
+    def _exam_in_scope_row(ex):
+        ey = _norm_db_int(ex.get('academic_year_id'))
+        et = _norm_db_int(ex.get('term_id'))
+        if fa_year is not None and ey != fa_year:
+            return False
+        if fa_term is not None and et != fa_term:
+            return False
+        return True
+
+    scoped_exam_ids = {_norm_db_int(ex.get('id')) for ex in exams_map.values() if _exam_in_scope_row(ex)}
+    scoped_exam_ids.discard(None)
+    if fa_exam is not None and fa_exam not in scoped_exam_ids:
+        fa_exam = None
+
+    def _progress_row_matches_scope(p, require_exam, require_subj):
+        if fa_year is not None and p.get('exam_academic_year_id') != fa_year:
+            return False
+        if fa_term is not None and p.get('exam_term_id') != fa_term:
+            return False
+        if require_exam and fa_exam is not None and p.get('exam_id') != fa_exam:
+            return False
+        if require_subj and fa_subj is not None and p.get('subject_id') != fa_subj:
+            return False
+        return True
+
+    subject_ids_scoped = set()
+    for p in progress_data:
+        if not _progress_row_matches_scope(p, require_exam=True, require_subj=False):
+            continue
+        sid = p.get('subject_id')
+        if sid is not None:
+            subject_ids_scoped.add(sid)
+    if not subject_ids_scoped:
+        for p in progress_data:
+            if not _progress_row_matches_scope(p, require_exam=False, require_subj=False):
+                continue
+            sid = p.get('subject_id')
+            if sid is not None:
+                subject_ids_scoped.add(sid)
+    if fa_subj is not None and fa_subj not in subject_ids_scoped:
+        fa_subj = None
+
+    exam_filter_terms = sorted(
+        [
+            dict(t)
+            for t in terms_map.values()
+            if fa_year is None or _norm_db_int(t.get('academic_year_id')) == fa_year
+        ],
+        key=lambda t: (str(t.get('year_name') or ''), -(t.get('id') or 0)),
+    )
+    exam_filter_exams = sorted(
+        [ex for ex in exams_map.values() if _exam_in_scope_row(ex)],
+        key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
+        reverse=True,
+    )
+    exam_filter_subjects = [
+        {'id': k, 'subject_name': subjects_map[k]}
+        for k in sorted(subject_ids_scoped & set(subjects_map.keys()), key=lambda i: subjects_map[i].lower())
+    ]
+
+    filters_active = any(x is not None for x in (fa_year, fa_term, fa_exam, fa_subj))
+
+    def _row_ok(p):
+        if fa_year is not None and p.get('exam_academic_year_id') != fa_year:
+            return False
+        if fa_term is not None and p.get('exam_term_id') != fa_term:
+            return False
+        if fa_exam is not None and p.get('exam_id') != fa_exam:
+            return False
+        if fa_subj is not None and p.get('subject_id') != fa_subj:
+            return False
+        return True
+
+    working = [p for p in progress_data if _row_ok(p)] if filters_active else progress_data
+    ag = _compute_progress_aggregates(working)
+
+    has_exam_marks = len(progress_data) > 0
+    if (
+        use_implicit_school_defaults
+        and filter_args is not None
+        and not _explicit_exam_progress_query(filter_args)
+        and str(filter_args.get('all') or '').strip().lower() not in ('1', 'true', 'yes')
+        and has_exam_marks
+        and filters_active
+        and len(working) == 0
+    ):
+        fa_year = fa_term = fa_exam = fa_subj = None
+        filters_active = False
+        working = progress_data
+        ag = _compute_progress_aggregates(working)
+        implicit_default_fallback = True
+        exam_filter_terms = sorted(
+            terms_map.values(),
+            key=lambda t: (str(t.get('year_name') or ''), -(t.get('id') or 0)),
+        )
+        exam_filter_exams = sorted(
+            exams_map.values(),
+            key=lambda x: (x.get('exam_date_str') or '', x.get('id') or 0),
+            reverse=True,
+        )
+        exam_filter_subjects = [
+            {'id': k, 'subject_name': subjects_map[k]}
+            for k in sorted(subjects_map.keys(), key=lambda i: subjects_map[i].lower())
+        ]
+
+    filter_no_results = bool(filters_active and has_exam_marks and len(working) == 0)
+
     return {
         'student': student,
-        'progress_data': progress_data,
-        'by_subject': by_subject if student else [],
-        'by_period': by_period if student else [],
-        'by_exam': by_exam if student else [],
-        'summary': summary,
+        'progress_data': working,
+        'by_subject': ag['by_subject'] if student else [],
+        'by_period': ag['by_period'] if student else [],
+        'by_exam': ag['by_exam'] if student else [],
+        'summary': ag['summary'] if student else None,
+        'has_exam_marks': has_exam_marks,
+        'filter_no_results': filter_no_results,
+        'filters_active': filters_active,
+        'exam_filter_academic_years': exam_filter_academic_years,
+        'exam_filter_terms': exam_filter_terms,
+        'exam_filter_exams': exam_filter_exams,
+        'exam_filter_subjects': exam_filter_subjects,
+        'selected_academic_year_id': fa_year,
+        'selected_term_id': fa_term,
+        'selected_exam_id': fa_exam,
+        'selected_subject_id': fa_subj,
+        'implicit_exam_default_fallback': implicit_default_fallback,
     }
 
 
@@ -14303,7 +15744,7 @@ def parent_exam_progress_detail(student_id):
                 cursor.execute("""
                     SELECT 1 FROM students s
                     INNER JOIN parents p ON s.student_id = p.student_id
-                    WHERE p.email = %s AND s.student_id = %s AND s.status = 'in session'
+                    WHERE p.email = %s AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
                     LIMIT 1
                 """, (parent_email, student_id))
                 allowed = cursor.fetchone() is not None
@@ -14321,7 +15762,7 @@ def parent_exam_progress_detail(student_id):
         return redirect(parent_dashboard_path('exam-progress'))
 
     try:
-        payload = _fetch_student_progress_payload(student_id)
+        payload = _fetch_student_progress_payload(student_id, request.args, use_implicit_school_defaults=True)
     except Exception:
         flash('Error loading student progress.', 'error')
         return redirect(parent_dashboard_path('exam-progress'))
@@ -14338,6 +15779,18 @@ def parent_exam_progress_detail(student_id):
         by_period=payload['by_period'],
         by_exam=payload['by_exam'],
         summary=payload['summary'],
+        has_exam_marks=payload.get('has_exam_marks', False),
+        filter_no_results=payload.get('filter_no_results', False),
+        filters_active=payload.get('filters_active', False),
+        exam_filter_academic_years=payload.get('exam_filter_academic_years', []),
+        exam_filter_terms=payload.get('exam_filter_terms', []),
+        exam_filter_exams=payload.get('exam_filter_exams', []),
+        exam_filter_subjects=payload.get('exam_filter_subjects', []),
+        selected_academic_year_id=payload.get('selected_academic_year_id'),
+        selected_term_id=payload.get('selected_term_id'),
+        selected_exam_id=payload.get('selected_exam_id'),
+        selected_subject_id=payload.get('selected_subject_id'),
+        implicit_exam_default_fallback=payload.get('implicit_exam_default_fallback', False),
         is_technician=ctx['is_technician'],
         current_view_role=ctx['current_view_role'],
         all_students=ctx['all_students'],

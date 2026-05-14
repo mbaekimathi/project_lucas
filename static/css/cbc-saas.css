@@ -1144,3 +1144,51 @@ html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .cbc-premiu
   background: #f1f5f9 !important;
   border-color: #cbd5e1 !important;
 }
+
+/* Auth card (login + parent setup): structure uses nested headings — not only direct children of .cbc-premium-surface */
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card {
+  color: #334155;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card :where(h1, h2, h3) {
+  color: #0f172a !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/55,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/60,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/70,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/75,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/80,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/85,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/90 {
+  color: #475569 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-violet-100,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-violet-200,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-violet-300 {
+  color: #5b21b6 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-red-300 {
+  color: #b91c1c !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-emerald-300 {
+  color: #047857 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/40,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/45,
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card .text-white\/50 {
+  color: #64748b !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card a.text-white\/80 {
+  color: #0369a1 !important;
+}
+
+html:not(.dark) body.login-page-public.public-site.cbc-saas--premium .login-auth-card a.text-white\/80:hover {
+  color: #0c4a6e !important;
+}

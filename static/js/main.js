@@ -60,12 +60,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const forms = document.querySelectorAll('form');
     forms.forEach(form => {
         form.addEventListener('submit', function(e) {
-            // Skip validation for login form - let Alpine.js handle it
-            if (form.id === 'loginForm') {
-                // Remove required attribute from hidden fields to prevent browser validation errors
+            // Skip aggregate validation for login / parent setup — server validates; avoids offsetParent false positives
+            if (
+                form.id === 'loginForm' ||
+                form.id === 'main_login_form' ||
+                form.getAttribute('data-skip-global-validate') === 'true'
+            ) {
                 const allFields = form.querySelectorAll('[required]');
                 allFields.forEach(field => {
-                    // Only validate visible fields
                     if (field.offsetParent === null) {
                         field.removeAttribute('required');
                     }

@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Parent portal setup — {{ school_settings.school_name or 'School portal' }}{% endblock %}
+{% block body_class %}public-site cbc-saas cbc-saas--premium login-page-public{% endblock %}
+{% block content %}
+<div class="cbc-premium-page py-10 md:py-14">
+    <div class="cbc-premium-login-shell max-w-3xl mx-auto">
+        <aside class="cbc-premium-login-aside">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/70">First-time setup</p>
+            <h1 class="mt-4 text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">Activate your parent portal</h1>
+            <p class="mt-4 text-white/75 text-sm leading-relaxed max-w-md">
+                Use your child’s admission ID from the school confirmation, confirm their date of birth, then set the email and password you will use to sign in.
+            </p>
+        </aside>
+        <div class="cbc-premium-surface login-auth-card p-8 md:p-10">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mb-4 rounded-xl border px-4 py-3 text-sm font-medium {% if category == 'error' %}border-red-300 bg-red-50 text-red-800{% elif category == 'success' %}border-green-300 bg-green-50 text-green-800{% else %}border-blue-300 bg-blue-50 text-blue-800{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <p class="text-sm text-white/55 mb-6">Step {{ step }} of 3</p>
+
+            {% if step == 1 %}
+            <h2 class="text-xl font-extrabold text-white">Admission ID</h2>
+            <p class="mt-1 text-sm text-white/55">Enter the student admission ID (e.g. STU001). We verify it as you type — when it’s valid, you’ll move on automatically (or use Continue).</p>
+            <form method="post" action="{{ url_for('parent_portal_setup') }}" class="cbc-premium-form mt-6 space-y-4" id="parent_admission_form" data-skip-global-validate="true">
+                <input type="hidden" name="setup_action" value="admission">
+                <div>
+                    <label for="admission">Student admission ID</label>
+                    <div class="relative">
+                        <input type="text" id="admission" name="admission" value="{{ admission_prefill|e }}" required maxlength="32" minlength="2" pattern="[A-Za-z0-9]{2,32}" autocomplete="off" placeholder="STU001" class="uppercase font-mono tracking-wide pr-10" aria-describedby="admission_live_status admission_format_hint">
+                        <i id="admission_input_icon" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden text-lg leading-none" aria-hidden="true"></i>
+                    </div>
+                    <p id="admission_format_hint" class="mt-1 text-xs text-white/40">Letters and numbers only; spaces are removed.</p>
+                </div>
+                <div id="admission_live_status" class="min-h-[1.25rem] text-sm" role="status" aria-live="polite" aria-atomic="true"></div>
+                <button type="submit" id="admission_continue" class="w-full cbc-cta-red justify-center py-3.5 disabled:opacity-40 disabled:pointer-events-none" disabled>Continue</button>
+            </form>
+            <script>
+            (function () {
+                var form = document.getElementById('parent_admission_form');
+                var input = document.getElementById('admission');
+                var btn = document.getElementById('admission_continue');
+                var status = document.getElementById('admission_live_status');
+                var icon = document.getElementById('admission_input_icon');
+                var checkUrl = {{ url_for('api_parent_portal_check_admission')|tojson }};
+                var debounceMs = 420;
+                var autoAdvanceMs = 750;
+                var debounceTimer = null;
+                var autoTimer = null;
+                var fetchSeq = 0;
+                var lastReadyValue = null;
+                var abortCtl = null;
+
+                function norm(v) {
+                    return (v || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                }
+
+                function setIcon(mode) {
+                    if (!icon) return;
+                    var base = 'pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-lg leading-none fas ';
+                    if (!mode || mode === 'none') {
+                        icon.className = base + 'hidden';
+                        return;
+                    }
+                    if (mode === 'ok') icon.className = base + 'fa-check-circle text-emerald-400';
+                    else if (mode === 'bad') icon.className = base + 'fa-times-circle text-red-400';
+                    else if (mode === 'load') icon.className = base + 'fa-spinner fa-spin text-white/55';
+                }
+
+                function setStatus(html, cls) {
+                    if (!status) return;
+                    status.className = 'min-h-[1.25rem] text-sm ' + (cls || 'text-white/55');
+                    status.innerHTML = html || '';
+                }
+
+                function resetAuto() {
+                    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+                }
+
+                function esc(s) {
+                    return String(s == null ? '' : s)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/\"/g, '&quot;');
+                }
+
+                function setReady(ready, msg, studentName) {
+                    if (!btn) return;
+                    btn.disabled = !ready;
+                    input.dataset.admissionValid = ready ? '1' : '0';
+                    if (ready) {
+                        var extra = studentName ? (' <span class="text-white/70">(' + esc(studentName) + ')</span>') : '';
+                        setStatus('<span class="text-emerald-300 font-medium">✓ ' + esc(msg || 'Verified') + '</span>' + extra, '');
+                        setIcon('ok');
+                    } else {
+                        setIcon('bad');
+                    }
+                }
+
+                function runCheck() {
+                    resetAuto();
+                    var v = norm(input.value);
+                    input.value = v;
+                    lastReadyValue = null;
+                    if (v.length < 2) {
+                        setIcon('none');
+                        setStatus('', 'text-white/55');
+                        if (btn) btn.disabled = true;
+                        input.dataset.admissionValid = '0';
+                        return;
+                    }
+                    if (abortCtl) abortCtl.abort();
+                    abortCtl = new AbortController();
+                    var mySeq = ++fetchSeq;
+                    setIcon('load');
+                    setStatus('<span class="text-white/50">Checking…</span>', '');
+                    if (btn) btn.disabled = true;
+                    input.dataset.admissionValid = '0';
+
+                    fetch(checkUrl + '?q=' + encodeURIComponent(v), { signal: abortCtl.signal, credentials: 'same-origin' })
+                        .then(function (r) { return r.json().then(function (j) { return { okHttp: r.ok, j: j }; }); })
+                        .then(function (pack) {
+                            if (mySeq !== fetchSeq) return;
+                            var data = pack.j;
+                            if (data.ready) {
+                                lastReadyValue = v;
+                                setReady(true, data.message || 'Admission verified.', data.student_name || '');
+                                autoTimer = setTimeout(function () {
+                                    if (norm(input.value) === lastReadyValue && input.dataset.admissionValid === '1' && form) {
+                                        form.requestSubmit();
+                                    }
+                                }, autoAdvanceMs);
+                                return;
+                            }
+                            setIcon('bad');
+                            if (btn) btn.disabled = true;
+                            input.dataset.admissionValid = '0';
+                            var msg = (data && data.message) ? data.message : 'Could not verify.';
+                            if (data.reason === 'portal_exists' && data.login_url) {
+                                setStatus('<span class="text-amber-200">' + esc(msg) + '</span> <a class="font-semibold text-white underline underline-offset-2" href="' + String(data.login_url) + '">Sign in</a>', '');
+                            } else {
+                                setStatus('<span class="text-red-300">' + esc(msg) + '</span>', '');
+                            }
+                        })
+                        .catch(function (e) {
+                            if (e.name === 'AbortError') return;
+                            if (mySeq !== fetchSeq) return;
+                            setIcon('bad');
+                            if (btn) btn.disabled = true;
+                            setStatus('<span class="text-red-300">Could not reach the server. Try again.</span>', '');
+                        });
+                }
+
+                function scheduleCheck() {
+                    resetAuto();
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(runCheck, debounceMs);
+                }
+
+                if (input && form && btn) {
+                    input.addEventListener('input', function () {
+                        var v = norm(input.value);
+                        input.value = v;
+                        setIcon('none');
+                        input.dataset.admissionValid = '0';
+                        if (btn) btn.disabled = true;
+                        setStatus('<span class="text-white/45">Keep typing…</span>', '');
+                        scheduleCheck();
+                    });
+                    input.addEventListener('blur', function () {
+                        var v = norm(input.value);
+                        input.value = v;
+                        if (v.length >= 2) {
+                            if (debounceTimer) clearTimeout(debounceTimer);
+                            runCheck();
+                        }
+                    });
+                    if (norm(input.value).length >= 2) {
+                        setTimeout(runCheck, 200);
+                    }
+                }
+            })();
+            </script>
+            {% elif step == 2 %}
+            <h2 class="text-xl font-extrabold text-white">Confirm date of birth</h2>
+            <p class="mt-1 text-sm text-white/55">Admission ID on file: <strong class="text-white">{{ student_id_display }}</strong></p>
+            <form method="post" action="{{ url_for('parent_portal_setup') }}" class="cbc-premium-form mt-6 space-y-4" data-skip-global-validate="true">
+                <input type="hidden" name="setup_action" value="dob">
+                <div>
+                    <label for="date_of_birth">Child’s date of birth</label>
+                    <input type="date" id="date_of_birth" name="date_of_birth" required autocomplete="bday">
+                </div>
+                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5">Verify</button>
+            </form>
+            {% else %}
+            <h2 class="text-xl font-extrabold text-white">Email and password</h2>
+            <p class="mt-1 text-sm text-white/55">Admission ID: <strong class="text-white">{{ student_id_display }}</strong></p>
+            <form method="post" action="{{ url_for('parent_portal_setup') }}" class="cbc-premium-form mt-6 space-y-4" id="parent_setup_form" data-skip-global-validate="true">
+                <input type="hidden" name="setup_action" value="account">
+                <div>
+                    <label for="email">Your email</label>
+                    <input type="email" id="email" name="email" required maxlength="255" autocomplete="email" placeholder="you@example.com">
+                </div>
+                <div class="cbc-password-field" x-data="{ showPassword: false }">
+                    <label for="new_password">New password</label>
+                    <div class="cbc-password-field__wrap">
+                        <input :type="showPassword ? 'text' : 'password'" id="new_password" name="new_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="At least 6 characters">
+                        <button type="button" class="cbc-password-field__toggle" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Hide password' : 'Show password'">
+                            <i class="fas text-lg" :class="showPassword ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="cbc-password-field" x-data="{ showPassword2: false }">
+                    <label for="confirm_password">Confirm password</label>
+                    <div class="cbc-password-field__wrap">
+                        <input :type="showPassword2 ? 'text' : 'password'" id="confirm_password" name="confirm_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password">
+                        <button type="button" class="cbc-password-field__toggle" @click="showPassword2 = !showPassword2" :aria-label="showPassword2 ? 'Hide password' : 'Show password'">
+                            <i class="fas text-lg" :class="showPassword2 ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+                <p id="parent_setup_pw_msg" class="text-sm text-red-300 hidden"></p>
+                <button type="submit" class="w-full cbc-cta-red justify-center py-3.5">Create account</button>
+            </form>
+            <script>
+            document.getElementById('parent_setup_form')?.addEventListener('submit', function (e) {
+                var a = document.getElementById('new_password');
+                var b = document.getElementById('confirm_password');
+                var msg = document.getElementById('parent_setup_pw_msg');
+                if (!a || !b) return;
+                if (a.value !== b.value) {
+                    e.preventDefault();
+                    if (msg) { msg.textContent = 'Passwords do not match.'; msg.classList.remove('hidden'); }
+                }
+            });
+            </script>
+            {% endif %}
+
+            <p class="mt-8 text-center text-sm text-white/50">
+                <a href="{{ url_for('login', role='parent') }}" class="font-semibold text-white/80 hover:text-white underline-offset-2 hover:underline">Back to sign in</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

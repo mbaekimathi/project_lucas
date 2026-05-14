@@ -127,6 +127,11 @@
         <i class="fas fa-broadcast-tower w-5"></i>
         <span>Communication</span>
     </a>
+    <a href="{{ employee_dash_url('tpad') }}"
+       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-tasks w-5"></i>
+        <span>TPAD</span>
+    </a>
     <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
        class="sidebar-item">
         <i class="fas fa-bed w-5"></i>
@@ -148,6 +153,11 @@
         <span>Notifications</span>
     </a>{% elif current_role == 'deputy head of institution' %}
     <!-- Deputy Head of Institution Links (same as Head of Institution) -->
+    <a href="{{ employee_dash_url('tpad') }}"
+       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-tasks w-5"></i>
+        <span>TPAD</span>
+    </a>
     <a href="{{ employee_dash_url('staff-management') }}" 
        class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
         <i class="fas fa-user-tie w-5"></i>
@@ -253,12 +263,17 @@
        class="sidebar-item {% if request.endpoint == 'curriculum_timetable_settings' or '/curriculum-timetable-settings' in request.path %}sidebar-item-active{% endif %}">
         <i class="fas fa-sliders-h w-5"></i>
         <span>{% if request.endpoint == 'dashboard_employee' %}Curriculum settings{% else %}Timetable settings{% endif %}</span>
-    </a>{% elif current_role == 'teachers' %}
+    </a>{% elif current_role in ('teachers', 'teacher') %}
     <!-- Teacher Links -->
     <a href="{{ employee_dash_url('my-classes') }}" 
        class="sidebar-item {% if request.endpoint == 'teacher_my_classes' %}sidebar-item-active{% endif %}">
         <i class="fas fa-calendar-alt w-5"></i>
         <span>My Classes</span>
+    </a>
+    <a href="{{ employee_dash_url('tpad') }}"
+       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-clipboard-check w-5"></i>
+        <span>TPAD</span>
     </a>
     <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
        class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
