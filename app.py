@@ -32365,9 +32365,9 @@ def students_by_academic_level(level_id):
             subject_exam_max_map[int(s['id'])] = 100.0
             combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
 
-    # View-only roles (e.g. curriculum coordinator): show scaled /100 in cells; teachers enter raw marks.
+    # View-only roles (e.g. curriculum coordinator): scaled /100 cells + total of converted marks.
     marks_display_scaled = not can_edit
-    marks_summary_column = 'avg_pct'
+    marks_summary_column = 'total_scaled' if marks_display_scaled else 'avg_pct'
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,

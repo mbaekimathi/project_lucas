@@ -568,14 +568,14 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
         <div x-show="selectedExam" class="mb-3 p-3 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
             {% if marks_display_scaled %}
             Each cell shows <strong>scaled marks (/100)</strong>: raw ÷ that subject&apos;s exam total × 100 (from Exam subject settings).{% if combined_subjects|length > 0 %} Combined columns are already a unified 0–100 %.{% endif %}
-            The <strong>Avg%</strong> column is the mean of those percentages. Teachers enter raw marks out of each paper total when editing.
+            The <strong>Total</strong> column is the <strong>sum</strong> of those converted marks (one value per subject column). Teachers enter raw marks out of each paper total when editing.
             {% elif combined_subjects|length > 0 %}
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). Combined columns (joined with <strong>/</strong>) use one <strong>unified % (0–100)</strong> applied proportionally to each paper. The <strong>Avg%</strong> column is the mean of column percentages.
             {% else %}
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
             {% endif %}
             <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-                Use <strong>Student order</strong> below to sort rows by name or by <strong>Avg%</strong> for the selected exam. The <strong>Rnk</strong> column is the overall rank by that summary score.
+                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. The <strong>Rnk</strong> column is the overall rank by that summary score.
             </p>
         </div>
 
@@ -593,8 +593,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                     class="w-full sm:w-auto sm:min-w-[14rem] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm font-medium py-2 px-3 shadow-sm focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 touch-manipulation">
                 <option value="name_asc">Name · A → Z</option>
                 <option value="name_desc">Name · Z → A</option>
-                <option value="marks_asc">Marks · lowest first (avg %)</option>
-                <option value="marks_desc">Marks · highest first (avg %)</option>
+                <option value="marks_asc">Marks · lowest first ({{ 'total' if marks_summary_column == 'total_scaled' else 'avg %' }})</option>
+                <option value="marks_desc">Marks · highest first ({{ 'total' if marks_summary_column == 'total_scaled' else 'avg %' }})</option>
             </select>
         </div>
 
@@ -638,7 +638,11 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <th class="marks-th-subject px-0.5 py-2 sm:py-3 text-center font-semibold text-gray-600 dark:text-gray-300 uppercase bg-gray-100 dark:bg-gray-700 align-bottom" title="{{ subject.subject_name }} — enter marks out of {{ subj_max }}">{{ subj_lbl }}</th>
                             {% endif %}
                             {% endfor %}
+                            {% if marks_summary_column == 'total_scaled' %}
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Sum of converted marks (/100) across subject columns with a mark">Total</th>
+                            {% else %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
+                            {% endif %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight">Rnk</th>
                         </tr>
                     </thead>
@@ -817,7 +821,7 @@ function marksSheet() {
         isTeacherMarks: {{ 'true' if is_teacher else 'false' }},
         _tick: 0,
         marksEntryReadonly: false,
-        /** 'avg_pct' — mean of column percentages for summary / rank. */
+        /** 'avg_pct', 'total_raw', or 'total_scaled' (sum of converted /100 marks). */
         summaryMode: {{ (marks_summary_column or 'avg_pct')|tojson }},
         /** View-only: show each cell as scaled /100; teachers still enter raw marks. */
         displayScaled: {{ 'true' if marks_display_scaled else 'false' }},
@@ -1250,11 +1254,30 @@ function marksSheet() {
             return Math.round(total * 100) / 100;
         },
 
-        /** Numeric value used for the summary column and ranking (mean % or raw total). */
+        /** Sum of converted /100 marks (one per subject column; combined counts once). */
+        getStudentTotalScaledMarks(studentId) {
+            if (!this.selectedExam) return null;
+            let total = 0;
+            let any = false;
+            for (const subjectId of this.subjectIds) {
+                const pct = this.getScaledPct(studentId, subjectId);
+                if (pct !== null) {
+                    total += pct;
+                    any = true;
+                }
+            }
+            if (!any) return null;
+            return Math.round(total * 10) / 10;
+        },
+
+        /** Numeric value used for the summary column and ranking. */
         getSummaryScoreNumeric(studentId) {
             if (!this.selectedExam) return null;
             if (this.summaryMode === 'total_raw') {
                 return this.getStudentTotalRawMarks(studentId);
+            }
+            if (this.summaryMode === 'total_scaled') {
+                return this.getStudentTotalScaledMarks(studentId);
             }
             let sumPct = 0;
             let count = 0;
@@ -1287,20 +1310,22 @@ function marksSheet() {
             if (!this.selectedExam) return null;
             const n = this.getSummaryScoreNumeric(studentId);
             if (n === null) return null;
-            if (this.summaryMode === 'total_raw') {
+            if (this.summaryMode === 'total_raw' || this.summaryMode === 'total_scaled') {
                 if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
-                return String(Number(n.toFixed(2)));
+                return String(Number(n.toFixed(1)));
             }
             return n.toFixed(1);
         },
 
         summaryColumnFooterMean() {
             if (!this.selectedExam) return '—';
-            if (this.summaryMode !== 'total_raw') return '—';
+            if (this.summaryMode !== 'total_raw' && this.summaryMode !== 'total_scaled') return '—';
             let sum = 0;
             let c = 0;
             for (const sid of this.studentIdList) {
-                const t = this.getStudentTotalRawMarks(sid);
+                const t = this.summaryMode === 'total_scaled'
+                    ? this.getStudentTotalScaledMarks(sid)
+                    : this.getStudentTotalRawMarks(sid);
                 if (t !== null) {
                     sum += t;
                     c += 1;
