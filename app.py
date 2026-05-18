@@ -32365,8 +32365,9 @@ def students_by_academic_level(level_id):
             subject_exam_max_map[int(s['id'])] = 100.0
             combination_column_members[str(int(s['id']))] = [int(x) for x in (s.get('member_subject_ids') or [])]
 
-    # Curriculum coordinator sheet: last summary column = sum of raw marks (each paper once), not mean %.
-    marks_summary_column = 'total_raw' if is_academic_coordinator else 'avg_pct'
+    # View-only roles (e.g. curriculum coordinator): show scaled /100 in cells; teachers enter raw marks.
+    marks_display_scaled = not can_edit
+    marks_summary_column = 'avg_pct'
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -32387,6 +32388,7 @@ def students_by_academic_level(level_id):
                          combination_column_members=combination_column_members,
                          can_edit=can_edit,
                          marks_summary_column=marks_summary_column,
+                         marks_display_scaled=marks_display_scaled,
                          is_teacher=is_teacher)
 
 # API Endpoint to fetch marks filtered by exam
