@@ -1206,22 +1206,27 @@ function marksSheet() {
             return this._rawStoredMark(studentId, subjectId);
         },
 
+        roundWhole(n) {
+            if (n === null || n === undefined || Number.isNaN(Number(n))) return null;
+            return Math.round(Number(n));
+        },
+
         /** Scaled mark 0–100 using exam subject settings (combined columns already return %). */
         getScaledPct(studentId, subjectId) {
             const raw = this.getMarkNumeric(studentId, subjectId);
             if (raw === null) return null;
             const members = this.getCombinationMembers(subjectId);
-            if (members && members.length) return raw;
+            if (members && members.length) return this.roundWhole(raw);
             const mx = this.subjectExamMaxFor(subjectId);
             if (!mx) return null;
-            return (100 * raw) / mx;
+            return this.roundWhole((100 * raw) / mx);
         },
 
         formatMarkDisplay(n, isCombo) {
             if (n === null) return '';
             if (isCombo || this.displayScaled) {
-                if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
-                return String(Number(n.toFixed(1)));
+                const w = this.roundWhole(n);
+                return w === null ? '' : String(w);
             }
             if (Number.isInteger(n)) return String(n);
             return String(n);
@@ -1267,7 +1272,7 @@ function marksSheet() {
                 }
             }
             if (!any) return null;
-            return Math.round(total * 10) / 10;
+            return this.roundWhole(total);
         },
 
         /** Numeric value used for the summary column and ranking. */
@@ -1295,7 +1300,7 @@ function marksSheet() {
                     count += 1;
                 }
             }
-            return count ? (sumPct / count) : null;
+            return count ? this.roundWhole(sumPct / count) : null;
         },
 
         getMark(studentId, subjectId) {
@@ -1310,11 +1315,8 @@ function marksSheet() {
             if (!this.selectedExam) return null;
             const n = this.getSummaryScoreNumeric(studentId);
             if (n === null) return null;
-            if (this.summaryMode === 'total_raw' || this.summaryMode === 'total_scaled') {
-                if (Math.abs(n - Math.round(n)) < 1e-6) return String(Math.round(n));
-                return String(Number(n.toFixed(1)));
-            }
-            return n.toFixed(1);
+            const w = this.roundWhole(n);
+            return w === null ? null : String(w);
         },
 
         summaryColumnFooterMean() {
@@ -1331,7 +1333,8 @@ function marksSheet() {
                     c += 1;
                 }
             }
-            return c ? (sum / c).toFixed(1) : '—';
+            const avg = c ? this.roundWhole(sum / c) : null;
+            return avg === null ? '—' : String(avg);
         },
 
         getRank(studentId) {
@@ -1391,7 +1394,8 @@ function marksSheet() {
                 }
             }
             if (!count) return '-';
-            return (sumPct / count).toFixed(1);
+            const w = this.roundWhole(sumPct / count);
+            return w === null ? '-' : String(w);
         },
 
         gradeForMark(subjectId, marksValue) {
