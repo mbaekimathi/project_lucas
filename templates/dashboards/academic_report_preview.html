@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6 print:p-4 max-w-[1600px] mx-auto">
+<div class="ar-report-preview-page p-4 lg:p-6 print:p-4 max-w-[1600px] mx-auto">
     <div class="no-print flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-6">
         <div>
             <a href="{{ employee_dash_url('academic-reports') }}" class="inline-flex items-center text-sm font-medium text-brand-primary hover:underline mb-2">
@@ -62,15 +62,15 @@
     </div>
 
     {% if simple_view %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+    <div class="ar-fit-sheet bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
         {% if not rows or rows|length == 0 %}
         <p class="p-8 text-center text-gray-500">No data.</p>
         {% else %}
-        <table class="w-full text-sm min-w-[640px] border-collapse">
+        <table class="ar-fit-table w-full text-sm border-collapse">
             <thead>
                 <tr class="border-b border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/40">
                     {% for c in columns %}
-                    <th class="text-left py-2.5 px-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap border-r border-gray-200 dark:border-gray-700 last:border-r-0">{{ c|replace('_', ' ') }}</th>
+                    <th class="text-left py-2.5 px-3 font-semibold text-gray-900 dark:text-white border-r border-gray-200 dark:border-gray-700 last:border-r-0">{{ c|replace('_', ' ') }}</th>
                     {% endfor %}
                 </tr>
             </thead>
@@ -78,7 +78,7 @@
                 {% for row in rows %}
                 <tr class="border-b border-gray-100 dark:border-gray-700/60 odd:bg-white odd:dark:bg-gray-800 even:bg-gray-50/70 even:dark:bg-gray-800/50">
                     {% for c in columns %}
-                    <td class="py-2 px-3 text-gray-800 dark:text-gray-200 align-top border-r border-gray-100 dark:border-gray-700/70 last:border-r-0 whitespace-nowrap">{{ row.get(c, '') }}</td>
+                    <td class="py-2 px-3 text-gray-800 dark:text-gray-200 align-top border-r border-gray-100 dark:border-gray-700/70 last:border-r-0">{{ row.get(c, '') }}</td>
                     {% endfor %}
                 </tr>
                 {% endfor %}
@@ -108,13 +108,13 @@
                 </div>
             </div>
             {% if tt and tt.days and tt.slots %}
-            <div class="overflow-x-auto">
-                <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
+            <div class="ar-fit-sheet overflow-hidden">
+                <table class="timetable-grid ar-fit-table w-full text-xs sm:text-sm border-collapse">
                     <thead>
                         <tr>
                             <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-28">Time</th>
                             {% for day in tt.days %}
-                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[140px]">{{ day }}</th>
+                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10">{{ day }}</th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -171,13 +171,13 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Examination timetable · sessions as rows · dates as columns</p>
             </div>
             {% if exam_timetable_grid and exam_timetable_grid.dates %}
-            <div class="overflow-x-auto">
-                <table class="timetable-grid w-full text-xs sm:text-sm border-collapse min-w-[720px]">
+            <div class="ar-fit-sheet overflow-hidden">
+                <table class="timetable-grid ar-fit-table w-full text-xs sm:text-sm border-collapse">
                     <thead>
                         <tr>
                             <th class="timetable-corner sticky left-0 z-10 bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 px-2 py-2 text-left font-semibold text-gray-700 dark:text-gray-300 w-32 sm:w-36">Session</th>
                             {% for dh in exam_timetable_grid.date_headers %}
-                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10 min-w-[150px]">
+                            <th class="border border-gray-200 dark:border-gray-600 px-2 py-2 text-center font-semibold text-gray-800 dark:text-gray-200 bg-brand-primary/10">
                                 <span class="block leading-tight">{{ dh.label }}</span>
                             </th>
                             {% endfor %}
@@ -282,8 +282,8 @@
                 </div>
                 <span class="text-sm text-gray-600 dark:text-gray-400">{{ st.level_name }}</span>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm min-w-[400px]">
+            <div class="ar-fit-sheet">
+                <table class="ar-fit-table w-full text-sm">
                     <thead>
                         <tr class="border-b border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40">
                             <th class="text-left py-2 px-4 font-semibold text-gray-700 dark:text-gray-300">Date</th>
@@ -352,7 +352,7 @@
             <div class="flex-1 min-w-0">
                 <p class="text-xs font-semibold text-gray-500 uppercase">Teacher</p>
                 <p class="font-bold text-gray-900 dark:text-white text-lg">{{ row.teacher_name }}</p>
-                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Subject: <span class="font-medium text-gray-800 dark:text-gray-200">{{ row.subject_name }}</span></p>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Subject code: <span class="font-medium text-gray-800 dark:text-gray-200">{{ row.subject_name }}</span></p>
                 <div class="flex flex-wrap gap-4 mt-2 text-sm text-gray-600 dark:text-gray-400">
                     <span>Mean: <strong class="text-gray-900 dark:text-white">{{ row.mean }}</strong></span>
                     <span>Range: {{ row.min }} – {{ row.max }}</span>
@@ -381,7 +381,7 @@
         {% set default_grade_bands = meta.grade_bands if meta and meta.grade_bands else [] %}
         {% set subject_grade_bands = meta.subject_grade_bands if meta and meta.subject_grade_bands else {} %}
         {% for m in st.marks %}
-            {% set subj = (m.subject_name or 'Subject') %}
+            {% set subj = (m.subject_code or m.subject_name or 'Subject')|trim %}
             {% if subj not in ns.subject_map %}
                 {% set _ = ns.subject_map.update({subj: {'marks': [], 'subject_id': m.subject_id, 'history': []}}) %}
             {% endif %}
@@ -476,7 +476,7 @@
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
                         <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall average</p>
-                        <p class="text-lg font-bold text-gray-900 dark:text-white">{% if overall_avg is not none %}{{ '%.2f'|format(overall_avg)|replace('.00','') }}{% else %}-{% endif %}</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{% if overall_avg is not none %}{{ overall_avg|round|int }}{% else %}-{% endif %}</p>
                     </div>
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
                         <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall grade</p>
@@ -488,12 +488,12 @@
                     </div>
                 </div>
 
-                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                    <table class="w-full min-w-[560px]">
+                <div class="ar-fit-sheet rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table class="ar-fit-table w-full">
                         <thead class="bg-gray-50 dark:bg-gray-900/40">
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>
-                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject</th>
+                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject code</th>
                                 <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>
                                 <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Trend</th>
                                 <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Grade</th>
@@ -519,7 +519,7 @@
                             <tr class="border-b border-gray-100 dark:border-gray-700">
                                 <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ loop.index }}</td>
                                 <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">{{ subject_name }}</td>
-                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{% if avg is not none %}{{ '%.2f'|format(avg)|replace('.00','') }}{% else %}-{% endif %}</td>
+                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{% if avg is not none %}{{ avg|round|int }}{% else %}-{% endif %}</td>
                                 <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                                     {% if trend_marks and trend_marks|length > 0 %}
                                         {% for t in trend_marks %}{% if not loop.first %} -> {% endif %}{{ t.mark }}{% endfor %}
@@ -583,6 +583,7 @@
     <div class="preview-card rounded-xl border-2 border-dashed p-12 text-center text-gray-500">No student exam results found.</div>
     {% else %}
     {% set subject_columns = meta.subject_columns if meta and meta.subject_columns else [] %}
+    {% set subject_columns_by_class = meta.subject_columns_by_class if meta and meta.subject_columns_by_class else {} %}
     <div class="space-y-8">
         {% for row in rows %}
         {% set grade = row.grade or '-' %}
@@ -632,8 +633,8 @@
                         <p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: {% if meta and meta.exam_window and meta.exam_window.exam_count is defined and meta.exam_window.exam_count is not none %}{{ meta.exam_window.exam_count }}{% else %}-{% endif %}</p>
                     </div>
                 </div>
-                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
-                    <table class="w-full min-w-[480px]">
+                <div class="ar-fit-sheet rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
+                    <table class="ar-fit-table w-full">
                         <thead class="bg-gray-50 dark:bg-gray-900/40">
                             <tr>
                                 <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>
@@ -642,11 +643,16 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for sc in subject_columns %}
+                            {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
+                            {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
+                            {% if not row_subject_cols %}
+                                {% set row_subject_cols = subject_columns %}
+                            {% endif %}
+                            {% for sc in row_subject_cols %}
                             <tr class="border-b border-gray-100 dark:border-gray-700">
                                 <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ loop.index }}</td>
                                 <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">{{ sc }}</td>
-                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{{ row.get(sc) if row.get(sc) not in (None, '') else '-' }}</td>
+                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{% if row.get(sc) not in (None, '') %}{{ row.get(sc)|round|int }}{% else %}-{% endif %}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -655,11 +661,11 @@
                 <div class="grid grid-cols-3 gap-2">
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
                         <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Total Marks</p>
-                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.total_marks }}</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.total_marks|round|int }}</p>
                     </div>
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
                         <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Mean</p>
-                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.mean }}</p>
+                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.mean|round|int }}</p>
                     </div>
                     <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
                         <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Grade</p>
@@ -783,11 +789,11 @@
 
     {# ——— Fallback plain table ——— #}
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
+    <div class="ar-fit-sheet bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
         {% if not rows or rows|length == 0 %}
         <p class="p-8 text-center text-gray-500">No data.</p>
         {% else %}
-        <table class="w-full text-sm min-w-[640px]">
+        <table class="ar-fit-table w-full text-sm">
             <thead>
                 <tr class="border-b border-gray-200 dark:border-gray-600">
                     {% for c in columns %}
@@ -811,6 +817,40 @@
 </div>
 
 <style>
+.ar-report-preview-page .ar-fit-sheet {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.ar-report-preview-page .ar-fit-table,
+.ar-report-preview-page table.timetable-grid {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+.ar-report-preview-page .ar-fit-table th,
+.ar-report-preview-page .ar-fit-table td,
+.ar-report-preview-page table.timetable-grid th,
+.ar-report-preview-page table.timetable-grid td {
+    white-space: normal;
+    word-break: break-word;
+    overflow: hidden;
+}
+.ar-report-preview-page table.timetable-grid {
+    font-size: clamp(0.5rem, 0.42rem + 0.25vw, 0.75rem);
+}
+.ar-report-preview-page table.timetable-grid th,
+.ar-report-preview-page table.timetable-grid td {
+    padding: 0.2rem 0.15rem;
+    vertical-align: top;
+}
+.ar-report-preview-page .timetable-corner {
+    width: 12% !important;
+    min-width: 0 !important;
+}
 @media print {
   @page {
     size: A4 portrait;

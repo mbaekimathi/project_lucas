@@ -24,6 +24,29 @@
     .dark .reports-filter-select {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     }
+    .reports-fit-sheet {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .reports-fit-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed;
+        border-collapse: collapse;
+    }
+    .reports-fit-table th,
+    .reports-fit-table td {
+        padding: 0.5rem 0.35rem;
+        white-space: normal;
+        word-break: break-word;
+        overflow: hidden;
+    }
+    .reports-fit-table th:first-child,
+    .reports-fit-table td:first-child {
+        width: 28%;
+    }
 </style>
 {% endblock %}
 
@@ -55,7 +78,7 @@
             <i class="fas fa-chart-bar text-brand-primary mr-2 sm:mr-3"></i>
             Reports
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches). Means and pass rates use <strong>scaled marks (/100)</strong> from Exam subject settings (raw ÷ exam total × 100).</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches). Means and pass rates use <strong>scaled marks (/100)</strong> from Exam subject settings (raw ÷ exam total × 100). <strong>Code</strong> and <strong>Points</strong> follow <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-brand-primary">Grades Registration</a> bands (mean % rounded down to a whole number before matching).</p>
     </div>
 
     <div class="mb-6">
@@ -157,11 +180,18 @@
                 <div class="flex flex-wrap gap-4 mt-2 text-white/90 text-sm">
                     <span><i class="fas fa-users mr-1"></i> {{ class_report.student_count }} student(s)</span>
                     <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}/100</strong></span>
+                    {% if class_report.class_grade_mean is not none %}
+                    <span><i class="fas fa-percentage mr-1"></i> Avg mean: <strong>{{ class_report.class_grade_mean }}%</strong></span>
+                    {% endif %}
+                    {% if class_report.class_grade_code and class_report.class_grade_code != '—' %}
+                    <span><i class="fas fa-tag mr-1"></i> Code: <strong>{{ class_report.class_grade_code }}</strong></span>
+                    <span><i class="fas fa-star mr-1"></i> Points: <strong>{{ class_report.class_grade_points }}</strong></span>
+                    {% endif %}
                     <span><i class="fas fa-book mr-1"></i> {{ class_report.subjects|length }} subject(s)</span>
                 </div>
             </div>
-            <div class="p-4 sm:p-6 overflow-x-auto">
-                <table class="w-full min-w-[600px] text-sm">
+            <div class="p-4 sm:p-6 reports-fit-sheet">
+                <table class="reports-fit-table w-full text-sm">
                     <thead>
                         <tr class="border-b border-gray-200 dark:border-gray-700">
                             <th class="text-left py-3 px-2 font-semibold text-gray-900 dark:text-white">Subject</th>
@@ -170,6 +200,8 @@
                             <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Lowest /100</th>
                             <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Entries</th>
                             <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Pass Rate</th>
+                            <th class="text-right py-3 px-2 font-semibold text-amber-800 dark:text-amber-300">Code</th>
+                            <th class="text-right py-3 px-2 font-semibold text-amber-800 dark:text-amber-300">Points</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -185,6 +217,8 @@
                             <td class="text-right py-3 px-2">
                                 <span class="{% if subj.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif subj.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-medium">{{ subj.pass_rate }}%</span>
                             </td>
+                            <td class="text-right py-3 px-2 font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_code|default('—') }}</td>
+                            <td class="text-right py-3 px-2 font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_points|default('—') }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -201,6 +235,8 @@
                             <td class="text-right py-3 px-2">
                                 <span class="{% if class_report.class_pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_pass_rate|default(0) }}%</span>
                             </td>
+                            <td class="text-right py-3 px-2 font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_code|default('—') }}</td>
+                            <td class="text-right py-3 px-2 font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_points|default('—') }}</td>
                         </tr>
                     </tfoot>
                     {% endif %}

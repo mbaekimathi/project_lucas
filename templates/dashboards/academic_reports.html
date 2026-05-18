@@ -166,95 +166,430 @@
         print-color-adjust: exact;
     }
 }
+/* Reports fit preview width — no horizontal scroll on screen or print */
+#ar-details-list {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+#ar-details-list .ar-fit-sheet,
+#ar-preview-wrap .ar-fit-sheet {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+#ar-details-list .ar-fit-table,
+#ar-preview-wrap .ar-fit-table {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed;
+    border-collapse: collapse;
+    box-sizing: border-box;
+}
+#ar-details-list .ar-marks-matrix {
+    font-size: clamp(0.58rem, 0.45rem + 0.35vw, 0.8125rem);
+}
+#ar-details-list .ar-marks-matrix--dense {
+    font-size: clamp(0.5rem, 0.4rem + 0.2vw, 0.6875rem);
+}
+#ar-details-list .ar-marks-matrix--xdense {
+    font-size: clamp(0.45rem, 0.38rem + 0.12vw, 0.625rem);
+}
+#ar-details-list .ar-marks-matrix th,
+#ar-details-list .ar-marks-matrix td,
+#ar-details-list .ar-fit-table th,
+#ar-details-list .ar-fit-table td {
+    padding: 0.2rem 0.15rem;
+    line-height: 1.15;
+    vertical-align: middle;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+#ar-details-list .ar-marks-matrix .ar-col-idx,
+#ar-details-list .ar-marks-matrix .ar-col-mark,
+#ar-details-list .ar-marks-matrix .ar-col-sum,
+#ar-details-list .ar-marks-matrix .ar-col-grade {
+    white-space: nowrap;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+#ar-details-list .ar-marks-matrix .ar-col-student {
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#ar-details-list .ar-marks-matrix th.ar-col-subj {
+    text-align: center;
+    white-space: normal;
+    word-break: break-word;
+    hyphens: auto;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+#ar-details-list .ar-marks-matrix .ar-col-mark {
+    text-align: center;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    text-align: right;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix thead th {
+    font-size: 0.95em;
+}
+#ar-details-list .ar-timetable-grid {
+    font-size: clamp(0.5rem, 0.42rem + 0.25vw, 0.75rem);
+}
+#ar-details-list .ar-timetable-grid th,
+#ar-details-list .ar-timetable-grid td {
+    padding: 0.2rem 0.15rem;
+    white-space: normal;
+    word-break: break-word;
+    vertical-align: top;
+}
+#ar-details-list .ar-timetable-grid .ar-col-date {
+    white-space: nowrap;
+    font-weight: 700;
+}
+#ar-details-list .ar-simple-table {
+    font-size: clamp(0.625rem, 0.5rem + 0.3vw, 0.875rem);
+}
+#ar-details-list .ar-simple-table th,
+#ar-details-list .ar-simple-table td {
+    padding: 0.35rem 0.4rem;
+    white-space: normal;
+    word-break: break-word;
+}
+#ar-details-list .ar-register-sheet.ar-fit-sheet {
+    overflow: hidden;
+    max-width: 100%;
+}
+#ar-details-list table.ar-register-table {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+@media print {
+    #ar-preview-wrap .ar-fit-sheet {
+        overflow: visible !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix,
+    #ar-preview-wrap table.ar-fit-table,
+    #ar-preview-wrap table.ar-timetable-grid {
+        table-layout: fixed !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+}
+/* Workspace: compact, responsive; preview scrolls inside viewport on large screens */
+.ar-page {
+    width: 100%;
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+.ar-chooser-zone {
+    border-radius: 0.875rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 18%, #e2e8f0);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 14%, #fff) 0%,
+        color-mix(in srgb, var(--brand-primary, #166534) 6%, #fff) 100%
+    );
+    padding: 0.875rem 1rem;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
+}
+.dark .ar-chooser-zone {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 28%, #334155);
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 28%, rgb(15 23 42)) 0%,
+        color-mix(in srgb, var(--brand-primary, #166534) 14%, rgb(15 23 42)) 100%
+    );
+}
+.ar-section-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 0.25rem;
+}
+.ar-section-tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-weight: 600;
+}
+.ar-report-zone {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 12%, transparent);
+}
+.dark .ar-report-zone {
+    border-top-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 20%, transparent);
+}
+.ar-report-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+@media (min-width: 640px) {
+    .ar-report-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.625rem;
+    }
+}
+@media (min-width: 1024px) {
+    .ar-report-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+.ar-report-tile {
+    text-align: left;
+    border-radius: 0.75rem;
+    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 20%, #e2e8f0);
+    background: #fff;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+.dark .ar-report-tile {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 25%, #475569);
+    background: rgb(30 41 59 / 0.85);
+}
+.ar-report-tile:hover {
+    border-color: var(--brand-primary, #166534);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 8%, #fff);
+}
+.dark .ar-report-tile:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 22%, rgb(30 41 59));
+}
+.ar-report-tile--active {
+    border-color: var(--brand-primary, #166534);
+    background: var(--brand-primary, #166534);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-primary, #166534) 35%, transparent);
+}
+.dark .ar-report-tile--active {
+    background: var(--brand-primary, #166534);
+    border-color: var(--brand-secondary, #22c55e);
+}
+.ar-report-tile__label {
+    display: block;
+    font-weight: 700;
+    color: rgb(15 23 42);
+}
+.ar-report-tile--active .ar-report-tile__label {
+    color: #fff;
+}
+.dark .ar-report-tile__label {
+    color: rgb(248 250 252);
+}
+.dark .ar-report-tile--active .ar-report-tile__label {
+    color: #fff;
+}
+.ar-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+@media (min-width: 1024px) {
+    .ar-page--workspace {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        min-height: 0;
+    }
+    .ar-preview-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex: 1 1 auto;
+    }
+    .ar-preview-scroll {
+        flex: 1 1 auto;
+        min-height: 12rem;
+        max-height: min(58vh, 52rem);
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+}
+.ar-filters-panel {
+    position: relative;
+    border-radius: 0.875rem;
+    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 32%, #cbd5e1);
+    background: linear-gradient(
+        165deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 22%, #ecfdf5) 0%,
+        color-mix(in srgb, var(--brand-secondary, #22c55e) 14%, #f0fdf4) 45%,
+        #f8fafc 100%
+    );
+    padding: 1.125rem 1.25rem 1.25rem;
+    box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--brand-primary, #166534) 40%, transparent);
+    overflow: hidden;
+}
+.ar-filters-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: linear-gradient(
+        90deg,
+        var(--brand-primary, #166534),
+        var(--brand-secondary, #22c55e)
+    );
+}
+.dark .ar-filters-panel {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 45%, #475569);
+    background: linear-gradient(
+        165deg,
+        color-mix(in srgb, var(--brand-primary, #166534) 35%, rgb(15 23 42)) 0%,
+        color-mix(in srgb, var(--brand-secondary, #22c55e) 18%, rgb(15 23 42)) 50%,
+        rgb(15 23 42) 100%
+    );
+    box-shadow: 0 6px 24px -10px rgba(0, 0, 0, 0.55);
+}
+.ar-filters-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.875rem 1rem;
+}
+@media (min-width: 640px) {
+    .ar-filters-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+.ar-filters-grid > div:not(.hidden) {
+    background: #fff;
+    border-radius: 0.625rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 16%, #e2e8f0);
+    border-left: 4px solid var(--brand-primary, #166534);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+.dark .ar-filters-grid > div:not(.hidden) {
+    background: rgb(30 41 59 / 0.92);
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 22%, #475569);
+    border-left-color: var(--brand-secondary, #22c55e);
+}
+.ar-filter-label {
+    display: block;
+    font-size: 0.6875rem;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+    margin-bottom: 0.5rem;
+}
+.dark .ar-filter-label {
+    color: var(--brand-secondary, #4ade80);
+}
+.ar-filter-control {
+    width: 100%;
+    padding: 0.5625rem 0.75rem;
+    border-radius: 0.5rem;
+    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 35%, #94a3b8);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 4%, #fff);
+    color: rgb(15 23 42);
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.ar-filter-control:focus {
+    outline: none;
+    border-color: var(--brand-primary, #166534);
+    background: #fff;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, #166534) 22%, transparent);
+}
+.dark .ar-filter-control {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 40%, #64748b);
+    background: rgb(15 23 42 / 0.6);
+    color: rgb(248 250 252);
+}
+.dark .ar-filter-control:focus {
+    background: rgb(15 23 42);
+}
+.ar-filters-panel #ar-wrap-student:not(.hidden) {
+    border-left-color: var(--brand-secondary, #22c55e);
+    background: color-mix(in srgb, var(--brand-secondary, #22c55e) 6%, #fff);
+}
+.dark .ar-filters-panel #ar-wrap-student:not(.hidden) {
+    background: color-mix(in srgb, var(--brand-secondary, #22c55e) 10%, rgb(30 41 59));
+}
+#ar-extra-filters:not(.hidden) {
+    border-top: 2px dashed color-mix(in srgb, var(--brand-primary, #166534) 25%, transparent) !important;
+}
 </style>
-<div class="print:p-2 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-    <!-- Workspace: report selection + filters in a structured grid -->
-    <section class="no-print mb-8 lg:mb-10 rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/40 dark:shadow-none overflow-hidden">
-        <header class="relative px-5 sm:px-8 py-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
-                <div class="flex items-start gap-4">
-                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg shadow-brand-primary/25">
-                        <i class="fas fa-chart-line text-lg" aria-hidden="true"></i>
+<div class="ar-page ar-page--workspace print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-4 sm:py-5 lg:py-6">
+    <!-- Workspace: categories, report tiles, filters -->
+    <section class="no-print ar-workspace mb-4 sm:mb-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-none overflow-hidden">
+        <header class="relative px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-start gap-3 min-w-0">
+                    <div class="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20">
+                        <i class="fas fa-chart-line text-base" aria-hidden="true"></i>
                     </div>
                     <div>
-                        <p class="text-[11px] font-bold uppercase tracking-[0.14em] text-brand-primary">Reporting workspace</p>
-                        <h1 class="mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Academic reports</h1>
-                        <p class="mt-1.5 text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
-                            Pick a report in the left column, refine scope with filters on the right, then preview and print or export data below.
-                        </p>
+                        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Academic reports</h1>
                     </div>
-                </div>
-                <div class="flex flex-wrap gap-2 lg:justify-end">
-                    <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                        <i class="fas fa-sync-alt text-emerald-600 dark:text-emerald-400 text-[11px]" aria-hidden="true"></i>
-                        Live preview
-                    </span>
-                    <span class="inline-flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300">
-                        <i class="fas fa-columns text-slate-500 text-[11px]" aria-hidden="true"></i>
-                        Rows &amp; columns layout
-                    </span>
                 </div>
             </div>
         </header>
 
-        <div class="p-5 sm:p-8 grid grid-cols-1 xl:grid-cols-12 gap-8 xl:gap-10">
-            <!-- Column A: Report type -->
-            <div class="xl:col-span-5 space-y-6">
-                <div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/40 p-5">
-                    <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-4 flex items-center gap-2">
-                        <span class="h-px flex-1 bg-slate-200 dark:bg-slate-600 max-w-[2rem]"></span>
-                        Report setup
-                    </h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
-                        <div class="sm:col-span-2 xl:col-span-1">
-                            <label for="ar-section" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Section</label>
-                            <select id="ar-section" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
-                                <option value="class_list">Class lists</option>
-                                <option value="exams">Exams</option>
-                                <option value="timetables">Timetables</option>
-                            </select>
-                        </div>
-                        <div id="ar-wrap-exam-scope" class="hidden sm:col-span-2 xl:col-span-1">
-                            <label for="ar-exam-scope" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Generate as</label>
-                            <select id="ar-exam-scope" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
-                                <option value="class">Class</option>
-                                <option value="individual">Individual student</option>
-                            </select>
-                            <p class="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Class-wide marksheets versus a single learner.</p>
-                        </div>
-                        <div class="sm:col-span-2 xl:col-span-1">
-                            <label for="ar-report" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Report</label>
-                            <select id="ar-report" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition"></select>
-                        </div>
-                    </div>
+        <div class="p-4 sm:p-5 lg:p-6 space-y-4">
+            <div class="ar-chooser-zone">
+                <div id="ar-section-tabs" class="ar-section-tabs" role="tablist" aria-label="Report category"></div>
+                <select id="ar-section" class="ar-sr-only" aria-hidden="true" tabindex="-1">
+                    <option value="class_list">Class lists</option>
+                    <option value="attendance">Attendance</option>
+                    <option value="exams">Exams</option>
+                    <option value="timetables">Timetables</option>
+                </select>
+
+                <div id="ar-wrap-exam-scope" class="hidden max-w-md mt-3">
+                <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
+                <select id="ar-exam-scope" class="ar-filter-control">
+                    <option value="class">Class</option>
+                    <option value="individual">Individual student</option>
+                </select>
                 </div>
 
-                <div id="ar-wrap-student" class="hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5 relative">
-                    <label for="gf-student-search" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Find student</label>
-                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2 leading-snug">For individual exam or attendance reports — search by name or ID; class in filters narrows suggestions.</p>
+                <div class="ar-report-zone">
+                    <div id="ar-report-grid" class="ar-report-grid" role="listbox" aria-label="Report type"></div>
+                    <select id="ar-report" class="ar-sr-only" aria-hidden="true" tabindex="-1"></select>
+                </div>
+            </div>
+
+            <div id="ar-report-desc" class="hidden" aria-hidden="true"></div>
+
+            <div class="ar-filters-panel">
+                <div id="ar-wrap-student" class="hidden rounded-lg p-3 mb-3 sm:col-span-2">
+                    <label for="gf-student-search" class="ar-filter-label">Student</label>
                     <div class="relative">
-                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400"><i class="fas fa-search text-sm"></i></span>
-                        <input type="search" id="gf-student-search" autocomplete="off" placeholder="Start typing a name or ID…" class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-brand-primary/70"><i class="fas fa-search text-sm"></i></span>
+                        <input type="search" id="gf-student-search" autocomplete="off" placeholder="Name or ID…" class="ar-filter-control pl-9">
                         <input type="hidden" id="gf-student" value="">
                         <div id="gf-student-suggestions" class="hidden absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl z-30"></div>
                     </div>
                     <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
                 </div>
-
-                <div id="ar-report-desc" class="rounded-xl border-l-4 border-brand-primary bg-brand-primary/[0.06] dark:bg-brand-primary/10 px-4 py-3 text-sm text-slate-700 dark:text-slate-300 leading-relaxed"></div>
-            </div>
-
-            <!-- Column B: Filters -->
-            <div class="xl:col-span-7 space-y-5 xl:border-l xl:border-slate-200 dark:xl:border-slate-700 xl:pl-10 pt-2 xl:pt-0">
-                <div class="flex items-center gap-2 mb-1">
-                    <h2 class="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Filters &amp; scope</h2>
-                    <span class="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">Refine rows</span>
-                </div>
-                <p id="ar-filter-hint" class="text-xs text-slate-500 dark:text-slate-400 hidden rounded-lg bg-slate-100 dark:bg-slate-800/80 px-3 py-2 border border-slate-200/80 dark:border-slate-700"></p>
-                <div id="ar-filter-main-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4">
+                <div id="ar-filter-main-grid" class="ar-filters-grid">
                     <div id="ar-filter-wrap-year" class="hidden">
-                        <label for="gf-year" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Academic year</label>
-                        <select id="gf-year" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-year" class="ar-filter-label">Academic year</label>
+                        <select id="gf-year" class="ar-filter-control">
                             <option value="">All years</option>
                             {% for y in academic_years %}
                             <option value="{{ y.id }}" {% if y.is_current %}selected data-current="1"{% endif %}>{{ y.year_name }}{% if y.is_current %} (current){% endif %}</option>
@@ -262,8 +597,8 @@
                         </select>
                     </div>
                     <div id="ar-filter-wrap-term" class="hidden">
-                        <label for="gf-term" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Term</label>
-                        <select id="gf-term" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-term" class="ar-filter-label">Term</label>
+                        <select id="gf-term" class="ar-filter-control">
                             <option value="">Any / not set</option>
                             {% for t in terms %}
                             <option value="{{ t.id }}" data-year="{{ t.academic_year_id or '' }}" {% if t.is_current %}selected data-current="1"{% endif %}>{{ t.term_name }}{% if t.year_name %} — {{ t.year_name }}{% endif %}{% if t.is_current %} (current){% endif %}</option>
@@ -271,15 +606,14 @@
                         </select>
                     </div>
                     <div id="ar-filter-wrap-exam" class="hidden sm:col-span-2">
-                        <label for="gf-exam-name" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Exam name</label>
-                        <select id="gf-exam-name" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-exam-name" class="ar-filter-label">Exam name</label>
+                        <select id="gf-exam-name" class="ar-filter-control">
                             <option value="">Select exam…</option>
                         </select>
-                        <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Optional — narrows exam reports. The school current exam is preselected when it matches year and term; leave Select exam… for all exams in scope, or pick any other exam anytime.</p>
                     </div>
                     <div id="ar-filter-wrap-level" class="sm:col-span-2">
-                        <label for="gf-level" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Class / level</label>
-                        <select id="gf-level" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-level" class="ar-filter-label">Class / level</label>
+                        <select id="gf-level" class="ar-filter-control">
                             <option value="">All classes</option>
                             {% for lv in academic_levels %}
                             <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
@@ -288,19 +622,17 @@
                     </div>
                 </div>
 
-                <div id="ar-extra-filters" class="rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-slate-50/70 dark:bg-slate-800/30 p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-4 hidden">
+                <div id="ar-extra-filters" class="ar-filters-grid hidden mt-3 pt-3 border-t border-brand-primary/15">
                     <div id="ar-wrap-timetable-view" class="hidden sm:col-span-2">
-                        <label for="gf-timetable-view" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Timetable view</label>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Grid columns follow periods or teachers depending on mode.</p>
-                        <select id="gf-timetable-view" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-timetable-view" class="ar-filter-label">Timetable view</label>
+                        <select id="gf-timetable-view" class="ar-filter-control">
                             <option value="student">Student view (subject + teacher by class/time)</option>
                             <option value="teacher">Teacher view (teacher + class by time)</option>
                         </select>
                     </div>
                     <div id="ar-wrap-teacher" class="hidden sm:col-span-2">
-                        <label for="gf-teacher" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Teacher</label>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Required for teacher timetable reports.</p>
-                        <select id="gf-teacher" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-teacher" class="ar-filter-label">Teacher</label>
+                        <select id="gf-teacher" class="ar-filter-control">
                             <option value="">Select teacher</option>
                             {% for te in teachers %}
                             <option value="{{ te.id }}">{{ te.full_name }}</option>
@@ -309,17 +641,15 @@
                     </div>
                     <div id="ar-wrap-exam-name" class="hidden"></div>
                     <div id="ar-wrap-register-date" class="hidden">
-                        <label for="gf-register-date" class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Attendance date</label>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Single day column headers on registers.</p>
-                        <input type="date" id="gf-register-date" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                        <label for="gf-register-date" class="ar-filter-label">Attendance date</label>
+                        <input type="date" id="gf-register-date" class="ar-filter-control">
                     </div>
                     <div id="ar-wrap-dates" class="hidden sm:col-span-2">
-                        <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">Date range</label>
-                        <p class="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Attendance summaries — start and end columns.</p>
+                        <label class="ar-filter-label">Date range</label>
                         <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
-                            <input type="date" id="gf-dfrom" class="min-w-0 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <input type="date" id="gf-dfrom" class="ar-filter-control">
                             <span class="text-center text-slate-400 text-xs font-medium px-1">to</span>
-                            <input type="date" id="gf-dto" class="min-w-0 w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary transition">
+                            <input type="date" id="gf-dto" class="ar-filter-control">
                         </div>
                     </div>
                 </div>
@@ -328,10 +658,10 @@
     </section>
 
     <!-- Report preview -->
-    <div id="ar-preview-wrap" class="mt-2 lg:mt-4">
-        <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl shadow-slate-200/30 dark:shadow-none overflow-hidden ring-1 ring-black/[0.03] dark:ring-white/[0.06]">
-            <div class="px-4 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">
-                <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+    <div id="ar-preview-wrap" class="ar-preview-panel mt-2 lg:mt-3 min-w-0">
+        <div class="rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-none overflow-hidden ring-1 ring-black/[0.03] dark:ring-white/[0.06] flex flex-col min-h-0">
+            <div class="px-3 sm:px-5 py-3 sm:py-4 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900 shrink-0">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
                     <div class="flex items-start gap-4 min-w-0">
                         {% if school_settings.school_logo %}
                         <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
@@ -373,7 +703,7 @@
                     </div>
                 </div>
             </div>
-            <div id="ar-details-list" class="p-4 sm:p-6 lg:p-8 bg-slate-50/40 dark:bg-slate-950/30">
+            <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
                 <p class="text-sm text-slate-500 dark:text-slate-400">Loading report details...</p>
             </div>
         </div>
@@ -402,6 +732,14 @@
         { id: 'class_list_exam', label: 'Exam entry list', desc: 'Class list prepared for exam entry.' },
       ],
     },
+    attendance: {
+      label: 'Attendance',
+      hint: 'Term sets default dates; optionally narrow by class or set a custom date range.',
+      reports: [
+        { id: 'attendance_class', label: 'Summary by class', desc: 'Present/absent totals and unique students per class for the date range.' },
+        { id: 'attendance_individual', label: 'Individual student', desc: 'Daily present/absent rows for one student — use Find student.' },
+      ],
+    },
     exams: {
       label: 'Exams',
       hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
@@ -418,13 +756,17 @@
       reports: [
         { id: 'timetable_subject', label: 'Class timetable', desc: 'Weekly teaching timetable: periods, subjects, and teachers by class.' },
         { id: 'timetable_exam', label: 'Exam timetable', desc: 'Scheduled exam sessions by date, class, subject, and venue.' },
+        { id: 'timetable_teacher', label: 'Teacher timetable', desc: 'One teacher’s weekly schedule across classes — select teacher below.' },
       ],
     },
   };
 
   const sectionEl = document.getElementById('ar-section');
+  const sectionTabsEl = document.getElementById('ar-section-tabs');
+  const reportGridEl = document.getElementById('ar-report-grid');
   const reportEl = document.getElementById('ar-report');
   const descEl = document.getElementById('ar-report-desc');
+  let lastReportOptions = [];
   const hintEl = document.getElementById('ar-filter-hint');
   const examScopeWrap = document.getElementById('ar-wrap-exam-scope');
   const examScopeEl = document.getElementById('ar-exam-scope');
@@ -566,24 +908,92 @@
       ];
     }
 
-    (reports || []).forEach(function(r) {
+    lastReportOptions = reports || [];
+    (lastReportOptions).forEach(function(r) {
       const opt = document.createElement('option');
       opt.value = r.id;
       opt.textContent = r.label;
       reportEl.appendChild(opt);
     });
     reportEl.selectedIndex = 0;
+    renderReportGrid(lastReportOptions);
     updateReportDescription();
     updateExtraFilters();
     loadDetails();
   }
 
-  function updateReportDescription() {
-    const sk = sectionEl.value;
+  function renderSectionTabs() {
+    if (!sectionTabsEl || !sectionEl) return;
+    sectionTabsEl.innerHTML = '';
+    Object.keys(CATALOG).forEach(function(key) {
+      const cat = CATALOG[key];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ar-section-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border-2 transition-colors ' +
+        (sectionEl.value === key
+          ? 'border-brand-primary bg-brand-primary text-white shadow-md'
+          : 'border-white/90 bg-white text-slate-800 shadow-sm hover:border-brand-primary/50 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100');
+      btn.setAttribute('role', 'tab');
+      btn.setAttribute('aria-selected', sectionEl.value === key ? 'true' : 'false');
+      btn.dataset.section = key;
+      btn.textContent = cat.label || key;
+      btn.addEventListener('click', function() {
+        if (sectionEl.value === key) return;
+        sectionEl.value = key;
+        sectionEl.dispatchEvent(new Event('change'));
+      });
+      sectionTabsEl.appendChild(btn);
+    });
+  }
+
+  function syncSectionTabsActive() {
+    if (!sectionTabsEl) return;
+    sectionTabsEl.querySelectorAll('[data-section]').forEach(function(btn) {
+      const on = btn.dataset.section === sectionEl.value;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.className = 'ar-section-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border-2 transition-colors ' +
+        (on
+          ? 'border-brand-primary bg-brand-primary text-white shadow-md'
+          : 'border-white/90 bg-white text-slate-800 shadow-sm hover:border-brand-primary/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100');
+    });
+  }
+
+  function renderReportGrid(reports) {
+    if (!reportGridEl || !reportEl) return;
+    reportGridEl.innerHTML = '';
+    (reports || []).forEach(function(r, idx) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ar-report-tile';
+      btn.dataset.reportId = r.id;
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('aria-selected', idx === 0 ? 'true' : 'false');
+      const label = document.createElement('span');
+      label.className = 'ar-report-tile__label';
+      label.textContent = r.label;
+      btn.appendChild(label);
+      btn.addEventListener('click', function() {
+        if (reportEl.value === r.id) return;
+        reportEl.value = r.id;
+        reportEl.dispatchEvent(new Event('change'));
+      });
+      reportGridEl.appendChild(btn);
+    });
+    syncReportGridActive();
+  }
+
+  function syncReportGridActive() {
+    if (!reportGridEl) return;
     const rid = currentReportId();
-    const cat = CATALOG[sk];
-    const rep = (cat.reports || []).find(function(x) { return x.id === rid; });
-    descEl.textContent = rep ? rep.desc : '';
+    reportGridEl.querySelectorAll('.ar-report-tile').forEach(function(btn) {
+      const on = btn.dataset.reportId === rid;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.classList.toggle('ar-report-tile--active', on);
+    });
+  }
+
+  function updateReportDescription() {
+    if (descEl) descEl.textContent = '';
   }
 
   function updateMainFiltersVisibility() {
@@ -601,6 +1011,9 @@
     let showLevel = false;
 
     if (sk === 'class_list') {
+      showLevel = true;
+    } else if (sk === 'attendance') {
+      showTerm = true;
       showLevel = true;
     } else if (sk === 'exams') {
       showYear = true;
@@ -627,25 +1040,9 @@
     const anyMain = showYear || showTerm || showExam || showLevel;
     if (grid) grid.classList.toggle('hidden', !anyMain);
 
-    function contextualHint() {
-      if (sk === 'class_list') {
-        if (rid === 'class_list_attendance') return 'Choose class (optional). Set the attendance register date below.';
-        if (rid === 'class_list_exam') return 'Choose class (optional) for exam entry lists, or leave as all classes.';
-        return '';
-      }
-      if (sk === 'exams') return 'Filter exam marks by year, term, class, and optionally one exam.';
-      if (sk === 'timetables') {
-        if (rid === 'timetable_subject') return 'Term is required. Optionally narrow by academic year and class. Timetable layout is below.';
-        if (rid === 'timetable_exam') return 'Optionally narrow exam sessions by term, academic year, and class.';
-        if (rid === 'timetable_teacher') return 'Choose term above, then select the teacher below.';
-        return '';
-      }
-      return '';
-    }
-    const ht = contextualHint();
     if (hintEl) {
-      hintEl.textContent = ht;
-      hintEl.classList.toggle('hidden', !ht);
+      hintEl.textContent = '';
+      hintEl.classList.add('hidden');
     }
   }
 
@@ -656,7 +1053,7 @@
     const needStudent = reportUsesFindStudentPicker(rid);
     const needExamName = rid && rid.indexOf('exam_') === 0;
     const needRegisterDate = rid === 'class_list_attendance';
-    const needDates = false;
+    const needDates = rid === 'attendance_class' || rid === 'attendance_individual';
 
     if (!needStudent) {
       if (studentHiddenEl) studentHiddenEl.value = '';
@@ -818,6 +1215,7 @@
 
   sectionEl.addEventListener('change', function() {
     if (examScopeWrap) examScopeWrap.classList.toggle('hidden', sectionEl.value !== 'exams');
+    syncSectionTabsActive();
     if (sectionEl.value !== 'exams') {
       if (studentHiddenEl) studentHiddenEl.value = '';
       if (studentSearchEl) studentSearchEl.value = '';
@@ -834,11 +1232,13 @@
   }
 
   reportEl.addEventListener('change', function() {
+    syncReportGridActive();
     updateReportDescription();
     updateExtraFilters();
     loadDetails();
   });
 
+  renderSectionTabs();
   fillReportOptions(sectionEl.value);
 
   function val(id) {
@@ -911,6 +1311,14 @@
       .replace(/'/g, '&#39;');
   }
 
+  /** Whole numbers for marks, means, and totals on exam reports. */
+  function formatReportMark(value) {
+    if (value === '—' || value === '' || value === null || value === undefined) return '—';
+    var n = parseFloat(value);
+    if (isNaN(n)) return String(value);
+    return String(Math.round(n));
+  }
+
   /** Display label for teacher on timetable grids: allocated staff number (not portal login, not DB pk). */
   function rowTeacherStaffId(row) {
     if (!row) return '';
@@ -921,6 +1329,48 @@
     return String(legacy != null ? legacy : '').trim();
   }
 
+  function columnHeaderLabel(col) {
+    if (col === 'subject_name') return 'Subject code';
+    return String(col || '').replaceAll('_', ' ');
+  }
+
+  function marksMatrixTableClass(subjectCount) {
+    var n = subjectCount || 0;
+    var cls = 'ar-marks-matrix ar-fit-table';
+    if (n > 10) cls += ' ar-marks-matrix--dense';
+    if (n > 14) cls += ' ar-marks-matrix--xdense';
+    return cls;
+  }
+
+  function buildMarksMatrixColgroup(subjectCount) {
+    var n = Math.max(0, subjectCount | 0);
+    var studentPct = Math.min(20, Math.max(11, 24 - n * 0.65));
+    var fixed = 3 + studentPct + 5 + 5 + 5;
+    var subjPct = n > 0 ? Math.max(2.5, (100 - fixed) / n) : 0;
+    var html = '<colgroup>' +
+      '<col class="ar-col-idx" style="width:3%">' +
+      '<col class="ar-col-student" style="width:' + studentPct.toFixed(2) + '%">';
+    for (var i = 0; i < n; i++) {
+      html += '<col class="ar-col-subj" style="width:' + subjPct.toFixed(2) + '%">';
+    }
+    html += '<col class="ar-col-sum" style="width:5%">' +
+      '<col class="ar-col-sum" style="width:5%">' +
+      '<col class="ar-col-grade" style="width:5%">' +
+      '</colgroup>';
+    return html;
+  }
+
+  function buildTimetableColgroup(timeSlotCount) {
+    var n = Math.max(1, timeSlotCount | 0);
+    var datePct = Math.min(16, Math.max(10, 28 - n * 1.2));
+    var slotPct = (100 - datePct) / n;
+    var html = '<colgroup><col class="ar-col-date" style="width:' + datePct.toFixed(2) + '%">';
+    for (var i = 0; i < n; i++) {
+      html += '<col style="width:' + slotPct.toFixed(2) + '%">';
+    }
+    return html + '</colgroup>';
+  }
+
   function renderTable(bundle) {
     const columns = Array.isArray(bundle.columns) ? bundle.columns : [];
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
@@ -928,18 +1378,18 @@
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
     }
     const head = columns.map(function(c) {
-      return '<th scope="col" class="text-left py-3 px-4 text-[11px] font-bold uppercase tracking-wider text-white/95 whitespace-nowrap bg-slate-800 dark:bg-slate-950 border-b border-slate-700 dark:border-slate-800">' + escapeHtml(c.replaceAll('_', ' ')) + '</th>';
+      return '<th scope="col" class="text-left py-2 px-2 text-[11px] font-bold uppercase tracking-wider text-white/95 bg-slate-800 dark:bg-slate-950 border-b border-slate-700 dark:border-slate-800">' + escapeHtml(columnHeaderLabel(c)) + '</th>';
     }).join('');
     const body = rows.map(function(row, ri) {
       const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/40' : ' bg-white dark:bg-slate-900';
       const cells = columns.map(function(c) {
-        return '<td class="py-2.5 px-4 align-middle text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800 whitespace-nowrap">' + escapeHtml(row[c]) + '</td>';
+        return '<td class="py-2 px-2 align-middle text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800">' + escapeHtml(row[c]) + '</td>';
       }).join('');
       return '<tr class="' + zebra + '">' + cells + '</tr>';
     }).join('');
     return '' +
-      '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-        '<table class="w-full text-sm min-w-[720px] border-collapse">' +
+      '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="ar-fit-table ar-simple-table w-full border-collapse">' +
           '<thead><tr>' + head + '</tr></thead>' +
           '<tbody>' + body + '</tbody>' +
         '</table>' +
@@ -982,7 +1432,36 @@
         }).filter(Boolean).join(', ')
       : 'Configured grade settings';
 
+    const subjectColumnsByClass = meta.subject_columns_by_class && typeof meta.subject_columns_by_class === 'object'
+      ? meta.subject_columns_by_class
+      : {};
     const subjectColumns = Array.isArray(meta.subject_columns) ? meta.subject_columns : [];
+
+    function subjectColumnsForClass(className, list) {
+      var k = String(className || '').trim();
+      if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
+        return subjectColumnsByClass[k];
+      }
+      if (subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length)) {
+        return subjectColumns;
+      }
+      var fromRows = {};
+      (list || []).forEach(function(row) {
+        if (!row) return;
+        Object.keys(row).forEach(function(key) {
+          if (!key || key === 'position' || key === 'admission_number' || key === 'student_id' ||
+              key === 'full_name' || key === 'level_name' || key === 'current_grade' ||
+              key === 'student_photo' || key === 'total_marks' || key === 'mean' || key === 'grade') {
+            return;
+          }
+          var v = row[key];
+          if (v !== '' && v !== null && v !== undefined) {
+            fromRows[key] = true;
+          }
+        });
+      });
+      return Object.keys(fromRows).sort(function(a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+    }
 
     function classKeyForRow(row) {
       var g = String((row && row.current_grade) || '').trim();
@@ -1032,19 +1511,20 @@
       const grade = String(row.grade || '-');
       const meaning = gradeMeaning(grade);
       const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
+      const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
       const photoBlock = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
         : '<div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">' +
             '<span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>' +
           '</div>';
-      const subjectRows = subjectColumns.map(function(subjectName, idx) {
+      const subjectRows = cardSubjectColumns.map(function(subjectName, idx) {
         const mark = row[subjectName];
         const zebra = idx % 2 === 1 ? ' bg-slate-50/70 dark:bg-slate-800/25' : '';
         return '' +
           '<tr class="' + zebra + '">' +
             '<td class="px-4 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400">' + (idx + 1) + '</td>' +
             '<td class="px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-white">' + escapeHtml(subjectName) + '</td>' +
-            '<td class="px-4 py-2.5 text-sm text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">' + (mark === '' || mark === null || mark === undefined ? '—' : escapeHtml(mark)) + '</td>' +
+            '<td class="px-4 py-2.5 text-sm text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">' + escapeHtml(formatReportMark(mark)) + '</td>' +
           '</tr>';
       }).join('');
       return '' +
@@ -1091,13 +1571,14 @@
                 '</div>' +
               '</div>' +
             '</div>' +
-            '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 mb-5 shadow-sm">' +
-              '<table class="w-full min-w-[480px] border-collapse">' +
+            '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 mb-5 shadow-sm">' +
+              '<table class="ar-fit-table ar-simple-table w-full border-collapse">' +
+                '<colgroup><col style="width:8%"><col><col style="width:18%"></colgroup>' +
                 '<thead>' +
                   '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-                    '<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider w-12">#</th>' +
-                    '<th class="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider">Subject</th>' +
-                    '<th class="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-wider w-28">Marks</th>' +
+                    '<th class="text-left text-[11px] font-bold uppercase tracking-wider">#</th>' +
+                    '<th class="text-left text-[11px] font-bold uppercase tracking-wider">Subject code</th>' +
+                    '<th class="text-right text-[11px] font-bold uppercase tracking-wider">Marks</th>' +
                   '</tr>' +
                 '</thead>' +
                 '<tbody class="divide-y divide-slate-100 dark:divide-slate-800">' + subjectRows + '</tbody>' +
@@ -1106,11 +1587,11 @@
             '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">' +
               '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
                 '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total marks</p>' +
-                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(row.total_marks || '-') + '</p>' +
+                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(formatReportMark(row.total_marks)) + '</p>' +
               '</div>' +
               '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
                 '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mean</p>' +
-                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(row.mean || '-') + '</p>' +
+                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(formatReportMark(row.mean)) + '</p>' +
               '</div>' +
               '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
                 '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</p>' +
@@ -1153,17 +1634,20 @@
       if (!list.length) {
         return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-lg border border-dashed border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 px-4 py-8 text-center">No students with marks in this class for the selected exam filters.</p>';
       }
+      const classSubjectColumns = subjectColumnsForClass(className, list);
+      const matrixClass = marksMatrixTableClass(classSubjectColumns.length);
+      const colgroup = buildMarksMatrixColgroup(classSubjectColumns.length);
       const head = '' +
         '<thead>' +
           '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-            '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">#</th>' +
-            '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap min-w-[10rem]">Student</th>' +
-            subjectColumns.map(function(subjectName) {
-              return '<th scope="col" class="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">' + escapeHtml(subjectName) + '</th>';
+            '<th scope="col" class="ar-col-idx">#</th>' +
+            '<th scope="col" class="ar-col-student">Student</th>' +
+            classSubjectColumns.map(function(subjectName) {
+              return '<th scope="col" class="ar-col-subj" title="' + escapeHtml(subjectName) + '">' + escapeHtml(subjectName) + '</th>';
             }).join('') +
-            '<th scope="col" class="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Total</th>' +
-            '<th scope="col" class="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Mean</th>' +
-            '<th scope="col" class="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wider whitespace-nowrap">Grade</th>' +
+            '<th scope="col" class="ar-col-sum">Tot</th>' +
+            '<th scope="col" class="ar-col-sum">Avg</th>' +
+            '<th scope="col" class="ar-col-grade">Grd</th>' +
           '</tr>' +
         '</thead>';
 
@@ -1181,12 +1665,12 @@
         });
         if (!vals.length) return '—';
         var x = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
-        return (Math.round(x * 100) / 100).toFixed(2);
+        return String(Math.round(x));
       }
 
       /** Subject columns: left-aligned to match header + body marks. */
       function subjectMeanCellClass(valStr) {
-        var base = 'px-3 py-2.5 text-sm font-semibold tabular-nums text-left whitespace-nowrap align-middle ';
+        var base = 'ar-col-mark font-semibold tabular-nums align-middle ';
         if (valStr === '—') return base + 'text-slate-500 dark:text-slate-400';
         var c = parseFloat(valStr);
         if (c >= 70) return base + 'text-green-600 dark:text-green-400';
@@ -1196,7 +1680,7 @@
 
       /** Total / Mean footer: right-aligned to match those columns. */
       function summaryMeanCellClass(valStr) {
-        var base = 'px-3 py-2.5 text-sm font-semibold tabular-nums text-right whitespace-nowrap align-middle ';
+        var base = 'ar-col-sum font-semibold tabular-nums align-middle ';
         if (valStr === '—') return base + 'text-slate-500 dark:text-slate-400';
         var c = parseFloat(valStr);
         if (c >= 70) return base + 'text-green-600 dark:text-green-400';
@@ -1211,48 +1695,50 @@
         const grade = String(row.grade || '-');
         const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
         const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : ' bg-white dark:bg-slate-900';
+        const studentTitle = escapeHtml(row.full_name || '-');
         return '' +
           '<tr class="' + zebra + ' border-b border-slate-100 dark:border-slate-800">' +
-            '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap align-middle">' + escapeHtml(pos) + '</td>' +
-            '<td class="px-3 py-2.5 text-sm text-slate-900 dark:text-white whitespace-nowrap align-middle">' +
-              '<span class="font-semibold">' + escapeHtml(row.full_name || '-') + '</span>' +
+            '<td class="ar-col-idx text-slate-600 dark:text-slate-400">' + escapeHtml(pos) + '</td>' +
+            '<td class="ar-col-student text-slate-900 dark:text-white" title="' + studentTitle + '">' +
+              '<span class="font-semibold">' + studentTitle + '</span>' +
             '</td>' +
-            subjectColumns.map(function(subjectName) {
+            classSubjectColumns.map(function(subjectName) {
               const mark = row[subjectName];
-              return '<td class="px-3 py-2.5 text-sm tabular-nums text-left text-slate-800 dark:text-slate-200 whitespace-nowrap align-middle">' +
-                (mark === '' || mark === null || mark === undefined ? '—' : escapeHtml(mark)) +
+              return '<td class="ar-col-mark text-slate-800 dark:text-slate-200">' +
+                escapeHtml(formatReportMark(mark)) +
               '</td>';
             }).join('') +
-            '<td class="px-3 py-2.5 text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap text-right align-middle">' + escapeHtml(row.total_marks || '-') + '</td>' +
-            '<td class="px-3 py-2.5 text-sm font-bold tabular-nums text-slate-900 dark:text-white whitespace-nowrap text-right align-middle">' + escapeHtml(row.mean || '-') + '</td>' +
-            '<td class="px-3 py-2.5 text-sm whitespace-nowrap text-center align-middle"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></td>' +
+            '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(formatReportMark(row.total_marks)) + '</td>' +
+            '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(formatReportMark(row.mean)) + '</td>' +
+            '<td class="ar-col-grade"><span class="inline-flex items-center px-1 py-0.5 rounded text-[0.95em] font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></td>' +
           '</tr>';
-      }).join('');
-
-      var subjectFooterCells = subjectColumns.map(function(subjectName) {
-        var m = meanOf(function(row) { return numOrNull(row[subjectName]); });
-        return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
       }).join('');
 
       var totalMeanStr = meanOf(function(row) { return numOrNull(row.total_marks); });
       var rowMeanAvgStr = meanOf(function(row) { return numOrNull(row.mean); });
 
-      const foot = list.length && subjectColumns.length
+      var subjectFooterCells = classSubjectColumns.map(function(subjectName) {
+        var m = meanOf(function(row) { return numOrNull(row[subjectName]); });
+        return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
+      }).join('');
+
+      const foot = list.length && classSubjectColumns.length
         ? '<tfoot>' +
             '<tr class="bg-slate-200/95 dark:bg-slate-800 border-t-2 border-slate-400 dark:border-slate-500 text-slate-900 dark:text-slate-100">' +
-              '<td class="px-3 py-2.5 text-sm tabular-nums text-slate-500 dark:text-slate-400 whitespace-nowrap align-middle"></td>' +
-              '<td class="px-3 py-2.5 text-sm font-bold text-left text-slate-900 dark:text-slate-100 whitespace-nowrap align-middle">Subject mean</td>' +
+              '<td class="ar-col-idx"></td>' +
+              '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100">Mean</td>' +
               subjectFooterCells +
               '<td class="' + summaryMeanCellClass(totalMeanStr) + '">' + escapeHtml(totalMeanStr) + '</td>' +
               '<td class="' + summaryMeanCellClass(rowMeanAvgStr) + '">' + escapeHtml(rowMeanAvgStr) + '</td>' +
-              '<td class="px-3 py-2.5 text-sm text-center align-middle text-slate-500 dark:text-slate-400">—</td>' +
+              '<td class="ar-col-grade text-center text-slate-500 dark:text-slate-400">—</td>' +
             '</tr>' +
           '</tfoot>'
         : '';
 
       return '' +
-        '<div class="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-          '<table class="w-full text-sm min-w-[980px] border-collapse">' +
+        '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+          '<table class="' + matrixClass + ' w-full border-collapse">' +
+            colgroup +
             head +
             '<tbody>' + body + '</tbody>' +
             foot +
@@ -1405,8 +1891,8 @@
     const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
-      '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-        '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="ar-register-table ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
       '</div>' +
       '</div>';
   }
@@ -1521,8 +2007,8 @@
     const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
-      '<div class="ar-register-sheet overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-        '<table class="ar-register-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
+      '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
+        '<table class="ar-register-table ar-fit-table w-full border-collapse text-sm">' + colgroup + tableHead + '<tbody>' + body + '</tbody>' + tfoot + '</table>' +
       '</div>' +
       '</div>';
   }
@@ -1593,7 +2079,7 @@
       var start = pick(r, ['start_time', 'time_from', 'start_time_text', 'time']);
       var end = pick(r, ['end_time', 'time_to', 'end_time_text']);
       var className = pick(r, ['level_name', 'class_name', 'academic_level', 'level']);
-      var subject = pick(r, ['subject_name', 'subject', 'subject_code']);
+      var subject = pick(r, ['subject_code', 'subject', 'subject_name']);
       var subjectCode = pick(r, ['subject_code']);
       var venue = pick(r, ['venue', 'room', 'exam_room', 'location']);
       var invigilator = pick(r, ['invigilator_name', 'teacher_name', 'supervisor', 'invigilator']);
@@ -1682,16 +2168,17 @@
           return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
         return '<tr>' +
-                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[120px]">' + rowTitle + '</td>' +
+                 '<td class="ar-col-date align-top border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200">' + rowTitle + '</td>' +
                  cells +
                '</tr>';
       }).join('');
       return '' +
-        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+        '<div class="ar-fit-sheet rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="ar-timetable-grid ar-fit-table w-full text-xs border-collapse">' +
+            buildTimetableColgroup(allTimes.length) +
             '<thead><tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-              '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Date</th>' +
-              allTimes.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+              '<th class="ar-col-date text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Date</th>' +
+              allTimes.map(function (t) { return '<th class="text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
             '</tr></thead>' +
             '<tbody>' + bodyRows + '</tbody>' +
           '</table>' +
@@ -1799,7 +2286,7 @@
         matrix[slot][day].push({
           teacher: String(r.teacher_name || '-'),
           teacherStaffId: rowTeacherStaffId(r) || '-',
-          subject: String(r.subject_name || '-'),
+          subject: String(r.subject_code || r.subject || r.subject_name || '-'),
           code: String(r.subject_code || ''),
         });
       });
@@ -1834,17 +2321,18 @@
           return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
         return '<tr>' +
-                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+                 '<td class="ar-col-date align-top border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200">' + escapeHtml(day) + '</td>' +
                  cells +
                '</tr>';
       }).join('');
       return '' +
-        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+        '<div class="ar-fit-sheet rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="ar-timetable-grid ar-fit-table w-full text-xs border-collapse">' +
+            buildTimetableColgroup(times.length) +
             '<thead>' +
               '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-                '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
-                times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+                '<th class="ar-col-date text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+                times.map(function (t) { return '<th class="text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
               '</tr>' +
             '</thead>' +
             '<tbody>' + bodyRows + '</tbody>' +
@@ -1958,7 +2446,7 @@
         if (!matrix[slot]) matrix[slot] = {};
         if (!matrix[slot][day]) matrix[slot][day] = [];
         matrix[slot][day].push({
-          subject: String(r.subject_name || '-'),
+          subject: String(r.subject_code || r.subject || r.subject_name || '-'),
           code: String(r.subject_code || ''),
         });
       });
@@ -1984,17 +2472,18 @@
           return '<td class="align-top p-1 border border-gray-300 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20">' + lines + '</td>';
         }).join('');
         return '<tr>' +
-                 '<td class="align-top p-1.5 border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200 whitespace-nowrap min-w-[90px]">' + escapeHtml(day) + '</td>' +
+                 '<td class="ar-col-date align-top border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-[11px] font-bold text-gray-700 dark:text-gray-200">' + escapeHtml(day) + '</td>' +
                  cells +
                '</tr>';
       }).join('');
       return '' +
-        '<div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
-          '<table class="w-full min-w-[700px] text-xs border-collapse" style="table-layout:fixed">' +
+        '<div class="ar-fit-sheet rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">' +
+          '<table class="ar-timetable-grid ar-fit-table w-full text-xs border-collapse">' +
+            buildTimetableColgroup(times.length) +
             '<thead>' +
               '<tr class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white">' +
-                '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
-                times.map(function (t) { return '<th class="text-left py-2 px-2 font-semibold uppercase text-[10px] tracking-wide whitespace-nowrap border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
+                '<th class="ar-col-date text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">Day</th>' +
+                times.map(function (t) { return '<th class="text-left font-semibold uppercase text-[10px] tracking-wide border border-gray-300 dark:border-gray-600">' + escapeHtml(t) + '</th>'; }).join('') +
               '</tr>' +
             '</thead>' +
             '<tbody>' + bodyRows + '</tbody>' +
@@ -2079,7 +2568,7 @@
       return '-';
     }
     rows.forEach(function(r) {
-      const subject = String(r.subject_name || '').trim() || 'Subject';
+      const subject = String(r.subject_code || r.subject_name || '').trim() || 'Subject';
       const mark = Number(r.marks);
       if (!bySubject[subject]) bySubject[subject] = { marks: [], subjectId: (r.subject_id == null ? null : r.subject_id), history: [] };
       if (Number.isFinite(mark)) {
@@ -2097,12 +2586,15 @@
       const marks = bySubject[subject].marks;
       const subjectId = bySubject[subject].subjectId;
       const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
-      const markVal = avg === null ? '-' : (Math.round(avg * 100) / 100).toFixed(2).replace(/\.00$/, '');
+      const markVal = avg === null ? '-' : String(Math.round(avg));
       const grade = avg === null ? '-' : gradeFromSettings(subjectId, avg);
       const trendValues = bySubject[subject].history
         .slice()
         .sort(function(a, b) { return String(a.examDate || '').localeCompare(String(b.examDate || '')); })
-        .map(function(item) { return String(item.mark); });
+        .map(function(item) {
+          var m = parseFloat(item.mark);
+          return isNaN(m) ? String(item.mark) : String(Math.round(m));
+        });
       const trendText = trendValues.length > 1 ? trendValues.join(' -> ') : (trendValues[0] || '-');
       return {
         subject,
@@ -2114,7 +2606,7 @@
 
     const overallAvg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : null;
     const overallGrade = overallAvg === null ? '-' : gradeFromSettings(null, overallAvg);
-    const overallAvgText = overallAvg === null ? '-' : (Math.round(overallAvg * 100) / 100).toFixed(2).replace(/\.00$/, '');
+    const overallAvgText = overallAvg === null ? '-' : String(Math.round(overallAvg));
     const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
 
     const tableRows = subjects.map(function(item, idx) {
@@ -2181,12 +2673,12 @@
               '<p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">' + escapeHtml(String(passCount)) + '</p>' +
             '</div>' +
           '</div>' +
-          '<div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">' +
-            '<table class="w-full min-w-[560px]">' +
+          '<div class="ar-fit-sheet rounded-lg border border-gray-200 dark:border-gray-700">' +
+            '<table class="ar-fit-table ar-simple-table w-full">' +
               '<thead class="bg-gray-50 dark:bg-gray-900/40">' +
                 '<tr>' +
                   '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject</th>' +
+                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject code</th>' +
                   '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>' +
                   '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Trend</th>' +
                   '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Grade</th>' +

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date as date_cls
 import os
 import re
 import json
+import math
 import secrets
 import copy
 import time
@@ -980,6 +981,138 @@ def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
     if mx <= 0:
         return None
     return round(100.0 * r / mx, 2)
+
+
+def round_mark_display(value):
+    """Whole-number rounding for scaled marks, means, and totals shown on reports."""
+    if value is None or value == '':
+        return None
+    try:
+        return int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def pct_value_for_grade_band_match(marks_value):
+    """Map a percentage to the integer scale used by grade_registrations start/end bands."""
+    try:
+        return int(math.floor(float(marks_value) + 1e-9))
+    except (TypeError, ValueError):
+        return None
+
+
+def match_grade_band(marks_value, bands):
+    """Return the first band whose [start, end] contains the floored percentage, or None."""
+    mv = pct_value_for_grade_band_match(marks_value)
+    if mv is None:
+        return None
+    for band in bands or []:
+        try:
+            start = float(band.get('start', 0))
+            end = float(band.get('end', 0))
+        except (TypeError, ValueError):
+            continue
+        if mv >= start and mv <= end:
+            return band
+    return None
+
+
+def subject_display_label(subject_code=None, subject_name=None, fallback='SUBJECT'):
+    """Prefer subject_code for marks sheets, reports, and timetables; fall back to name."""
+    code = str(subject_code or '').strip()
+    if code:
+        return code
+    name = str(subject_name or '').strip()
+    if name and name.upper() not in ('N/A', '-'):
+        return name
+    if name:
+        return name
+    return fallback
+
+
+def grade_code_and_points_from_pct(marks_value, bands):
+    """Return (code, points) for a percentage using Grades Registration bands."""
+    band = match_grade_band(marks_value, bands)
+    if not band:
+        return '', None
+    code = (band.get('code') or band.get('label') or '').strip()
+    points = None
+    ap = band.get('allocation_points')
+    if ap is not None and ap != '':
+        try:
+            f = float(ap)
+            points = int(round(f)) if abs(f - round(f)) < 1e-9 else round(f, 2)
+        except (TypeError, ValueError):
+            points = None
+    return code, points
+
+
+def load_grade_bands_from_db(cursor):
+    """Load default and per-subject grade bands (marks sheet / reports)."""
+    default_grade_bands = []
+    subject_grade_bands = {}
+    try:
+        cursor.execute("""
+            SELECT code, level_label, start_mark, end_mark, allocation_points
+            FROM grade_registrations
+            WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+            ORDER BY start_mark DESC, end_mark DESC
+        """)
+        for grow in (cursor.fetchall() or []):
+            if isinstance(grow, dict):
+                ap = grow.get('allocation_points')
+                default_grade_bands.append({
+                    'code': (grow.get('code') or '').strip(),
+                    'label': (grow.get('level_label') or '').strip(),
+                    'start': float(grow.get('start_mark') or 0),
+                    'end': float(grow.get('end_mark') or 0),
+                    'allocation_points': float(ap) if ap is not None else None,
+                })
+            else:
+                apv = grow[4] if len(grow) > 4 else None
+                default_grade_bands.append({
+                    'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
+                    'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
+                    'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
+                    'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                    'allocation_points': float(apv) if apv is not None else None,
+                })
+    except Exception as ge:
+        print(f"Note: grade_registrations lookup skipped: {ge}")
+    try:
+        cursor.execute("""
+            SELECT subject_id, code, start_mark, end_mark, allocation_points
+            FROM subject_grade_mark_overrides
+            WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+            ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
+        """)
+        for srow in (cursor.fetchall() or []):
+            if isinstance(srow, dict):
+                sid = int(srow.get('subject_id') or 0)
+                ap = srow.get('allocation_points')
+                band = {
+                    'code': (srow.get('code') or '').strip(),
+                    'label': '',
+                    'start': float(srow.get('start_mark') or 0),
+                    'end': float(srow.get('end_mark') or 0),
+                    'allocation_points': float(ap) if ap is not None else None,
+                }
+            else:
+                sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                apv = srow[4] if len(srow) > 4 else None
+                band = {
+                    'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
+                    'label': '',
+                    'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
+                    'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                    'allocation_points': float(apv) if apv is not None else None,
+                }
+            if sid <= 0:
+                continue
+            subject_grade_bands.setdefault(sid, []).append(band)
+    except Exception as se:
+        print(f"Note: subject_grade_mark_overrides lookup skipped: {se}")
+    return default_grade_bands, subject_grade_bands
 
 
 def sql_scaled_exam_mark_pct(sm_alias='sm', sub_alias='sub'):
@@ -2294,6 +2427,107 @@ def _library_level_has_subject(cursor, academic_level_id, subject_id):
         if int(sub.get('id') or 0) == subject_id:
             return True
     return False
+
+
+def _level_name_to_id_map(cursor):
+    """Map academic level display name (students.current_grade) -> level id."""
+    out = {}
+    try:
+        cursor.execute("""
+            SELECT id, TRIM(level_name) AS level_name
+            FROM academic_levels
+            WHERE COALESCE(level_status, 'active') = 'active'
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                ln = str(row.get('level_name') or '').strip()
+                lid = row.get('id')
+            else:
+                ln = str(row[1] or '').strip() if len(row) > 1 else ''
+                lid = row[0] if len(row) > 0 else None
+            if ln and lid is not None:
+                try:
+                    out[ln] = int(lid)
+                except (TypeError, ValueError):
+                    pass
+    except Exception as e:
+        print(f"_level_name_to_id_map: {e}")
+    return out
+
+
+def _registered_subject_labels_by_level_id(cursor):
+    """
+    Map academic_level_id -> ordered subject display labels registered for that class
+    (subject_academic_levels + teacher_subject_assignments).
+    """
+    lib = _library_subjects_by_level_map(cursor)
+    if not lib:
+        return {}
+    all_sids = []
+    for subs in lib.values():
+        for s in subs:
+            try:
+                all_sids.append(int(s['id']))
+            except (TypeError, ValueError):
+                pass
+    all_sids = list(set(all_sids))
+    edo_by_sid = {}
+    id_to_gc = {}
+    if all_sids:
+        try:
+            ph = ','.join(['%s'] * len(all_sids))
+            cursor.execute(
+                f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
+                tuple(all_sids),
+            )
+            for er in cursor.fetchall() or []:
+                eid = er.get('id') if isinstance(er, dict) else er[0]
+                if eid is not None:
+                    edo_by_sid[int(eid)] = (
+                        er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+                    )
+            id_to_gc = fetch_subject_id_to_exam_group_category(cursor, all_sids)
+        except Exception as e:
+            print(f"_registered_subject_labels_by_level_id meta: {e}")
+    base_cs = fetch_base_academic_level_category_order(cursor)
+    sec_cs = build_exam_subject_section_order(
+        set(id_to_gc.values()) or {'Uncategorized'}, base_cs
+    )
+
+    def _sub_sort_key(sub):
+        try:
+            sid = int(sub.get('id') or 0)
+        except (TypeError, ValueError):
+            sid = 0
+        gc = id_to_gc.get(sid, 'Uncategorized')
+        try:
+            ci = sec_cs.index(gc)
+        except ValueError:
+            ci = len(sec_cs)
+        eo = edo_by_sid.get(sid)
+        try:
+            edo = int(eo) if eo is not None and str(eo).strip() != '' else 10**9
+        except (TypeError, ValueError):
+            edo = 10**9
+        label = subject_display_label(sub.get('subject_code'), sub.get('subject_name'))
+        return (ci, edo, label.lower(), sid)
+
+    out = {}
+    for lid_key, subs in lib.items():
+        try:
+            lid_i = int(lid_key)
+        except (TypeError, ValueError):
+            continue
+        labels = []
+        seen = set()
+        for s in sorted(subs, key=_sub_sort_key):
+            lbl = subject_display_label(s.get('subject_code'), s.get('subject_name'))
+            if not lbl or lbl in seen:
+                continue
+            seen.add(lbl)
+            labels.append(lbl)
+        out[lid_i] = labels
+    return out
 
 
 def ensure_library_book_copy_units_table(cursor):
@@ -31755,17 +31989,13 @@ def exam_analytics_detail(exam_id):
                 def _grade_for_mark(subject_id, marks_value):
                     if marks_value is None:
                         return ''
-                    try:
-                        mv = float(marks_value)
-                    except Exception:
-                        return ''
                     bands = subject_grade_bands.get(subject_id) or default_grade_bands
-                    for band in bands:
-                        if mv >= float(band.get('start', 0)) and mv <= float(band.get('end', 0)):
-                            code = (band.get('code') or '').strip()
-                            label = (band.get('label') or '').strip()
-                            return code or label or ''
-                    return ''
+                    band = match_grade_band(marks_value, bands)
+                    if not band:
+                        return ''
+                    code = (band.get('code') or '').strip()
+                    label = (band.get('label') or '').strip()
+                    return code or label or ''
 
                 cur2.execute("""
                     SELECT student_id, full_name FROM students
@@ -33729,6 +33959,7 @@ def reports():
                 if level_id or term_id or academic_year_id:
                     levels_to_report = [l for l in academic_levels if not level_id or l['id'] == level_id]
                     report_data = []
+                    default_grade_bands, subject_grade_bands = load_grade_bands_from_db(cursor)
 
                     for lev in levels_to_report:
                         level_name = lev['level_name']
@@ -33755,6 +33986,7 @@ def reports():
                         subject_stats = {}  # subject_id -> {name, exam_ids, mean, min, max, count, pass_count}
                         all_marks_for_class = []
                         students_in_class = set()
+                        student_subject_scaled = defaultdict(lambda: defaultdict(list))
                         
                         for ex in exam_rows:
                             exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
@@ -33806,8 +34038,21 @@ def reports():
                                     subject_stats[subject_id]['marks'].append(scaled)
                                     all_marks_for_class.append(scaled)
                                     students_in_class.add(sid)
+                                    student_subject_scaled[sid][subject_id].append(scaled)
                                     if scaled >= 50:
                                         subject_stats[subject_id]['pass_count'] += 1
+
+                        registered_subject_ids = set()
+                        for _sub in _library_subjects_for_level(cursor, lev['id']):
+                            try:
+                                registered_subject_ids.add(int(_sub.get('id') or 0))
+                            except (TypeError, ValueError):
+                                pass
+                        if registered_subject_ids:
+                            subject_stats = {
+                                sid: sd for sid, sd in subject_stats.items()
+                                if sid in registered_subject_ids
+                            }
                         
                         # Compute subject stats (column order matches Exam subject settings: exam_display_order)
                         subject_list = []
@@ -33827,17 +34072,25 @@ def reports():
                         for sid, sdata in sorted(subject_stats.items(), key=_report_subject_sort_key):
                             marks = sdata['marks']
                             if marks:
-                                sdata['mean'] = round(sum(marks) / len(marks), 2)
-                                sdata['min'] = round(min(marks), 2)
-                                sdata['max'] = round(max(marks), 2)
+                                sdata['mean'] = round_mark_display(sum(marks) / len(marks)) or 0
+                                sdata['min'] = round_mark_display(min(marks))
+                                sdata['max'] = round_mark_display(max(marks))
                                 sdata['count'] = len(marks)
-                                sdata['pass_rate'] = round(100 * sdata['pass_count'] / len(marks), 1) if marks else 0
+                                sdata['pass_rate'] = round_mark_display(100 * sdata['pass_count'] / len(marks)) if marks else 0
                             else:
                                 sdata['mean'] = 0
                                 sdata['min'] = None
                                 sdata['max'] = None
                                 sdata['count'] = 0
                                 sdata['pass_rate'] = 0
+                            try:
+                                sid_int = int(sid)
+                            except (TypeError, ValueError):
+                                sid_int = 0
+                            subj_bands = subject_grade_bands.get(sid_int) or default_grade_bands
+                            grade_code, grade_points = grade_code_and_points_from_pct(
+                                sdata['mean'] if marks else None, subj_bands
+                            )
                             subject_list.append({
                                 'subject_name': sdata['subject_name'],
                                 'mean': sdata['mean'],
@@ -33845,15 +34098,33 @@ def reports():
                                 'max': sdata['max'],
                                 'count': sdata['count'],
                                 'pass_rate': sdata['pass_rate'],
+                                'grade_code': grade_code or '—',
+                                'grade_points': grade_points if grade_points is not None else '—',
                             })
+
+                        student_overall_means = []
+                        for _sid, submap in student_subject_scaled.items():
+                            sub_avgs = []
+                            for _vals in submap.values():
+                                if _vals:
+                                    sub_avgs.append(sum(_vals) / len(_vals))
+                            if sub_avgs:
+                                student_overall_means.append(sum(sub_avgs) / len(sub_avgs))
+                        class_grade_mean = (
+                            round_mark_display(sum(student_overall_means) / len(student_overall_means))
+                            if student_overall_means else None
+                        )
+                        class_grade_code, class_grade_points = grade_code_and_points_from_pct(
+                            class_grade_mean, default_grade_bands
+                        )
                         
-                        class_mean = round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
+                        class_mean = round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
                         pass_n = sum(1 for m in all_marks_for_class if m >= 50)
                         class_pass_rate = (
-                            round(100 * pass_n / len(all_marks_for_class), 1) if all_marks_for_class else 0
+                            round_mark_display(100 * pass_n / len(all_marks_for_class)) if all_marks_for_class else 0
                         )
-                        class_max = round(max(all_marks_for_class), 2) if all_marks_for_class else None
-                        class_min = round(min(all_marks_for_class), 2) if all_marks_for_class else None
+                        class_max = round_mark_display(max(all_marks_for_class)) if all_marks_for_class else None
+                        class_min = round_mark_display(min(all_marks_for_class)) if all_marks_for_class else None
 
                         report_data.append({
                             'level_id': lev['id'],
@@ -33864,6 +34135,9 @@ def reports():
                             'class_max': class_max,
                             'class_min': class_min,
                             'class_pass_rate': class_pass_rate,
+                            'class_grade_mean': class_grade_mean,
+                            'class_grade_code': class_grade_code or '—',
+                            'class_grade_points': class_grade_points if class_grade_points is not None else '—',
                             'student_count': len(students_in_class),
                             'total_marks_entries': len(all_marks_for_class),
                         })
@@ -34852,11 +35126,11 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
         for _sid, sdata in sorted(subject_stats.items(), key=_class_exam_subject_sort_key):
             marks = sdata['marks']
             if marks:
-                sdata['mean'] = round(sum(marks) / len(marks), 2)
-                sdata['min'] = round(min(marks), 2)
-                sdata['max'] = round(max(marks), 2)
+                sdata['mean'] = round_mark_display(sum(marks) / len(marks)) or 0
+                sdata['min'] = round_mark_display(min(marks))
+                sdata['max'] = round_mark_display(max(marks))
                 sdata['count'] = len(marks)
-                sdata['pass_rate'] = round(100 * sdata['pass_count'] / len(marks), 1) if marks else 0
+                sdata['pass_rate'] = round_mark_display(100 * sdata['pass_count'] / len(marks)) if marks else 0
             else:
                 sdata['mean'] = 0
                 sdata['min'] = None
@@ -34874,14 +35148,14 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
                 }
             )
         class_mean = (
-            round(sum(all_marks_for_class) / len(all_marks_for_class), 2) if all_marks_for_class else 0
+            round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
         )
         pass_n = sum(1 for m in all_marks_for_class if m >= 50)
         class_pass_rate = (
-            round(100 * pass_n / len(all_marks_for_class), 1) if all_marks_for_class else 0
+            round_mark_display(100 * pass_n / len(all_marks_for_class)) if all_marks_for_class else 0
         )
-        class_max = round(max(all_marks_for_class), 2) if all_marks_for_class else None
-        class_min = round(min(all_marks_for_class), 2) if all_marks_for_class else None
+        class_max = round_mark_display(max(all_marks_for_class)) if all_marks_for_class else None
+        class_min = round_mark_display(min(all_marks_for_class)) if all_marks_for_class else None
         return {
             'subjects': subject_list,
             'class_mean': class_mean,
@@ -35449,15 +35723,11 @@ def _build_academic_report_payload(cursor, report_type, f):
     def _grade_from_settings(subject_id, marks_value, default_bands, subject_bands):
         if marks_value is None:
             return ''
-        try:
-            mv = float(marks_value)
-        except Exception:
-            return ''
         bands = subject_bands.get(int(subject_id or 0)) or default_bands
-        for band in bands:
-            if mv >= float(band.get('start', 0)) and mv <= float(band.get('end', 0)):
-                return (band.get('code') or band.get('label') or '').strip()
-        return ''
+        band = match_grade_band(marks_value, bands)
+        if not band:
+            return ''
+        return (band.get('code') or band.get('label') or '').strip()
 
     def _lookup_name(query, value):
         if value is None:
@@ -35642,13 +35912,21 @@ def _build_academic_report_payload(cursor, report_type, f):
         cursor.execute(q, params)
         rows = []
         for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                subj_disp = subject_display_label(r.get('subject_code'), r.get('subject_name'), '-')
+            else:
+                subj_disp = subject_display_label(
+                    r[6] if len(r) > 6 else '',
+                    r[5] if len(r) > 5 else '',
+                    '-',
+                )
             rows.append({
                 'day_of_week': r.get('day_of_week') if isinstance(r, dict) else r[0],
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
                 'teacher_id': r.get('teacher_id') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
-                'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+                'subject_name': subj_disp,
                 'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         return {'title': 'Subject timetable', 'columns': cols, 'rows': rows, 'meta': meta}
@@ -35658,6 +35936,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         q = f"""
             SELECT e.exam_name, e.exam_date, e.start_time, e.end_time, al.level_name,
                    COALESCE(sub.subject_name, '-') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
                    COALESCE(e.venue, '') AS venue,
                    COALESCE(sup.full_name, tch.full_name, '') AS invigilator_name,
                    COALESCE({_employee_staff_identity_sql('sup')}, {_employee_staff_identity_sql('tch')}, '') AS invigilator_employee_id,
@@ -35689,17 +35968,26 @@ def _build_academic_report_payload(cursor, report_type, f):
         rows = []
         for r in cursor.fetchall() or []:
             ed = r.get('exam_date') if isinstance(r, dict) else r[1]
+            if isinstance(r, dict):
+                subj_disp = subject_display_label(r.get('subject_code'), r.get('subject_name'), '-')
+            else:
+                subj_disp = subject_display_label(
+                    r[6] if len(r) > 6 else '',
+                    r[5] if len(r) > 5 else '',
+                    '-',
+                )
             rows.append({
                 'exam_name': r.get('exam_name') if isinstance(r, dict) else r[0],
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
                 'start_time': str(r.get('start_time') if isinstance(r, dict) else r[2] or ''),
                 'end_time': str(r.get('end_time') if isinstance(r, dict) else r[3] or ''),
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[4],
-                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[5],
-                'venue': r.get('venue') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
-                'invigilator_name': r.get('invigilator_name') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
-                'invigilator_employee_id': r.get('invigilator_employee_id') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
-                'status': r.get('status') if isinstance(r, dict) else (r[9] if len(r) > 9 else ''),
+                'subject_name': subj_disp,
+                'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
+                'venue': r.get('venue') if isinstance(r, dict) else (r[7] if len(r) > 7 else ''),
+                'invigilator_name': r.get('invigilator_name') if isinstance(r, dict) else (r[8] if len(r) > 8 else ''),
+                'invigilator_employee_id': r.get('invigilator_employee_id') if isinstance(r, dict) else (r[9] if len(r) > 9 else ''),
+                'status': r.get('status') if isinstance(r, dict) else (r[10] if len(r) > 10 else ''),
             })
         return {'title': 'Exam timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -35725,13 +36013,21 @@ def _build_academic_report_payload(cursor, report_type, f):
         """, (tid, teacher_id))
         rows = []
         for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                subj_disp = subject_display_label(r.get('subject_code'), r.get('subject_name'), '-')
+            else:
+                subj_disp = subject_display_label(
+                    r[6] if len(r) > 6 else '',
+                    r[5] if len(r) > 5 else '',
+                    '-',
+                )
             rows.append({
                 'day_of_week': r.get('day_of_week') if isinstance(r, dict) else r[0],
                 'time_slot': r.get('time_slot') if isinstance(r, dict) else r[1],
                 'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
                 'teacher_name': r.get('teacher_name') if isinstance(r, dict) else r[3],
                 'teacher_id': r.get('teacher_id') if isinstance(r, dict) else (r[4] if len(r) > 4 else ''),
-                'subject_name': r.get('subject_name') if isinstance(r, dict) else (r[5] if len(r) > 5 else ''),
+                'subject_name': subj_disp,
                 'subject_code': r.get('subject_code') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
             })
         return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
@@ -35804,15 +36100,32 @@ def _build_academic_report_payload(cursor, report_type, f):
             params.append(student_id)
         q += " ORDER BY st.full_name, sub.subject_name"
         q_no_image += " ORDER BY st.full_name, sub.subject_name"
+        # Load class subject lists before the marks query — PyMySQL replaces the active
+        # result set on cursor.execute(), so running other SQL between execute and fetchall loses marks.
+        reg_labels_by_lid = _registered_subject_labels_by_level_id(cursor)
+        level_name_to_id = _level_name_to_id_map(cursor)
+        grouped = {}
+        subject_names_set = set()
+        subject_meta = {}
         include_profile_image = True
         try:
             cursor.execute(q, params)
         except Exception:
             include_profile_image = False
             cursor.execute(q_no_image, params)
-        grouped = {}
-        subject_names_set = set()
-        subject_meta = {}
+
+        def _student_class_key(cur_grade, level_nm):
+            g = str(cur_grade or '').strip()
+            if g:
+                return g
+            return str(level_nm or '').strip()
+
+        def _registered_labels_for_class_key(class_key):
+            lid_val = level_name_to_id.get(class_key)
+            if lid_val is None:
+                return []
+            return reg_labels_by_lid.get(lid_val, [])
+
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
                 admission_number = r.get('student_id')
@@ -35845,7 +36158,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                     eo_raw = r[8] if len(r) > 8 else None
                     exam_total_marks = r[9] if len(r) > 9 else None
             mark_val = raw_mark_to_percentage(raw_mark_val, exam_total_marks)
-            subject_label = str(subject_name or '').strip() or str(subject_code or '').strip() or 'SUBJECT'
+            subject_label = subject_display_label(subject_code, subject_name)
             try:
                 sid_i = int(sub_id_raw) if sub_id_raw is not None else None
             except (TypeError, ValueError):
@@ -35875,12 +36188,22 @@ def _build_academic_report_payload(cursor, report_type, f):
                     g0['level_name'] = level_nm or ''
                 if cur_grade and not (g0.get('current_grade') or '').strip():
                     g0['current_grade'] = cur_grade
+            class_key = _student_class_key(cur_grade, level_nm)
+            reg_labels = _registered_labels_for_class_key(class_key)
+            if reg_labels and subject_label and subject_label not in reg_labels:
+                continue
             if subject_label:
                 subject_names_set.add(subject_label)
-            if mark_val is not None:
+            if mark_val is not None and subject_label:
                 if subject_label not in grouped[admission_number]['subject_marks']:
                     grouped[admission_number]['subject_marks'][subject_label] = []
                 grouped[admission_number]['subject_marks'][subject_label].append(mark_val)
+
+        subject_columns_by_class = {}
+        for ln, lid_val in level_name_to_id.items():
+            labels = reg_labels_by_lid.get(lid_val, [])
+            if labels:
+                subject_columns_by_class[ln] = labels
 
         sids_for_cols = list({m['sid'] for m in subject_meta.values() if m.get('sid')})
         id_to_gc_all_perf = fetch_subject_id_to_exam_group_category(cursor, sids_for_cols) if sids_for_cols else {}
@@ -35902,18 +36225,32 @@ def _build_academic_report_payload(cursor, report_type, f):
             edo = int(m.get('edo') or 1000000000)
             return (ci, edo, lbl.lower())
 
-        subject_columns = sorted(subject_names_set, key=_all_students_subj_col_sort)
+        try:
+            lid_int = int(lid) if lid is not None else None
+        except (TypeError, ValueError):
+            lid_int = None
+        if lid_int is not None and reg_labels_by_lid.get(lid_int):
+            subject_columns = list(reg_labels_by_lid.get(lid_int) or [])
+        else:
+            subject_columns = sorted(subject_names_set, key=_all_students_subj_col_sort)
         cols.extend(subject_columns)
         cols.extend(['total_marks', 'mean', 'grade'])
 
         pre_rows = []
         for student in grouped.values():
+            ck = _student_class_key(student.get('current_grade'), student.get('level_name'))
+            cols_for_student = _registered_labels_for_class_key(ck)
+            if not cols_for_student:
+                cols_for_student = sorted(
+                    [k for k in student['subject_marks'].keys() if k],
+                    key=_all_students_subj_col_sort,
+                )
             subject_marks_map = {}
             normalized_marks = []
-            for subject_name in subject_columns:
+            for subject_name in cols_for_student:
                 marks_for_subject = student['subject_marks'].get(subject_name, [])
                 if marks_for_subject:
-                    avg_subject_mark = round(sum(marks_for_subject) / len(marks_for_subject), 2)
+                    avg_subject_mark = round_mark_display(sum(marks_for_subject) / len(marks_for_subject))
                     subject_marks_map[subject_name] = avg_subject_mark
                     normalized_marks.append(avg_subject_mark)
                 else:
@@ -35921,8 +36258,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             marks = normalized_marks
             if not marks:
                 continue
-            total_marks = round(sum(marks), 2)
-            mean_marks = round(total_marks / len(marks), 2) if marks else 0.0
+            total_marks = round_mark_display(sum(marks)) or 0
+            mean_marks = round_mark_display(total_marks / len(marks)) if marks else 0
             grade = _grade_from_settings(None, mean_marks, default_grade_bands, {})
             raw_pf = str(student.get('profile_raw') or '').strip()
             photo_url = ''
@@ -35939,6 +36276,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'current_grade': student.get('current_grade') or '',
                 'student_photo': photo_url,
                 'subject_marks': subject_marks_map,
+                'class_subject_columns': cols_for_student,
                 'total_marks': total_marks,
                 'mean': mean_marks,
                 'grade': grade or '-',
@@ -35953,6 +36291,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             if rank_key != last_key:
                 current_position = index
                 last_key = rank_key
+            row_cols = item.get('class_subject_columns') or subject_columns
             flat_row = {
                 'position': current_position,
                 'admission_number': item['admission_number'],
@@ -35962,7 +36301,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'current_grade': item.get('current_grade') or '',
                 'student_photo': item.get('student_photo') or '',
             }
-            for subject_name in subject_columns:
+            for subject_name in row_cols:
                 flat_row[subject_name] = item['subject_marks'].get(subject_name, '')
             flat_row['total_marks'] = item['total_marks']
             flat_row['mean'] = item['mean']
@@ -35971,6 +36310,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 **flat_row
             })
         meta['subject_columns'] = subject_columns
+        meta['subject_columns_by_class'] = subject_columns_by_class
         if not lid:
             try:
                 cursor.execute(
@@ -36001,6 +36341,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         q = """
             SELECT COALESCE(sup.full_name, tch.full_name, 'Unassigned') AS teacher_name,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
                    sm.marks, sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
@@ -36031,12 +36372,14 @@ def _build_academic_report_payload(cursor, report_type, f):
         for r in cursor.fetchall() or []:
             tn = r.get('teacher_name') if isinstance(r, dict) else r[0]
             sn = r.get('subject_name') if isinstance(r, dict) else r[1]
-            raw_mv = r.get('marks') if isinstance(r, dict) else (r[2] if len(r) > 2 else None)
-            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+            sc = r.get('subject_code') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
+            raw_mv = r.get('marks') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[4] if len(r) > 4 else None)
             mv = raw_mark_to_percentage(raw_mv, etm)
             if mv is None:
                 continue
-            grp[(tn or 'Unassigned', sn or 'N/A')].append(mv)
+            disp = subject_display_label(sc, sn, 'N/A')
+            grp[(tn or 'Unassigned', disp)].append(mv)
         rows = []
         for (tn, sn) in sorted(grp.keys(), key=lambda x: (x[0].lower(), x[1].lower())):
             marks = grp[(tn, sn)]
@@ -36044,11 +36387,11 @@ def _build_academic_report_payload(cursor, report_type, f):
             rows.append({
                 'teacher_name': tn,
                 'subject_name': sn,
-                'mean': round(sum(marks) / len(marks), 2),
-                'min': round(min(marks), 2),
-                'max': round(max(marks), 2),
+                'mean': round_mark_display(sum(marks) / len(marks)) or 0,
+                'min': round_mark_display(min(marks)),
+                'max': round_mark_display(max(marks)),
                 'count': len(marks),
-                'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+                'pass_rate': round_mark_display(100 * pc / len(marks)) if marks else 0,
             })
         return {'title': 'Teacher — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -36059,7 +36402,9 @@ def _build_academic_report_payload(cursor, report_type, f):
             pass
         meta['marks_scale'] = 'scaled_pct'
         q = """
-            SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name, sm.marks,
+            SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
+                   sm.marks,
                    sub.id AS subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
                    sub.exam_total_marks
@@ -36091,16 +36436,19 @@ def _build_academic_report_payload(cursor, report_type, f):
         grp_subj = defaultdict(list)
         subj_ord = {}
         subj_name_by_id = {}
+        subj_code_by_id = {}
         for r in cursor.fetchall() or []:
             ln = r.get('level_name') if isinstance(r, dict) else r[0]
             sn = r.get('subject_name') if isinstance(r, dict) else r[1]
-            raw_mv = r.get('marks') if isinstance(r, dict) else (r[2] if len(r) > 2 else None)
-            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[5] if len(r) > 5 else None)
+            sc = r.get('subject_code') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')
+            raw_mv = r.get('marks') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else None)
             mv = raw_mark_to_percentage(raw_mv, etm)
             if mv is None:
                 continue
-            sid_raw = r.get('subject_id') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
-            eo_raw = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[4] if len(r) > 4 else None)
+            sid_raw = r.get('subject_id') if isinstance(r, dict) else (r[4] if len(r) > 4 else None)
+            eo_raw = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[5] if len(r) > 5 else None)
+            disp = subject_display_label(sc, sn, 'N/A')
             try:
                 eo = int(eo_raw)
             except (TypeError, ValueError):
@@ -36108,13 +36456,14 @@ def _build_academic_report_payload(cursor, report_type, f):
             if sid_raw is not None:
                 sid = int(sid_raw)
                 subj_name_by_id[sid] = sn
+                subj_code_by_id[sid] = sc
                 prev = subj_ord.get(sid)
                 subj_ord[sid] = eo if prev is None else min(prev, eo)
                 grp_level_subj[(ln, sid)].append(mv)
                 grp_subj[sid].append(mv)
             else:
-                grp_level_subj[(ln, sn)].append(mv)
-                grp_subj[sn].append(mv)
+                grp_level_subj[(ln, disp)].append(mv)
+                grp_subj[disp].append(mv)
 
         int_sids_rep = [k for k in subj_name_by_id if isinstance(k, int)]
         id_to_gc_rep = fetch_subject_id_to_exam_group_category(cursor, int_sids_rep) if int_sids_rep else {}
@@ -36131,11 +36480,14 @@ def _build_academic_report_payload(cursor, report_type, f):
                     ci = sec_order_rep.index(gc)
                 except ValueError:
                     ci = len(sec_order_rep)
+                disp = subject_display_label(
+                    subj_code_by_id.get(k2), subj_name_by_id.get(k2), 'N/A'
+                )
                 return (
                     str(ln or '').lower(),
                     ci,
                     int(subj_ord.get(k2, 1000000000)),
-                    (subj_name_by_id.get(k2) or '').lower(),
+                    disp.lower(),
                     k2,
                 )
             return (str(ln or '').lower(), 10**9, 1000000000, str(k2).lower(), 0)
@@ -36147,7 +36499,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                     ci = sec_order_rep.index(gc)
                 except ValueError:
                     ci = len(sec_order_rep)
-                return (ci, int(subj_ord.get(k, 1000000000)), (subj_name_by_id.get(k) or '').lower(), k)
+                disp = subject_display_label(
+                    subj_code_by_id.get(k), subj_name_by_id.get(k), 'N/A'
+                )
+                return (ci, int(subj_ord.get(k, 1000000000)), disp.lower(), k)
             return (10**9, 1000000000, str(k).lower(), 0)
 
         if report_type == 'exam_class_performance':
@@ -36155,16 +36510,21 @@ def _build_academic_report_payload(cursor, report_type, f):
             rows = []
             for (ln, k2) in sorted(grp_level_subj.keys(), key=_level_subj_sort_key):
                 marks = grp_level_subj[(ln, k2)]
-                disp_name = subj_name_by_id.get(k2, k2) if isinstance(k2, int) else k2
+                if isinstance(k2, int):
+                    disp_name = subject_display_label(
+                        subj_code_by_id.get(k2), subj_name_by_id.get(k2), 'N/A'
+                    )
+                else:
+                    disp_name = k2
                 pc = sum(1 for x in marks if x >= 50)
                 rows.append({
                     'level_name': ln,
                     'subject_name': disp_name,
-                    'mean': round(sum(marks) / len(marks), 2),
-                    'min': round(min(marks), 2),
-                    'max': round(max(marks), 2),
+                    'mean': round_mark_display(sum(marks) / len(marks)) or 0,
+                    'min': round_mark_display(min(marks)),
+                    'max': round_mark_display(max(marks)),
                     'count': len(marks),
-                    'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+                    'pass_rate': round_mark_display(100 * pc / len(marks)) if marks else 0,
                 })
             return {'title': 'Exam performance — by class & subject', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -36179,15 +36539,20 @@ def _build_academic_report_payload(cursor, report_type, f):
         rows = []
         for k2 in sorted(grp_subj.keys(), key=_subj_perf_sort_key):
             marks = grp_subj[k2]
-            disp_name = subj_name_by_id.get(k2, k2) if isinstance(k2, int) else k2
+            if isinstance(k2, int):
+                disp_name = subject_display_label(
+                    subj_code_by_id.get(k2), subj_name_by_id.get(k2), 'N/A'
+                )
+            else:
+                disp_name = k2
             pc = sum(1 for x in marks if x >= 50)
             rows.append({
                 'subject_name': disp_name,
-                'mean': round(sum(marks) / len(marks), 2),
-                'min': round(min(marks), 2),
-                'max': round(max(marks), 2),
+                'mean': round_mark_display(sum(marks) / len(marks)) or 0,
+                'min': round_mark_display(min(marks)),
+                'max': round_mark_display(max(marks)),
                 'count': len(marks),
-                'pass_rate': round(100 * pc / len(marks), 1) if marks else 0,
+                'pass_rate': round_mark_display(100 * pc / len(marks)) if marks else 0,
             })
         return {'title': 'Subject — exam performance (selected class)', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -36220,6 +36585,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   COALESCE(sub.subject_code, '') AS subject_code,
                    e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
                    sub.exam_total_marks
@@ -36254,6 +36620,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
                 SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                       COALESCE(sub.subject_code, '') AS subject_code,
                        e.exam_name, e.exam_date, sm.marks, e.subject_id,
                        COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
                        sub.exam_total_marks
@@ -36282,43 +36649,73 @@ def _build_academic_report_payload(cursor, report_type, f):
             include_profile_image = False
         rows = []
         for r in cursor.fetchall() or []:
-            ed = r.get('exam_date') if isinstance(r, dict) else r[5]
-            raw_profile = ''
-            if include_profile_image:
-                raw_profile = r.get('profile_image') if isinstance(r, dict) else (r[7] if len(r) > 7 else '')
+            if isinstance(r, dict):
+                ed = r.get('exam_date')
+                raw_profile = str(r.get('profile_image') or '').strip() if include_profile_image else ''
+                subject_id_val = r.get('subject_id')
+                exam_ord_val = r.get('subject_exam_display_order')
+                exam_total_marks = r.get('exam_total_marks')
+                raw_marks_val = r.get('marks')
+                subj_disp = subject_display_label(r.get('subject_code'), r.get('subject_name'), 'N/A')
+            elif include_profile_image:
+                ed = r[6] if len(r) > 6 else None
+                raw_profile = str(r[8]).strip() if len(r) > 8 and r[8] else ''
+                subject_id_val = r[9] if len(r) > 9 else None
+                exam_ord_val = r[10] if len(r) > 10 else None
+                exam_total_marks = r[11] if len(r) > 11 else None
+                raw_marks_val = r[7] if len(r) > 7 else None
+                subj_disp = subject_display_label(
+                    r[4] if len(r) > 4 else '',
+                    r[3] if len(r) > 3 else '',
+                    'N/A',
+                )
+            else:
+                ed = r[5] if len(r) > 5 else None
+                raw_profile = ''
+                subject_id_val = r[8] if len(r) > 8 else None
+                exam_ord_val = r[9] if len(r) > 9 else None
+                exam_total_marks = r[10] if len(r) > 10 else None
+                raw_marks_val = r[6] if len(r) > 6 else None
+                subj_disp = subject_display_label(
+                    r[4] if len(r) > 4 else '',
+                    r[3] if len(r) > 3 else '',
+                    'N/A',
+                )
             photo_url = ''
             if raw_profile:
                 try:
                     photo_url = url_for('static', filename=str(raw_profile))
                 except Exception:
                     photo_url = ''
-            subject_id_val = None
-            exam_ord_val = None
-            exam_total_marks = None
-            raw_marks_val = None
-            if isinstance(r, dict):
-                subject_id_val = r.get('subject_id')
-                exam_ord_val = r.get('subject_exam_display_order')
-                exam_total_marks = r.get('exam_total_marks')
-                raw_marks_val = r.get('marks')
-            elif include_profile_image:
-                subject_id_val = r[8] if len(r) > 8 else None
-                exam_ord_val = r[9] if len(r) > 9 else None
-                exam_total_marks = r[10] if len(r) > 10 else None
-                raw_marks_val = r[6] if len(r) > 6 else None
-            else:
-                subject_id_val = r[7] if len(r) > 7 else None
-                exam_ord_val = r[8] if len(r) > 8 else None
-                exam_total_marks = r[9] if len(r) > 9 else None
-                raw_marks_val = r[6] if len(r) > 6 else None
             scaled_marks = raw_mark_to_percentage(raw_marks_val, exam_total_marks)
+            if scaled_marks is not None:
+                scaled_marks = round_mark_display(scaled_marks)
             grade_code = _grade_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
+            if isinstance(r, dict):
+                exam_nm = r.get('exam_name')
+                student_id_out = r.get('student_id')
+                full_name_out = r.get('full_name')
+                level_name_out = r.get('level_name')
+                subject_code_out = r.get('subject_code')
+            elif include_profile_image:
+                student_id_out = r[0] if len(r) > 0 else None
+                full_name_out = r[1] if len(r) > 1 else None
+                level_name_out = r[2] if len(r) > 2 else None
+                subject_code_out = r[4] if len(r) > 4 else ''
+                exam_nm = r[5] if len(r) > 5 else None
+            else:
+                student_id_out = r[0] if len(r) > 0 else None
+                full_name_out = r[1] if len(r) > 1 else None
+                level_name_out = r[2] if len(r) > 2 else None
+                subject_code_out = r[4] if len(r) > 4 else ''
+                exam_nm = r[5] if len(r) > 5 else None
             rows.append({
-                'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
-                'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
-                'level_name': r.get('level_name') if isinstance(r, dict) else r[2],
-                'subject_name': r.get('subject_name') if isinstance(r, dict) else r[3],
-                'exam_name': r.get('exam_name') if isinstance(r, dict) else r[4],
+                'student_id': student_id_out,
+                'full_name': full_name_out,
+                'level_name': level_name_out,
+                'subject_name': subj_disp,
+                'subject_code': subject_code_out,
+                'exam_name': exam_nm,
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
                 'marks': scaled_marks if scaled_marks is not None else '',
                 'student_photo': photo_url,

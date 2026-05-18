@@ -577,7 +577,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
             {% endif %}
             <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a> bands: the row&apos;s <strong>mean %</strong> across subjects with a mark (same 0–100 scale as subject grades) is matched to the band&apos;s code and allocation points.
+                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a> bands: the row&apos;s <strong>mean %</strong> across subjects with a mark is <strong>rounded down to a whole number</strong> (e.g. 89.8% → 89) before matching the band&apos;s code and allocation points.
             </p>
         </div>
 
@@ -699,8 +699,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% endfor %}
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 tabular-nums"
                                 x-text="summaryColumnFooterMean()"></td>
-                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
-                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-amber-800 dark:text-amber-300 tabular-nums"
+                                x-text="getClassOverallGradeCode() || '—'"></td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-amber-800 dark:text-amber-300 tabular-nums"
+                                x-text="getClassOverallGradePoints() || '—'"></td>
                         </tr>
                         <tr>
                             <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">G</td>
@@ -710,8 +712,10 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                                 x-text="getSubjectGrade({{ subject.id }}) || '-'"></td>
                             {% endfor %}
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
-                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
-                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-amber-800 dark:text-amber-300 tabular-nums"
+                                x-text="getClassOverallGradeCode() || '—'"></td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-amber-800 dark:text-amber-300 tabular-nums"
+                                x-text="getClassOverallGradePoints() || '—'"></td>
                         </tr>
                     </tfoot>
                 </table>
@@ -1371,9 +1375,15 @@ function marksSheet() {
             return count ? sumPct / count : null;
         },
 
-        findDefaultBandForPct(pct) {
+        /** Integer % for band lookup (floors fractional means so 89.78 → EE2, not a gap). */
+        pctForGradeBandMatch(pct) {
             if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return null;
-            const mv = Number(pct);
+            return Math.floor(Number(pct) + 1e-9);
+        },
+
+        findDefaultBandForPct(pct) {
+            const mv = this.pctForGradeBandMatch(pct);
+            if (mv === null) return null;
             const bands = this.defaultGradeBands || [];
             for (const band of bands) {
                 const start = Number(band.start ?? 0);
@@ -1396,6 +1406,45 @@ function marksSheet() {
 
         getOverallGradePoints(studentId) {
             const pct = this.getOverallMeanPctForGrading(studentId);
+            if (pct === null) return null;
+            const band = this.findDefaultBandForPct(pct);
+            if (!band) return null;
+            const ap = band.allocation_points;
+            if (ap === null || ap === undefined || ap === '') return null;
+            const n = Number(ap);
+            if (Number.isNaN(n)) return null;
+            if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+            return String(Math.round(n * 100) / 100);
+        },
+
+        /** Class mean %: average of each student's overall mean (same rule as per-student Code / Points). */
+        getClassOverallMeanPctForGrading() {
+            if (!this.selectedExam) return null;
+            let sumPct = 0;
+            let count = 0;
+            for (const studentId of this.studentIdList) {
+                const pct = this.getOverallMeanPctForGrading(studentId);
+                if (pct !== null) {
+                    sumPct += pct;
+                    count += 1;
+                }
+            }
+            return count ? sumPct / count : null;
+        },
+
+        getClassOverallGradeCode() {
+            const pct = this.getClassOverallMeanPctForGrading();
+            if (pct === null) return null;
+            const band = this.findDefaultBandForPct(pct);
+            if (!band) return null;
+            const c = (band.code || '').toString().trim();
+            if (c) return c;
+            const lbl = (band.label || '').toString().trim();
+            return lbl || null;
+        },
+
+        getClassOverallGradePoints() {
+            const pct = this.getClassOverallMeanPctForGrading();
             if (pct === null) return null;
             const band = this.findDefaultBandForPct(pct);
             if (!band) return null;
@@ -1444,7 +1493,8 @@ function marksSheet() {
 
         gradeForMark(subjectId, marksValue) {
             if (marksValue === null || marksValue === undefined || marksValue === '' || isNaN(marksValue)) return '';
-            const mv = Number(marksValue);
+            const mv = this.pctForGradeBandMatch(marksValue);
+            if (mv === null) return '';
             const subjectBands = this.subjectGradeBands[String(subjectId)] || this.subjectGradeBands[subjectId] || [];
             const bands = subjectBands.length ? subjectBands : this.defaultGradeBands;
             for (const band of bands) {
