@@ -56,31 +56,51 @@
                 Subject column order (marks sheet, class curriculum view, reports)
             </h2>
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-                Drag rows into <strong>first → last</strong> order. That order is saved to the database and used wherever exam columns appear together (for example class marks entry for coordinators, progress views, and academic reports).
-                <strong>Combined subjects</strong> appear as a single row here—moving that row keeps every paper in the combination together.
+                Subjects are grouped by <strong>academic level category</strong> (from Subject &amp; class allocation), same as the table below. Drag within each group into <strong>first → last</strong> order. Saved order is used on marks sheets, curriculum views, and reports (school category order, then column order within each block).
+                <strong>Combined subjects</strong> appear as one row—moving it keeps every paper in the combination together.
             </p>
         </div>
         <div class="p-4 sm:p-6">
-            {% if exam_column_order_slots and exam_column_order_slots|length > 0 %}
+            {% if exam_column_order_by_category and exam_column_order_by_category|length > 0 %}
             <form id="exam-order-form" method="post" action="{{ employee_dash_url('exam-subject-settings') }}" class="space-y-4">
                 <input type="hidden" name="exam_order_action" value="save_order">
                 <input type="hidden" name="exam_column_order_json" id="exam_column_order_json" value="">
-                <ul id="exam-column-order-list" class="space-y-2 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 p-3" aria-label="Exam column order">
-                    {% for slot in exam_column_order_slots %}
-                    <li draggable="true" data-slot="1" data-type="{{ slot.type }}" data-id="{{ slot.id }}"
-                        class="exam-order-item flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing select-none">
-                        <span class="text-gray-400 dark:text-gray-500" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
-                        <span class="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-white">{{ slot.label }}</span>
-                        {% if slot.type == 'combo' %}
-                        <span class="text-[10px] font-bold uppercase tracking-wider rounded-md bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200 px-2 py-0.5">Combined</span>
-                        {% endif %}
-                        <span class="flex items-center gap-1 shrink-0">
-                            <button type="button" class="exam-ord-up rounded-md border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Move up" aria-label="Move up"><i class="fas fa-chevron-up" aria-hidden="true"></i></button>
-                            <button type="button" class="exam-ord-down rounded-md border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Move down" aria-label="Move down"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
-                        </span>
-                    </li>
+                <div id="exam-column-order-root" class="space-y-5 max-h-[32rem] overflow-y-auto pr-1" aria-label="Exam column order by academic level category">
+                    {% for section in exam_column_order_by_category %}
+                    <div class="exam-order-category-block rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/40 overflow-hidden">
+                        <div class="px-3 py-2.5 sm:px-4 border-b border-slate-200/90 dark:border-slate-700/90 bg-slate-100/90 dark:bg-slate-800/90">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                                <i class="fas fa-layer-group text-brand-primary opacity-80" aria-hidden="true"></i>
+                                {{ section.category }}
+                                <span class="font-normal normal-case tracking-normal text-slate-500 dark:text-slate-400">({{ section.slots|length }} column{{ 's' if section.slots|length != 1 else '' }})</span>
+                            </h3>
+                        </div>
+                        <ul class="exam-column-order-list space-y-2 p-3" data-category="{{ section.category }}" aria-label="Column order for {{ section.category }}">
+                            {% for slot in section.slots %}
+                            <li draggable="true" data-slot="1" data-type="{{ slot.type }}" data-id="{{ slot.id }}"
+                                class="exam-order-item flex flex-wrap items-center gap-2 sm:gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 shadow-sm cursor-grab active:cursor-grabbing select-none">
+                                <span class="text-gray-400 dark:text-gray-500 shrink-0" aria-hidden="true"><i class="fas fa-grip-vertical"></i></span>
+                                <span class="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-white">{{ slot.label }}</span>
+                                {% if slot.level_categories and slot.level_categories|length > 0 %}
+                                <span class="hidden sm:inline-flex flex-wrap gap-1 max-w-[12rem] justify-end">
+                                    {% for lc in slot.level_categories %}
+                                    <span class="text-[10px] rounded-md bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 font-medium text-gray-600 dark:text-gray-300">{{ lc }}</span>
+                                    {% endfor %}
+                                </span>
+                                {% endif %}
+                                {% if slot.type == 'combo' %}
+                                <span class="text-[10px] font-bold uppercase tracking-wider rounded-md bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-200 px-2 py-0.5 shrink-0">Combined</span>
+                                {% endif %}
+                                <span class="flex items-center gap-1 shrink-0">
+                                    <button type="button" class="exam-ord-up rounded-md border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Move up in {{ section.category }}" aria-label="Move up"><i class="fas fa-chevron-up" aria-hidden="true"></i></button>
+                                    <button type="button" class="exam-ord-down rounded-md border border-gray-200 dark:border-gray-600 px-2 py-1 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Move down in {{ section.category }}" aria-label="Move down"><i class="fas fa-chevron-down" aria-hidden="true"></i></button>
+                                </span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
                     {% endfor %}
-                </ul>
+                </div>
                 <button type="submit"
                         class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-600 dark:hover:bg-slate-500 shadow-md transition-colors">
                     <i class="fas fa-save" aria-hidden="true"></i>
@@ -298,19 +318,25 @@
 })();
 
 (function () {
-    var ul = document.getElementById('exam-column-order-list');
+    var root = document.getElementById('exam-column-order-root');
     var jsonInput = document.getElementById('exam_column_order_json');
     var orderForm = document.getElementById('exam-order-form');
-    if (!ul || !jsonInput || !orderForm) return;
+    if (!root || !jsonInput || !orderForm) return;
+
+    function listForItem(li) {
+        return li ? li.closest('ul.exam-column-order-list') : null;
+    }
 
     function serializeOrder() {
         var slots = [];
-        ul.querySelectorAll('li.exam-order-item').forEach(function (li) {
-            var t = (li.getAttribute('data-type') || '').trim().toLowerCase();
-            var id = parseInt(li.getAttribute('data-id'), 10);
-            if ((t === 'subject' || t === 'combo') && !isNaN(id)) {
-                slots.push({ type: t, id: id });
-            }
+        root.querySelectorAll('ul.exam-column-order-list').forEach(function (ul) {
+            ul.querySelectorAll('li.exam-order-item').forEach(function (li) {
+                var t = (li.getAttribute('data-type') || '').trim().toLowerCase();
+                var id = parseInt(li.getAttribute('data-id'), 10);
+                if ((t === 'subject' || t === 'combo') && !isNaN(id)) {
+                    slots.push({ type: t, id: id });
+                }
+            });
         });
         jsonInput.value = JSON.stringify(slots);
     }
@@ -319,11 +345,12 @@
         serializeOrder();
     });
 
-    ul.addEventListener('click', function (e) {
+    root.addEventListener('click', function (e) {
         var btn = e.target.closest('.exam-ord-up, .exam-ord-down');
-        if (!btn || !ul.contains(btn)) return;
+        if (!btn || !root.contains(btn)) return;
         var li = btn.closest('li.exam-order-item');
-        if (!li) return;
+        var ul = listForItem(li);
+        if (!li || !ul) return;
         if (btn.classList.contains('exam-ord-up') && li.previousElementSibling) {
             ul.insertBefore(li, li.previousElementSibling);
         } else if (btn.classList.contains('exam-ord-down') && li.nextElementSibling) {
@@ -332,41 +359,46 @@
     });
 
     var dragEl = null;
-    ul.addEventListener('dragstart', function (e) {
+    var dragList = null;
+    root.addEventListener('dragstart', function (e) {
         var li = e.target.closest('li.exam-order-item');
-        if (!li || !ul.contains(li)) return;
+        if (!li || !root.contains(li)) return;
         dragEl = li;
+        dragList = listForItem(li);
         li.classList.add('opacity-60');
         try {
             e.dataTransfer.setData('text/plain', String(li.getAttribute('data-id') || ''));
             e.dataTransfer.effectAllowed = 'move';
         } catch (err) {}
     });
-    ul.addEventListener('dragend', function (e) {
+    root.addEventListener('dragend', function (e) {
         var li = e.target.closest('li.exam-order-item');
         if (li) li.classList.remove('opacity-60');
         dragEl = null;
-        ul.querySelectorAll('li.exam-order-item').forEach(function (x) {
+        dragList = null;
+        root.querySelectorAll('li.exam-order-item').forEach(function (x) {
             x.classList.remove('ring-2', 'ring-brand-primary');
         });
     });
-    ul.addEventListener('dragover', function (e) {
+    root.addEventListener('dragover', function (e) {
+        var li = e.target.closest('li.exam-order-item');
+        if (!li || !dragEl || listForItem(li) !== dragList) return;
         e.preventDefault();
         try {
             e.dataTransfer.dropEffect = 'move';
         } catch (err) {}
     });
-    ul.addEventListener('drop', function (e) {
+    root.addEventListener('drop', function (e) {
         e.preventDefault();
-        if (!dragEl) return;
+        if (!dragEl || !dragList) return;
         var target = e.target.closest('li.exam-order-item');
-        if (!target || target === dragEl || !ul.contains(target)) return;
+        if (!target || target === dragEl || listForItem(target) !== dragList) return;
         var rect = target.getBoundingClientRect();
         var before = (e.clientY - rect.top) < rect.height / 2;
         if (before) {
-            ul.insertBefore(dragEl, target);
+            dragList.insertBefore(dragEl, target);
         } else {
-            ul.insertBefore(dragEl, target.nextElementSibling);
+            dragList.insertBefore(dragEl, target.nextElementSibling);
         }
     });
 })();

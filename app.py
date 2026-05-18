@@ -1507,8 +1507,35 @@ def _build_exam_column_order_slots(name_map, combinations_raw, base_category_ord
     slots.sort(key=lambda z: (z['_cat_i'], z['_ord'], str(z.get('label') or '').lower()))
     for s in slots:
         s.pop('_ord', None)
-        s.pop('_cat_i', None)
+        cat_i = s.pop('_cat_i', None)
+        s['group_category'] = section_order[cat_i] if cat_i is not None and 0 <= cat_i < len(section_order) else 'Uncategorized'
+        if s.get('type') == 'subject':
+            inf = name_map.get(int(s.get('id') or 0)) or {}
+            s['level_categories'] = list(inf.get('level_categories') or [])
+        elif s.get('type') == 'combo':
+            cid = s.get('id')
+            combo = next((c for c in (combinations_raw or []) if int(c.get('id') or 0) == int(cid or 0)), None)
+            lc_seen = []
+            for mid in (combo.get('member_subject_ids') if combo else []) or []:
+                inf = name_map.get(int(mid)) or {}
+                for lc in inf.get('level_categories') or []:
+                    if lc and lc not in lc_seen:
+                        lc_seen.append(lc)
+            s['level_categories'] = lc_seen
     return slots
+
+
+def _build_exam_column_order_by_category(name_map, combinations_raw, base_category_order=None):
+    """Column-order UI sections grouped by academic level category (Primary, JSS, etc.)."""
+    slots = _build_exam_column_order_slots(name_map, combinations_raw, base_category_order)
+    if not slots:
+        return []
+    by_cat = defaultdict(list)
+    for slot in slots:
+        gc = (slot.get('group_category') or 'Uncategorized').strip() or 'Uncategorized'
+        by_cat[gc].append(slot)
+    section_order = build_exam_subject_section_order(set(by_cat.keys()), base_category_order or [])
+    return [{'category': cat, 'slots': by_cat[cat]} for cat in section_order if by_cat.get(cat)]
 
 
 def ensure_exams_marks_lock_at_column(cursor):
@@ -23538,7 +23565,7 @@ def exam_subject_settings():
     subjects_rows = []
     subjects_by_category = []
     combinations_display = []
-    exam_column_order_slots = []
+    exam_column_order_by_category = []
     try:
         with connection.cursor() as cursor:
             ensure_subject_exam_total_marks_column(cursor)
@@ -23686,19 +23713,28 @@ def exam_subject_settings():
                     'member_totals': totals,
                     'member_ids': mids,
                 })
-            exam_column_order_slots = _build_exam_column_order_slots(name_map, combos_loaded, base_category_order)
+            exam_column_order_by_category = _build_exam_column_order_by_category(
+                name_map, combos_loaded, base_category_order
+            )
     except Exception as e:
         print(f"exam_subject_settings load: {e}")
         flash('Could not load subjects.', 'error')
         subjects_rows = []
         subjects_by_category = []
         combinations_display = []
-        exam_column_order_slots = []
+        exam_column_order_by_category = []
     finally:
         try:
             connection.close()
         except Exception:
             pass
+
+    # Flat list kept for any legacy references; UI uses exam_column_order_by_category.
+    exam_column_order_slots = [
+        slot
+        for section in (exam_column_order_by_category or [])
+        for slot in (section.get('slots') or [])
+    ]
 
     return render_template(
         'dashboards/exam_subject_settings.html',
@@ -23706,6 +23742,7 @@ def exam_subject_settings():
         subjects_rows=subjects_rows,
         subjects_by_category=subjects_by_category,
         combinations_display=combinations_display,
+        exam_column_order_by_category=exam_column_order_by_category,
         exam_column_order_slots=exam_column_order_slots,
     )
 
