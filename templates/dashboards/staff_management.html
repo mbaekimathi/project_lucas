@@ -107,6 +107,13 @@
                 </div>
                 {% if filter_role != 'teachers' %}
                 <div class="flex flex-wrap gap-2 sm:flex-shrink-0">
+                    {% if can_add|default(false) %}
+                    <a href="{{ employee_dash_url('register-employee') }}"
+                       class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white text-brand-primary hover:bg-white/95 border border-white/80 shadow-sm transition-all touch-btn">
+                        <i class="fas fa-user-plus"></i>
+                        <span>Add staff</span>
+                    </a>
+                    {% endif %}
                     <a href="{{ employee_dash_url('assign-roles-approve') }}"
                        class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm transition-all touch-btn">
                         <i class="fas fa-user-check"></i>
@@ -143,60 +150,70 @@
         </div>
     </div>
 
-    <!-- KPI cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        <div class="stat-card modern-card border-l-4 border-l-brand-primary">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Total</p>
-            <p class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mt-1">{{ employees|length }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ staff_label_plural|capitalize }}</p>
-        </div>
-        <div class="stat-card modern-card border-l-4 border-l-green-500">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Active</p>
-            <p class="text-2xl sm:text-3xl font-bold text-green-700 dark:text-green-400 mt-1">{{ ns.active }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Currently working</p>
-        </div>
-        <div class="stat-card modern-card border-l-4 border-l-amber-500">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Pending</p>
-            <p class="text-2xl sm:text-3xl font-bold text-amber-700 dark:text-amber-400 mt-1">{{ ns.pending }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Awaiting approval</p>
-        </div>
-        <div class="stat-card modern-card border-l-4 border-l-red-500">
-            <p class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Suspended</p>
-            <p class="text-2xl sm:text-3xl font-bold text-red-700 dark:text-red-400 mt-1">{{ ns.suspended }}</p>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Access restricted</p>
-        </div>
-    </div>
-
-    <!-- Toolbar -->
-    <div class="modern-card p-4 sm:p-5 mb-6">
-        <div class="flex flex-col lg:flex-row lg:items-center gap-4">
-            <div class="staff-toolbar-search flex-1 min-w-0">
-                <i class="fas fa-search text-sm"></i>
-                <input type="search"
-                       x-model="searchQuery"
-                       placeholder="Search by name, email, staff or portal ID…"
-                       autocomplete="off"
-                       aria-label="Search staff">
+    <!-- Directory: summary + search (single panel) -->
+    <section class="modern-card staff-directory-overview mb-6 overflow-hidden" aria-labelledby="staff-directory-heading">
+        <div class="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+                <h2 id="staff-directory-heading" class="text-sm font-bold text-gray-900 dark:text-white tracking-tight">Staff directory</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Search, filter by status, and manage records in one view.</p>
             </div>
-            <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-                <button type="button" @click="statusFilter = 'all'"
-                        :class="statusFilter === 'all' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">
-                    All <span class="opacity-80" x-text="'(' + visibleCount + ')'"></span>
-                </button>
-                <button type="button" @click="statusFilter = 'active'"
-                        :class="statusFilter === 'active' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Active</button>
-                <button type="button" @click="statusFilter = 'pending'"
-                        :class="statusFilter === 'pending' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Pending</button>
-                <button type="button" @click="statusFilter = 'suspended'"
-                        :class="statusFilter === 'suspended' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Suspended</button>
-                <button type="button" @click="statusFilter = 'other'"
-                        :class="statusFilter === 'other' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Other</button>
+            <p class="text-xs text-gray-500 dark:text-gray-400 sm:text-right">
+                <span class="font-semibold text-gray-700 dark:text-gray-300">{{ employees|length }}</span> {{ staff_label_plural }} on file
+            </p>
+        </div>
+        <div class="grid lg:grid-cols-12 lg:divide-x lg:divide-gray-100 dark:lg:divide-gray-700">
+            <div class="lg:col-span-4 grid grid-cols-2 border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
+                <div class="staff-mini-stat border-r border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
+                    <p class="staff-mini-stat__label">Total</p>
+                    <p class="staff-mini-stat__value text-gray-900 dark:text-white">{{ employees|length }}</p>
+                </div>
+                <div class="staff-mini-stat border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
+                    <p class="staff-mini-stat__label">Active</p>
+                    <p class="staff-mini-stat__value text-green-700 dark:text-green-400">{{ ns.active }}</p>
+                </div>
+                <div class="staff-mini-stat border-r border-gray-100 dark:border-gray-700">
+                    <p class="staff-mini-stat__label">Pending</p>
+                    <p class="staff-mini-stat__value text-amber-700 dark:text-amber-400">{{ ns.pending }}</p>
+                </div>
+                <div class="staff-mini-stat">
+                    <p class="staff-mini-stat__label">Suspended</p>
+                    <p class="staff-mini-stat__value text-red-700 dark:text-red-400">{{ ns.suspended }}</p>
+                </div>
+            </div>
+            <div class="lg:col-span-8 p-4 sm:p-5">
+                <div class="flex flex-col gap-4">
+                    <div class="staff-toolbar-search flex-1 min-w-0 w-full">
+                        <i class="fas fa-search text-sm"></i>
+                        <input type="search"
+                               x-model="searchQuery"
+                               placeholder="Search by name, email, staff #, or portal ID…"
+                               autocomplete="off"
+                               aria-label="Search staff">
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Status</p>
+                        <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+                            <button type="button" @click="statusFilter = 'all'"
+                                    :class="statusFilter === 'all' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">
+                                All <span class="opacity-80" x-text="'(' + visibleCount + ')'"></span>
+                            </button>
+                            <button type="button" @click="statusFilter = 'active'"
+                                    :class="statusFilter === 'active' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Active</button>
+                            <button type="button" @click="statusFilter = 'pending'"
+                                    :class="statusFilter === 'pending' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Pending</button>
+                            <button type="button" @click="statusFilter = 'suspended'"
+                                    :class="statusFilter === 'suspended' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Suspended</button>
+                            <button type="button" @click="statusFilter = 'other'"
+                                    :class="statusFilter === 'other' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Other</button>
+                        </div>
+                    </div>
+                </div>
+                <p x-show="searchQuery.trim() || statusFilter !== 'all'" x-cloak class="mt-4 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
+                    Showing <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="visibleCount"></span> of {{ employees|length }} {{ staff_label_plural }}
+                </p>
             </div>
         </div>
-        <p x-show="searchQuery.trim() || statusFilter !== 'all'" x-cloak class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            Showing <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="visibleCount"></span> of {{ employees|length }} {{ staff_label_plural }}
-        </p>
-    </div>
+    </section>
 
     {% if employees %}
     <!-- Desktop table -->
@@ -205,19 +222,22 @@
             <table class="staff-directory-table">
                 <thead>
                     <tr>
-                        <th class="text-left">Staff member</th>
+                        <th class="text-left min-w-[200px]">Staff member</th>
                         <th class="text-left">Staff #</th>
                         <th class="text-left">Portal ID</th>
                         <th class="text-left">Contact</th>
                         <th class="text-left">Roles</th>
                         <th class="text-left">Status</th>
-                        <th class="text-right">Actions</th>
+                        <th class="text-left whitespace-nowrap">Joined</th>
+                        <th class="text-right w-[1%] whitespace-nowrap">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for employee in employees %}
                     {% set role_list = employee.allocated_roles if employee.allocated_roles else [employee.role] %}
                     {% set st_norm = (employee.status or '')|lower %}
+                    {% set is_self = (current_user_employee_pk is defined and current_user_employee_pk is not none and employee.id == current_user_employee_pk) %}
+                    {% set ca = employee.created_at %}
                     <tr id="employee-row-{{ employee.id }}"
                         data-employee-id="{{ employee.id }}"
                         x-show="matchesEmployee({{ employee.full_name|tojson }}, {{ (employee.email or '')|tojson }}, {{ (employee.employee_id or '')|tojson }}, {{ (employee.staff_employee_number|string if employee.staff_employee_number is not none else employee.id|string)|tojson }}, {{ st_norm|tojson }})"
@@ -231,9 +251,12 @@
                                     <i class="fas fa-user text-white text-sm"></i>
                                     {% endif %}
                                 </div>
-                                <div>
-                                    <p class="font-semibold text-gray-900 dark:text-white truncate max-w-[200px] lg:max-w-[240px]">{{ employee.full_name }}</p>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px] lg:max-w-[240px]">{{ employee.email }}</p>
+                                <div class="min-w-0">
+                                    <p class="font-semibold text-gray-900 dark:text-white truncate max-w-[200px] lg:max-w-[220px]">{{ employee.full_name }}</p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px] lg:max-w-[220px]">{{ employee.email }}</p>
+                                    {% if role_list and role_list[0] %}
+                                    <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 capitalize truncate max-w-[200px] lg:max-w-[220px]">Primary: {{ role_list[0] }}</p>
+                                    {% endif %}
                                 </div>
                             </div>
                         </td>
@@ -265,8 +288,17 @@
                             <span class="staff-status-pill bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300" id="status-{{ employee.id }}">{{ employee.status|title }}</span>
                             {% endif %}
                         </td>
+                        <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                            {% if ca %}
+                                {% if ca is string %}
+                                    {{ ca[:10] }}
+                                {% else %}
+                                    {{ ca.strftime('%d %b %Y') }}
+                                {% endif %}
+                            {% else %}—{% endif %}
+                        </td>
                         <td>
-                            <div class="flex items-center justify-end gap-1">
+                            <div class="flex items-center justify-end gap-0.5 flex-nowrap">
                                 {% if can_edit|default(true) %}
                                 <button type="button" @click="openEditModal({{ employee.id }})"
                                         class="staff-action-icon-btn text-blue-600 dark:text-blue-400"
@@ -274,12 +306,16 @@
                                     <i class="fas fa-pen"></i>
                                 </button>
                                 {% endif %}
-                                {% if can_delete|default(false) %}
-                                <button type="button" @click="deleteEmployee({{ employee.id }}, {{ employee.full_name|tojson }})"
+                                {% if can_delete|default(false) and not is_self %}
+                                <button type="button" @click="openDeleteModal({{ employee.id }}, {{ employee.full_name|tojson }})"
                                         class="staff-action-icon-btn text-red-600 dark:text-red-400"
-                                        title="Delete" aria-label="Delete {{ employee.full_name }}">
+                                        title="Remove from directory" aria-label="Delete {{ employee.full_name }}">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
+                                {% elif can_delete|default(false) and is_self %}
+                                <span class="staff-action-icon-btn text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-60" title="You cannot delete your own account">
+                                    <i class="fas fa-trash-alt"></i>
+                                </span>
                                 {% endif %}
                                 {% if employee.status != 'fired' and employee.status != 'retired' and can_edit|default(true) %}
                                 <label class="staff-action-icon-btn cursor-pointer {% if st_norm == 'suspended' %}text-red-500{% else %}text-gray-400{% endif %}" title="Suspend">
@@ -303,6 +339,8 @@
         {% for employee in employees %}
         {% set role_list = employee.allocated_roles if employee.allocated_roles else [employee.role] %}
         {% set st_norm = (employee.status or '')|lower %}
+        {% set is_self = (current_user_employee_pk is defined and current_user_employee_pk is not none and employee.id == current_user_employee_pk) %}
+        {% set ca = employee.created_at %}
         <article id="employee-{{ employee.id }}"
                  class="staff-mobile-card"
                  x-show="matchesEmployee({{ employee.full_name|tojson }}, {{ (employee.email or '')|tojson }}, {{ (employee.employee_id or '')|tojson }}, {{ (employee.staff_employee_number|string if employee.staff_employee_number is not none else employee.id|string)|tojson }}, {{ st_norm|tojson }})"
@@ -338,7 +376,15 @@
                             <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Portal ID</dt>
                             <dd class="font-mono text-gray-800 dark:text-gray-200 mt-0.5">{{ employee.employee_id or '—' }}</dd>
                         </div>
-                        <div class="col-span-2">
+                        <div>
+                            <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Joined</dt>
+                            <dd class="text-gray-800 dark:text-gray-200 mt-0.5">
+                                {% if ca %}
+                                    {% if ca is string %}{{ ca[:10] }}{% else %}{{ ca.strftime('%d %b %Y') }}{% endif %}
+                                {% else %}—{% endif %}
+                            </dd>
+                        </div>
+                        <div>
                             <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Phone</dt>
                             <dd class="text-gray-700 dark:text-gray-300 mt-0.5">{{ employee.phone or '—' }}</dd>
                         </div>
@@ -357,11 +403,13 @@
                     <i class="fas fa-pen mr-1.5"></i>Edit
                 </button>
                 {% endif %}
-                {% if can_delete|default(false) %}
-                <button type="button" @click="deleteEmployee({{ employee.id }}, {{ employee.full_name|tojson }})"
+                {% if can_delete|default(false) and not is_self %}
+                <button type="button" @click="openDeleteModal({{ employee.id }}, {{ employee.full_name|tojson }})"
                         class="touch-btn flex-1 min-w-[7rem] text-sm font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/25 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
                     <i class="fas fa-trash-alt mr-1.5"></i>Delete
                 </button>
+                {% elif can_delete|default(false) and is_self %}
+                <span class="touch-btn flex-1 min-w-[7rem] text-sm font-semibold text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-not-allowed text-center py-2.5" title="You cannot delete your own account">Delete</span>
                 {% endif %}
                 {% if employee.status != 'fired' and employee.status != 'retired' and can_edit|default(true) %}
                 <label class="touch-btn flex-1 min-w-[7rem] inline-flex items-center justify-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer">
@@ -405,6 +453,54 @@
         {% endif %}
     </div>
     {% endif %}
+
+    <!-- Delete confirmation -->
+    <div x-show="deleteModal.open"
+         x-cloak
+         x-transition.opacity.duration.200ms
+         class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 md:p-6 bg-black/50"
+         @click.self="deleteModal.open = false"
+         style="backdrop-filter: blur(6px);"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="staff-delete-modal-title">
+        <div x-show="deleteModal.open"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+             x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+             class="staff-modal-panel bg-white dark:bg-gray-800 shadow-2xl w-full sm:max-w-md border border-red-100 dark:border-red-900/40"
+             @click.stop>
+            <div class="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center text-red-600 dark:text-red-400">
+                        <i class="fas fa-user-times"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 id="staff-delete-modal-title" class="text-lg font-bold text-gray-900 dark:text-white">Remove staff member?</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">This permanently deletes the account and related access. Timetables or records that reference this person may be affected.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 py-4 space-y-3">
+                <p class="text-sm text-gray-700 dark:text-gray-300">
+                    You are about to delete <strong class="text-gray-900 dark:text-white" x-text="deleteModal.name"></strong>.
+                </p>
+                <div class="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+                    <button type="button" @click="deleteModal.open = false" :disabled="deleteModal.loading"
+                            class="touch-btn flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        Cancel
+                    </button>
+                    <button type="button" @click="confirmDelete()" :disabled="deleteModal.loading"
+                            class="touch-btn flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md">
+                        <span x-show="!deleteModal.loading">Delete permanently</span>
+                        <span x-show="deleteModal.loading" class="inline-flex items-center justify-center gap-2">
+                            <i class="fas fa-spinner fa-spin"></i> Deleting…
+                        </span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Edit modal -->
     <div x-show="editModal.open"
@@ -557,6 +653,7 @@ function staffManagement() {
                 new_password: ''
             }
         },
+        deleteModal: { open: false, id: null, name: '', loading: false },
 
         get visibleCount() {
             return this.employeeRows.filter((row) =>
@@ -566,11 +663,21 @@ function staffManagement() {
 
         init() {
             this.$watch('editModal.open', (open) => {
-                document.body.classList.toggle('overflow-hidden', !!open);
+                if (open) document.body.classList.add('overflow-hidden');
+                else if (!this.deleteModal.open) document.body.classList.remove('overflow-hidden');
                 if (!open) {
                     clearTimeout(this._staffNumberDebounce);
                     this._staffNumberDebounce = null;
                     this.staffNumberCheck = { status: 'idle', message: '' };
+                }
+            });
+            this.$watch('deleteModal.open', (open) => {
+                if (open) document.body.classList.add('overflow-hidden');
+                else if (!this.editModal.open) document.body.classList.remove('overflow-hidden');
+                if (!open) {
+                    this.deleteModal.loading = false;
+                    this.deleteModal.id = null;
+                    this.deleteModal.name = '';
                 }
             });
         },
@@ -725,6 +832,47 @@ function staffManagement() {
             }
         },
 
+        openDeleteModal(employeeId, employeeName) {
+            this.deleteModal.id = employeeId;
+            this.deleteModal.name = employeeName || '';
+            this.deleteModal.loading = false;
+            this.deleteModal.open = true;
+        },
+
+        async confirmDelete() {
+            const employeeId = this.deleteModal.id;
+            if (!employeeId) return;
+            this.deleteModal.loading = true;
+            try {
+                const response = await fetch(`${_staffEmpPrefix}/delete-employee/${employeeId}`, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                const raw = await response.text();
+                let result = {};
+                try {
+                    result = raw ? JSON.parse(raw) : {};
+                } catch (parseErr) {
+                    console.error('Delete response not JSON:', raw);
+                    this.showMessage('Delete failed — please sign in again and retry.', 'error');
+                    return;
+                }
+                if (response.ok && result.success) {
+                    this.showMessage(result.message, 'success');
+                    this.deleteModal.open = false;
+                    this.removeEmployeeFromDom(employeeId);
+                } else {
+                    this.showMessage(result.message || `Could not delete employee (${response.status}).`, 'error');
+                }
+            } catch (error) {
+                console.error('Error deleting employee:', error);
+                this.showMessage('Network error while deleting. Check your connection and try again.', 'error');
+            } finally {
+                this.deleteModal.loading = false;
+            }
+        },
+
         removeEmployeeFromDom(employeeId) {
             ['employee-' + employeeId, 'employee-row-' + employeeId].forEach((id) => {
                 const el = document.getElementById(id);
@@ -735,23 +883,6 @@ function staffManagement() {
                 }
             });
             this.employeeRows = this.employeeRows.filter((r) => r.id !== employeeId);
-        },
-
-        async deleteEmployee(employeeId, employeeName) {
-            if (!confirm(`Are you sure you want to delete ${employeeName}? This action cannot be undone.`)) return;
-            try {
-                const response = await fetch(`${_staffEmpPrefix}/delete-employee/${employeeId}`, { method: 'POST' });
-                const result = await response.json();
-                if (result.success) {
-                    this.showMessage(result.message, 'success');
-                    this.removeEmployeeFromDom(employeeId);
-                } else {
-                    this.showMessage(result.message || 'Failed to delete employee', 'error');
-                }
-            } catch (error) {
-                console.error('Error deleting employee:', error);
-                this.showMessage('Error deleting employee', 'error');
-            }
         },
 
         async toggleSuspend(employeeId) {

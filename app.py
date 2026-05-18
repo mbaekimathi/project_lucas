@@ -75,6 +75,12 @@ EMPLOYEE_SUB_ROLES = (
 )
 EMPLOYEE_SUB_ROLES_SET = frozenset(EMPLOYEE_SUB_ROLES)
 
+# When staff have rows in employee_permissions, check_permission_or_role normally denies
+# unspecified keys. Heads and super admins still use role-based staff actions for these keys.
+HEAD_OF_INSTITUTION_STAFF_PERMISSION_FALLBACK = frozenset({
+    'view_staff', 'add_staff', 'edit_staff', 'delete_staff',
+})
+
 
 def normalize_allocated_role(role: str) -> str:
     """Normalize a role string to a canonical EMPLOYEE_SUB_ROLES value, or '' if invalid."""
@@ -5763,6 +5769,55 @@ def _staff_number_is_taken(cursor, staff_number: str, exclude_employee_id=None) 
     return bool(cursor.fetchone())
 
 
+def resolve_session_employee_pk():
+    """Resolve employees.id for the logged-in user (session user_id is authoritative)."""
+    if not has_request_context():
+        return None
+    user_pk = session.get('user_id')
+    portal_id = session.get('employee_id')
+    connection = get_db_connection()
+    if not connection:
+        return None
+    try:
+        with connection.cursor() as cursor:
+            if user_pk is not None:
+                try:
+                    pk = int(user_pk)
+                    cursor.execute('SELECT id FROM employees WHERE id = %s LIMIT 1', (pk,))
+                    row = cursor.fetchone()
+                    if row:
+                        return row.get('id') if isinstance(row, dict) else row[0]
+                except (TypeError, ValueError):
+                    pass
+            if portal_id is not None and str(portal_id).strip():
+                cursor.execute(
+                    'SELECT id FROM employees WHERE employee_id = %s LIMIT 1',
+                    (str(portal_id).strip(),),
+                )
+                row = cursor.fetchone()
+                if row:
+                    return row.get('id') if isinstance(row, dict) else row[0]
+    except Exception as e:
+        print(f'Error resolving session employee pk: {e}')
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return None
+
+
+def session_effective_role():
+    """Role used for permission fallbacks (technician view-as uses viewed role)."""
+    if not has_request_context():
+        return 'employee'
+    user_role = (session.get('role') or '').strip().lower()
+    viewing = (session.get('viewing_as_employee_role') or '').strip().lower()
+    if user_role == 'technician' and viewing:
+        return viewing
+    return user_role or 'employee'
+
+
 def has_permission(employee_id, permission_key):
     """Check if an employee has a specific permission"""
     if not employee_id:
@@ -5804,49 +5859,35 @@ def check_permission_or_role(permission_key, allowed_roles=None):
     4. If employee has NO permissions assigned, fall back to role-based access
     """
     user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
+    effective_role = session_effective_role()
     
     # Technicians have all permissions
     if user_role == 'technician':
         return True
     
-    # First, get the actual employee ID from database (handle both id and employee_id fields)
-    actual_employee_id = None
+    actual_employee_id = resolve_session_employee_pk()
     total_permissions = 0
     
-    if employee_id:
+    if actual_employee_id:
         connection = get_db_connection()
         if connection:
             try:
                 with connection.cursor() as cursor:
-                    # Try to find employee by id or employee_id field
                     cursor.execute("""
-                        SELECT id 
-                        FROM employees 
-                        WHERE id = %s OR employee_id = %s
-                        LIMIT 1
-                    """, (employee_id, employee_id))
-                    result = cursor.fetchone()
-                    if result:
-                        actual_employee_id = result.get('id') if isinstance(result, dict) else result[0]
-                        
-                        # Check if employee has ANY permissions assigned (do this in same query for efficiency)
-                        cursor.execute("""
-                            SELECT COUNT(*) as count 
-                            FROM employee_permissions 
-                            WHERE employee_id = %s
-                        """, (actual_employee_id,))
-                        perm_result = cursor.fetchone()
-                        if perm_result:
-                            total_permissions = perm_result.get('count', 0) if isinstance(perm_result, dict) else perm_result[0] if isinstance(perm_result, tuple) else 0
+                        SELECT COUNT(*) as count 
+                        FROM employee_permissions 
+                        WHERE employee_id = %s
+                    """, (actual_employee_id,))
+                    perm_result = cursor.fetchone()
+                    if perm_result:
+                        total_permissions = perm_result.get('count', 0) if isinstance(perm_result, dict) else perm_result[0] if isinstance(perm_result, tuple) else 0
             except Exception as e:
-                print(f"Error finding employee ID or checking permissions: {e}")
+                print(f"Error counting employee permissions: {e}")
             finally:
-                if connection:
-                    try:
-                        connection.close()
-                    except:
-                        pass
+                try:
+                    connection.close()
+                except Exception:
+                    pass
     
     # Check if employee has specific permission assigned
     if actual_employee_id:
@@ -5856,6 +5897,7 @@ def check_permission_or_role(permission_key, allowed_roles=None):
         print(f"DEBUG check_permission_or_role('{permission_key}'):")
         print(f"  - actual_employee_id: {actual_employee_id}")
         print(f"  - user_role: {user_role}")
+        print(f"  - effective_role: {effective_role}")
         print(f"  - has_specific_permission: {has_specific_permission}")
         print(f"  - total_permissions: {total_permissions}")
         
@@ -5864,10 +5906,16 @@ def check_permission_or_role(permission_key, allowed_roles=None):
             return True
         
         # If employee has ANY permissions assigned, we're in permission-based mode
-        # So if they don't have this specific permission, deny access
+        # So if they don't have this specific permission, deny access — except staff keys for
+        # head of institution / super admin, which still use allowed_roles below.
         if total_permissions > 0:
-            print(f"  - RESULT: DENIED (permission-based mode, no specific permission)")
-            return False  # Permission-based mode: no permission = no access
+            skip_matrix_denial = (
+                permission_key in HEAD_OF_INSTITUTION_STAFF_PERMISSION_FALLBACK
+                and effective_role in ('head of institution', 'super admin')
+            )
+            if not skip_matrix_denial:
+                print(f"  - RESULT: DENIED (permission-based mode, no specific permission)")
+                return False
         
         # IMPORTANT: For accountants, principals, and other roles that use permissions,
         # if they have been to the permissions page (even if all toggled off),
@@ -5879,7 +5927,7 @@ def check_permission_or_role(permission_key, allowed_roles=None):
         # Check if employee has ever had any permissions (by checking if they exist in the table at all)
         # Actually, we can't easily check "ever had" without an audit table
         # Accountants with no permission rows use explicit grants only (no role fallback below).
-        # Head of institution uses normal role fallback so staff-management APIs work without permission-matrix setup.
+        # Head of institution / super admin: staff keys above bypass matrix denial so role fallback applies.
         if user_role == 'accountant' and total_permissions == 0:
             print(f"  - RESULT: DENIED (accountant with no permissions - requires explicit permission)")
             return False
@@ -5887,9 +5935,9 @@ def check_permission_or_role(permission_key, allowed_roles=None):
     # Fall back to role-based access only if:
     # 1. No permissions are assigned AND
     # 2. User is not an accountant (accountants require explicit permission rows)
-    if allowed_roles and user_role in allowed_roles:
-        if user_role != 'accountant':
-            print(f"  - RESULT: GRANTED (role-based fallback: {user_role} in {allowed_roles})")
+    if allowed_roles and effective_role in allowed_roles:
+        if effective_role != 'accountant':
+            print(f"  - RESULT: GRANTED (role-based fallback: {effective_role} in {allowed_roles})")
             return True
         print(f"  - RESULT: DENIED (accountant requires explicit permission, no role fallback)")
         return False
@@ -17042,7 +17090,7 @@ def staff_management():
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['head of institution'])
+    can_delete = check_permission_or_role('delete_staff', ['head of institution', 'super admin'])
     
     # Fetch all employees
     connection = get_db_connection()
@@ -17069,11 +17117,14 @@ def staff_management():
                 except:
                     pass  # Connection might already be closed
     
+    current_user_employee_pk = resolve_session_employee_pk()
+
     return render_template('dashboards/staff_management.html', 
                          employees=employees,
                          can_add=can_add,
                          can_edit=can_edit,
                          can_delete=can_delete,
+                         current_user_employee_pk=current_user_employee_pk,
                          employee_role_options=list(EMPLOYEE_SUB_ROLES))
 
 @app.route('/dashboard/employee/teacher-management')
@@ -17095,7 +17146,7 @@ def teacher_management():
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['head of institution'])
+    can_delete = check_permission_or_role('delete_staff', ['head of institution', 'super admin'])
     
     # Fetch only teachers
     connection = get_db_connection()
@@ -17129,11 +17180,14 @@ def teacher_management():
                 except:
                     pass
     
+    current_user_employee_pk = resolve_session_employee_pk()
+
     return render_template('dashboards/staff_management.html', 
                          employees=teachers,
                          can_add=can_add,
                          can_edit=can_edit,
                          can_delete=can_delete,
+                         current_user_employee_pk=current_user_employee_pk,
                          page_title='Teacher Management',
                          filter_role='teachers',
                          employee_role_options=list(EMPLOYEE_SUB_ROLES))
@@ -17394,15 +17448,17 @@ def update_employee(employee_id):
 @login_required
 def delete_employee(employee_id):
     """Delete an employee"""
-    user_role = session.get('role', '').lower()
-    current_employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('delete_staff', 
-                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
-                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
-    
+    actor_pk = resolve_session_employee_pk()
+
+    if actor_pk is not None and employee_id == actor_pk:
+        return jsonify({'success': False, 'message': 'You cannot delete your own account.'}), 400
+
+    # Match UI: only head of institution and super admin (technicians bypass in check_permission_or_role)
+    has_access = check_permission_or_role(
+        'delete_staff',
+        allowed_roles=['super admin', 'head of institution'],
+    )
+
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to delete employees.'}), 403
     
@@ -17425,9 +17481,22 @@ def delete_employee(employee_id):
             connection.commit()
             return jsonify({'success': True, 'message': f'Employee {employee.get("full_name")} has been deleted successfully.'})
             
+    except IntegrityError as ie:
+        print(f"Error deleting employee (integrity): {ie}")
+        connection.rollback()
+        return jsonify({
+            'success': False,
+            'message': 'Cannot delete this staff member because they are still linked to other school records. Remove or reassign those links first.',
+        }), 400
     except Exception as e:
         print(f"Error deleting employee: {e}")
         connection.rollback()
+        err = str(e).lower()
+        if 'foreign key' in err or '1451' in err:
+            return jsonify({
+                'success': False,
+                'message': 'Cannot delete this staff member because they are still linked to other school records.',
+            }), 400
         return jsonify({'success': False, 'message': 'An error occurred while deleting the employee.'}), 500
     finally:
         connection.close()
@@ -33461,7 +33530,7 @@ def reports():
                         # Get exams for this level (optionally filtered by term/year/exam group)
                         cursor.execute(f"""
                             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
-                                   s.subject_name, s.subject_code, s.exam_total_marks,
+                                   s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
                                    ay.year_name, t.term_name
                             FROM exams e
                             LEFT JOIN subjects s ON e.subject_id = s.id
@@ -33471,7 +33540,9 @@ def reports():
                             AND (%s IS NULL OR e.term_id = %s)
                             AND (%s IS NULL OR e.academic_year_id = %s)
                             {exam_extra_sql}
-                            ORDER BY e.exam_name, s.subject_name
+                            ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC,
+                                     s.subject_name ASC,
+                                     e.exam_name ASC
                         """, (lev['id'], term_id, term_id, academic_year_id, academic_year_id, *exam_extra_params))
                         exam_rows = cursor.fetchall() or []
                         
@@ -33486,16 +33557,23 @@ def reports():
                             if isinstance(ex, dict):
                                 subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
                                 subject_etm = ex.get('exam_total_marks')
+                                subject_edo = ex.get('exam_display_order')
                             else:
                                 subject_name = ex[4] or ex[5] or 'N/A'
                                 subject_etm = ex[6] if len(ex) > 6 else None
+                                subject_edo = ex[7] if len(ex) > 7 else None
                             
                             if not subject_id:
                                 continue
                             if subject_id not in subject_stats:
+                                try:
+                                    edo_n = int(subject_edo) if subject_edo is not None and str(subject_edo).strip().isdigit() else (int(subject_edo) if isinstance(subject_edo, int) else 10**9)
+                                except (TypeError, ValueError):
+                                    edo_n = 10**9
                                 subject_stats[subject_id] = {
                                     'subject_name': subject_name,
                                     'exam_total_marks': subject_etm,
+                                    'exam_display_order': edo_n,
                                     'exam_ids': [],
                                     'marks': [],
                                     'mean': 0, 'min': None, 'max': None, 'count': 0,
@@ -33526,9 +33604,22 @@ def reports():
                                     if scaled >= 50:
                                         subject_stats[subject_id]['pass_count'] += 1
                         
-                        # Compute subject stats
+                        # Compute subject stats (column order matches Exam subject settings: exam_display_order)
                         subject_list = []
-                        for sid, sdata in subject_stats.items():
+
+                        def _report_subject_sort_key(kv):
+                            sid_i, sd = kv
+                            try:
+                                eo = int(sd.get('exam_display_order') or 10**9)
+                            except (TypeError, ValueError):
+                                eo = 10**9
+                            try:
+                                sid_key = int(sid_i)
+                            except (TypeError, ValueError):
+                                sid_key = 0
+                            return (eo, str(sd.get('subject_name') or '').lower(), sid_key)
+
+                        for sid, sdata in sorted(subject_stats.items(), key=_report_subject_sort_key):
                             marks = sdata['marks']
                             if marks:
                                 sdata['mean'] = round(sum(marks) / len(marks), 2)
@@ -34468,7 +34559,7 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
         cursor.execute(
             """
             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
-                   s.subject_name, s.subject_code, s.exam_total_marks,
+                   s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
                    ay.year_name, t.term_name
             FROM exams e
             LEFT JOIN subjects s ON e.subject_id = s.id
@@ -34477,7 +34568,9 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
             WHERE e.academic_level_id = %s
             AND (%s IS NULL OR e.term_id = %s)
             AND (%s IS NULL OR e.academic_year_id = %s)
-            ORDER BY e.exam_name, s.subject_name
+            ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC,
+                     s.subject_name ASC,
+                     e.exam_name ASC
             """,
             (lev['id'], term_id, term_id, academic_year_id, academic_year_id),
         )
@@ -34488,15 +34581,22 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
             if isinstance(ex, dict):
                 subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
                 subject_etm = ex.get('exam_total_marks')
+                subject_edo = ex.get('exam_display_order')
             else:
                 subject_name = ex[4] or ex[5] or 'N/A'
                 subject_etm = ex[6] if len(ex) > 6 else None
+                subject_edo = ex[7] if len(ex) > 7 else None
             if not subject_id:
                 continue
             if subject_id not in subject_stats:
+                try:
+                    edo_n = int(subject_edo) if subject_edo is not None and str(subject_edo).strip().isdigit() else (int(subject_edo) if isinstance(subject_edo, int) else 10**9)
+                except (TypeError, ValueError):
+                    edo_n = 10**9
                 subject_stats[subject_id] = {
                     'subject_name': subject_name,
                     'exam_total_marks': subject_etm,
+                    'exam_display_order': edo_n,
                     'exam_ids': [],
                     'marks': [],
                     'mean': 0,
@@ -34531,7 +34631,20 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
                     if scaled >= 50:
                         subject_stats[subject_id]['pass_count'] += 1
         subject_list = []
-        for _sid, sdata in subject_stats.items():
+
+        def _class_exam_subject_sort_key(kv):
+            sid_i, sd = kv
+            try:
+                eo = int(sd.get('exam_display_order') or 10**9)
+            except (TypeError, ValueError):
+                eo = 10**9
+            try:
+                sid_key = int(sid_i)
+            except (TypeError, ValueError):
+                sid_key = 0
+            return (eo, str(sd.get('subject_name') or '').lower(), sid_key)
+
+        for _sid, sdata in sorted(subject_stats.items(), key=_class_exam_subject_sort_key):
             marks = sdata['marks']
             if marks:
                 sdata['mean'] = round(sum(marks) / len(marks), 2)

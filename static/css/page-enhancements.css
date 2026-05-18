@@ -342,6 +342,38 @@
 }
 
 /* ===== Staff Management Directory ===== */
+.staff-directory-overview .staff-mini-stat {
+  padding: 0.875rem 1rem;
+  min-height: 4.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.dark .staff-directory-overview .staff-mini-stat {
+  background: rgba(31, 41, 55, 0.5);
+}
+
+.staff-mini-stat__label {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(107 114 128);
+}
+
+.dark .staff-mini-stat__label {
+  color: rgb(156 163 175);
+}
+
+.staff-mini-stat__value {
+  font-size: 1.375rem;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 0.125rem;
+}
+
 .staff-directory-card {
   border-radius: 1rem;
   overflow: hidden;
