@@ -593,35 +593,44 @@
             <div class="ar-rc-inner">
                 {% set af = meta.applied_filters if meta and meta.applied_filters else {} %}
                 <header class="ar-rc-header">
-                    <div class="ar-rc-header-main">
-                        <div class="ar-rc-logo-wrap">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="ar-rc-logo">
-                            {% else %}
-                            <span class="text-[10px] text-gray-400 font-semibold">LOGO</span>
-                            {% endif %}
-                        </div>
-                        <div class="ar-rc-title-block">
-                            <p class="ar-rc-kicker">Official academic report</p>
-                            <h2 class="ar-rc-title">REPORT CARD</h2>
-                            <p class="ar-rc-school-name">{{ school_settings.school_name or 'School' }}</p>
-                            <p class="ar-rc-school-contact">
-                                {% if school_settings.school_address or school_settings.address %}{{ school_settings.school_address or school_settings.address }}{% endif %}
-                                {% if school_settings.phone or school_settings.phone_number %}{% if school_settings.school_address or school_settings.address %} · {% endif %}{{ school_settings.phone or school_settings.phone_number }}{% endif %}
-                                {% if school_settings.email or school_settings.school_email %}{% if school_settings.school_address or school_settings.address or school_settings.phone or school_settings.phone_number %} · {% endif %}{{ school_settings.email or school_settings.school_email }}{% endif %}
-                            </p>
+                    <div class="ar-rc-header-band">
+                        <div class="ar-rc-deco ar-rc-deco--tr"></div>
+                        <div class="ar-rc-header-band-inner">
+                            <div class="ar-rc-header-main">
+                                <div class="ar-rc-logo-wrap">
+                                    {% if school_settings.school_logo %}
+                                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="ar-rc-logo">
+                                    {% else %}
+                                    <span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>
+                                    {% endif %}
+                                </div>
+                                <div class="ar-rc-title-block">
+                                    <p class="ar-rc-kicker">Official academic report</p>
+                                    <h1 class="ar-rc-school-name">{{ school_settings.school_name or 'School' }}</h1>
+                                    <p class="ar-rc-school-contact">
+                                        {% if school_settings.school_address or school_settings.address %}{{ school_settings.school_address or school_settings.address }}{% endif %}
+                                        {% if school_settings.phone or school_settings.phone_number %}{% if school_settings.school_address or school_settings.address %} · {% endif %}{{ school_settings.phone or school_settings.phone_number }}{% endif %}
+                                        {% if school_settings.email or school_settings.school_email %}{% if school_settings.school_address or school_settings.address or school_settings.phone or school_settings.phone_number %} · {% endif %}{{ school_settings.email or school_settings.school_email }}{% endif %}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="ar-rc-badge">
+                                <p class="ar-rc-badge-label">Class rank</p>
+                                <p class="ar-rc-badge-value">{{ row.position }}</p>
+                            </div>
                         </div>
                     </div>
-                    <div class="ar-rc-badge">
-                        <p class="ar-rc-badge-label">Class rank</p>
-                        <p class="ar-rc-badge-value">{{ row.position }}</p>
+                    <div class="ar-rc-doc-title-row">
+                        <div class="ar-rc-doc-title-accent" aria-hidden="true"></div>
+                        <h2 class="ar-rc-title">REPORT CARD</h2>
                     </div>
                 </header>
+                <div class="ar-rc-meta-panel">
                 <div class="ar-rc-meta-grid">
-                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Student name:</span><span class="ar-rc-meta-value">{{ row.full_name }}</span></div>
-                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Class / section:</span><span class="ar-rc-meta-value">{{ row.level_name or row.current_grade or af.class_level or '-' }}</span></div>
-                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">School year:</span><span class="ar-rc-meta-value">{% if af.academic_year and 'Year ID' not in af.academic_year %}{{ af.academic_year }}{% else %}-{% endif %}</span></div>
-                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Term / exam:</span><span class="ar-rc-meta-value">
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Student name</span><span class="ar-rc-meta-value">{{ row.full_name }}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Class / section</span><span class="ar-rc-meta-value">{{ row.level_name or row.current_grade or af.class_level or '-' }}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">School year</span><span class="ar-rc-meta-value">{% if af.academic_year and 'Year ID' not in af.academic_year %}{{ af.academic_year }}{% else %}-{% endif %}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Term / exam</span><span class="ar-rc-meta-value">
                         {%- set term_val = af.term if af.term and 'Term ID' not in af.term else '' -%}
                         {%- set exam_val = af.exam_name if af.exam_name and af.exam_name not in ('All exams', '') else '' -%}
                         {%- if exam_val and term_val and term_val.upper() in exam_val.upper() -%}{{ exam_val }}
@@ -631,6 +640,18 @@
                         {%- else -%}-{%- endif -%}
                     </span></div>
                 </div>
+                </div>
+                {% set overall_points = namespace(val='-') %}
+                {% if row.mean is not none and meta and meta.grade_bands %}
+                    {% set om = row.mean|float|int %}
+                    {% for gb in meta.grade_bands %}
+                        {% set gb_start = gb.start|float if gb.start is not none else none %}
+                        {% set gb_end = gb.end|float if gb.end is not none else none %}
+                        {% if gb_start is not none and gb_end is not none and om >= gb_start and om <= gb_end %}
+                            {% if gb.allocation_points is not none %}{% set overall_points.val = gb.allocation_points %}{% endif %}
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
                 <div class="ar-rc-body-grid ar-rc-body-grid--split">
                     <div>
                         <table class="ar-rc-table">
@@ -640,22 +661,31 @@
                                     <th>Total</th>
                                     <th>Obtained</th>
                                     <th>Grade</th>
+                                    <th>Points</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
                                 {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
+                                {% if not row_subject_cols and row.level_name and subject_columns_by_class %}
+                                    {% set row_subject_cols = subject_columns_by_class.get(row.level_name|trim) %}
+                                {% endif %}
                                 {% if not row_subject_cols %}{% set row_subject_cols = subject_columns %}{% endif %}
                                 {% for sc in row_subject_cols %}
                                 {% set mark_raw = row.get(sc) %}
+                                {% if mark_raw in (None, '') and row.subject_marks is mapping %}
+                                    {% set mark_raw = row.subject_marks.get(sc) %}
+                                {% endif %}
                                 {% set sub_grade = namespace(val='-') %}
+                                {% set sub_points = namespace(val='-') %}
                                 {% if mark_raw not in (None, '') and meta and meta.grade_bands %}
-                                    {% set m = mark_raw|float %}
+                                    {% set m = mark_raw|float|int %}
                                     {% for gb in meta.grade_bands %}
                                         {% set gb_start = gb.start|float if gb.start is not none else none %}
                                         {% set gb_end = gb.end|float if gb.end is not none else none %}
                                         {% if gb_start is not none and gb_end is not none and m >= gb_start and m <= gb_end %}
                                             {% set sub_grade.val = gb.code or gb.label or '-' %}
+                                            {% if gb.allocation_points is not none %}{% set sub_points.val = gb.allocation_points %}{% endif %}
                                         {% endif %}
                                     {% endfor %}
                                 {% endif %}
@@ -664,6 +694,7 @@
                                     <td class="ar-rc-td-num">100</td>
                                     <td class="ar-rc-td-num">{% if mark_raw not in (None, '') %}{{ mark_raw|round|int }}{% else %}-{% endif %}</td>
                                     <td class="ar-rc-td-num">{{ sub_grade.val }}</td>
+                                    <td class="ar-rc-td-num">{{ sub_points.val }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -680,6 +711,7 @@
                                 <tr><td>Total marks</td><td>{{ row.total_marks|round|int }}</td></tr>
                                 <tr><td>Mean</td><td>{{ row.mean|round|int }}</td></tr>
                                 <tr><td>Overall grade</td><td>{{ grade }}</td></tr>
+                                <tr><td>Grade points</td><td>{{ overall_points.val }}</td></tr>
                                 <tr><td>Class rank</td><td>{{ row.position }}</td></tr>
                             </tbody></table>
                         </div>
@@ -689,6 +721,7 @@
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">{{ row.total_marks|round|int }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">{{ row.mean|round|int }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">{{ grade }}</p></div>
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">{{ overall_points.val }}</p></div>
                 </div>
                 <p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span>
                     {% if meta and meta.grade_bands and meta.grade_bands|length %}
@@ -704,9 +737,9 @@
                     </div>
                 </div>
                 <div class="ar-rc-signatures">
-                    <div><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
-                    <div><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
-                    <div><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>
+                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
+                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
+                    <div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>
                 </div>
             </div>
         </article>
@@ -816,66 +849,115 @@
 <style>
 /* Report card layout (matches academic reports builder) */
 .ar-report-preview-page .ar-rc {
-    --ar-rc-navy: #1e3a5f;
+    --ar-rc-navy: #0f2744;
+    --ar-rc-navy-mid: #1e3a5f;
     --ar-rc-green: var(--brand-primary, #166534);
     --ar-rc-accent: var(--brand-secondary, #22c55e);
+    --ar-rc-font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+    --ar-rc-font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
     position: relative;
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.8125rem;
+    line-height: 1.5;
     background: #fff;
-    color: #111827;
-    border: 2px solid #111827;
-    border-radius: 4px;
-    padding: 1.25rem 1.35rem 1.5rem;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0 0 1.35rem;
     margin-bottom: 1.5rem;
     overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 40px -12px rgba(15, 23, 42, 0.12);
+    -webkit-font-smoothing: antialiased;
 }
-.ar-report-preview-page .ar-rc-deco { pointer-events: none; position: absolute; z-index: 0; }
+.ar-report-preview-page .ar-rc-deco { pointer-events: none; position: absolute; z-index: 0; opacity: 0.5; }
 .ar-report-preview-page .ar-rc-deco--tr {
-    top: -2rem; right: -2rem; width: 7rem; height: 7rem;
-    background: linear-gradient(135deg, var(--ar-rc-accent) 0%, var(--ar-rc-green) 55%, transparent 56%);
-    opacity: 0.35; border-radius: 0 0 0 100%;
+    top: 0; right: 0; width: 40%; height: 5.5rem;
+    background: radial-gradient(ellipse at 100% 0%, rgba(255, 255, 255, 0.12) 0%, transparent 70%);
 }
-.ar-report-preview-page .ar-rc-deco--bl {
-    bottom: -2.5rem; left: -2.5rem; width: 8rem; height: 8rem;
-    background: linear-gradient(315deg, var(--ar-rc-navy) 0%, #2d5a8a 45%, transparent 46%);
-    opacity: 0.2; border-radius: 0 100% 0 0;
+.ar-report-preview-page .ar-rc-deco--bl { display: none; }
+.ar-report-preview-page .ar-rc-inner { position: relative; z-index: 1; padding: 0 1.35rem; }
+.ar-report-preview-page .ar-rc-header { margin: 0 -1.35rem 1.15rem; }
+.ar-report-preview-page .ar-rc-header-band {
+    position: relative;
+    padding: 1.15rem 1.35rem 1.05rem;
+    background: linear-gradient(128deg, var(--ar-rc-navy) 0%, var(--ar-rc-navy-mid) 42%, color-mix(in srgb, var(--ar-rc-green) 88%, var(--ar-rc-navy)) 100%);
+    color: #fff;
+    overflow: hidden;
 }
-.ar-report-preview-page .ar-rc-inner { position: relative; z-index: 1; }
-.ar-report-preview-page .ar-rc-header {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 1rem; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e5e7eb;
+.ar-report-preview-page .ar-rc-header-band::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 55%, rgba(255, 255, 255, 0.06) 100%);
+    pointer-events: none;
 }
-.ar-report-preview-page .ar-rc-header-main { display: flex; align-items: flex-start; gap: 0.85rem; min-width: 0; flex: 1; }
+.ar-report-preview-page .ar-rc-header-band-inner {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.ar-report-preview-page .ar-rc-header-main {
+    display: flex; align-items: center; gap: 1rem; min-width: 0; flex: 1;
+}
 .ar-report-preview-page .ar-rc-logo-wrap {
-    flex-shrink: 0; width: 4.25rem; height: 4.25rem;
+    flex-shrink: 0; width: 4.5rem; height: 4.5rem;
     display: flex; align-items: center; justify-content: center;
-    border: 2px solid #e5e7eb; border-radius: 8px; background: #fff; padding: 0.25rem;
+    border-radius: 12px; background: #fff; padding: 0.35rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 .ar-report-preview-page .ar-rc-logo { max-width: 100%; max-height: 100%; object-fit: contain; }
 .ar-report-preview-page .ar-rc-kicker {
-    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-    color: var(--ar-rc-green); margin: 0 0 0.15rem;
+    font-size: 0.625rem; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72); margin: 0 0 0.35rem;
+}
+.ar-report-preview-page .ar-rc-school-name {
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.15rem, 2.8vw, 1.5rem); font-weight: 600; letter-spacing: -0.02em;
+    line-height: 1.2; color: #fff; margin: 0;
+}
+.ar-report-preview-page .ar-rc-school-contact {
+    font-size: 0.7rem; color: rgba(255, 255, 255, 0.78); line-height: 1.5; margin: 0.35rem 0 0; max-width: 28rem;
+}
+.ar-report-preview-page .ar-rc-doc-title-row {
+    display: flex; align-items: center; gap: 0.85rem; padding: 0.85rem 1.35rem 0; background: #fff;
+}
+.ar-report-preview-page .ar-rc-doc-title-accent {
+    flex-shrink: 0; width: 4px; height: 1.75rem; border-radius: 2px;
+    background: linear-gradient(180deg, var(--ar-rc-accent), var(--ar-rc-green));
 }
 .ar-report-preview-page .ar-rc-title {
-    font-size: clamp(1.35rem, 2.5vw, 1.75rem); font-weight: 800; letter-spacing: 0.06em;
-    text-transform: uppercase; color: #111827; margin: 0; line-height: 1.1;
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.25rem, 2.2vw, 1.55rem); font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ar-rc-navy); margin: 0; line-height: 1;
 }
-.ar-report-preview-page .ar-rc-school-name { font-size: 0.95rem; font-weight: 700; color: #374151; margin: 0.35rem 0 0.15rem; }
-.ar-report-preview-page .ar-rc-school-contact { font-size: 0.72rem; color: #4b5563; line-height: 1.45; margin: 0; }
 .ar-report-preview-page .ar-rc-badge {
-    flex-shrink: 0; text-align: right; padding: 0.35rem 0.65rem;
-    border: 2px solid var(--ar-rc-navy); border-radius: 6px; background: #f8fafc;
+    flex-shrink: 0; text-align: center; min-width: 4.25rem; padding: 0.5rem 0.75rem;
+    border-radius: 10px; background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
 }
 .ar-report-preview-page .ar-rc-badge-label {
-    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin: 0;
+    font-size: 0.5625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.75); margin: 0 0 0.15rem;
 }
-.ar-report-preview-page .ar-rc-badge-value { font-size: 1.35rem; font-weight: 800; color: var(--ar-rc-navy); margin: 0; line-height: 1.2; }
+.ar-report-preview-page .ar-rc-badge-value {
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0; line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.ar-report-preview-page .ar-rc-meta-panel {
+    margin-bottom: 1.1rem; padding: 0.85rem 1rem; border-radius: 10px;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); border: 1px solid #e2e8f0;
+}
 .ar-report-preview-page .ar-rc-meta-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem 1.5rem; margin-bottom: 1rem; font-size: 0.8rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem 1.25rem; font-size: 0.8125rem;
 }
-.ar-report-preview-page .ar-rc-meta-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem; min-width: 0; }
-.ar-report-preview-page .ar-rc-meta-label { font-weight: 700; color: #374151; white-space: nowrap; }
+.ar-report-preview-page .ar-rc-meta-item { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.ar-report-preview-page .ar-rc-meta-label {
+    font-size: 0.625rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b;
+}
 .ar-report-preview-page .ar-rc-meta-value {
-    flex: 1; min-width: 0; border-bottom: 1px solid #9ca3af; padding-bottom: 0.1rem; font-weight: 600; color: #111827;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.875rem; font-weight: 600; color: var(--ar-rc-navy); letter-spacing: -0.01em;
+    line-height: 1.3; word-break: break-word;
 }
 .ar-report-preview-page .ar-rc-body-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 @media (min-width: 768px) {
@@ -883,9 +965,11 @@
 }
 .ar-report-preview-page .ar-rc-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; table-layout: fixed; }
 .ar-report-preview-page .ar-rc-table thead th {
-    background: var(--ar-rc-navy); color: #fff; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.04em; font-size: 0.68rem; padding: 0.45rem 0.35rem;
-    border: 1px solid #152a45; text-align: center; vertical-align: middle;
+    font-family: var(--ar-rc-font-display);
+    background: var(--ar-rc-navy); color: #fff; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; font-size: 0.65rem; padding: 0.5rem 0.4rem;
+    border: none; border-bottom: 2px solid var(--ar-rc-accent);
+    text-align: center; vertical-align: middle;
 }
 .ar-report-preview-page .ar-rc-table thead th.ar-rc-th-subj { text-align: left; padding-left: 0.5rem; }
 .ar-report-preview-page .ar-rc-table tbody td { border: 1px solid #d1d5db; padding: 0.35rem 0.4rem; vertical-align: middle; color: #111827; }
@@ -896,14 +980,19 @@
 .ar-report-preview-page .ar-rc-summary-box table { width: 100%; border-collapse: collapse; }
 .ar-report-preview-page .ar-rc-summary-box td { border: 1px solid #d1d5db; padding: 0.35rem 0.4rem; font-weight: 600; text-align: center; }
 .ar-report-preview-page .ar-rc-summary-box td:first-child { text-align: left; font-weight: 700; background: #f3f4f6; }
-.ar-report-preview-page .ar-rc-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.85rem 0; }
+.ar-report-preview-page .ar-rc-stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 0.5rem; margin: 0.85rem 0; }
 .ar-report-preview-page .ar-rc-stat { border: 1px solid #d1d5db; border-radius: 4px; padding: 0.45rem 0.5rem; text-align: center; background: #f9fafb; }
 .ar-report-preview-page .ar-rc-stat-label {
-    font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 0 0 0.15rem;
+    font-size: 0.6rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; margin: 0 0 0.2rem;
 }
-.ar-report-preview-page .ar-rc-stat-value { font-size: 1.1rem; font-weight: 800; color: var(--ar-rc-navy); margin: 0; }
+.ar-report-preview-page .ar-rc-stat-value {
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.15rem; font-weight: 700; color: var(--ar-rc-navy); margin: 0; font-variant-numeric: tabular-nums;
+}
 .ar-report-preview-page .ar-rc-feedback-title {
-    font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #111827; margin: 0 0 0.5rem;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--ar-rc-navy); margin: 0 0 0.5rem;
 }
 .ar-report-preview-page .ar-rc-feedback-lines {
     border: 1px solid #d1d5db; border-radius: 4px; padding: 0.5rem 0.65rem; min-height: 3.5rem; background: #fff;
@@ -912,8 +1001,11 @@
 .ar-report-preview-page .ar-rc-feedback-line:last-child { margin-bottom: 0; border-bottom: none; }
 .ar-report-preview-page .ar-rc-grade-scale { font-size: 0.68rem; color: #4b5563; margin-top: 0.5rem; line-height: 1.4; }
 .ar-report-preview-page .ar-rc-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; font-size: 0.68rem; }
+.ar-report-preview-page .ar-rc-sig-block { border-top: 1px solid #9ca3af; padding-top: 0.35rem; }
 .ar-report-preview-page .ar-rc-sig-title {
-    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; margin: 0 0 1.25rem;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;
+    color: #475569; margin: 0 0 1.25rem;
 }
 .ar-report-preview-page .ar-rc-photo {
     width: 4.5rem; height: 5.5rem; object-fit: cover; border: 2px solid #d1d5db; border-radius: 4px; background: #fff;

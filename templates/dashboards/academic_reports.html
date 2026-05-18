@@ -288,79 +288,106 @@
         box-shadow: none !important;
     }
 }
-/* Report card layout (print-friendly, school branding) */
+/* Report card — professional typography & modern header */
 .ar-rc {
-    --ar-rc-navy: #1e3a5f;
+    --ar-rc-navy: #0f2744;
+    --ar-rc-navy-mid: #1e3a5f;
     --ar-rc-green: var(--brand-primary, #166534);
     --ar-rc-accent: var(--brand-secondary, #22c55e);
+    --ar-rc-font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+    --ar-rc-font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
     position: relative;
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.8125rem;
+    line-height: 1.5;
     background: #fff;
-    color: #111827;
-    border: 2px solid #111827;
-    border-radius: 4px;
-    padding: 1.25rem 1.35rem 1.5rem;
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0 0 1.35rem;
     margin-bottom: 1.5rem;
     overflow: hidden;
-    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.04),
+        0 12px 40px -12px rgba(15, 23, 42, 0.12);
+    -webkit-font-smoothing: antialiased;
 }
 .dark .ar-rc {
     background: #fff;
-    color: #111827;
+    color: #1e293b;
 }
 .ar-rc-deco {
     pointer-events: none;
     position: absolute;
     z-index: 0;
+    opacity: 0.5;
 }
 .ar-rc-deco--tr {
-    top: -2rem;
-    right: -2rem;
-    width: 7rem;
-    height: 7rem;
-    background: linear-gradient(135deg, var(--ar-rc-accent) 0%, var(--ar-rc-green) 55%, transparent 56%);
-    opacity: 0.35;
-    border-radius: 0 0 0 100%;
+    top: 0;
+    right: 0;
+    width: 40%;
+    height: 5.5rem;
+    background: radial-gradient(ellipse at 100% 0%, rgba(255, 255, 255, 0.12) 0%, transparent 70%);
 }
 .ar-rc-deco--bl {
-    bottom: -2.5rem;
-    left: -2.5rem;
-    width: 8rem;
-    height: 8rem;
-    background: linear-gradient(315deg, var(--ar-rc-navy) 0%, #2d5a8a 45%, transparent 46%);
-    opacity: 0.2;
-    border-radius: 0 100% 0 0;
+    display: none;
 }
 .ar-rc-inner {
     position: relative;
     z-index: 1;
+    padding: 0 1.35rem;
 }
 .ar-rc-header {
+    margin: 0 -1.35rem 1.15rem;
+}
+.ar-rc-header-band {
+    position: relative;
+    padding: 1.15rem 1.35rem 1.05rem;
+    background: linear-gradient(
+        128deg,
+        var(--ar-rc-navy) 0%,
+        var(--ar-rc-navy-mid) 42%,
+        color-mix(in srgb, var(--ar-rc-green) 88%, var(--ar-rc-navy)) 100%
+    );
+    color: #fff;
+    overflow: hidden;
+}
+.ar-rc-header-band::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(105deg, transparent 55%, rgba(255, 255, 255, 0.06) 100%),
+        url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    opacity: 0.9;
+    pointer-events: none;
+}
+.ar-rc-header-band-inner {
+    position: relative;
+    z-index: 1;
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 2px solid #e5e7eb;
 }
 .ar-rc-header-main {
     display: flex;
-    align-items: flex-start;
-    gap: 0.85rem;
+    align-items: center;
+    gap: 1rem;
     min-width: 0;
     flex: 1;
 }
 .ar-rc-logo-wrap {
     flex-shrink: 0;
-    width: 4.25rem;
-    height: 4.25rem;
+    width: 4.5rem;
+    height: 4.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
+    border-radius: 12px;
     background: #fff;
-    padding: 0.25rem;
+    padding: 0.35rem;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 .ar-rc-logo {
     max-width: 100%;
@@ -369,85 +396,120 @@
 }
 .ar-rc-title-block {
     min-width: 0;
+    flex: 1;
 }
 .ar-rc-kicker {
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
     text-transform: uppercase;
-    color: var(--ar-rc-green);
-    margin: 0 0 0.15rem;
-}
-.ar-rc-title {
-    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
-    font-weight: 800;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #111827;
-    margin: 0;
-    line-height: 1.1;
+    color: rgba(255, 255, 255, 0.72);
+    margin: 0 0 0.35rem;
 }
 .ar-rc-school-name {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #374151;
-    margin: 0.35rem 0 0.15rem;
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.15rem, 2.8vw, 1.5rem);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: #fff;
+    margin: 0;
 }
 .ar-rc-school-contact {
-    font-size: 0.72rem;
-    color: #4b5563;
-    line-height: 1.45;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.78);
+    line-height: 1.5;
+    margin: 0.35rem 0 0;
+    max-width: 28rem;
+}
+.ar-rc-doc-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.85rem 1.35rem 0;
+    background: #fff;
+}
+.ar-rc-doc-title-accent {
+    flex-shrink: 0;
+    width: 4px;
+    height: 1.75rem;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--ar-rc-accent), var(--ar-rc-green));
+}
+.ar-rc-title {
+    font-family: var(--ar-rc-font-display);
+    font-size: clamp(1.25rem, 2.2vw, 1.55rem);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ar-rc-navy);
     margin: 0;
+    line-height: 1;
 }
 .ar-rc-badge {
     flex-shrink: 0;
-    text-align: right;
-    padding: 0.35rem 0.65rem;
-    border: 2px solid var(--ar-rc-navy);
-    border-radius: 6px;
-    background: #f8fafc;
+    text-align: center;
+    min-width: 4.25rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    backdrop-filter: blur(6px);
 }
 .ar-rc-badge-label {
-    font-size: 0.6rem;
-    font-weight: 700;
+    font-family: var(--ar-rc-font-body);
+    font-size: 0.5625rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #64748b;
-    margin: 0;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.75);
+    margin: 0 0 0.15rem;
 }
 .ar-rc-badge-value {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: var(--ar-rc-navy);
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #fff;
     margin: 0;
-    line-height: 1.2;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+.ar-rc-meta-panel {
+    margin-bottom: 1.1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
 }
 .ar-rc-meta-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.65rem 1.5rem;
-    margin-bottom: 1rem;
-    font-size: 0.8rem;
+    gap: 0.75rem 1.25rem;
+    font-size: 0.8125rem;
 }
 .ar-rc-meta-item {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.35rem;
+    flex-direction: column;
+    gap: 0.2rem;
     min-width: 0;
 }
 .ar-rc-meta-label {
-    font-weight: 700;
-    color: #374151;
-    white-space: nowrap;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
 }
 .ar-rc-meta-value {
-    flex: 1;
-    min-width: 0;
-    border-bottom: 1px solid #9ca3af;
-    padding-bottom: 0.1rem;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.875rem;
     font-weight: 600;
-    color: #111827;
+    color: var(--ar-rc-navy);
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    word-break: break-word;
 }
 .ar-rc-body-grid {
     display: grid;
@@ -466,14 +528,16 @@
     table-layout: fixed;
 }
 .ar-rc-table thead th {
+    font-family: var(--ar-rc-font-display);
     background: var(--ar-rc-navy);
     color: #fff;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-size: 0.68rem;
-    padding: 0.45rem 0.35rem;
-    border: 1px solid #152a45;
+    letter-spacing: 0.06em;
+    font-size: 0.65rem;
+    padding: 0.5rem 0.4rem;
+    border: none;
+    border-bottom: 2px solid var(--ar-rc-accent);
     text-align: center;
     vertical-align: middle;
 }
@@ -531,7 +595,7 @@
 }
 .ar-rc-stats-row {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr));
     gap: 0.5rem;
     margin: 0.85rem 0;
 }
@@ -543,28 +607,31 @@
     background: #f9fafb;
 }
 .ar-rc-stat-label {
-    font-size: 0.62rem;
-    font-weight: 700;
+    font-size: 0.6rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     color: #64748b;
-    margin: 0 0 0.15rem;
+    margin: 0 0 0.2rem;
 }
 .ar-rc-stat-value {
-    font-size: 1.1rem;
-    font-weight: 800;
+    font-family: var(--ar-rc-font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
     color: var(--ar-rc-navy);
     margin: 0;
+    font-variant-numeric: tabular-nums;
 }
 .ar-rc-feedback {
     margin-top: 0.85rem;
 }
 .ar-rc-feedback-title {
-    font-size: 0.8rem;
-    font-weight: 800;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.7rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #111827;
+    letter-spacing: 0.14em;
+    color: var(--ar-rc-navy);
     margin: 0 0 0.5rem;
 }
 .ar-rc-feedback-lines {
@@ -601,10 +668,12 @@
     padding-top: 0.35rem;
 }
 .ar-rc-sig-title {
-    font-weight: 700;
+    font-family: var(--ar-rc-font-display);
+    font-size: 0.625rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: #374151;
+    letter-spacing: 0.1em;
+    color: #475569;
     margin: 0 0 1.25rem;
 }
 .ar-rc-photo {
@@ -634,14 +703,14 @@
     margin-right: auto;
 }
 .ar-chooser-zone {
-    border-radius: 0.875rem;
+    border-radius: 0.625rem;
     border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 18%, #e2e8f0);
     background: linear-gradient(
         180deg,
-        color-mix(in srgb, var(--brand-primary, #166534) 14%, #fff) 0%,
-        color-mix(in srgb, var(--brand-primary, #166534) 6%, #fff) 100%
+        color-mix(in srgb, var(--brand-primary, #166534) 10%, #fff) 0%,
+        color-mix(in srgb, var(--brand-primary, #166534) 4%, #fff) 100%
     );
-    padding: 0.875rem 1rem;
+    padding: 0.5rem 0.625rem;
     box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.8);
 }
 .dark .ar-chooser-zone {
@@ -655,20 +724,38 @@
 .ar-section-tabs {
     display: flex;
     flex-wrap: nowrap;
-    gap: 0.5rem;
+    gap: 0.35rem;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
-    padding-bottom: 0.25rem;
+    padding-bottom: 0.125rem;
 }
 .ar-section-tab {
     flex: 0 0 auto;
     white-space: nowrap;
     font-weight: 600;
 }
+.ar-chooser-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 10%, transparent);
+}
+.ar-chooser-toolbar .ar-filter-label {
+    margin-bottom: 0;
+    margin-right: 0.15rem;
+}
+.ar-chooser-toolbar .ar-filter-control {
+    width: auto;
+    min-width: 8.5rem;
+    max-width: 14rem;
+}
 .ar-report-zone {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+    margin-top: 0.45rem;
+    padding-top: 0.45rem;
     border-top: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 12%, transparent);
 }
 .dark .ar-report-zone {
@@ -677,12 +764,12 @@
 .ar-report-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.5rem;
+    gap: 0.35rem;
 }
 @media (min-width: 640px) {
     .ar-report-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 0.625rem;
+        gap: 0.4rem;
     }
 }
 @media (min-width: 1024px) {
@@ -692,12 +779,12 @@
 }
 .ar-report-tile {
     text-align: left;
-    border-radius: 0.75rem;
-    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 20%, #e2e8f0);
+    border-radius: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 20%, #e2e8f0);
     background: #fff;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.8125rem;
-    line-height: 1.35;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
     transition: border-color 0.15s, box-shadow 0.15s, background 0.15s, color 0.15s;
     box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
@@ -769,93 +856,78 @@
 }
 .ar-filters-panel {
     position: relative;
-    border-radius: 0.875rem;
-    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 32%, #cbd5e1);
-    background: linear-gradient(
-        165deg,
-        color-mix(in srgb, var(--brand-primary, #166534) 22%, #ecfdf5) 0%,
-        color-mix(in srgb, var(--brand-secondary, #22c55e) 14%, #f0fdf4) 45%,
-        #f8fafc 100%
-    );
-    padding: 1.125rem 1.25rem 1.25rem;
-    box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--brand-primary, #166534) 40%, transparent);
+    border-radius: 0.625rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #cbd5e1);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 6%, #f8fafc);
+    padding: 0.5rem 0.625rem;
+    box-shadow: 0 2px 8px -4px color-mix(in srgb, var(--brand-primary, #166534) 30%, transparent);
     overflow: hidden;
 }
-.ar-filters-panel::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 5px;
-    background: linear-gradient(
-        90deg,
-        var(--brand-primary, #166534),
-        var(--brand-secondary, #22c55e)
-    );
-}
 .dark .ar-filters-panel {
-    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 45%, #475569);
-    background: linear-gradient(
-        165deg,
-        color-mix(in srgb, var(--brand-primary, #166534) 35%, rgb(15 23 42)) 0%,
-        color-mix(in srgb, var(--brand-secondary, #22c55e) 18%, rgb(15 23 42)) 50%,
-        rgb(15 23 42) 100%
-    );
-    box-shadow: 0 6px 24px -10px rgba(0, 0, 0, 0.55);
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 35%, #475569);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 18%, rgb(15 23 42));
+    box-shadow: 0 2px 12px -6px rgba(0, 0, 0, 0.45);
 }
 .ar-filters-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 0.875rem 1rem;
+    gap: 0.5rem 0.625rem;
 }
 @media (min-width: 640px) {
     .ar-filters-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
-.ar-filters-grid > div:not(.hidden) {
-    background: #fff;
-    border-radius: 0.625rem;
-    padding: 0.75rem 0.875rem;
-    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 16%, #e2e8f0);
-    border-left: 4px solid var(--brand-primary, #166534);
-    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+.ar-filters-grid--compact {
+    gap: 0.4rem 0.5rem;
 }
-.dark .ar-filters-grid > div:not(.hidden) {
-    background: rgb(30 41 59 / 0.92);
-    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 22%, #475569);
-    border-left-color: var(--brand-secondary, #22c55e);
+@media (min-width: 768px) {
+    .ar-filters-grid--compact {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 2fr) minmax(0, 1fr);
+    }
+    .ar-filters-grid--compact > #ar-filter-wrap-exam:not(.hidden),
+    .ar-filters-grid--compact > #ar-filter-wrap-level:not(.hidden) {
+        grid-column: auto;
+    }
+}
+.ar-filters-grid > div:not(.hidden) {
+    min-width: 0;
+}
+.ar-filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
 }
 .ar-filter-label {
     display: block;
-    font-size: 0.6875rem;
-    font-weight: 800;
-    letter-spacing: 0.07em;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--brand-primary, #166534);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0;
+    line-height: 1.2;
 }
 .dark .ar-filter-label {
     color: var(--brand-secondary, #4ade80);
 }
 .ar-filter-control {
     width: 100%;
-    padding: 0.5625rem 0.75rem;
-    border-radius: 0.5rem;
-    border: 2px solid color-mix(in srgb, var(--brand-primary, #166534) 35%, #94a3b8);
-    background: color-mix(in srgb, var(--brand-primary, #166534) 4%, #fff);
+    padding: 0.3rem 0.45rem;
+    border-radius: 0.375rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #94a3b8);
+    background: #fff;
     color: rgb(15 23 42);
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 500;
-    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
-    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    line-height: 1.25;
+    transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ar-filter-control:focus {
     outline: none;
     border-color: var(--brand-primary, #166534);
-    background: #fff;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary, #166534) 22%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent);
 }
 .dark .ar-filter-control {
     border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 40%, #64748b);
@@ -866,20 +938,20 @@
     background: rgb(15 23 42);
 }
 .ar-filters-panel #ar-wrap-student:not(.hidden) {
-    border-left-color: var(--brand-secondary, #22c55e);
-    background: color-mix(in srgb, var(--brand-secondary, #22c55e) 6%, #fff);
-}
-.dark .ar-filters-panel #ar-wrap-student:not(.hidden) {
-    background: color-mix(in srgb, var(--brand-secondary, #22c55e) 10%, rgb(30 41 59));
+    padding: 0.35rem 0;
+    margin-bottom: 0.35rem;
+    border-bottom: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 18%, transparent);
 }
 #ar-extra-filters:not(.hidden) {
-    border-top: 2px dashed color-mix(in srgb, var(--brand-primary, #166534) 25%, transparent) !important;
+    margin-top: 0.4rem !important;
+    padding-top: 0.4rem !important;
+    border-top: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent) !important;
 }
 </style>
-<div class="ar-page ar-page--workspace print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-4 sm:py-5 lg:py-6">
+<div class="ar-page ar-page--workspace print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
     <!-- Workspace: categories, report tiles, filters -->
-    <section class="no-print ar-workspace mb-4 sm:mb-5 rounded-xl sm:rounded-2xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/30 dark:shadow-none overflow-hidden">
-        <header class="relative px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
+    <section class="no-print ar-workspace mb-3 sm:mb-4 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-200/25 dark:shadow-none overflow-hidden">
+        <header class="relative px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div class="flex items-start gap-3 min-w-0">
                     <div class="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md shadow-brand-primary/20">
@@ -892,7 +964,7 @@
             </div>
         </header>
 
-        <div class="p-4 sm:p-5 lg:p-6 space-y-4">
+        <div class="p-3 sm:p-4 space-y-2.5">
             <div class="ar-chooser-zone">
                 <div id="ar-section-tabs" class="ar-section-tabs" role="tablist" aria-label="Report category"></div>
                 <select id="ar-section" class="ar-sr-only" aria-hidden="true" tabindex="-1">
@@ -902,12 +974,12 @@
                     <option value="timetables">Timetables</option>
                 </select>
 
-                <div id="ar-wrap-exam-scope" class="hidden max-w-md mt-3">
-                <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
-                <select id="ar-exam-scope" class="ar-filter-control">
-                    <option value="class">Class</option>
-                    <option value="individual">Individual student</option>
-                </select>
+                <div id="ar-wrap-exam-scope" class="ar-chooser-toolbar hidden">
+                    <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
+                    <select id="ar-exam-scope" class="ar-filter-control">
+                        <option value="class">Class</option>
+                        <option value="individual">Individual student</option>
+                    </select>
                 </div>
 
                 <div class="ar-report-zone">
@@ -919,7 +991,7 @@
             <div id="ar-report-desc" class="hidden" aria-hidden="true"></div>
 
             <div class="ar-filters-panel">
-                <div id="ar-wrap-student" class="hidden rounded-lg p-3 mb-3 sm:col-span-2">
+                <div id="ar-wrap-student" class="hidden">
                     <label for="gf-student-search" class="ar-filter-label">Student</label>
                     <div class="relative">
                         <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-brand-primary/70"><i class="fas fa-search text-sm"></i></span>
@@ -929,8 +1001,8 @@
                     </div>
                     <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
                 </div>
-                <div id="ar-filter-main-grid" class="ar-filters-grid">
-                    <div id="ar-filter-wrap-year" class="hidden">
+                <div id="ar-filter-main-grid" class="ar-filters-grid ar-filters-grid--compact">
+                    <div id="ar-filter-wrap-year" class="hidden ar-filter-field">
                         <label for="gf-year" class="ar-filter-label">Academic year</label>
                         <select id="gf-year" class="ar-filter-control">
                             <option value="">All years</option>
@@ -939,7 +1011,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div id="ar-filter-wrap-term" class="hidden">
+                    <div id="ar-filter-wrap-term" class="hidden ar-filter-field">
                         <label for="gf-term" class="ar-filter-label">Term</label>
                         <select id="gf-term" class="ar-filter-control">
                             <option value="">Any / not set</option>
@@ -948,13 +1020,13 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div id="ar-filter-wrap-exam" class="hidden sm:col-span-2">
+                    <div id="ar-filter-wrap-exam" class="hidden ar-filter-field">
                         <label for="gf-exam-name" class="ar-filter-label">Exam name</label>
                         <select id="gf-exam-name" class="ar-filter-control">
                             <option value="">Select exam…</option>
                         </select>
                     </div>
-                    <div id="ar-filter-wrap-level" class="sm:col-span-2">
+                    <div id="ar-filter-wrap-level" class="ar-filter-field">
                         <label for="gf-level" class="ar-filter-label">Class / level</label>
                         <select id="gf-level" class="ar-filter-control">
                             <option value="">All classes</option>
@@ -965,15 +1037,15 @@
                     </div>
                 </div>
 
-                <div id="ar-extra-filters" class="ar-filters-grid hidden mt-3 pt-3 border-t border-brand-primary/15">
-                    <div id="ar-wrap-timetable-view" class="hidden sm:col-span-2">
+                <div id="ar-extra-filters" class="ar-filters-grid ar-filters-grid--compact hidden">
+                    <div id="ar-wrap-timetable-view" class="hidden ar-filter-field sm:col-span-2">
                         <label for="gf-timetable-view" class="ar-filter-label">Timetable view</label>
                         <select id="gf-timetable-view" class="ar-filter-control">
                             <option value="student">Student view (subject + teacher by class/time)</option>
                             <option value="teacher">Teacher view (teacher + class by time)</option>
                         </select>
                     </div>
-                    <div id="ar-wrap-teacher" class="hidden sm:col-span-2">
+                    <div id="ar-wrap-teacher" class="hidden ar-filter-field sm:col-span-2">
                         <label for="gf-teacher" class="ar-filter-label">Teacher</label>
                         <select id="gf-teacher" class="ar-filter-control">
                             <option value="">Select teacher</option>
@@ -983,11 +1055,11 @@
                         </select>
                     </div>
                     <div id="ar-wrap-exam-name" class="hidden"></div>
-                    <div id="ar-wrap-register-date" class="hidden">
+                    <div id="ar-wrap-register-date" class="hidden ar-filter-field">
                         <label for="gf-register-date" class="ar-filter-label">Attendance date</label>
                         <input type="date" id="gf-register-date" class="ar-filter-control">
                     </div>
-                    <div id="ar-wrap-dates" class="hidden sm:col-span-2">
+                    <div id="ar-wrap-dates" class="hidden ar-filter-field sm:col-span-2">
                         <label class="ar-filter-label">Date range</label>
                         <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-2 items-center">
                             <input type="date" id="gf-dfrom" class="ar-filter-control">
@@ -1272,7 +1344,7 @@
       const cat = CATALOG[key];
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'ar-section-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border-2 transition-colors ' +
+      btn.className = 'ar-section-tab px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ' +
         (sectionEl.value === key
           ? 'border-brand-primary bg-brand-primary text-white shadow-md'
           : 'border-white/90 bg-white text-slate-800 shadow-sm hover:border-brand-primary/50 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100');
@@ -1294,7 +1366,7 @@
     sectionTabsEl.querySelectorAll('[data-section]').forEach(function(btn) {
       const on = btn.dataset.section === sectionEl.value;
       btn.setAttribute('aria-selected', on ? 'true' : 'false');
-      btn.className = 'ar-section-tab px-3 py-1.5 rounded-lg text-xs sm:text-sm font-semibold border-2 transition-colors ' +
+      btn.className = 'ar-section-tab px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ' +
         (on
           ? 'border-brand-primary bg-brand-primary text-white shadow-md'
           : 'border-white/90 bg-white text-slate-800 shadow-sm hover:border-brand-primary/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100');
@@ -1751,7 +1823,7 @@
     badge = badge || null;
     var logoInner = SCHOOL_INFO.logo
       ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
-      : '<div class="ar-rc-logo-wrap flex items-center justify-center text-[10px] text-gray-400 font-semibold">LOGO</div>';
+      : '<span class="text-[10px] font-semibold text-slate-400 tracking-wide">LOGO</span>';
     var badgeHtml = '';
     if (badge && (badge.label || badge.value != null)) {
       badgeHtml =
@@ -1761,55 +1833,96 @@
         '</div>';
     }
     return '' +
-      '<div class="ar-rc-header">' +
-        '<div class="ar-rc-header-main">' +
-          '<div class="ar-rc-logo-wrap">' + logoInner + '</div>' +
-          '<div class="ar-rc-title-block">' +
-            '<p class="ar-rc-kicker">Official academic report</p>' +
-            '<h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'REPORT CARD') + '</h2>' +
-            '<p class="ar-rc-school-name">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</p>' +
-            '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
+      '<header class="ar-rc-header">' +
+        '<div class="ar-rc-header-band">' +
+          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
+          '<div class="ar-rc-header-band-inner">' +
+            '<div class="ar-rc-header-main">' +
+              '<div class="ar-rc-logo-wrap">' + logoInner + '</div>' +
+              '<div class="ar-rc-title-block">' +
+                '<p class="ar-rc-kicker">Official academic report</p>' +
+                '<h1 class="ar-rc-school-name">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h1>' +
+                '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
+              '</div>' +
+            '</div>' +
+            badgeHtml +
           '</div>' +
         '</div>' +
-        badgeHtml +
-      '</div>';
+        '<div class="ar-rc-doc-title-row">' +
+          '<div class="ar-rc-doc-title-accent" aria-hidden="true"></div>' +
+          '<h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'REPORT CARD') + '</h2>' +
+        '</div>' +
+      '</header>';
   }
 
   function renderReportCardMetaGrid(pairs) {
-    return '<div class="ar-rc-meta-grid">' +
+    return '<div class="ar-rc-meta-panel"><div class="ar-rc-meta-grid">' +
       pairs.map(function(p) {
         return '' +
           '<div class="ar-rc-meta-item">' +
-            '<span class="ar-rc-meta-label">' + escapeHtml(p.label) + ':</span>' +
+            '<span class="ar-rc-meta-label">' + escapeHtml(p.label) + '</span>' +
             '<span class="ar-rc-meta-value">' + escapeHtml(p.value || '—') + '</span>' +
           '</div>';
       }).join('') +
-    '</div>';
+    '</div></div>';
   }
 
   function renderReportCardSignatures() {
     return '' +
       '<div class="ar-rc-signatures">' +
-        '<div><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
-        '<div><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
-        '<div><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div class="ar-rc-sig-block"><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>' +
       '</div>';
   }
 
-  function gradeCodeFromMark(mark, bandsList) {
+  /** Whole-number % for grade band lookup (matches marks sheet: 89.8 → 89). */
+  function pctForGradeBandMatch(mark) {
     var n = parseFloat(mark);
-    if (isNaN(n)) return '—';
+    if (isNaN(n)) return null;
+    return Math.floor(n + 1e-9);
+  }
+
+  function gradeBandFromMark(mark, bandsList) {
+    var n = pctForGradeBandMatch(mark);
+    if (n === null) return null;
     var list = bandsList || [];
     for (var i = 0; i < list.length; i++) {
       var b = list[i] || {};
       var start = parseFloat(b.start);
       var end = parseFloat(b.end);
-      if (!isNaN(start) && !isNaN(end) && n >= start && n <= end) {
-        var code = String(b.code || b.label || '').trim();
-        if (code) return code;
-      }
+      if (!isNaN(start) && !isNaN(end) && n >= start && n <= end) return b;
     }
-    return '—';
+    return null;
+  }
+
+  function gradeCodeFromMark(mark, bandsList) {
+    var b = gradeBandFromMark(mark, bandsList);
+    if (!b) return '—';
+    var code = String(b.code || b.label || '').trim();
+    return code || '—';
+  }
+
+  function gradePointsFromMark(mark, bandsList) {
+    var b = gradeBandFromMark(mark, bandsList);
+    if (!b) return '—';
+    var ap = b.allocation_points;
+    if (ap === null || ap === undefined || ap === '') return '—';
+    var p = parseFloat(ap);
+    if (isNaN(p)) return '—';
+    return String(Math.abs(p - Math.round(p)) < 1e-9 ? Math.round(p) : Math.round(p * 100) / 100);
+  }
+
+  function markValueForSubject(row, subjectName) {
+    if (!row) return null;
+    var key = String(subjectName || '');
+    var v = row[key];
+    if (v !== '' && v !== null && v !== undefined) return v;
+    var sm = row.subject_marks;
+    if (sm && typeof sm === 'object' && sm[key] !== '' && sm[key] != null && sm[key] !== undefined) {
+      return sm[key];
+    }
+    return null;
   }
 
   function renderReportCardFeedback(descriptorText) {
@@ -1962,30 +2075,58 @@
       : {};
     const subjectColumns = Array.isArray(meta.subject_columns) ? meta.subject_columns : [];
 
+    var _rowMetaKeys = {
+      position: 1, admission_number: 1, student_id: 1, full_name: 1, level_name: 1,
+      current_grade: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1,
+      subject_marks: 1, class_subject_columns: 1
+    };
+
     function subjectColumnsForClass(className, list) {
       var k = String(className || '').trim();
-      if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
-        return subjectColumnsByClass[k];
+      var seen = {};
+      var ordered = [];
+      function addCol(name) {
+        var n = String(name || '').trim();
+        if (!n || seen[n]) return;
+        seen[n] = true;
+        ordered.push(n);
       }
-      if (subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length)) {
-        return subjectColumns;
+      if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
+        subjectColumnsByClass[k].forEach(addCol);
+      } else if (k && list && list.length) {
+        var ln = String((list[0] && list[0].level_name) || '').trim();
+        if (ln && Array.isArray(subjectColumnsByClass[ln]) && subjectColumnsByClass[ln].length) {
+          subjectColumnsByClass[ln].forEach(addCol);
+        }
+      }
+      if (!ordered.length && subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length)) {
+        subjectColumns.forEach(addCol);
       }
       var fromRows = {};
       (list || []).forEach(function(row) {
         if (!row) return;
         Object.keys(row).forEach(function(key) {
-          if (!key || key === 'position' || key === 'admission_number' || key === 'student_id' ||
-              key === 'full_name' || key === 'level_name' || key === 'current_grade' ||
-              key === 'student_photo' || key === 'total_marks' || key === 'mean' || key === 'grade') {
-            return;
-          }
+          if (!key || _rowMetaKeys[key]) return;
           var v = row[key];
-          if (v !== '' && v !== null && v !== undefined) {
-            fromRows[key] = true;
-          }
+          if (v !== '' && v !== null && v !== undefined) fromRows[key] = true;
         });
+        var sm = row.subject_marks;
+        if (sm && typeof sm === 'object') {
+          Object.keys(sm).forEach(function(key) {
+            var v = sm[key];
+            if (v !== '' && v !== null && v !== undefined) fromRows[key] = true;
+          });
+        }
+        if (Array.isArray(row.class_subject_columns)) {
+          row.class_subject_columns.forEach(function(key) { if (key) fromRows[key] = true; });
+        }
       });
-      return Object.keys(fromRows).sort(function(a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+      Object.keys(fromRows).sort(function(a, b) {
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      }).forEach(addCol);
+      return ordered.length ? ordered : Object.keys(fromRows).sort(function(a, b) {
+        return a.localeCompare(b, undefined, { sensitivity: 'base' });
+      });
     }
 
     function classKeyForRow(row) {
@@ -2044,15 +2185,18 @@
       const photoHtml = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
+      const overallPoints = gradePointsFromMark(row.mean, bands);
       const subjectRows = cardSubjectColumns.map(function(subjectName) {
-        const mark = row[subjectName];
+        const mark = markValueForSubject(row, subjectName);
         const subGrade = gradeCodeFromMark(mark, bands);
+        const subPoints = gradePointsFromMark(mark, bands);
         return '' +
           '<tr>' +
             '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
             '<td class="ar-rc-td-num">100</td>' +
             '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>' +
             '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
+            '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
           '</tr>';
       }).join('');
       const summaryBox = '' +
@@ -2061,6 +2205,7 @@
             '<tr><td>Total marks</td><td>' + escapeHtml(formatReportMark(row.total_marks)) + '</td></tr>' +
             '<tr><td>Mean</td><td>' + escapeHtml(formatReportMark(row.mean)) + '</td></tr>' +
             '<tr><td>Overall grade</td><td>' + escapeHtml(grade) + '</td></tr>' +
+            '<tr><td>Grade points</td><td>' + escapeHtml(overallPoints) + '</td></tr>' +
             '<tr><td>Class rank</td><td>' + escapeHtml(rankVal) + '</td></tr>' +
           '</tbody></table>' +
         '</div>';
@@ -2080,7 +2225,7 @@
               '<div>' +
                 '<table class="ar-rc-table">' +
                   '<thead><tr>' +
-                    '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th>' +
+                    '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
                   '</tr></thead>' +
                   '<tbody>' + subjectRows + '</tbody>' +
                 '</table>' +
@@ -2091,6 +2236,7 @@
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
             '</div>' +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
             renderReportCardFeedback(meaning || '') +
@@ -2173,7 +2319,7 @@
               '<span class="font-semibold">' + studentTitle + '</span>' +
             '</td>' +
             classSubjectColumns.map(function(subjectName) {
-              const mark = row[subjectName];
+              const mark = markValueForSubject(row, subjectName);
               return '<td class="ar-col-mark text-slate-800 dark:text-slate-200">' +
                 escapeHtml(formatReportMark(mark)) +
               '</td>';
@@ -3063,6 +3209,7 @@
       const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
       const markVal = avg === null ? '-' : String(Math.round(avg));
       const grade = avg === null ? '-' : gradeFromSettings(subjectId, avg);
+      const points = avg === null ? '-' : gradePointsFromMark(avg, defaultBands);
       const trendValues = bySubject[subject].history
         .slice()
         .sort(function(a, b) { return String(a.examDate || '').localeCompare(String(b.examDate || '')); })
@@ -3075,12 +3222,14 @@
         subject,
         markVal,
         grade,
+        points,
         trendText
       };
     });
 
     const overallAvg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : null;
     const overallGrade = overallAvg === null ? '-' : gradeFromSettings(null, overallAvg);
+    const overallPoints = overallAvg === null ? '-' : gradePointsFromMark(overallAvg, defaultBands);
     const overallAvgText = overallAvg === null ? '-' : String(Math.round(overallAvg));
     const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
 
@@ -3093,6 +3242,7 @@
           '<td class="ar-rc-td-num">100</td>' +
           '<td class="ar-rc-td-num">' + escapeHtml(item.markVal) + '</td>' +
           '<td class="ar-rc-td-num">' + escapeHtml(item.grade) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(item.points) + '</td>' +
         '</tr>';
     }).join('');
 
@@ -3107,6 +3257,7 @@
       '<div class="ar-rc-summary-box mt-3"><table><tbody>' +
         '<tr><td>Overall average</td><td>' + escapeHtml(overallAvgText) + '</td></tr>' +
         '<tr><td>Overall grade</td><td>' + escapeHtml(overallGrade) + '</td></tr>' +
+        '<tr><td>Grade points</td><td>' + escapeHtml(overallPoints) + '</td></tr>' +
         '<tr><td>Subjects passed</td><td>' + escapeHtml(String(passCount)) + '</td></tr>' +
         '<tr><td>Exams covered</td><td>' + escapeHtml(examsCount) + '</td></tr>' +
       '</tbody></table></div>';
@@ -3137,7 +3288,7 @@
             '<div>' +
               '<table class="ar-rc-table">' +
                 '<thead><tr>' +
-                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th>' +
+                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
                 '</tr></thead>' +
                 '<tbody>' + tableRows + '</tbody>' +
               '</table>' +
@@ -3147,6 +3298,7 @@
           '<div class="ar-rc-stats-row">' +
             '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
             '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
+            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
             '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
           '</div>' +
           '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendInd + '</p>' +

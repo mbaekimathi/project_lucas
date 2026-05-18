@@ -36327,6 +36327,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             flat_row['total_marks'] = item['total_marks']
             flat_row['mean'] = item['mean']
             flat_row['grade'] = item['grade']
+            flat_row['subject_marks'] = item.get('subject_marks') or {}
+            flat_row['class_subject_columns'] = row_cols
             rows.append({
                 **flat_row
             })
