@@ -2,7 +2,9 @@
 
 {% block title %}My Classes - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block sidebar_content %}{% endblock %}
+{% block sidebar_content %}
+{% include "partials/teacher_sidebar_nav.html" %}
+{% endblock %}
 
 {% set days_order = days_order | default(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) %}
 {% set timetable_data = timetable_data | default({}) %}

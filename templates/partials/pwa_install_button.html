@@ -1,0 +1,58 @@
+{# Fixed bottom install bar — shown when app is not installed (see pwa-install.js) #}
+<style>
+  body.has-pwa-install-bar {
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 640px) {
+    body.has-pwa-install-bar {
+      padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
+</style>
+<div data-pwa-install-root
+     hidden
+     class="fixed inset-x-0 bottom-0 z-[95] pointer-events-none"
+     role="region"
+     aria-label="Install school app">
+    <div class="pointer-events-auto mx-auto w-full max-w-lg px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
+        <div class="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/95 shadow-2xl shadow-slate-900/15 ring-1 ring-black/5 backdrop-blur-md dark:border-slate-600/80 dark:bg-slate-900/95 dark:ring-white/10">
+            <div class="flex items-center gap-2.5 px-3 py-3 sm:gap-3 sm:px-4 sm:py-3.5">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md sm:h-11 sm:w-11"
+                      aria-hidden="true">
+                    <i class="fas fa-mobile-screen-button text-base sm:text-lg"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-semibold leading-tight text-slate-900 dark:text-white">Install {{ (school_settings.school_name or 'School portal')|trim }}</p>
+                    <p class="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400 sm:text-xs">Quick access from your home screen</p>
+                </div>
+                <button type="button"
+                        data-pwa-install-btn
+                        hidden
+                        class="shrink-0 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary px-3.5 py-2 text-xs font-semibold text-white shadow-md transition hover:opacity-95 disabled:opacity-60 sm:px-4 sm:py-2.5 sm:text-sm">
+                    <span data-pwa-install-label>Install</span>
+                </button>
+                <button type="button"
+                        data-pwa-install-dismiss
+                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                        aria-label="Dismiss install prompt">
+                    <i class="fas fa-times text-sm" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div data-pwa-install-ios-help
+                 hidden
+                 class="border-t border-slate-100 px-4 py-3 text-left text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-300">
+                <p class="font-semibold text-slate-800 dark:text-slate-100">Add to Home Screen (Safari)</p>
+                <ol class="mt-2 list-decimal list-inside space-y-1">
+                    <li>Tap <strong>Share</strong> <i class="fas fa-share-from-square opacity-70" aria-hidden="true"></i></li>
+                    <li>Choose <strong>Add to Home Screen</strong></li>
+                    <li>Open the school icon from your home screen</li>
+                </ol>
+                <button type="button"
+                        data-pwa-install-ios-dismiss
+                        class="mt-2 font-medium text-brand-primary hover:underline dark:text-brand-secondary">
+                    Got it
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -55,7 +55,7 @@
             <i class="fas fa-chart-bar text-brand-primary mr-2 sm:mr-3"></i>
             Reports
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches).</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches). Means and pass rates use <strong>scaled marks (/100)</strong> from Exam subject settings (raw ÷ exam total × 100).</p>
     </div>
 
     <div class="mb-6">
@@ -156,7 +156,7 @@
                 </h3>
                 <div class="flex flex-wrap gap-4 mt-2 text-white/90 text-sm">
                     <span><i class="fas fa-users mr-1"></i> {{ class_report.student_count }} student(s)</span>
-                    <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}</strong></span>
+                    <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}/100</strong></span>
                     <span><i class="fas fa-book mr-1"></i> {{ class_report.subjects|length }} subject(s)</span>
                 </div>
             </div>
@@ -165,9 +165,9 @@
                     <thead>
                         <tr class="border-b border-gray-200 dark:border-gray-700">
                             <th class="text-left py-3 px-2 font-semibold text-gray-900 dark:text-white">Subject</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Mean</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Highest</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Lowest</th>
+                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Mean /100</th>
+                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Highest /100</th>
+                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Lowest /100</th>
                             <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Entries</th>
                             <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Pass Rate</th>
                         </tr>

@@ -1,5 +1,5 @@
-{% set public_site_topnav = request.endpoint in ['home', 'login', 'register_employee', 'admission'] %}
-{% set marketing_premium_shell = request.endpoint in ['home', 'login', 'admission'] %}
+{% set public_site_topnav = request.endpoint in ['home', 'login', 'login_select_role', 'register_employee', 'admission'] %}
+{% set marketing_premium_shell = request.endpoint in ['home', 'login', 'login_select_role', 'admission'] %}
 <!DOCTYPE html>
 <html lang="en" x-data="{ 
     darkMode: localStorage.getItem('darkMode') === 'true',
@@ -187,6 +187,22 @@
     <meta name="HandheldFriendly" content="true">
     <meta name="MobileOptimized" content="width">
     <title>{% block title %}{{ school_settings.school_name or 'Modern School' }}{% endblock %}</title>
+
+    {# PWA: installable app shell (manifest + service worker; online-only) #}
+    {% set pwa_theme = (school_settings.primary_color or '#800020')|trim %}
+    {% if not pwa_theme.startswith('#') or (pwa_theme|length != 4 and pwa_theme|length != 7) %}
+    {% set pwa_theme = '#800020' %}
+    {% endif %}
+    <meta name="theme-color" content="{{ pwa_theme }}">
+    <meta name="application-name" content="{{ (school_settings.school_name or 'School Portal')|trim }}">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="{{ ((school_settings.school_name or 'School Portal')|trim)[:12] }}">
+    <link rel="manifest" href="{{ url_for('web_app_manifest') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='pwa/favicon-32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='pwa/favicon-16.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='pwa/apple-touch-icon.png') }}">
     
     <!-- Early DNS resolution for third-party assets (reduces serial connection delay) -->
     <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
@@ -222,6 +238,8 @@
 
     <!-- Site JS -->
     <script defer src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/pwa-register.js') }}"></script>
+    <script defer src="{{ url_for('static', filename='js/pwa-install.js') }}"></script>
     
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -1086,6 +1104,8 @@
                 </div>
             </div>
 
+    {% include 'partials/pwa_install_button.html' %}
+
     <!-- Scroll Effects Script (deferred; non-blocking for first paint) -->
     <script defer src="{{ url_for('static', filename='js/scroll-effects.js') }}"></script>
     
@@ -1098,7 +1118,10 @@
         document.addEventListener('DOMContentLoaded', function() {
             const mainNav = document.getElementById('app-sidebar-nav');
             const dashboardHref = '{{ dashboard_home_url() }}';
-            const hideDashboardLinkOnThisPage = window.location.pathname === '/technician/role-switch';
+            const hideDashboardLinkOnThisPage = (
+                window.location.pathname === '/technician/role-switch'
+                || window.location.pathname === '/dashboard/employee/role-switch'
+            );
 
             document.querySelectorAll('a.sidebar-item').forEach(function(link) {
                 const label = (link.textContent || '').trim().toLowerCase();
@@ -1146,21 +1169,14 @@
                 }
             }
 
-            const isTechnicianHomePage = window.location.pathname === '/technician';
             const roleSwitchLink = mainNav.querySelector('a[href*="role-switch"]');
-            if (isTechnicianHomePage && roleSwitchLink) {
-                // On /technician only: keep Role Switch above Dashboard.
+            if (roleSwitchLink) {
                 if (roleSwitchLink.nextElementSibling !== dashboardLink) {
                     roleSwitchLink.insertAdjacentElement('afterend', dashboardLink);
                 }
             } else {
-                const firstSidebarItem = mainNav.querySelector('a.sidebar-item');
-                if (firstSidebarItem) {
-                    if (firstSidebarItem !== dashboardLink) {
-                        mainNav.insertBefore(dashboardLink, firstSidebarItem);
-                    }
-                } else {
-                    mainNav.appendChild(dashboardLink);
+                if (mainNav.firstElementChild !== dashboardLink) {
+                    mainNav.prepend(dashboardLink);
                 }
             }
 

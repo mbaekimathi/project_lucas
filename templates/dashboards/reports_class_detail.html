@@ -110,7 +110,7 @@
         <div class="bg-gradient-to-r from-brand-primary to-brand-secondary rounded-xl px-4 sm:px-6 py-4 mb-4 text-white">
             <div class="flex flex-wrap gap-6 text-sm">
                 <span><i class="fas fa-users mr-1"></i> Students with marks: <strong>{{ exam_bundle.student_count|default(0) }}</strong></span>
-                <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ exam_bundle.class_mean|default(0) }}</strong></span>
+                <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ exam_bundle.class_mean|default(0) }}/100</strong></span>
                 <span><i class="fas fa-pen mr-1"></i> Mark entries: <strong>{{ exam_bundle.total_marks_entries|default(0) }}</strong></span>
             </div>
         </div>
@@ -120,9 +120,9 @@
                     <thead class="bg-gray-50 dark:bg-gray-900/80 text-gray-600 dark:text-gray-300 uppercase text-xs font-semibold">
                         <tr>
                             <th class="text-left py-3 px-3">Subject</th>
-                            <th class="text-right py-3 px-3">Mean</th>
-                            <th class="text-right py-3 px-3">Highest</th>
-                            <th class="text-right py-3 px-3">Lowest</th>
+                            <th class="text-right py-3 px-3">Mean /100</th>
+                            <th class="text-right py-3 px-3">Highest /100</th>
+                            <th class="text-right py-3 px-3">Lowest /100</th>
                             <th class="text-right py-3 px-3">Entries</th>
                             <th class="text-right py-3 px-3">Pass rate</th>
                         </tr>

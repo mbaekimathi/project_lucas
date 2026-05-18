@@ -1,36 +1,32 @@
 {% extends "base.html" %}
 
-{% block title %}Exam Results — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}Library — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="{{ employee_dash_url('role-switch') }}" 
+<a href="{{ employee_dash_url('role-switch') }}"
    class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
     <i class="fas fa-exchange-alt w-5"></i>
     <span>Role Switch</span>
 </a>
 {% endif %}
-<a href="{{ parent_dash_url() }}" 
-   class="sidebar-item">
+<a href="{{ parent_dash_url() }}" class="sidebar-item">
     <i class="fas fa-home w-5"></i>
     <span>Dashboard</span>
 </a>
-<a href="{{ parent_dash_url('student-fees') }}" 
-   class="sidebar-item">
+<a href="{{ parent_dash_url('student-fees') }}" class="sidebar-item">
     <i class="fas fa-money-bill-wave w-5"></i>
     <span>Fees / Payments</span>
 </a>
-<a href="{{ parent_dash_url('attendance') }}" 
-   class="sidebar-item">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Attendance</span>
-</a>
-<a href="{{ parent_dash_url('exam-progress') }}" 
-   class="sidebar-item sidebar-item-active">
+<a href="{{ parent_dash_url('exam-progress') }}" class="sidebar-item">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam Results</span>
 </a>
-<a href="{{ parent_dash_url('library') }}" class="sidebar-item">
+<a href="{{ parent_dash_url('attendance') }}" class="sidebar-item">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+</a>
+<a href="{{ parent_dash_url('library') }}" class="sidebar-item sidebar-item-active">
     <i class="fas fa-book w-5"></i>
     <span>Library</span>
 </a>
@@ -45,54 +41,54 @@
                 <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
                 <div>
                     <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent's perspective</p>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent's library books</p>
                 </div>
             </div>
-            <form method="GET" action="{{ parent_dash_url('exam-progress') }}" class="flex items-center gap-3">
+            <form method="GET" action="{{ parent_dash_url('library') }}" class="flex items-center gap-3">
                 <select name="student_id" onchange="this.form.submit()"
                         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]">
                     <option value="">-- Select a Student --</option>
                     {% for student in all_students %}
-                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}" 
+                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}"
                             {% if selected_student_id and (student.get('student_id', '') or student[1] if student else '') == selected_student_id %}selected{% endif %}>
                         {{ student.get('full_name', '') or student[2] if student else '' }} — {{ student.get('student_id', '') or student[1] if student else '' }}
                     </option>
                     {% endfor %}
                 </select>
                 {% if selected_student_id %}
-                <a href="{{ parent_dash_url('exam-progress') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
+                <a href="{{ parent_dash_url('library') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
                 {% endif %}
             </form>
         </div>
     </div>
     {% endif %}
 
-    <div class="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl shadow-lg p-6">
-        <h1 class="text-2xl font-bold text-white">Exam results &amp; progress</h1>
-        <p class="text-orange-100 mt-1">Choose a child to see overall analytics and performance by exam.</p>
+    <div class="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-xl shadow-lg p-6">
+        <h1 class="text-2xl font-bold text-white">School library</h1>
+        <p class="text-violet-100 mt-1">Choose a child to see books issued to them by their class teacher.</p>
     </div>
 
     {% if children %}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {% for child in children %}
-        <a href="{{ parent_dash_url('exam-progress/' ~ child.student_id) }}" 
-           class="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow hover:shadow-lg transition-all hover:border-orange-400">
+        <a href="{{ parent_dash_url('library/' ~ child.student_id) }}"
+           class="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow hover:shadow-lg transition-all hover:border-violet-400">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ child.full_name }}</h2>
                     <p class="text-sm text-gray-500 dark:text-gray-400 font-mono mt-1">{{ child.student_id }}</p>
                     <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">Grade: {{ child.current_grade or 'N/A' }}</p>
                 </div>
-                <i class="fas fa-chevron-right text-orange-500 mt-1"></i>
+                <i class="fas fa-book-open text-violet-500 mt-1"></i>
             </div>
         </a>
         {% endfor %}
     </div>
     {% else %}
     <div class="text-center py-16 bg-gray-50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-        <i class="fas fa-user-friends text-gray-400 text-4xl mb-3"></i>
-        <p class="text-gray-600 dark:text-gray-400">No children linked to this account, or your session could not be resolved.</p>
-        <a href="{{ parent_dash_url() }}" class="inline-block mt-4 text-orange-600 dark:text-orange-400 font-medium hover:underline">Back to dashboard</a>
+        <i class="fas fa-book text-gray-400 text-4xl mb-3"></i>
+        <p class="text-gray-600 dark:text-gray-400">No children linked to this account.</p>
+        <a href="{{ parent_dash_url() }}" class="inline-block mt-4 text-violet-600 dark:text-violet-400 font-medium hover:underline">Back to dashboard</a>
     </div>
     {% endif %}
 </div>

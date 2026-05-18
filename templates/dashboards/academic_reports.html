@@ -406,10 +406,10 @@
       label: 'Exams',
       hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
       reports: [
-        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: average and range across recorded marks.' },
-        { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s marks in the selected class — enter Student ID.' },
-        { id: 'exam_subject_performance', label: 'Subject performance', desc: 'Mean, range, pass rate per subject in the selected class.' },
-        { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher (exam supervisor or subject teacher): stats per subject in the class.' },
+        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: averages on a 0–100 scale (raw ÷ exam total × 100 from Exam subject settings).' },
+        { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s scaled marks (/100) in the selected class — enter Student ID.' },
+        { id: 'exam_subject_performance', label: 'Subject performance', desc: 'Mean, range, and pass rate per subject on a 0–100 scale.' },
+        { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher: scaled stats (/100) per subject in the class.' },
       ],
     },
     timetables: {
@@ -541,27 +541,27 @@
           id: 'exam_all_students_performance',
           label: 'All students',
           desc: scope === 'class'
-            ? 'Class view: list all students and their marks across subjects (report cards / performance).'
-            : 'Individual view: generate a report card for the selected student.'
+            ? 'Class view: all students with marks scaled to /100 (exam subject settings).'
+            : 'Individual view: report card with scaled marks (/100).'
         },
         {
           id: 'exam_individual_performance',
           label: 'Individual student',
           desc: scope === 'class'
-            ? 'Class view: generate report cards for each student (one card per student).'
-            : 'Individual view: generate a report card for the selected student.'
+            ? 'Class view: report cards per student (marks on 0–100 scale).'
+            : 'Individual view: one student’s scaled marks (/100).'
         },
         {
           id: 'exam_subject_performance',
           label: 'In subject',
           desc: scope === 'class'
-            ? 'Class view: list all students and marks for the selected subject.'
-            : 'Individual view: show the selected student’s performance for the selected subject.'
+            ? 'Class view: subject stats on a 0–100 scale.'
+            : 'Individual view: selected student’s scaled marks for the subject.'
         },
         {
           id: 'exam_teacher_performance',
           label: 'For teacher',
-          desc: 'Teacher performance report for the selected class and filters.'
+          desc: 'Teacher stats per subject on a 0–100 scale.'
         },
       ];
     }

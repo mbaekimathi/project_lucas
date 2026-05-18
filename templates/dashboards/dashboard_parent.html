@@ -37,8 +37,8 @@
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
 </a>
-<a @click.prevent="comingSoonTitle = 'Library'; comingSoonModalOpen = true" 
-   class="sidebar-item">
+<a href="{% if library_student_id %}{{ parent_dash_url('library/' ~ library_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ parent_dash_url('library') }}{% endif %}"
+   class="sidebar-item {% if request.endpoint in ('parent_library', 'parent_library_detail') %}sidebar-item-active{% endif %}">
     <i class="fas fa-book w-5"></i>
     <span>Library</span>
 </a>
@@ -198,10 +198,26 @@
                    class="block w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-gray-50 dark:hover:bg-gray-600">
                     <i class="fas fa-check-circle mr-2"></i>Attendance
                 </a>
+                <a href="{{ parent_dash_url('library/' ~ child.student_id) }}{% if selected_student_id and child.student_id == selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
+                   class="block w-full bg-white dark:bg-gray-700 border border-violet-400 text-violet-700 dark:border-violet-500 dark:text-violet-300 font-semibold py-2.5 px-4 rounded-lg transition-all duration-200 text-center hover:bg-violet-50 dark:hover:bg-gray-600">
+                    <i class="fas fa-book-open mr-2"></i>Library books
+                </a>
                 </div>
             </div>
         </div>
         {% endfor %}
+    </div>
+    {% elif library_student_id %}
+    <div class="max-w-lg mx-auto">
+        <a href="{{ parent_dash_url('library/' ~ library_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}"
+           class="block rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-indigo-50 p-8 text-center shadow-md hover:shadow-lg transition dark:border-violet-800 dark:from-violet-950/40 dark:to-indigo-950/30">
+            <i class="fas fa-book-open text-4xl text-violet-600 dark:text-violet-400 mb-4"></i>
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">School library</h2>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">View books issued to your child by their teacher.</p>
+            <span class="inline-flex items-center gap-2 mt-4 text-violet-700 dark:text-violet-300 font-semibold text-sm">
+                Open library <i class="fas fa-arrow-right"></i>
+            </span>
+        </a>
     </div>
     {% else %}
     <!-- No Children -->

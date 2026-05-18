@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+
+{% block title %}Class books — {{ level.level_name if level else 'Class' }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include "partials/teacher_sidebar_nav.html" %}
+{% endblock %}
+
+{% block content %}
+<script type="application/json" id="class-books-level-data">{{ {'books': books, 'level_id': level_id}|tojson }}</script>
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('teacherClassBooksLevel', function () {
+    var payload = {};
+    try {
+      var el = document.getElementById('class-books-level-data');
+      payload = el && el.textContent ? JSON.parse(el.textContent) : {};
+    } catch (e) {
+      payload = {};
+    }
+    return {
+      levelId: payload.level_id || {{ level_id|tojson }},
+      levelName: {{ (level.level_name if level else '')|tojson }},
+      books: payload.books || [],
+      issueCopyCode: '',
+      issueSubjectId: null,
+      studentSearchQuery: '',
+      issueStudentId: '',
+      issueNotes: '',
+      lookupStatus: '',
+      lookupMessage: '',
+      lookedUpStudent: null,
+      searchResults: [],
+      searchOpen: false,
+      searchLoading: false,
+      searchEmpty: false,
+      searchError: '',
+      searchTimer: null,
+      issueSubmitting: false,
+      issueUrl: {{ employee_dash_url('class-books/issue')|tojson }},
+      returnUrl: {{ employee_dash_url('class-books/return')|tojson }},
+      searchUrl: {{ employee_dash_url('class-books/search-students')|tojson }},
+      lookupUrl: {{ employee_dash_url('class-books/lookup-student')|tojson }},
+      get totalBooks() {
+        return (this.books || []).length;
+      },
+      get totalCopies() {
+        return (this.books || []).reduce(function (n, b) { return n + (b.copy_count || 0); }, 0);
+      },
+      get totalInStock() {
+        return (this.books || []).reduce(function (n, b) { return n + (b.in_stock_count || 0); }, 0);
+      },
+      resolveSubjectFromCopy: function (code) {
+        var c = (code || '').trim().toUpperCase();
+        if (!c) return null;
+        var found = null;
+        (this.books || []).forEach(function (book) {
+          var stock = book.copies_in_stock || [];
+          for (var i = 0; i < stock.length; i++) {
+            if ((stock[i].copy_code || '').toUpperCase() === c) {
+              found = book.subject_id != null ? book.subject_id : null;
+              return;
+            }
+          }
+        });
+        return found;
+      },
+      studentsWithSubjectBook: function () {
+        var sid = this.issueSubjectId;
+        if (sid == null || sid === '') return new Set();
+        var set = new Set();
+        (this.books || []).forEach(function (book) {
+          if (String(book.subject_id) !== String(sid)) return;
+          (book.active_issues || []).forEach(function (issue) {
+            var id = (issue.student_id || '').trim().toUpperCase();
+            if (id) set.add(id);
+          });
+        });
+        return set;
+      },
+      flagSubjectDuplicates: function (students) {
+        var already = this.studentsWithSubjectBook();
+        if (!already.size) return students || [];
+        return (students || []).map(function (stu) {
+          var key = (stu.student_id || '').trim().toUpperCase();
+          return Object.assign({}, stu, { has_subject_book: !!stu.has_subject_book || already.has(key) });
+        });
+      },
+      subjectWarnMessage: function (stu) {
+        var name = ((stu && stu.full_name) || '').trim();
+        if (!name) return 'This student already has a book in this subject (you may still allocate)';
+        return name + ' — already has a book in this subject (you may still allocate)';
+      },
+      pickCopy: function (code) {
+        this.issueCopyCode = code || '';
+        this.issueSubjectId = this.resolveSubjectFromCopy(code);
+        if ((this.studentSearchQuery || '').trim().length >= 1) {
+          this.runStudentSearch(this.studentSearchQuery);
+        }
+        var panel = document.getElementById('issue-panel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+      clearStudentSelection: function () {
+        this.issueStudentId = '';
+        this.lookedUpStudent = null;
+        this.lookupStatus = '';
+        this.lookupMessage = '';
+      },
+      onStudentInput: function () {
+        var self = this;
+        this.clearStudentSelection();
+        if (this.searchTimer) clearTimeout(this.searchTimer);
+        var q = (this.studentSearchQuery || '').trim();
+        if (q.length < 1) {
+          this.searchResults = [];
+          this.searchOpen = false;
+          this.searchLoading = false;
+          this.searchEmpty = false;
+          return;
+        }
+        this.searchLoading = true;
+        this.searchOpen = true;
+        this.searchEmpty = false;
+        this.searchError = '';
+        this.searchTimer = setTimeout(function () {
+          self.runStudentSearch(q);
+        }, 220);
+      },
+      runStudentSearch: function (q) {
+        var self = this;
+        var query = (q != null ? q : (this.studentSearchQuery || '')).trim();
+        if (!query) {
+          this.searchResults = [];
+          this.searchOpen = false;
+          this.searchLoading = false;
+          this.searchEmpty = false;
+          return;
+        }
+        var url = this.searchUrl + '?academic_level_id=' + encodeURIComponent(this.levelId) + '&q=' + encodeURIComponent(query);
+        if ((this.issueCopyCode || '').trim()) {
+          url += '&copy_code=' + encodeURIComponent(this.issueCopyCode.trim());
+        }
+        if (this.issueSubjectId != null && this.issueSubjectId !== '') {
+          url += '&subject_id=' + encodeURIComponent(this.issueSubjectId);
+        }
+        fetch(url, {
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) {
+            return r.json().then(function (data) {
+              return { httpOk: r.ok, data: data };
+            });
+          })
+          .then(function (res) {
+            self.searchLoading = false;
+            var data = res.data || {};
+            if (res.httpOk && data.ok) {
+              self.searchResults = self.flagSubjectDuplicates(data.students || []);
+              self.searchEmpty = self.searchResults.length === 0;
+              if (data.level_name) self.levelName = data.level_name;
+              self.searchError = (self.searchEmpty && data.hint) ? data.hint : '';
+              self.searchOpen = true;
+            } else {
+              self.searchResults = [];
+              self.searchEmpty = true;
+              self.searchError = data.message || 'Could not load students for this class.';
+              self.searchOpen = true;
+            }
+          })
+          .catch(function () {
+            self.searchLoading = false;
+            self.searchResults = [];
+            self.searchEmpty = true;
+            self.searchError = 'Could not reach the server. Check your connection and try again.';
+            self.searchOpen = true;
+          });
+      },
+      onCopyChange: function () {
+        if ((this.studentSearchQuery || '').trim().length >= 1) {
+          this.runStudentSearch(this.studentSearchQuery);
+        }
+      },
+      selectStudent: function (stu) {
+        if (!stu) return;
+        this.issueStudentId = stu.student_id || '';
+        this.studentSearchQuery = stu.student_id || '';
+        this.lookedUpStudent = stu;
+        if (stu.has_subject_book) {
+          this.lookupStatus = 'warn';
+          this.lookupMessage = this.subjectWarnMessage(stu);
+        } else {
+          this.lookupStatus = 'ok';
+          this.lookupMessage = (stu.full_name || '') + (stu.current_grade ? ' — ' + stu.current_grade : '');
+        }
+        this.searchOpen = false;
+        this.searchResults = [];
+        this.searchEmpty = false;
+      },
+      confirmStudent: function () {
+        var self = this;
+        var sid = (this.issueStudentId || '').trim();
+        if (!sid) return;
+        var lookupUrl = this.lookupUrl + '?academic_level_id=' + encodeURIComponent(this.levelId) + '&student_id=' + encodeURIComponent(sid);
+        if ((this.issueCopyCode || '').trim()) {
+          lookupUrl += '&copy_code=' + encodeURIComponent(this.issueCopyCode.trim());
+        }
+        if (this.issueSubjectId != null && this.issueSubjectId !== '') {
+          lookupUrl += '&subject_id=' + encodeURIComponent(this.issueSubjectId);
+        }
+        fetch(lookupUrl, {
+          headers: { 'Accept': 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok && data.student) {
+              self.selectStudent(data.student);
+            } else {
+              self.lookupStatus = 'error';
+              self.lookupMessage = (data && data.message) || 'Student not in this class.';
+              self.lookedUpStudent = null;
+            }
+          });
+      },
+      submitIssue: function () {
+        if (!this.issueCopyCode || !(this.issueStudentId || '').trim()) {
+          window.alert('Select a copy reference and a student.');
+          return;
+        }
+        if (this.lookupStatus !== 'ok' && this.lookupStatus !== 'warn') {
+          var self = this;
+          this.confirmStudent();
+          setTimeout(function () {
+            if (self.lookupStatus === 'ok' || self.lookupStatus === 'warn') self.submitIssue();
+            else window.alert(self.lookupMessage || 'Select a valid student in this class.');
+          }, 400);
+          return;
+        }
+        var self = this;
+        this.issueSubmitting = true;
+        fetch(this.issueUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            academic_level_id: this.levelId,
+            copy_code: this.issueCopyCode,
+            student_id: this.issueStudentId,
+            notes: this.issueNotes,
+          }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.issueSubmitting = false;
+            if (data && data.ok) {
+              window.location.reload();
+            } else {
+              window.alert((data && data.message) || 'Could not issue book.');
+            }
+          })
+          .catch(function () {
+            self.issueSubmitting = false;
+            window.alert('Could not issue book. Try again.');
+          });
+      },
+      returnBook: function (issueId) {
+        if (!window.confirm('Mark this copy as returned?')) return;
+        var self = this;
+        fetch(this.returnUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ issue_id: issueId }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok) window.location.reload();
+            else window.alert((data && data.message) || 'Could not return book.');
+          })
+          .catch(function () {
+            window.alert('Could not return book. Try again.');
+          });
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/20 py-6 sm:py-8 page-content"
+     x-data="teacherClassBooksLevel"
+     @click.outside="searchOpen = false">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-2">
+            {% for category, message in messages %}
+            <div class="rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-100{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <div class="mb-6">
+            <a href="{{ employee_dash_url('class-books') }}"
+               class="inline-flex items-center gap-2 text-sm font-medium text-violet-700 hover:text-violet-900 dark:text-violet-300">
+                <i class="fas fa-arrow-left" aria-hidden="true"></i> All classes
+            </a>
+        </div>
+
+        <header class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 p-6 sm:p-8 mb-6">
+            <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-600 dark:text-violet-400">{{ level.level_category }}</p>
+            <h1 class="mt-1 text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h1>
+            {% if teacher_name %}
+            <p class="mt-1 text-sm font-medium text-violet-700 dark:text-violet-300">{{ teacher_name }}</p>
+            {% endif %}
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Books allocated to you in this session for this class.</p>
+            <div class="mt-4 flex flex-wrap gap-2 text-xs" x-show="totalBooks > 0">
+                <span class="rounded-full bg-violet-100 px-3 py-1 font-semibold text-violet-900 dark:bg-violet-950/50 dark:text-violet-200">
+                    <span x-text="totalBooks"></span> book<span x-show="totalBooks !== 1">s</span>
+                </span>
+                <span class="rounded-full bg-gray-100 px-3 py-1 font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200">
+                    <span x-text="totalCopies"></span> copy ref<span x-show="totalCopies !== 1">s</span>
+                </span>
+                <span class="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200">
+                    <span x-text="totalInStock"></span> in stock
+                </span>
+            </div>
+        </header>
+
+        {% if not book_rows %}
+        <div class="rounded-2xl border border-dashed border-amber-300 bg-amber-50/80 px-6 py-10 text-center dark:border-amber-800 dark:bg-amber-950/30">
+            <i class="fas fa-book text-3xl text-amber-500 mb-3" aria-hidden="true"></i>
+            <p class="font-medium text-amber-900 dark:text-amber-100">No books allocated to you for this class</p>
+            <p class="mt-2 text-sm text-amber-800/90 dark:text-amber-200/80">Ask the librarian to stock books and allocate copies to you from Book inventory stock.</p>
+        </div>
+        {% else %}
+
+        <section id="issue-panel" class="rounded-2xl border border-violet-200/80 bg-white shadow-sm dark:border-violet-900/40 dark:bg-gray-900/90 p-5 sm:p-6 mb-8 ring-1 ring-violet-100/80 dark:ring-violet-900/30">
+            <h2 class="text-sm font-bold uppercase tracking-wide text-gray-700 dark:text-gray-300 mb-4">
+                <i class="fas fa-user-plus text-violet-600 mr-2" aria-hidden="true"></i>Issue copy to student
+            </h2>
+            <div class="grid gap-4 lg:grid-cols-12">
+                <div class="lg:col-span-3">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Copy reference</label>
+                    <select x-model="issueCopyCode" @change="onCopyChange()"
+                            class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-mono uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                        <option value="">Select ref #</option>
+                        <template x-for="book in books" :key="'opt-b-' + book.book_id">
+                            <template x-for="copy in (book.copies_in_stock || [])" :key="copy.copy_code">
+                                <option :value="copy.copy_code" x-text="copy.copy_code + ' — ' + book.book_name"></option>
+                            </template>
+                        </template>
+                    </select>
+                </div>
+                <div class="lg:col-span-5 relative">
+                    <label for="class_books_student_search" class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">
+                        Admission number
+                        <span class="font-normal normal-case text-violet-600 dark:text-violet-400" x-show="levelName">— class <span x-text="levelName"></span> only</span>
+                    </label>
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
+                        <input id="class_books_student_search" type="search" autocomplete="off" spellcheck="false"
+                               x-model="studentSearchQuery" @input="onStudentInput()" @focus="onStudentInput()"
+                               @keydown.escape="searchOpen = false"
+                               placeholder="Type admission number or name…"
+                               class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-10 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2" x-show="searchLoading">
+                            <i class="fas fa-spinner fa-spin text-violet-500 text-sm" aria-hidden="true"></i>
+                        </span>
+                    </div>
+                    <div x-show="searchOpen"
+                         x-cloak
+                         class="absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-900">
+                        <div x-show="searchLoading" class="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            <i class="fas fa-spinner fa-spin mr-1 text-violet-500"></i> Searching…
+                        </div>
+                        <template x-for="stu in searchResults" :key="stu.student_id">
+                            <button type="button" @click="selectStudent(stu)"
+                                    class="flex w-full flex-col items-start gap-1 border-b px-3 py-2.5 text-left text-sm last:border-0"
+                                    :class="stu.has_subject_book
+                                      ? 'border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:hover:bg-amber-950/60'
+                                      : 'border-gray-100 hover:bg-violet-50 dark:border-gray-800 dark:hover:bg-violet-950/40'">
+                                <span class="flex w-full items-start gap-3">
+                                    <span class="shrink-0 font-mono text-xs font-bold"
+                                          :class="stu.has_subject_book ? 'text-amber-900 dark:text-amber-200' : 'text-violet-800 dark:text-violet-200'"
+                                          x-text="stu.student_id"></span>
+                                    <span class="min-w-0 flex-1 font-medium"
+                                          :class="stu.has_subject_book ? 'text-amber-950 dark:text-amber-100' : 'text-gray-900 dark:text-gray-100'"
+                                          x-text="stu.full_name"></span>
+                                </span>
+                                <span x-show="stu.has_subject_book"
+                                      class="text-[11px] font-medium leading-snug text-amber-900 dark:text-amber-200"
+                                      x-text="subjectWarnMessage(stu)"></span>
+                            </button>
+                        </template>
+                        <div x-show="!searchLoading && searchError"
+                             class="px-3 py-2.5 text-xs text-red-700 dark:text-red-300" x-text="searchError"></div>
+                        <div x-show="!searchLoading && !searchError && searchEmpty"
+                             class="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
+                            No students in <span class="font-semibold" x-text="levelName || 'this class'"></span> match that admission number or name.
+                        </div>
+                    </div>
+                    <p class="mt-1.5 text-xs min-h-[1.25rem]"
+                       x-show="lookupMessage && lookupStatus === 'ok'"
+                       class="text-emerald-600 dark:text-emerald-400 font-medium"
+                       x-text="lookupMessage"></p>
+                    <p class="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100"
+                       x-show="lookupMessage && lookupStatus === 'warn'"
+                       x-text="lookupMessage"></p>
+                    <p class="mt-1.5 text-xs text-red-600 dark:text-red-400"
+                       x-show="lookupMessage && lookupStatus === 'error'"
+                       x-text="lookupMessage"></p>
+                    <p class="mt-0.5 text-[10px] text-gray-500 dark:text-gray-400" x-show="!lookupMessage && studentSearchQuery.trim().length">
+                        Pick a student from the list. <span class="text-amber-700 dark:text-amber-300">Amber</span> = warning only — you can still allocate.
+                    </p>
+                </div>
+                <div class="lg:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Notes</label>
+                    <input type="text" x-model="issueNotes" maxlength="500" placeholder="Optional"
+                           class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                </div>
+                <div class="lg:col-span-2 flex items-end">
+                    <button type="button" @click="submitIssue()" :disabled="issueSubmitting"
+                            class="w-full rounded-xl px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+                            :class="lookupStatus === 'warn' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-violet-600 hover:bg-violet-700'">
+                        <span x-show="!issueSubmitting" x-text="lookupStatus === 'warn' ? 'Allocate anyway' : 'Allocate'"></span>
+                        <span x-show="issueSubmitting"><i class="fas fa-spinner fa-spin"></i></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden dark:border-gray-700 dark:bg-gray-900/90">
+            <div class="border-b border-gray-100 bg-gray-50/90 px-5 py-4 dark:border-gray-800 dark:bg-gray-950/50 sm:px-6">
+                <h2 class="text-sm font-bold uppercase tracking-wide text-gray-700 dark:text-gray-300">
+                    <i class="fas fa-books text-violet-600 mr-2" aria-hidden="true"></i>Your books
+                </h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-gray-50 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+                        <tr>
+                            <th class="px-4 py-3 min-w-[10rem]">Book</th>
+                            <th class="px-4 py-3 min-w-[8rem]">Subject</th>
+                            <th class="px-4 py-3 min-w-[7rem]">Reference number</th>
+                            <th class="px-4 py-3 min-w-[12rem]">Issued to student</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                        {% for row in book_rows %}
+                        <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-950/30">
+                            <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white">{{ row.book_name }}</td>
+                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-400">{{ row.subject_label }}</td>
+                            <td class="px-4 py-3 font-mono text-xs font-bold text-gray-800 dark:text-gray-200">{{ row.copy_code }}</td>
+                            <td class="px-4 py-3">
+                                {% if row.student_name %}
+                                {{ row.student_name }} <span class="font-mono text-xs text-violet-800 dark:text-violet-200">({{ row.student_id }})</span>
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

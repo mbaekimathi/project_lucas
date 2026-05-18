@@ -73,6 +73,182 @@ EMPLOYEE_SUB_ROLES = (
     'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
     'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician',
 )
+EMPLOYEE_SUB_ROLES_SET = frozenset(EMPLOYEE_SUB_ROLES)
+
+
+def normalize_allocated_role(role: str) -> str:
+    """Normalize a role string to a canonical EMPLOYEE_SUB_ROLES value, or '' if invalid."""
+    if not role:
+        return ''
+    r = str(role).strip().lower().replace('-', ' ')
+    while '  ' in r:
+        r = r.replace('  ', ' ')
+    if r == 'teacher':
+        r = 'teachers'
+    if r in ('principal',):
+        r = 'head of institution'
+    if r in ('deputy principal',):
+        r = 'deputy head of institution'
+    if r == 'academic coordinator':
+        r = 'curriculum coordinator'
+    return r if r in EMPLOYEE_SUB_ROLES_SET else ''
+
+
+def parse_allocated_roles_payload(data, fallback_single_role=None):
+    """Parse roles from JSON body: roles[] and/or legacy role string."""
+    roles = []
+    if isinstance(data, dict):
+        raw_list = data.get('roles')
+        if isinstance(raw_list, list):
+            for item in raw_list:
+                nr = normalize_allocated_role(item)
+                if nr and nr not in roles:
+                    roles.append(nr)
+        single = data.get('role') if data.get('role') is not None else fallback_single_role
+        if single:
+            nr = normalize_allocated_role(single)
+            if nr and nr not in roles:
+                roles.append(nr)
+    elif fallback_single_role:
+        nr = normalize_allocated_role(fallback_single_role)
+        if nr:
+            roles.append(nr)
+    return roles
+
+
+def ensure_employee_roles_schema(cursor):
+    """Create employee_roles junction table and backfill from employees.role."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS employee_roles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            employee_id INT NOT NULL,
+            role VARCHAR(64) NOT NULL,
+            is_primary TINYINT(1) NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_employee_role (employee_id, role),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            INDEX idx_employee_roles_employee (employee_id),
+            INDEX idx_employee_roles_role (role)
+        )
+    """)
+    try:
+        cursor.execute("""
+            INSERT IGNORE INTO employee_roles (employee_id, role, is_primary)
+            SELECT e.id, e.role, 1
+            FROM employees e
+            WHERE e.role IS NOT NULL AND TRIM(e.role) != ''
+        """)
+    except Exception as backfill_err:
+        print(f"Note: employee_roles backfill: {backfill_err}")
+
+
+def fetch_employee_allocated_roles(cursor, employee_pk_id):
+    """Return list of allocated roles for an employee (falls back to employees.role)."""
+    ensure_employee_roles_schema(cursor)
+    cursor.execute(
+        """
+        SELECT role FROM employee_roles
+        WHERE employee_id = %s
+        ORDER BY is_primary DESC, role ASC
+        """,
+        (employee_pk_id,),
+    )
+    rows = cursor.fetchall() or []
+    roles = []
+    for row in rows:
+        nr = normalize_allocated_role(row.get('role') if isinstance(row, dict) else row[0])
+        if nr and nr not in roles:
+            roles.append(nr)
+    if roles:
+        return roles
+    cursor.execute("SELECT role FROM employees WHERE id = %s LIMIT 1", (employee_pk_id,))
+    row = cursor.fetchone()
+    if row:
+        legacy = normalize_allocated_role(row.get('role') if isinstance(row, dict) else row[0])
+        if legacy:
+            return [legacy]
+    return []
+
+
+def sync_employee_allocated_roles(cursor, employee_pk_id, roles, primary_role=None):
+    """Replace allocated roles for an employee; updates employees.role to primary."""
+    ensure_employee_roles_schema(cursor)
+    cleaned = []
+    for r in roles or []:
+        nr = normalize_allocated_role(r)
+        if nr and nr not in cleaned:
+            cleaned.append(nr)
+    if not cleaned:
+        raise ValueError('At least one valid role is required.')
+    primary = normalize_allocated_role(primary_role) if primary_role else cleaned[0]
+    if primary not in cleaned:
+        primary = cleaned[0]
+    cursor.execute("DELETE FROM employee_roles WHERE employee_id = %s", (employee_pk_id,))
+    for idx, role in enumerate(cleaned):
+        cursor.execute(
+            """
+            INSERT INTO employee_roles (employee_id, role, is_primary)
+            VALUES (%s, %s, %s)
+            """,
+            (employee_pk_id, role, 1 if role == primary else 0),
+        )
+    cursor.execute(
+        "UPDATE employees SET role = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+        (primary, employee_pk_id),
+    )
+    return cleaned, primary
+
+
+def attach_allocated_roles_to_employees(cursor, employees):
+    """Attach allocated_roles list to each employee dict in place."""
+    if not employees:
+        return employees
+    ensure_employee_roles_schema(cursor)
+    ids = [e['id'] for e in employees if e.get('id') is not None]
+    if not ids:
+        return employees
+    placeholders = ','.join(['%s'] * len(ids))
+    cursor.execute(
+        f"""
+        SELECT employee_id, role, is_primary
+        FROM employee_roles
+        WHERE employee_id IN ({placeholders})
+        ORDER BY is_primary DESC, role ASC
+        """,
+        tuple(ids),
+    )
+    by_emp = {}
+    for row in cursor.fetchall() or []:
+        eid = row.get('employee_id') if isinstance(row, dict) else row[0]
+        nr = normalize_allocated_role(row.get('role') if isinstance(row, dict) else row[1])
+        if nr:
+            by_emp.setdefault(eid, [])
+            if nr not in by_emp[eid]:
+                by_emp[eid].append(nr)
+    for emp in employees:
+        eid = emp.get('id')
+        roles = by_emp.get(eid)
+        if not roles:
+            legacy = normalize_allocated_role(emp.get('role'))
+            roles = [legacy] if legacy else ['employee']
+        emp['allocated_roles'] = roles
+    return employees
+
+
+def complete_employee_login_session(employee, selected_role, remember_me=False):
+    """Set Flask session after credentials verified and role chosen."""
+    role = normalize_allocated_role(selected_role)
+    if not role:
+        role = normalize_allocated_role(employee.get('role')) or 'employee'
+    session.permanent = bool(remember_me)
+    session['user_id'] = employee['id']
+    session['email'] = employee['email']
+    session['full_name'] = employee['full_name']
+    session['role'] = role
+    session['employee_id'] = employee['employee_id']
+    session['profile_picture'] = employee.get('profile_picture')
+    session.pop('auth_pending_employee_pk', None)
+    session.pop('auth_pending_remember_me', None)
 
 
 def role_to_slug(role: str) -> str:
@@ -99,6 +275,20 @@ def session_employee_role_slug() -> str:
     else:
         raw = 'employee'
     return role_to_slug(raw)
+
+
+def normalize_employee_dashboard_content_role(user_role, is_technician, viewing_as_employee_role):
+    """Canonical role string for employee dashboard sidebar + home content (hyphens, legacy titles)."""
+    ur = (user_role or '').strip().lower().replace('-', ' ')
+    while '  ' in ur:
+        ur = ur.replace('  ', ' ')
+    ve = (viewing_as_employee_role or '').strip().lower().replace('-', ' ')
+    while '  ' in ve:
+        ve = ve.replace('  ', ' ')
+    base = ve if (is_technician and ve) else ur
+    if base == 'academic coordinator':
+        return 'curriculum coordinator'
+    return base or 'employee'
 
 
 def employee_dashboard_path(subpath: str = '') -> str:
@@ -206,7 +396,13 @@ EMPLOYEE_SCOPED_ROOT_SEGMENTS = frozenset({
     'check-staff-number',
     'update-student', 'delete-student', 'approve-student', 'profile', 'settings',
     'switch-role', 'role-switch', 'switch-employee', 'admission', 'register-employee',
-    'check-employee-id', 'login', 'logout', 'terms-and-conditions', 'api',
+    'check-employee-id', 'login', 'login-select-role', 'logout', 'terms-and-conditions', 'api',
+})
+
+# /parent/<segment> public routes (not rewritten to /dashboard/parent/…)
+PARENT_PUBLIC_SEGMENTS = frozenset({
+    'portal-setup',
+    'forgot-password',
 })
 
 
@@ -229,6 +425,9 @@ class RootRolePathRewriteMiddleware:
             return self.app(environ, start_response)
         rest = '/'.join(parts[1:]) if len(parts) > 1 else ''
         if seg == 'parent':
+            rest_first = rest.split('/')[0].lower() if rest else ''
+            if rest_first in PARENT_PUBLIC_SEGMENTS:
+                return self.app(environ, start_response)
             new_path = '/dashboard/parent' + ('/' + rest if rest else '')
         elif seg == 'student':
             new_path = '/dashboard/student' + ('/' + rest if rest else '')
@@ -777,6 +976,14 @@ def raw_mark_to_percentage(raw_marks, exam_total_marks_value):
     return round(100.0 * r / mx, 2)
 
 
+def sql_scaled_exam_mark_pct(sm_alias='sm', sub_alias='sub'):
+    """SQL expression: student_marks.marks as 0–100 % using subjects.exam_total_marks."""
+    return (
+        f"(100 * CAST({sm_alias}.marks AS DECIMAL(16,8))) "
+        f"/ COALESCE(NULLIF({sub_alias}.exam_total_marks, 0), 100)"
+    )
+
+
 def ensure_subject_exam_combination_tables(cursor):
     """Groups of subjects shown as one marks column (combined label); marks stored per member subject."""
     try:
@@ -958,12 +1165,16 @@ def fetch_subject_exam_combinations(cursor):
     ]
 
 
-def merge_subjects_with_exam_combinations(subjects, combinations):
+def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None, section_order=None):
     """
     Replace member subjects with one synthetic column per applicable combination.
     Synthetic row uses negative id -combo_id, exam_total_marks 100 (enter unified %); names/codes joined with '/'.
+    When id_to_gc and section_order are provided (same semantics as exam-subject-settings), subjects are ordered
+    by academic category first, then exam_display_order.
     """
-    if not subjects or not combinations:
+    if not subjects:
+        return subjects
+    if not combinations:
         return subjects
 
     def _sub_sort_key(s):
@@ -977,7 +1188,20 @@ def merge_subjects_with_exam_combinations(subjects, combinations):
             return (1, 10**9 + sid, str(s.get('subject_name') or '').lower(), sid)
         return (0, eo_n, str(s.get('subject_name') or '').lower(), sid)
 
-    subjects = sorted((dict(s) for s in subjects), key=_sub_sort_key)
+    if id_to_gc is not None and section_order is not None:
+        def _cat_key(s):
+            sc = dict(s)
+            try:
+                sid = int(sc['id'])
+                if sid > 0:
+                    sc.setdefault('group_category', id_to_gc.get(sid, 'Uncategorized'))
+            except (TypeError, ValueError, KeyError):
+                sc.setdefault('group_category', 'Uncategorized')
+            return exam_subject_column_sort_key(sc, section_order)
+
+        subjects = sorted((dict(s) for s in subjects), key=_cat_key)
+    else:
+        subjects = sorted((dict(s) for s in subjects), key=_sub_sort_key)
     by_id = {int(s['id']): dict(s) for s in subjects}
     original_order = [int(s['id']) for s in subjects]
     id_set = set(original_order)
@@ -1041,13 +1265,165 @@ def merge_subjects_with_exam_combinations(subjects, combinations):
             'member_subject_ids': list(mids),
             'exam_display_order': min(combo_ord_vals) if combo_ord_vals else (10**9 + cid),
         }
+        if id_to_gc is not None and section_order is not None:
+            combo_row['group_category'] = _combo_exam_group_category(mids, id_to_gc, section_order)
         out.append(combo_row)
         for mid in mids:
             consumed.add(mid)
     return out
 
 
-def _build_exam_column_order_slots(name_map, combinations_raw):
+def fetch_base_academic_level_category_order(cursor):
+    """Ordered list of distinct level_category values (same ordering intent as exam-subject-settings)."""
+    base_category_order = []
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT al.level_category AS lc
+            FROM academic_levels al
+            WHERE COALESCE(al.level_status, 'active') = 'active'
+              AND TRIM(COALESCE(al.level_category, '')) <> ''
+            ORDER BY al.level_category ASC
+            """
+        )
+        for cr in cursor.fetchall() or []:
+            lc = cr.get('lc') if isinstance(cr, dict) else cr[0]
+            if lc and str(lc).strip():
+                base_category_order.append(str(lc).strip())
+    except Exception:
+        base_category_order = []
+    return base_category_order
+
+
+def build_exam_subject_section_order(keys_set, base_category_order):
+    """Order category *tabs* like exam-subject-settings: known school order first, then alpha, Uncategorized last."""
+    keys_set = set(keys_set or [])
+    section_order = [k for k in (base_category_order or []) if k in keys_set]
+    section_order.extend(
+        sorted(k for k in keys_set if k not in section_order and k != 'Uncategorized')
+    )
+    if 'Uncategorized' in keys_set:
+        section_order.append('Uncategorized')
+    return section_order
+
+
+def fetch_subject_id_to_exam_group_category(cursor, subject_ids):
+    """Map subject id -> group_category using the same rules as exam_subject_settings."""
+    subject_ids = []
+    seen = set()
+    for x in subject_ids or []:
+        try:
+            sid = int(x)
+        except (TypeError, ValueError):
+            continue
+        if sid > 0 and sid not in seen:
+            seen.add(sid)
+            subject_ids.append(sid)
+    if not subject_ids:
+        return {}
+    base_category_order = fetch_base_academic_level_category_order(cursor)
+    placeholders = ','.join(['%s'] * len(subject_ids))
+    cursor.execute(
+        f"""
+        SELECT s.id,
+               GROUP_CONCAT(DISTINCT al.level_category ORDER BY al.level_category SEPARATOR '|') AS cat_blob
+        FROM subjects s
+        LEFT JOIN subject_academic_levels sal ON sal.subject_id = s.id
+        LEFT JOIN academic_levels al ON al.id = sal.academic_level_id
+            AND COALESCE(al.level_status, 'active') = 'active'
+        WHERE s.id IN ({placeholders})
+        GROUP BY s.id
+        """,
+        tuple(subject_ids),
+    )
+    id_to_gc = {}
+    for row in cursor.fetchall() or []:
+        sid = int(row.get('id') if isinstance(row, dict) else row[0])
+        cat_blob = row.get('cat_blob') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')
+        seen_c = set()
+        level_categories = []
+        for part in str(cat_blob or '').split('|'):
+            c = part.strip()
+            if c and c not in seen_c:
+                seen_c.add(c)
+                level_categories.append(c)
+        assigned = None
+        for c in base_category_order:
+            if c in seen_c:
+                assigned = c
+                break
+        if assigned is None:
+            if level_categories:
+                assigned = sorted(level_categories)[0]
+            else:
+                assigned = 'Uncategorized'
+        id_to_gc[sid] = assigned
+    return id_to_gc
+
+
+def exam_subject_column_sort_key(subject_row, section_order):
+    """Sort tuple: category section, exam_display_order, name, id (matches marks sheet / reports)."""
+    gc = (subject_row or {}).get('group_category') or 'Uncategorized'
+    try:
+        cat_i = section_order.index(gc)
+    except ValueError:
+        cat_i = len(section_order)
+    eo = (subject_row or {}).get('exam_display_order')
+    try:
+        eo_n = int(eo)
+    except (TypeError, ValueError):
+        eo_n = 1000000000
+    try:
+        sid = int((subject_row or {}).get('id'))
+    except (TypeError, ValueError):
+        sid = 0
+    name = str((subject_row or {}).get('subject_name') or '').lower()
+    return (cat_i, eo_n, name, sid)
+
+
+def sort_subjects_list_for_exam_columns(cursor, subjects):
+    """
+    Mutates subjects (each dict must have 'id'): sets group_category, sorts by
+    exam-subject-settings category order then exam_display_order.
+    Returns (id_to_gc, section_order).
+    """
+    if not subjects:
+        return {}, []
+    id_to_gc = fetch_subject_id_to_exam_group_category(cursor, [s.get('id') for s in subjects])
+    base = fetch_base_academic_level_category_order(cursor)
+    section_order = build_exam_subject_section_order(set(id_to_gc.values()) or {'Uncategorized'}, base)
+    for s in subjects:
+        try:
+            sid = int(s.get('id'))
+            if sid > 0:
+                s['group_category'] = id_to_gc.get(sid, 'Uncategorized')
+        except (TypeError, ValueError):
+            s['group_category'] = 'Uncategorized'
+    subjects.sort(key=lambda s: exam_subject_column_sort_key(s, section_order))
+    return id_to_gc, section_order
+
+
+def _combo_exam_group_category(member_ids, id_to_gc, section_order):
+    """Pick one representative category for a combined exam column (earliest section wins)."""
+    best_gc = 'Uncategorized'
+    best_i = len(section_order) + 1
+    for mid in member_ids or []:
+        try:
+            mid_i = int(mid)
+        except (TypeError, ValueError):
+            continue
+        gc = id_to_gc.get(mid_i, 'Uncategorized')
+        try:
+            ci = section_order.index(gc)
+        except ValueError:
+            ci = len(section_order)
+        if ci < best_i:
+            best_i = ci
+            best_gc = gc
+    return best_gc
+
+
+def _build_exam_column_order_slots(name_map, combinations_raw, base_category_order=None):
     """Flat list for UI: standalone subjects + combined groups (one row per combination)."""
     member_set = set()
     for c in combinations_raw or []:
@@ -1056,6 +1432,19 @@ def _build_exam_column_order_slots(name_map, combinations_raw):
                 member_set.add(int(mid))
             except (TypeError, ValueError):
                 continue
+    gcs = set()
+    for sid, info in (name_map or {}).items():
+        try:
+            int(sid)
+        except (TypeError, ValueError):
+            continue
+        gcs.add((info or {}).get('group_category') or 'Uncategorized')
+    for c in combinations_raw or []:
+        for mid in c.get('member_subject_ids') or []:
+            inf = name_map.get(int(mid)) if mid is not None else None
+            gcs.add((inf or {}).get('group_category') or 'Uncategorized')
+    section_order = build_exam_subject_section_order(gcs, base_category_order or [])
+
     slots = []
     for sid, info in name_map.items():
         sid = int(sid)
@@ -1066,12 +1455,18 @@ def _build_exam_column_order_slots(name_map, combinations_raw):
             o = int(eo)
         except (TypeError, ValueError):
             o = 10**9 + sid
+        gc = info.get('group_category') or 'Uncategorized'
+        try:
+            cat_i = section_order.index(gc)
+        except ValueError:
+            cat_i = len(section_order)
         slots.append(
             {
                 'type': 'subject',
                 'id': sid,
                 'label': (info.get('subject_name') or '').strip() or '—',
                 '_ord': o,
+                '_cat_i': cat_i,
             }
         )
     for c in combinations_raw or []:
@@ -1102,10 +1497,17 @@ def _build_exam_column_order_slots(name_map, combinations_raw):
                 except (TypeError, ValueError):
                     ovals.append(10**9 + int(mid))
             o = min(ovals) if ovals else 10**9 + cid
-        slots.append({'type': 'combo', 'id': cid, 'label': label, '_ord': o})
-    slots.sort(key=lambda z: (z['_ord'], str(z.get('label') or '').lower()))
+        id_gc = {int(mid): (name_map.get(int(mid)) or {}).get('group_category') or 'Uncategorized' for mid in mids}
+        combo_gc = _combo_exam_group_category(mids, id_gc, section_order)
+        try:
+            cat_i = section_order.index(combo_gc)
+        except ValueError:
+            cat_i = len(section_order)
+        slots.append({'type': 'combo', 'id': cid, 'label': label, '_ord': o, '_cat_i': cat_i})
+    slots.sort(key=lambda z: (z['_cat_i'], z['_ord'], str(z.get('label') or '').lower()))
     for s in slots:
         s.pop('_ord', None)
+        s.pop('_cat_i', None)
     return slots
 
 
@@ -1386,6 +1788,2566 @@ def ensure_student_marks_foreign_keys(cursor):
             print(f"Migration note (student_marks {constraint_name}): {e}")
 
 
+_library_books_schema_ensuring = False
+
+
+def ensure_library_books_table(cursor):
+    """Librarian catalog: titles with book category, academic category (level_category), subject, buying price."""
+    global _library_books_schema_ensuring
+    if _library_books_schema_ensuring:
+        return
+    _library_books_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_books (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                book_category VARCHAR(120) NOT NULL,
+                book_name VARCHAR(255) NOT NULL,
+                description TEXT,
+                buying_price DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+                academic_category VARCHAR(255) NOT NULL,
+                subject_id INT NOT NULL,
+                library_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
+                allocation_status ENUM('unallocated', 'allocated') NOT NULL DEFAULT 'unallocated',
+                copies_total INT NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE RESTRICT,
+                INDEX idx_library_books_academic_category (academic_category(100)),
+                INDEX idx_library_books_subject (subject_id)
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'buying_price'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_books
+                ADD COLUMN buying_price DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER description
+            """)
+            print("OK: Added library_books.buying_price")
+        migrate_library_books_academic_category_schema(cursor)
+        migrate_library_books_status_columns(cursor)
+        ensure_library_book_allocations_table(cursor)
+        migrate_library_books_copies_and_allocation_qty(cursor)
+        ensure_library_book_stock_movements_table(cursor)
+        ensure_library_book_copy_units_table(cursor)
+        ensure_library_book_suppliers_table(cursor)
+        ensure_library_book_teacher_distributions_table(cursor)
+        ensure_library_book_student_issues_table(cursor)
+    except Exception as e:
+        print(f"ensure_library_books_table: {e}")
+    finally:
+        _library_books_schema_ensuring = False
+
+
+def _library_books_drop_fk_on_column(cursor, table, column_name):
+    try:
+        cursor.execute(
+            """
+            SELECT CONSTRAINT_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = %s
+              AND COLUMN_NAME = %s
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+            """,
+            (table, column_name),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return
+        cname = row.get('CONSTRAINT_NAME') if isinstance(row, dict) else row[0]
+        if cname:
+            cursor.execute(f"ALTER TABLE `{table}` DROP FOREIGN KEY `{cname}`")
+    except Exception as e:
+        print(f"_library_books_drop_fk_on_column ({table}.{column_name}): {e}")
+
+
+def migrate_library_books_academic_category_schema(cursor):
+    """Replace academic_level_id with academic_category (from academic_levels.level_category)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'academic_category'")
+        has_cat = bool(cursor.fetchone())
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'academic_level_id'")
+        has_level = bool(cursor.fetchone())
+
+        if has_level and not has_cat:
+            cursor.execute(
+                "ALTER TABLE library_books ADD COLUMN academic_category VARCHAR(255) NULL AFTER buying_price"
+            )
+            cursor.execute("""
+                UPDATE library_books lb
+                INNER JOIN academic_levels al ON al.id = lb.academic_level_id
+                SET lb.academic_category = UPPER(TRIM(al.level_category))
+            """)
+            has_cat = True
+
+        if has_level and has_cat:
+            cursor.execute("""
+                UPDATE library_books lb
+                INNER JOIN academic_levels al ON al.id = lb.academic_level_id
+                SET lb.academic_category = UPPER(TRIM(al.level_category))
+                WHERE lb.academic_category IS NULL OR TRIM(lb.academic_category) = ''
+            """)
+            _library_books_drop_fk_on_column(cursor, 'library_books', 'academic_level_id')
+            try:
+                cursor.execute("ALTER TABLE library_books DROP INDEX idx_library_books_level")
+            except Exception:
+                pass
+            try:
+                cursor.execute("ALTER TABLE library_books DROP COLUMN academic_level_id")
+            except Exception as e:
+                print(f"migrate_library_books: drop academic_level_id: {e}")
+
+        if not has_cat:
+            cursor.execute(
+                "ALTER TABLE library_books ADD COLUMN academic_category VARCHAR(255) NOT NULL DEFAULT ''"
+            )
+
+        cursor.execute(
+            "UPDATE library_books SET academic_category = UPPER(TRIM(academic_category)) WHERE academic_category IS NOT NULL"
+        )
+        cursor.execute("""
+            UPDATE library_books
+            SET academic_category = 'UNKNOWN'
+            WHERE academic_category IS NULL OR TRIM(academic_category) = ''
+        """)
+        try:
+            cursor.execute(
+                "ALTER TABLE library_books MODIFY COLUMN academic_category VARCHAR(255) NOT NULL"
+            )
+        except Exception as e:
+            print(f"migrate_library_books: modify academic_category NOT NULL: {e}")
+
+        cursor.execute("SHOW INDEX FROM library_books WHERE Key_name = 'idx_library_books_academic_category'")
+        if not cursor.fetchone():
+            try:
+                cursor.execute(
+                    "ALTER TABLE library_books ADD INDEX idx_library_books_academic_category (academic_category(100))"
+                )
+            except Exception as e:
+                print(f"migrate_library_books: add index academic_category: {e}")
+    except Exception as e:
+        print(f"migrate_library_books_academic_category_schema: {e}")
+
+
+def migrate_library_books_status_columns(cursor):
+    """Add library_status (active/suspended) and allocation_status (unallocated/allocated)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'library_status'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_books
+                ADD COLUMN library_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active' AFTER subject_id
+            """)
+            print("OK: Added library_books.library_status")
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'allocation_status'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_books
+                ADD COLUMN allocation_status ENUM('unallocated', 'allocated') NOT NULL DEFAULT 'unallocated' AFTER library_status
+            """)
+            print("OK: Added library_books.allocation_status")
+    except Exception as e:
+        print(f"migrate_library_books_status_columns: {e}")
+
+
+def ensure_library_book_allocations_table(cursor):
+    """Junction: which active academic levels a library book is allocated to (librarian)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_allocations (
+                library_book_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                quantity INT NOT NULL DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (library_book_id, academic_level_id),
+                INDEX idx_lba_level (academic_level_id)
+            )
+        """)
+        cursor.execute(
+            """
+            SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'library_book_allocations'
+              AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'fk_lba_book'
+            """
+        )
+        if not cursor.fetchone():
+            try:
+                cursor.execute("""
+                    ALTER TABLE library_book_allocations
+                    ADD CONSTRAINT fk_lba_book
+                    FOREIGN KEY (library_book_id) REFERENCES library_books(id) ON DELETE CASCADE
+                """)
+            except Exception as e:
+                print(f"ensure_library_book_allocations_table (fk book): {e}")
+        cursor.execute(
+            """
+            SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'library_book_allocations'
+              AND CONSTRAINT_TYPE = 'FOREIGN KEY' AND CONSTRAINT_NAME = 'fk_lba_level'
+            """
+        )
+        if not cursor.fetchone():
+            try:
+                cursor.execute("""
+                    ALTER TABLE library_book_allocations
+                    ADD CONSTRAINT fk_lba_level
+                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE
+                """)
+            except Exception as e:
+                print(f"ensure_library_book_allocations_table (fk level): {e}")
+    except Exception as e:
+        print(f"ensure_library_book_allocations_table: {e}")
+
+
+def ensure_library_book_suppliers_table(cursor):
+    """Book suppliers for stock-in (lookup by normalized phone)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_suppliers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                phone VARCHAR(20) NOT NULL,
+                company_name VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_library_supplier_phone (phone)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_library_book_suppliers_table: {e}")
+
+
+def _normalize_library_supplier_phone(phone):
+    """Digits-only phone for supplier lookup (Kenya-friendly 254 prefix)."""
+    import re
+    raw = re.sub(r'\D', '', (phone or '').strip())
+    if not raw:
+        return ''
+    if raw.startswith('0') and len(raw) >= 10:
+        raw = '254' + raw[1:]
+    elif len(raw) == 9 and raw[0] in '789':
+        raw = '254' + raw
+    if len(raw) < 9:
+        return ''
+    return raw[:20]
+
+
+def _library_lookup_supplier_by_phone(cursor, phone):
+    """Return supplier row dict or None."""
+    ensure_library_book_suppliers_table(cursor)
+    norm = _normalize_library_supplier_phone(phone)
+    if not norm:
+        return None
+    cursor.execute(
+        """
+        SELECT id, phone, UPPER(TRIM(company_name)) AS company_name
+        FROM library_book_suppliers
+        WHERE phone = %s
+        LIMIT 1
+        """,
+        (norm,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': row.get('id'),
+            'phone': row.get('phone'),
+            'company_name': (row.get('company_name') or '').strip(),
+        }
+    return {
+        'id': row[0],
+        'phone': row[1] if len(row) > 1 else norm,
+        'company_name': ((row[2] or '') if len(row) > 2 else '').strip(),
+    }
+
+
+def _library_upsert_supplier_for_stock_in(cursor, phone, company_name):
+    """
+    Resolve supplier by phone; create when new.
+    Returns (supplier_id, error_message).
+    """
+    ensure_library_book_suppliers_table(cursor)
+    norm = _normalize_library_supplier_phone(phone)
+    if not norm:
+        return None, 'Enter a valid supplier phone number.'
+    existing = _library_lookup_supplier_by_phone(cursor, norm)
+    if existing:
+        return int(existing['id']), None
+    company_clean = (company_name or '').strip().upper()
+    if not company_clean:
+        return None, 'Enter the supplier company name (new supplier).'
+    if len(company_clean) > 255:
+        company_clean = company_clean[:255]
+    cursor.execute(
+        """
+        INSERT INTO library_book_suppliers (phone, company_name)
+        VALUES (%s, %s)
+        """,
+        (norm, company_clean),
+    )
+    return int(cursor.lastrowid), None
+
+
+def migrate_library_stock_movements_supplier_id(cursor):
+    """Add supplier_id to stock movements on existing databases (no recursive ensure)."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'library_book_stock_movements'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'supplier_id'")
+        if cursor.fetchone():
+            return
+        cursor.execute("SHOW TABLES LIKE 'library_book_suppliers'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS library_book_suppliers (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    phone VARCHAR(20) NOT NULL,
+                    company_name VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_library_supplier_phone (phone)
+                )
+            """)
+        cursor.execute("""
+            ALTER TABLE library_book_stock_movements
+            ADD COLUMN supplier_id INT NULL AFTER notes,
+            ADD INDEX idx_lib_stock_mov_supplier (supplier_id)
+        """)
+        print("OK: Added library_book_stock_movements.supplier_id")
+    except Exception as e:
+        err = str(e).lower()
+        if 'duplicate column' in err or 'duplicate key name' in err:
+            return
+        print(f"migrate_library_stock_movements_supplier_id: {e}")
+
+
+def ensure_library_book_stock_movements_table(cursor):
+    """Audit log for librarian stock in / stock out per book and academic level."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_stock_movements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                library_book_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                movement_type ENUM('in', 'out') NOT NULL,
+                quantity INT NOT NULL,
+                quantity_before INT NOT NULL DEFAULT 0,
+                quantity_after INT NOT NULL DEFAULT 0,
+                notes VARCHAR(500) NULL,
+                supplier_id INT NULL,
+                performed_by INT NULL,
+                performed_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_lib_stock_mov_book (library_book_id),
+                INDEX idx_lib_stock_mov_level (academic_level_id),
+                INDEX idx_lib_stock_mov_created (created_at),
+                INDEX idx_lib_stock_mov_supplier (supplier_id)
+            )
+        """)
+        migrate_library_stock_movements_supplier_id(cursor)
+        migrate_library_stock_movements_stock_subject_id(cursor)
+    except Exception as e:
+        print(f"ensure_library_book_stock_movements_table: {e}")
+
+
+def migrate_library_stock_movements_stock_subject_id(cursor):
+    """Subject at academic level this stock-in batch is linked to (for teacher allocation)."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'library_book_stock_movements'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'stock_subject_id'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_book_stock_movements
+                ADD COLUMN stock_subject_id INT NULL AFTER academic_level_id,
+                ADD INDEX idx_lib_stock_mov_subject (stock_subject_id)
+            """)
+            print("OK: Added library_book_stock_movements.stock_subject_id")
+    except Exception as e:
+        print(f"migrate_library_stock_movements_stock_subject_id: {e}")
+
+
+def _library_subjects_by_level_map(cursor):
+    """Subjects per academic level: subject_academic_levels + teacher_subject_assignments."""
+    from collections import defaultdict
+
+    merged = defaultdict(dict)
+
+    def _ingest_row(lid, sid, sname, scode):
+        if lid is None or sid is None:
+            return
+        try:
+            lid_key = str(int(lid))
+            sid_i = int(sid)
+        except (TypeError, ValueError):
+            return
+        merged[lid_key][sid_i] = {
+            'id': sid_i,
+            'subject_name': (sname or '').strip().upper(),
+            'subject_code': (scode or '').strip().upper(),
+        }
+
+    queries = (
+        """
+        SELECT sal.academic_level_id, s.id AS subject_id,
+               s.subject_name, s.subject_code
+        FROM subject_academic_levels sal
+        INNER JOIN subjects s ON s.id = sal.subject_id
+        INNER JOIN academic_levels al ON al.id = sal.academic_level_id
+        WHERE COALESCE(s.status, 'active') = 'active'
+          AND COALESCE(al.level_status, 'active') = 'active'
+        """,
+        """
+        SELECT tsa.academic_level_id, s.id AS subject_id,
+               s.subject_name, s.subject_code
+        FROM teacher_subject_assignments tsa
+        INNER JOIN subjects s ON s.id = tsa.subject_id
+        INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+        WHERE COALESCE(s.status, 'active') = 'active'
+          AND COALESCE(al.level_status, 'active') = 'active'
+        """,
+    )
+    for sql in queries:
+        try:
+            cursor.execute(sql)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    _ingest_row(
+                        row.get('academic_level_id'),
+                        row.get('subject_id'),
+                        row.get('subject_name'),
+                        row.get('subject_code'),
+                    )
+                else:
+                    _ingest_row(
+                        row[0] if len(row) > 0 else None,
+                        row[1] if len(row) > 1 else None,
+                        row[2] if len(row) > 2 else '',
+                        row[3] if len(row) > 3 else '',
+                    )
+        except Exception as e:
+            print(f"_library_subjects_by_level_map query: {e}")
+
+    out = {}
+    for lid_key, subj_map in merged.items():
+        out[lid_key] = sorted(
+            subj_map.values(),
+            key=lambda x: (x.get('subject_name') or '', x.get('id') or 0),
+        )
+    return out
+
+
+def _library_subjects_for_level(cursor, academic_level_id):
+    """Subjects list for one academic level."""
+    try:
+        level_key = str(int(academic_level_id))
+    except (TypeError, ValueError):
+        return []
+    return _library_subjects_by_level_map(cursor).get(level_key, [])
+
+
+def _library_level_has_subject(cursor, academic_level_id, subject_id):
+    """True if subject is registered at level (class registration or teacher assignment)."""
+    try:
+        level_id = int(academic_level_id)
+        subject_id = int(subject_id)
+    except (TypeError, ValueError):
+        return False
+    for sub in _library_subjects_for_level(cursor, level_id):
+        if int(sub.get('id') or 0) == subject_id:
+            return True
+    return False
+
+
+def ensure_library_book_copy_units_table(cursor):
+    """Individual physical copies with short tally IDs (e.g. A001)."""
+    try:
+        ensure_library_book_stock_movements_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_copy_units (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                copy_code VARCHAR(4) NOT NULL,
+                library_book_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                status ENUM('in_stock', 'stocked_out', 'issued') NOT NULL DEFAULT 'in_stock',
+                stock_in_movement_id INT NULL,
+                stock_out_movement_id INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                stocked_out_at TIMESTAMP NULL,
+                UNIQUE KEY uq_library_copy_code (copy_code),
+                INDEX idx_lib_copy_book_level (library_book_id, academic_level_id),
+                INDEX idx_lib_copy_status (status),
+                INDEX idx_lib_copy_stock_in_mov (stock_in_movement_id)
+            )
+        """)
+        migrate_library_book_copy_units_issued_status(cursor)
+    except Exception as e:
+        print(f"ensure_library_book_copy_units_table: {e}")
+
+
+def migrate_library_book_copy_units_issued_status(cursor):
+    """Allow copy units to be marked issued to a student."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'library_book_copy_units'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("""
+            SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'library_book_copy_units'
+              AND COLUMN_NAME = 'status'
+        """)
+        row = cursor.fetchone()
+        col_type = (row.get('COLUMN_TYPE') if isinstance(row, dict) else row[0]) if row else ''
+        if col_type and 'issued' not in str(col_type).lower():
+            cursor.execute("""
+                ALTER TABLE library_book_copy_units
+                MODIFY COLUMN status ENUM('in_stock', 'stocked_out', 'issued') NOT NULL DEFAULT 'in_stock'
+            """)
+            print("OK: library_book_copy_units.status includes 'issued'")
+    except Exception as e:
+        print(f"migrate_library_book_copy_units_issued_status: {e}")
+
+
+def ensure_library_book_student_issues_table(cursor):
+    """Teacher-issued library copies to students (by student ID)."""
+    try:
+        # Do not call ensure_library_books_table here — it already calls this function (infinite recursion).
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_student_issues (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                copy_unit_id INT NOT NULL,
+                copy_code VARCHAR(4) NOT NULL,
+                library_book_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                subject_id INT NULL,
+                student_id VARCHAR(20) NOT NULL,
+                teacher_id INT NOT NULL,
+                status ENUM('issued', 'returned') NOT NULL DEFAULT 'issued',
+                issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                returned_at TIMESTAMP NULL,
+                notes VARCHAR(500) NULL,
+                INDEX idx_lib_stu_issue_copy (copy_unit_id),
+                INDEX idx_lib_stu_issue_student (student_id),
+                INDEX idx_lib_stu_issue_teacher_level (teacher_id, academic_level_id),
+                INDEX idx_lib_stu_issue_book_level (library_book_id, academic_level_id),
+                INDEX idx_lib_stu_issue_status (status)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_library_book_student_issues_table: {e}")
+
+
+def _library_copy_code_from_index(idx):
+    """Map 0-based index to copy code: A001 … A999, B001 … (letter + 3 digits)."""
+    if idx < 0:
+        idx = 0
+    letter_idx = idx // 999
+    num = (idx % 999) + 1
+    if letter_idx >= 26:
+        raise ValueError('Copy label pool exhausted (max 25,974 units).')
+    return chr(ord('A') + letter_idx) + f'{num:03d}'
+
+
+def _library_parse_copy_code_index(copy_code):
+    """Parse A001-style code to 0-based index, or None."""
+    code = (copy_code or '').strip().upper()
+    if len(code) != 4 or not code[0].isalpha() or not code[1:].isdigit():
+        return None
+    letter_i = ord(code[0]) - ord('A')
+    if letter_i < 0 or letter_i > 25:
+        return None
+    num = int(code[1:])
+    if num < 1 or num > 999:
+        return None
+    return letter_i * 999 + (num - 1)
+
+
+def _library_reserve_copy_codes(cursor, count):
+    """Reserve `count` unique copy codes not yet in use."""
+    ensure_library_book_copy_units_table(cursor)
+    count = int(count)
+    if count < 1:
+        return []
+    cursor.execute(
+        """
+        SELECT copy_code FROM library_book_copy_units
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    )
+    row = cursor.fetchone()
+    start_idx = 0
+    if row:
+        code = row.get('copy_code') if isinstance(row, dict) else row[0]
+        parsed = _library_parse_copy_code_index(code)
+        if parsed is not None:
+            start_idx = parsed + 1
+    return [_library_copy_code_from_index(start_idx + i) for i in range(count)]
+
+
+def _library_insert_copy_units_stock_in(cursor, book_id, level_id, movement_id, copy_codes):
+    for code in copy_codes:
+        cursor.execute(
+            """
+            INSERT INTO library_book_copy_units
+                (copy_code, library_book_id, academic_level_id, status, stock_in_movement_id)
+            VALUES (%s, %s, %s, 'in_stock', %s)
+            """,
+            (code, book_id, level_id, movement_id),
+        )
+
+
+def _library_stock_out_copy_units(cursor, book_id, level_id, quantity, movement_id):
+    """Mark oldest in-stock copy units as stocked out; return list of copy codes."""
+    ensure_library_book_copy_units_table(cursor)
+    quantity = int(quantity)
+    cursor.execute(
+        """
+        SELECT id, copy_code FROM library_book_copy_units
+        WHERE library_book_id = %s AND academic_level_id = %s AND status = 'in_stock'
+        ORDER BY copy_code ASC
+        LIMIT %s
+        """,
+        (book_id, level_id, quantity),
+    )
+    rows = cursor.fetchall() or []
+    codes = []
+    for row in rows:
+        if isinstance(row, dict):
+            uid, code = row.get('id'), row.get('copy_code')
+        else:
+            uid, code = row[0], row[1]
+        cursor.execute(
+            """
+            UPDATE library_book_copy_units
+            SET status = 'stocked_out', stock_out_movement_id = %s, stocked_out_at = NOW()
+            WHERE id = %s
+            """,
+            (movement_id, uid),
+        )
+        codes.append((code or '').strip().upper())
+    return codes
+
+
+def _library_count_in_stock_copy_units(cursor, book_id, level_id):
+    ensure_library_book_copy_units_table(cursor)
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM library_book_copy_units
+        WHERE library_book_id = %s AND academic_level_id = %s AND status = 'in_stock'
+        """,
+        (book_id, level_id),
+    )
+    row = cursor.fetchone()
+    if isinstance(row, dict):
+        return int(row.get('c') or 0)
+    return int(row[0] or 0) if row else 0
+
+
+def _library_copy_units_for_stock_lines(cursor, book_level_pairs):
+    """Return {(book_id, level_id): {'in_stock': n, 'codes': [...]}} for active in-stock units."""
+    out = {}
+    if not book_level_pairs:
+        return out
+    ensure_library_book_copy_units_table(cursor)
+    for book_id, level_id in book_level_pairs:
+        cursor.execute(
+            """
+            SELECT copy_code FROM library_book_copy_units
+            WHERE library_book_id = %s AND academic_level_id = %s AND status = 'in_stock'
+            ORDER BY copy_code ASC
+            """,
+            (book_id, level_id),
+        )
+        codes = []
+        for row in cursor.fetchall() or []:
+            c = row.get('copy_code') if isinstance(row, dict) else row[0]
+            if c:
+                codes.append(str(c).strip().upper())
+        out[(int(book_id), int(level_id))] = {
+            'in_stock': len(codes),
+            'codes': codes,
+        }
+    return out
+
+
+def ensure_library_book_teacher_distributions_table(cursor):
+    """Copies from a stock-in batch allocated to teachers for class distribution."""
+    try:
+        ensure_library_book_stock_movements_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS library_book_teacher_distributions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                stock_movement_id INT NOT NULL,
+                library_book_id INT NOT NULL,
+                academic_level_id INT NOT NULL,
+                subject_id INT NOT NULL,
+                teacher_id INT NOT NULL,
+                quantity INT NOT NULL DEFAULT 0,
+                performed_by INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_lib_book_tchr_dist_mov (stock_movement_id),
+                INDEX idx_lib_book_tchr_dist_level (academic_level_id),
+                INDEX idx_lib_book_tchr_dist_teacher (teacher_id),
+                UNIQUE KEY uq_lib_book_tchr_dist_mov_tchr_subj (stock_movement_id, teacher_id, subject_id)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_library_book_teacher_distributions_table: {e}")
+
+
+def _library_level_teacher_subject_assignments(cursor, academic_level_id, book_id=None, highlight_subject_id=None):
+    """Teachers with subject assignments for an academic level (for stock-in distribution)."""
+    rows = []
+    book_subject_id = None
+    highlight_sid = None
+    try:
+        ensure_library_books_table(cursor)
+        academic_level_id = int(academic_level_id)
+        if highlight_subject_id is not None:
+            highlight_sid = int(highlight_subject_id)
+        if book_id:
+            cursor.execute(
+                "SELECT subject_id FROM library_books WHERE id = %s",
+                (int(book_id),),
+            )
+            br = cursor.fetchone()
+            if br:
+                book_subject_id = int(br.get('subject_id') if isinstance(br, dict) else br[0])
+        if highlight_sid is None:
+            highlight_sid = book_subject_id
+    except (TypeError, ValueError):
+        return rows
+
+    try:
+        cursor.execute(
+            """
+            SELECT tsa.id AS assignment_id,
+                   tsa.teacher_id,
+                   tsa.subject_id,
+                   tsa.academic_level_id,
+                   UPPER(TRIM(e.full_name)) AS teacher_name,
+                   UPPER(TRIM(COALESCE(e.employee_id, ''))) AS staff_number,
+                   UPPER(TRIM(s.subject_name)) AS subject_name,
+                   UPPER(TRIM(COALESCE(s.subject_code, ''))) AS subject_code,
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category
+            FROM teacher_subject_assignments tsa
+            INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+            INNER JOIN subjects s ON s.id = tsa.subject_id
+            INNER JOIN employees e ON e.id = tsa.teacher_id
+            WHERE tsa.academic_level_id = %s
+              AND COALESCE(al.level_status, 'active') = 'active'
+              AND COALESCE(e.status, 'active') = 'active'
+              AND (
+                    LOWER(COALESCE(e.role, '')) IN ('teachers', 'teacher')
+                    OR EXISTS (
+                        SELECT 1 FROM employee_roles er
+                        WHERE er.employee_id = e.id
+                          AND LOWER(er.role) IN ('teachers', 'teacher')
+                    )
+              )
+            ORDER BY
+                CASE WHEN %s IS NOT NULL AND tsa.subject_id = %s THEN 0 ELSE 1 END,
+                s.subject_name,
+                e.full_name
+            """,
+            (academic_level_id, highlight_sid, highlight_sid),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                sid = row.get('subject_id')
+                is_highlight = bool(highlight_sid and sid and int(sid) == int(highlight_sid))
+                rows.append({
+                    'assignment_id': row.get('assignment_id'),
+                    'teacher_id': row.get('teacher_id'),
+                    'subject_id': sid,
+                    'academic_level_id': row.get('academic_level_id'),
+                    'teacher_name': (row.get('teacher_name') or '').strip(),
+                    'staff_number': (row.get('staff_number') or '').strip(),
+                    'subject_name': (row.get('subject_name') or '').strip(),
+                    'subject_code': (row.get('subject_code') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'matches_book_subject': bool(
+                        book_subject_id and sid and int(sid) == int(book_subject_id)
+                    ),
+                    'matches_selected_subject': is_highlight,
+                    'is_recommended_teacher': is_highlight,
+                })
+            else:
+                sid = row[2] if len(row) > 2 else None
+                is_highlight = bool(highlight_sid and sid and int(sid) == int(highlight_sid))
+                rows.append({
+                    'assignment_id': row[0] if len(row) > 0 else None,
+                    'teacher_id': row[1] if len(row) > 1 else None,
+                    'subject_id': sid,
+                    'academic_level_id': row[3] if len(row) > 3 else None,
+                    'teacher_name': ((row[4] or '') if len(row) > 4 else '').strip(),
+                    'staff_number': ((row[5] or '') if len(row) > 5 else '').strip(),
+                    'subject_name': ((row[6] or '') if len(row) > 6 else '').strip(),
+                    'subject_code': ((row[7] or '') if len(row) > 7 else '').strip(),
+                    'level_name': ((row[8] or '') if len(row) > 8 else '').strip(),
+                    'level_category': ((row[9] or '') if len(row) > 9 else '').strip(),
+                    'matches_book_subject': bool(
+                        book_subject_id and sid and int(sid) == int(book_subject_id)
+                    ),
+                    'matches_selected_subject': is_highlight,
+                    'is_recommended_teacher': is_highlight,
+                })
+    except Exception as e:
+        print(f"_library_level_teacher_subject_assignments: {e}")
+    return rows
+
+
+def _library_parse_teacher_distribution_payload(raw):
+    """Parse JSON list of {teacher_id, subject_id, quantity} from stock-in form."""
+    import json
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        try:
+            tid = int(item.get('teacher_id'))
+            sid = int(item.get('subject_id'))
+            qty = int(item.get('quantity'))
+        except (TypeError, ValueError):
+            continue
+        if qty < 1:
+            continue
+        out.append({'teacher_id': tid, 'subject_id': sid, 'quantity': qty})
+    return out
+
+
+def _library_teacher_distributions_by_movements(cursor, movement_ids):
+    """Map stock_movement_id -> list of teacher allocation rows (with names when available)."""
+    from collections import defaultdict
+
+    out = defaultdict(list)
+    if not movement_ids:
+        return out
+    try:
+        ensure_library_book_teacher_distributions_table(cursor)
+        ids = [int(x) for x in movement_ids if x is not None]
+        if not ids:
+            return out
+        placeholders = ','.join(['%s'] * len(ids))
+        cursor.execute(
+            f"""
+            SELECT d.stock_movement_id, d.teacher_id, d.subject_id, d.quantity,
+                   UPPER(TRIM(e.full_name)) AS teacher_name,
+                   UPPER(TRIM(COALESCE(e.employee_id, ''))) AS staff_number,
+                   UPPER(TRIM(s.subject_name)) AS subject_name,
+                   UPPER(TRIM(COALESCE(s.subject_code, ''))) AS subject_code
+            FROM library_book_teacher_distributions d
+            INNER JOIN employees e ON e.id = d.teacher_id
+            INNER JOIN subjects s ON s.id = d.subject_id
+            WHERE d.stock_movement_id IN ({placeholders})
+            ORDER BY d.stock_movement_id, s.subject_name, e.full_name
+            """,
+            tuple(ids),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                mid = row.get('stock_movement_id')
+                out[int(mid)].append({
+                    'teacher_id': int(row.get('teacher_id')),
+                    'subject_id': int(row.get('subject_id')),
+                    'quantity': int(row.get('quantity') or 0),
+                    'teacher_name': (row.get('teacher_name') or '').strip(),
+                    'staff_number': (row.get('staff_number') or '').strip(),
+                    'subject_name': (row.get('subject_name') or '').strip(),
+                    'subject_code': (row.get('subject_code') or '').strip(),
+                })
+            else:
+                mid = row[0] if len(row) > 0 else None
+                out[int(mid)].append({
+                    'teacher_id': int(row[1]),
+                    'subject_id': int(row[2]),
+                    'quantity': int(row[3] or 0),
+                    'teacher_name': ((row[4] or '') if len(row) > 4 else '').strip(),
+                    'staff_number': ((row[5] or '') if len(row) > 5 else '').strip(),
+                    'subject_name': ((row[6] or '') if len(row) > 6 else '').strip(),
+                    'subject_code': ((row[7] or '') if len(row) > 7 else '').strip(),
+                })
+    except Exception as e:
+        print(f"_library_teacher_distributions_by_movements: {e}")
+    return out
+
+
+def _library_student_issues_by_movements(cursor, movement_ids):
+    """Map stock_movement_id -> active student issues for copies from that stock-in batch."""
+    from collections import defaultdict
+
+    out = defaultdict(list)
+    if not movement_ids:
+        return out
+    try:
+        ensure_library_book_student_issues_table(cursor)
+        ensure_library_book_copy_units_table(cursor)
+        ids = [int(x) for x in movement_ids if x is not None]
+        if not ids:
+            return out
+        placeholders = ','.join(['%s'] * len(ids))
+        cursor.execute(
+            f"""
+            SELECT cu.stock_in_movement_id,
+                   si.id AS issue_id,
+                   UPPER(TRIM(si.copy_code)) AS copy_code,
+                   si.student_id,
+                   UPPER(TRIM(st.full_name)) AS student_name,
+                   UPPER(TRIM(COALESCE(e.full_name, ''))) AS teacher_name
+            FROM library_book_copy_units cu
+            INNER JOIN library_book_student_issues si
+                ON si.copy_unit_id = cu.id AND si.status = 'issued'
+            INNER JOIN students st ON st.student_id = si.student_id
+            LEFT JOIN employees e ON e.id = si.teacher_id
+            WHERE cu.stock_in_movement_id IN ({placeholders})
+            ORDER BY cu.stock_in_movement_id, si.issued_at DESC, si.copy_code ASC
+            """,
+            tuple(ids),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                mid = row.get('stock_in_movement_id')
+                out[int(mid)].append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'teacher_name': (row.get('teacher_name') or '').strip(),
+                })
+            else:
+                mid = row[0] if len(row) > 0 else None
+                out[int(mid)].append({
+                    'issue_id': int(row[1] or 0),
+                    'copy_code': (row[2] or '').strip(),
+                    'student_id': (row[3] or '').strip(),
+                    'student_name': (row[4] or '').strip() if len(row) > 4 else '',
+                    'teacher_name': (row[5] or '').strip() if len(row) > 5 else '',
+                })
+    except Exception as e:
+        print(f"_library_student_issues_by_movements: {e}")
+    return out
+
+
+def _library_save_teacher_distributions(cursor, movement_id, book_id, level_id, allocations, performed_by=None, stock_quantity=None, replace_existing=False):
+    """
+    Save teacher book distributions for a stock-in movement.
+    Returns (True, None) or (False, error_message).
+    """
+    ensure_library_book_teacher_distributions_table(cursor)
+    try:
+        movement_id = int(movement_id)
+        book_id = int(book_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return False, 'Invalid stock movement reference.'
+    if replace_existing:
+        cursor.execute(
+            "DELETE FROM library_book_teacher_distributions WHERE stock_movement_id = %s",
+            (movement_id,),
+        )
+    if not allocations:
+        return True, None
+
+    valid_rows = _library_level_teacher_subject_assignments(cursor, level_id, book_id)
+    valid_pairs = {
+        (int(r['teacher_id']), int(r['subject_id']))
+        for r in valid_rows
+        if r.get('teacher_id') is not None and r.get('subject_id') is not None
+    }
+    total = 0
+    cleaned = []
+    for item in allocations:
+        pair = (item['teacher_id'], item['subject_id'])
+        if pair not in valid_pairs:
+            return False, 'One or more teacher allocations are not valid for this class and book.'
+        total += item['quantity']
+        cleaned.append(item)
+    if stock_quantity is not None and total > int(stock_quantity):
+        return (
+            False,
+            f'Teacher allocations total ({total}) cannot exceed stocked in quantity ({int(stock_quantity)}).',
+        )
+
+    for item in cleaned:
+        cursor.execute(
+            """
+            INSERT INTO library_book_teacher_distributions
+                (stock_movement_id, library_book_id, academic_level_id, subject_id, teacher_id, quantity, performed_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)
+            """,
+            (
+                movement_id,
+                book_id,
+                level_id,
+                item['subject_id'],
+                item['teacher_id'],
+                item['quantity'],
+                performed_by,
+            ),
+        )
+    return True, None
+
+
+def _teacher_portal_is_teacher_session():
+    """True when session is teacher or technician (same rules as teacher_my_classes)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = (
+        user_role in ('teachers', 'teacher')
+        or viewing_as_role in ('teachers', 'teacher')
+    )
+    is_technician = user_role == 'technician'
+    return is_teacher or is_technician
+
+
+def _teacher_portal_employee_pk():
+    """employees.id for teacher flows (matches teacher_my_classes)."""
+    user_role = session.get('role', '').lower()
+    if user_role == 'technician':
+        return session.get('viewing_as_employee_id')
+    return session.get('user_id')
+
+
+def _teacher_library_resolve_employee_id():
+    """employees.id for class-books (alias of teacher portal PK)."""
+    return _teacher_portal_employee_pk()
+
+
+def _teacher_library_guard():
+    """Redirect if current user cannot access teacher class books."""
+    if 'user_id' not in session:
+        flash('Please sign in to access class books.', 'error')
+        return redirect(url_for('login', role='employee'))
+    if not _teacher_portal_is_teacher_session():
+        flash('You do not have permission to access class books.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
+def _teacher_library_teacher_assigned_level(cursor, teacher_id, level_id):
+    """True if teacher has a subject assignment at this academic level."""
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return False
+    cursor.execute(
+        """
+        SELECT 1 FROM teacher_subject_assignments
+        WHERE teacher_id = %s AND academic_level_id = %s
+        LIMIT 1
+        """,
+        (teacher_id, level_id),
+    )
+    return bool(cursor.fetchone())
+
+
+def _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+    """Teacher may use class books if assigned to the class or has book allocations there."""
+    if _teacher_library_teacher_assigned_level(cursor, teacher_id, level_id):
+        return True
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return False
+    ensure_library_book_teacher_distributions_table(cursor)
+    cursor.execute(
+        """
+        SELECT 1 FROM library_book_teacher_distributions
+        WHERE teacher_id = %s AND academic_level_id = %s
+        LIMIT 1
+        """,
+        (teacher_id, level_id),
+    )
+    return bool(cursor.fetchone())
+
+
+def _teacher_library_level_name(cursor, level_id):
+    """Academic level display name (matches students.current_grade)."""
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return None
+    cursor.execute(
+        "SELECT TRIM(level_name) AS level_name FROM academic_levels WHERE id = %s LIMIT 1",
+        (level_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    name = row.get('level_name') if isinstance(row, dict) else row[0]
+    return (name or '').strip() or None
+
+
+def _teacher_library_classes_summary(cursor, teacher_id):
+    """Classes allocated to teacher with optional book-distribution counts."""
+    ensure_library_book_teacher_distributions_table(cursor)
+    rows = []
+    try:
+        teacher_id = int(teacher_id)
+    except (TypeError, ValueError):
+        return rows
+    cursor.execute(
+        """
+        SELECT
+            al.id AS level_id,
+            UPPER(TRIM(al.level_category)) AS level_category,
+            UPPER(TRIM(al.level_name)) AS level_name,
+            GROUP_CONCAT(DISTINCT UPPER(TRIM(s.subject_name))
+                ORDER BY s.subject_name SEPARATOR ', ') AS subjects_label,
+            COUNT(DISTINCT tsa.subject_id) AS subject_count,
+            COALESCE(SUM(d.quantity), 0) AS books_allocated_to_teacher
+        FROM teacher_subject_assignments tsa
+        INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+        INNER JOIN subjects s ON s.id = tsa.subject_id
+        LEFT JOIN library_book_teacher_distributions d
+            ON d.teacher_id = tsa.teacher_id AND d.academic_level_id = tsa.academic_level_id
+        WHERE tsa.teacher_id = %s
+          AND COALESCE(al.level_status, 'active') = 'active'
+          AND COALESCE(s.status, 'active') = 'active'
+        GROUP BY al.id, al.level_category, al.level_name
+        ORDER BY al.level_category, al.level_name
+        """,
+        (teacher_id,),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            rows.append({
+                'level_id': int(row.get('level_id') or 0),
+                'level_category': (row.get('level_category') or '').strip(),
+                'level_name': (row.get('level_name') or '').strip(),
+                'subjects_label': (row.get('subjects_label') or '').strip(),
+                'subject_count': int(row.get('subject_count') or 0),
+                'books_allocated_to_teacher': int(row.get('books_allocated_to_teacher') or 0),
+            })
+        else:
+            rows.append({
+                'level_id': int(row[0] or 0),
+                'level_category': (row[1] or '').strip(),
+                'level_name': (row[2] or '').strip(),
+                'subjects_label': (row[3] or '').strip(),
+                'subject_count': int(row[4] or 0),
+                'books_allocated_to_teacher': int(row[5] or 0),
+            })
+    return rows
+
+
+def _teacher_library_teacher_book_quota(cursor, teacher_id, level_id):
+    """Map library_book_id -> total copies allocated to teacher at level."""
+    ensure_library_book_teacher_distributions_table(cursor)
+    out = {}
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return out
+    cursor.execute(
+        """
+        SELECT library_book_id, SUM(quantity) AS qty
+        FROM library_book_teacher_distributions
+        WHERE teacher_id = %s AND academic_level_id = %s
+        GROUP BY library_book_id
+        """,
+        (teacher_id, level_id),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            bid = int(row.get('library_book_id') or 0)
+            qty = int(row.get('qty') or 0)
+        else:
+            bid = int(row[0] or 0)
+            qty = int(row[1] or 0)
+        if bid:
+            out[bid] = qty
+    return out
+
+
+def _teacher_library_teacher_issued_counts(cursor, teacher_id, level_id):
+    """Map library_book_id -> active issues count for teacher at level."""
+    ensure_library_book_student_issues_table(cursor)
+    out = {}
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return out
+    cursor.execute(
+        """
+        SELECT library_book_id, COUNT(*) AS cnt
+        FROM library_book_student_issues
+        WHERE teacher_id = %s AND academic_level_id = %s AND status = 'issued'
+        GROUP BY library_book_id
+        """,
+        (teacher_id, level_id),
+    )
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            out[int(row.get('library_book_id') or 0)] = int(row.get('cnt') or 0)
+        else:
+            out[int(row[0] or 0)] = int(row[1] or 0)
+    return out
+
+
+def _teacher_library_books_for_level(cursor, teacher_id, level_id):
+    """Books allocated to this teacher at this class (current session), with copy refs."""
+    ensure_library_book_teacher_distributions_table(cursor)
+    ensure_library_book_copy_units_table(cursor)
+    ensure_library_book_student_issues_table(cursor)
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return []
+    quota = _teacher_library_teacher_book_quota(cursor, teacher_id, level_id)
+    if not quota:
+        return []
+    issued_map = _teacher_library_teacher_issued_counts(cursor, teacher_id, level_id)
+    book_ids = sorted(quota.keys())
+    placeholders = ','.join(['%s'] * len(book_ids))
+    cursor.execute(
+        f"""
+        SELECT lb.id AS book_id,
+               UPPER(TRIM(lb.book_name)) AS book_name,
+               lb.subject_id,
+               UPPER(TRIM(COALESCE(s.subject_name, ''))) AS subject_name,
+               UPPER(TRIM(COALESCE(s.subject_code, ''))) AS subject_code
+        FROM library_books lb
+        LEFT JOIN subjects s ON s.id = lb.subject_id
+        WHERE lb.id IN ({placeholders})
+          AND COALESCE(lb.library_status, 'active') = 'active'
+        ORDER BY lb.book_name ASC
+        """,
+        tuple(book_ids),
+    )
+    books = []
+    for row in cursor.fetchall() or []:
+        if isinstance(row, dict):
+            bid = int(row.get('book_id') or 0)
+            book_name = (row.get('book_name') or '').strip()
+            subject_id = row.get('subject_id')
+            subject_name = (row.get('subject_name') or '').strip()
+            subject_code = (row.get('subject_code') or '').strip()
+        else:
+            bid = int(row[0] or 0)
+            book_name = (row[1] or '').strip()
+            subject_id = row[2] if len(row) > 2 else None
+            subject_name = (row[3] or '').strip() if len(row) > 3 else ''
+            subject_code = (row[4] or '').strip() if len(row) > 4 else ''
+        if not bid:
+            continue
+        teacher_allocated = quota.get(bid, 0)
+        issued_count = issued_map.get(bid, 0)
+        available_slots = max(0, teacher_allocated - issued_count)
+        cursor.execute(
+            """
+            SELECT id, UPPER(TRIM(copy_code)) AS copy_code, status
+            FROM library_book_copy_units
+            WHERE library_book_id = %s AND academic_level_id = %s
+            ORDER BY copy_code ASC
+            """,
+            (bid, level_id),
+        )
+        copies = []
+        for crow in cursor.fetchall() or []:
+            if isinstance(crow, dict):
+                copies.append({
+                    'id': int(crow.get('id') or 0),
+                    'copy_code': (crow.get('copy_code') or '').strip(),
+                    'status': (crow.get('status') or '').strip(),
+                })
+            else:
+                copies.append({
+                    'id': int(crow[0] or 0),
+                    'copy_code': (crow[1] or '').strip(),
+                    'status': (crow[2] or '').strip(),
+                })
+        copies_in_stock_all = [c for c in copies if c.get('status') == 'in_stock']
+        cursor.execute(
+            """
+            SELECT si.id, si.copy_code, si.student_id, si.issued_at,
+                   UPPER(TRIM(st.full_name)) AS student_name
+            FROM library_book_student_issues si
+            INNER JOIN students st ON st.student_id = si.student_id
+            WHERE si.library_book_id = %s AND si.academic_level_id = %s
+              AND si.teacher_id = %s AND si.status = 'issued'
+            ORDER BY si.issued_at DESC, si.copy_code ASC
+            """,
+            (bid, level_id, teacher_id),
+        )
+        active_issues = []
+        issued_codes = set()
+        for irow in cursor.fetchall() or []:
+            if isinstance(irow, dict):
+                code = (irow.get('copy_code') or '').strip()
+                active_issues.append({
+                    'issue_id': int(irow.get('id') or 0),
+                    'copy_code': code,
+                    'student_id': (irow.get('student_id') or '').strip(),
+                    'student_name': (irow.get('student_name') or '').strip(),
+                    'issued_at': irow.get('issued_at'),
+                    'can_return': True,
+                })
+            else:
+                code = (irow[1] or '').strip()
+                active_issues.append({
+                    'issue_id': int(irow[0] or 0),
+                    'copy_code': code,
+                    'student_id': (irow[2] or '').strip(),
+                    'student_name': (irow[3] or '').strip() if len(irow) > 3 else '',
+                    'issued_at': irow[4] if len(irow) > 4 else None,
+                    'can_return': True,
+                })
+            issued_codes.add(code)
+        copies_issued_by_you = [
+            {'copy_code': c['copy_code'], 'status': 'issued'}
+            for c in copies if c.get('status') == 'issued' and c.get('copy_code') in issued_codes
+        ]
+        # Only show copy refs within this teacher's allocated pool at this class.
+        copies_in_stock = copies_in_stock_all[:available_slots] if available_slots > 0 else []
+        books.append({
+            'book_id': bid,
+            'book_name': book_name,
+            'subject_id': subject_id,
+            'subject_name': subject_name,
+            'subject_code': subject_code,
+            'teacher_allocated': teacher_allocated,
+            'issued_count': issued_count,
+            'available_slots': available_slots,
+            'can_issue': available_slots > 0 and len(copies_in_stock) > 0,
+            'copies_in_stock': copies_in_stock,
+            'copies_issued': copies_issued_by_you,
+            'all_copy_codes': [c['copy_code'] for c in copies_in_stock] + [i['copy_code'] for i in active_issues],
+            'copy_count': teacher_allocated,
+            'in_stock_count': len(copies_in_stock),
+            'active_issues': active_issues,
+        })
+    return books
+
+
+def _teacher_library_subject_id_for_copy(cursor, copy_code, level_id):
+    """Resolve subject for a copy reference at this class."""
+    code = (copy_code or '').strip().upper()
+    if not code:
+        return None
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return None
+    cursor.execute(
+        """
+        SELECT lb.subject_id
+        FROM library_book_copy_units cu
+        INNER JOIN library_books lb ON lb.id = cu.library_book_id
+        WHERE UPPER(TRIM(cu.copy_code)) = %s AND cu.academic_level_id = %s
+        LIMIT 1
+        """,
+        (code, level_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+    try:
+        return int(sid) if sid is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _teacher_library_students_with_subject_book(cursor, level_id, subject_id):
+    """Student IDs (uppercase) with an active issue for this subject at this class."""
+    if subject_id is None:
+        return set()
+    try:
+        level_id = int(level_id)
+        subject_id = int(subject_id)
+    except (TypeError, ValueError):
+        return set()
+    ensure_library_book_student_issues_table(cursor)
+    cursor.execute(
+        """
+        SELECT DISTINCT UPPER(TRIM(si.student_id)) AS sid
+        FROM library_book_student_issues si
+        LEFT JOIN library_books lb ON lb.id = si.library_book_id
+        WHERE si.academic_level_id = %s AND si.status = 'issued'
+          AND COALESCE(si.subject_id, lb.subject_id) = %s
+        """,
+        (level_id, subject_id),
+    )
+    return {
+        ((row.get('sid') if isinstance(row, dict) else row[0]) or '').strip()
+        for row in (cursor.fetchall() or [])
+        if (row.get('sid') if isinstance(row, dict) else row[0])
+    }
+
+
+def _teacher_library_rows_from_books(books, cursor=None, level_id=None):
+    """Flat rows: book, subject, copy ref, student issued to (one row per copy in teacher pool)."""
+    rows = []
+    subject_student_map = {}
+    if cursor is not None and level_id is not None:
+        subject_ids = {b.get('subject_id') for b in books if b.get('subject_id') is not None}
+        for subj_id in subject_ids:
+            try:
+                subject_student_map[int(subj_id)] = _teacher_library_students_with_subject_book(
+                    cursor, level_id, subj_id,
+                )
+            except (TypeError, ValueError):
+                subject_student_map[int(subj_id)] = set()
+    for book in books:
+        subject_label = (book.get('subject_name') or '').strip()
+        code = (book.get('subject_code') or '').strip()
+        if subject_label and code:
+            subject_label = f'{subject_label} · {code}'
+        elif not subject_label:
+            subject_label = '—'
+        subj_id = book.get('subject_id')
+        already_in_subject = subject_student_map.get(int(subj_id), set()) if subj_id is not None else set()
+        for issue in book.get('active_issues') or []:
+            stu_key = (issue.get('student_id') or '').strip().upper()
+            rows.append({
+                'book_id': book.get('book_id'),
+                'book_name': book.get('book_name') or '',
+                'subject_label': subject_label,
+                'copy_code': issue.get('copy_code') or '',
+                'student_id': issue.get('student_id') or '',
+                'student_name': issue.get('student_name') or '',
+                'issue_id': issue.get('issue_id'),
+                'is_available': False,
+                'has_subject_book': bool(stu_key and stu_key in already_in_subject),
+            })
+        for copy in book.get('copies_in_stock') or []:
+            rows.append({
+                'book_id': book.get('book_id'),
+                'book_name': book.get('book_name') or '',
+                'subject_label': subject_label,
+                'copy_code': copy.get('copy_code') or '',
+                'student_id': '',
+                'student_name': '',
+                'issue_id': None,
+                'is_available': True,
+                'has_subject_book': False,
+            })
+    rows.sort(key=lambda r: ((r.get('book_name') or '').lower(), (r.get('copy_code') or '').lower()))
+    return rows
+
+
+def _teacher_library_student_search_hint(cursor, level_id, query):
+    """If query matches a student in another class, return a helpful message."""
+    q = (query or '').strip()
+    if len(q) < 1:
+        return None
+    level_name = _teacher_library_level_name(cursor, level_id)
+    if not level_name:
+        return None
+    like_pat = '%' + q.replace('%', '').replace('_', '') + '%'
+    cursor.execute(
+        """
+        SELECT student_id, UPPER(TRIM(full_name)) AS full_name,
+               TRIM(COALESCE(current_grade, '')) AS current_grade
+        FROM students
+        WHERE UPPER(TRIM(student_id)) = UPPER(%s)
+           OR UPPER(TRIM(student_id)) LIKE UPPER(%s)
+        ORDER BY CASE WHEN UPPER(TRIM(student_id)) = UPPER(%s) THEN 0 ELSE 1 END
+        LIMIT 5
+        """,
+        (q, like_pat, q),
+    )
+    rows = cursor.fetchall() or []
+    if not rows:
+        return None
+    for row in rows:
+        if isinstance(row, dict):
+            sid = (row.get('student_id') or '').strip()
+            name = (row.get('full_name') or '').strip()
+            grade = (row.get('current_grade') or '').strip()
+        else:
+            sid = (row[0] or '').strip()
+            name = (row[1] or '').strip()
+            grade = (row[2] or '').strip() if len(row) > 2 else ''
+        if not sid:
+            continue
+        if grade == level_name:
+            continue
+        return (
+            f'{name} ({sid}) is in class {grade or "unknown"}, not {level_name}. '
+            f'Open Class books for that class to issue to this student.'
+        )
+    return None
+
+
+def _teacher_library_search_students_for_level(cursor, level_id, query, limit=20, subject_id=None):
+    """Students in this class matching admission number or name (live search)."""
+    q = (query or '').strip()
+    if not q:
+        return []
+    level_name = _teacher_library_level_name(cursor, level_id)
+    if not level_name:
+        return []
+    like_pat = '%' + q.replace('%', '').replace('_', '') + '%'
+    prefix_pat = q.replace('%', '').replace('_', '') + '%'
+    cursor.execute(
+        """
+        SELECT s.student_id, UPPER(TRIM(s.full_name)) AS full_name,
+               TRIM(COALESCE(s.current_grade, '')) AS current_grade
+        FROM students s
+        WHERE TRIM(s.current_grade) = %s
+          AND (
+                UPPER(TRIM(s.student_id)) LIKE UPPER(%s)
+                OR UPPER(TRIM(s.full_name)) LIKE UPPER(%s)
+              )
+        ORDER BY
+            CASE WHEN UPPER(TRIM(s.student_id)) LIKE UPPER(%s) THEN 0 ELSE 1 END,
+            s.full_name ASC, s.student_id ASC
+        LIMIT %s
+        """,
+        (level_name, like_pat, like_pat, prefix_pat, int(limit)),
+    )
+    rows = cursor.fetchall() or []
+    already_in_subject = (
+        _teacher_library_students_with_subject_book(cursor, level_id, subject_id)
+        if subject_id is not None else set()
+    )
+    out = []
+    for row in rows:
+        if isinstance(row, dict):
+            sid = (row.get('student_id') or '').strip()
+            out.append({
+                'student_id': sid,
+                'full_name': (row.get('full_name') or '').strip(),
+                'current_grade': (row.get('current_grade') or '').strip(),
+                'has_subject_book': sid.upper() in already_in_subject,
+            })
+        else:
+            sid = (row[0] or '').strip()
+            out.append({
+                'student_id': sid,
+                'full_name': (row[1] or '').strip(),
+                'current_grade': (row[2] or '').strip() if len(row) > 2 else '',
+                'has_subject_book': sid.upper() in already_in_subject,
+            })
+    return out
+
+
+def _teacher_library_lookup_student_for_level(cursor, student_id_raw, level_id, subject_id=None):
+    """Resolve student by ID if enrolled in this class (current_grade = level_name)."""
+    student_id = (student_id_raw or '').strip().upper()
+    if not student_id:
+        return None, 'Enter a student ID number.'
+    level_name = _teacher_library_level_name(cursor, level_id)
+    if not level_name:
+        return None, 'Class not found.'
+    cursor.execute(
+        """
+        SELECT student_id, UPPER(TRIM(full_name)) AS full_name, current_grade, status
+        FROM students
+        WHERE UPPER(TRIM(student_id)) = %s
+        LIMIT 1
+        """,
+        (student_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None, 'No student found with that ID.'
+    if isinstance(row, dict):
+        st_id = (row.get('student_id') or '').strip()
+        full_name = (row.get('full_name') or '').strip()
+        grade = (row.get('current_grade') or '').strip()
+        status = (row.get('status') or '').strip().lower()
+    else:
+        st_id = (row[0] or '').strip()
+        full_name = (row[1] or '').strip()
+        grade = (row[2] or '').strip()
+        status = (row[3] or '').strip().lower()
+    if status in ('expelled', 'alumni', 'transferred', 'suspended'):
+        return None, f'Student {st_id} is not in session (status: {status or "unknown"}).'
+    grade_trim = (grade or '').strip()
+    if grade_trim != level_name and grade_trim.lower() != level_name.lower():
+        return None, f'Student {st_id} is in {grade or "unknown class"}, not {level_name}.'
+    already_in_subject = (
+        _teacher_library_students_with_subject_book(cursor, level_id, subject_id)
+        if subject_id is not None else set()
+    )
+    return {
+        'student_id': st_id,
+        'full_name': full_name,
+        'current_grade': grade,
+        'has_subject_book': st_id.upper() in already_in_subject,
+    }, None
+
+
+def _teacher_library_issue_copy_to_student(cursor, teacher_id, level_id, copy_code, student_id, notes=''):
+    """Issue one copy unit to a student. Returns (True, payload) or (False, message)."""
+    ensure_library_book_student_issues_table(cursor)
+    ensure_library_book_copy_units_table(cursor)
+    try:
+        teacher_id = int(teacher_id)
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return False, 'Invalid teacher or class.'
+    if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+        return False, 'You are not assigned to teach this class.'
+    code = (copy_code or '').strip().upper()
+    if not code:
+        return False, 'Select a book reference number.'
+    student, err = _teacher_library_lookup_student_for_level(cursor, student_id, level_id)
+    if err:
+        return False, err
+    cursor.execute(
+        """
+        SELECT id, library_book_id, academic_level_id, status
+        FROM library_book_copy_units
+        WHERE UPPER(TRIM(copy_code)) = %s
+        LIMIT 1
+        """,
+        (code,),
+    )
+    unit = cursor.fetchone()
+    if not unit:
+        return False, f'Copy reference {code} was not found.'
+    if isinstance(unit, dict):
+        unit_id = int(unit.get('id') or 0)
+        book_id = int(unit.get('library_book_id') or 0)
+        unit_level = int(unit.get('academic_level_id') or 0)
+        unit_status = (unit.get('status') or '').strip()
+    else:
+        unit_id = int(unit[0] or 0)
+        book_id = int(unit[1] or 0)
+        unit_level = int(unit[2] or 0)
+        unit_status = (unit[3] or '').strip()
+    if unit_level != level_id:
+        return False, f'Copy {code} belongs to another class.'
+    if unit_status != 'in_stock':
+        return False, f'Copy {code} is not available (status: {unit_status or "unknown"}).'
+    quota = _teacher_library_teacher_book_quota(cursor, teacher_id, level_id)
+    allocated = quota.get(book_id, 0)
+    if allocated < 1:
+        return False, 'No copies of this book were allocated to you by the library.'
+    issued_map = _teacher_library_teacher_issued_counts(cursor, teacher_id, level_id)
+    if issued_map.get(book_id, 0) >= allocated:
+        return False, 'You have already issued all copies allocated to you for this book.'
+    cursor.execute(
+        """
+        SELECT 1 FROM library_book_student_issues
+        WHERE copy_unit_id = %s AND status = 'issued'
+        LIMIT 1
+        """,
+        (unit_id,),
+    )
+    if cursor.fetchone():
+        return False, f'Copy {code} is already issued to a student.'
+    subject_id = None
+    cursor.execute(
+        """
+        SELECT subject_id FROM library_book_teacher_distributions
+        WHERE teacher_id = %s AND academic_level_id = %s AND library_book_id = %s
+        LIMIT 1
+        """,
+        (teacher_id, level_id, book_id),
+    )
+    sub_row = cursor.fetchone()
+    if sub_row:
+        subject_id = sub_row.get('subject_id') if isinstance(sub_row, dict) else sub_row[0]
+    cursor.execute(
+        """
+        INSERT INTO library_book_student_issues
+            (copy_unit_id, copy_code, library_book_id, academic_level_id, subject_id,
+             student_id, teacher_id, status, notes)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, 'issued', %s)
+        """,
+        (
+            unit_id, code, book_id, level_id, subject_id,
+            student['student_id'], teacher_id, (notes or '').strip()[:500] or None,
+        ),
+    )
+    cursor.execute(
+        """
+        UPDATE library_book_copy_units SET status = 'issued' WHERE id = %s
+        """,
+        (unit_id,),
+    )
+    return True, {
+        'copy_code': code,
+        'student_id': student['student_id'],
+        'student_name': student['full_name'],
+        'book_id': book_id,
+    }
+
+
+def _teacher_library_return_copy(cursor, teacher_id, issue_id):
+    """Return an issued copy. Returns (True, message) or (False, message)."""
+    ensure_library_book_student_issues_table(cursor)
+    try:
+        teacher_id = int(teacher_id)
+        issue_id = int(issue_id)
+    except (TypeError, ValueError):
+        return False, 'Invalid return request.'
+    cursor.execute(
+        """
+        SELECT id, copy_unit_id, copy_code, teacher_id, status
+        FROM library_book_student_issues
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (issue_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return False, 'Issue record not found.'
+    if isinstance(row, dict):
+        if int(row.get('teacher_id') or 0) != teacher_id:
+            return False, 'You can only return books you issued.'
+        if (row.get('status') or '') != 'issued':
+            return False, 'This book was already returned.'
+        unit_id = int(row.get('copy_unit_id') or 0)
+        code = (row.get('copy_code') or '').strip()
+    else:
+        if int(row[3] or 0) != teacher_id:
+            return False, 'You can only return books you issued.'
+        if (row[4] or '') != 'issued':
+            return False, 'This book was already returned.'
+        unit_id = int(row[1] or 0)
+        code = (row[2] or '').strip()
+    cursor.execute(
+        """
+        UPDATE library_book_student_issues
+        SET status = 'returned', returned_at = NOW()
+        WHERE id = %s
+        """,
+        (issue_id,),
+    )
+    cursor.execute(
+        """
+        UPDATE library_book_copy_units SET status = 'in_stock' WHERE id = %s
+        """,
+        (unit_id,),
+    )
+    return True, f'Copy {code} marked as returned.'
+
+
+def migrate_library_books_copies_and_allocation_qty(cursor):
+    """Total copies per catalog row; per-level allocation quantity."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'copies_total'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_books
+                ADD COLUMN copies_total INT NOT NULL DEFAULT 1 AFTER allocation_status
+            """)
+            print("OK: Added library_books.copies_total")
+        cursor.execute("SHOW COLUMNS FROM library_book_allocations LIKE 'quantity'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_book_allocations
+                ADD COLUMN quantity INT NOT NULL DEFAULT 1 AFTER academic_level_id
+            """)
+            print("OK: Added library_book_allocations.quantity")
+    except Exception as e:
+        print(f"migrate_library_books_copies_and_allocation_qty: {e}")
+
+
+def _library_inventory_academic_levels(cursor):
+    """Active academic levels for librarian book allocation UI (category + name)."""
+    rows = []
+    try:
+        cursor.execute("""
+            SELECT id, level_name, level_code, UPPER(TRIM(level_category)) AS level_category
+            FROM academic_levels
+            WHERE COALESCE(level_status, 'active') = 'active'
+              AND TRIM(COALESCE(level_category, '')) <> ''
+            ORDER BY level_category, level_name
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                lid = row.get('id')
+                lname = (row.get('level_name') or '').strip()
+                lcode = (row.get('level_code') or '').strip()
+                lcat = (row.get('level_category') or '').strip().upper()
+            else:
+                lid = row[0] if len(row) > 0 else None
+                lname = ((row[1] or '') if len(row) > 1 else '').strip()
+                lcode = ((row[2] or '') if len(row) > 2 else '').strip()
+                lcat = ((row[3] or '') if len(row) > 3 else '').strip().upper()
+            if lid is None:
+                continue
+            try:
+                lid_i = int(lid)
+            except (TypeError, ValueError):
+                continue
+            rows.append({
+                'id': lid_i,
+                'level_name': lname.upper(),
+                'level_code': lcode.upper(),
+                'level_category': lcat,
+            })
+    except Exception as e:
+        print(f"_library_inventory_academic_levels: {e}")
+    return rows
+
+
+def _library_allocation_stock_by_level(cursor):
+    """Total allocated copies per academic level (active books only), for library overview."""
+    rows = []
+    try:
+        migrate_library_books_copies_and_allocation_qty(cursor)
+        cursor.execute("""
+            SELECT al.id AS level_id,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   COALESCE((
+                       SELECT SUM(lba.quantity)
+                       FROM library_book_allocations lba
+                       INNER JOIN library_books lb ON lb.id = lba.library_book_id
+                       WHERE lba.academic_level_id = al.id
+                         AND COALESCE(lb.library_status, 'active') = 'active'
+                   ), 0) AS total_allocated
+            FROM academic_levels al
+            WHERE COALESCE(al.level_status, 'active') = 'active'
+              AND TRIM(COALESCE(al.level_category, '')) <> ''
+            ORDER BY al.level_category, al.level_name
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                lid = row.get('level_id')
+                lc = (row.get('level_category') or '').strip().upper()
+                ln = (row.get('level_name') or '').strip().upper()
+                tot = row.get('total_allocated')
+            else:
+                lid = row[0] if len(row) > 0 else None
+                lc = ((row[1] or '') if len(row) > 1 else '').strip().upper()
+                ln = ((row[2] or '') if len(row) > 2 else '').strip().upper()
+                tot = row[3] if len(row) > 3 else 0
+            if lid is None:
+                continue
+            try:
+                tot_i = int(tot or 0)
+            except (TypeError, ValueError):
+                tot_i = 0
+            try:
+                lid_i = int(lid)
+            except (TypeError, ValueError):
+                continue
+            rows.append({
+                'level_id': lid_i,
+                'level_category': lc,
+                'level_name': ln,
+                'total_allocated': tot_i,
+            })
+    except Exception as e:
+        print(f"_library_allocation_stock_by_level: {e}")
+    return rows
+
+
+def _library_enrich_books_with_allocations(cursor, books):
+    """Attach allocation ids, quantities, display strings, and remaining stock (mutates books)."""
+    if not books:
+        return
+    from collections import defaultdict
+
+    ensure_library_book_allocations_table(cursor)
+    migrate_library_books_copies_and_allocation_qty(cursor)
+    bid_list = [b['id'] for b in books]
+    placeholders = ','.join(['%s'] * len(bid_list))
+    ids_map = defaultdict(list)
+    try:
+        cursor.execute(
+            f"""
+            SELECT lba.library_book_id, lba.academic_level_id, al.level_name,
+                   COALESCE(lba.quantity, 1) AS qty
+            FROM library_book_allocations lba
+            INNER JOIN academic_levels al ON al.id = lba.academic_level_id
+            WHERE lba.library_book_id IN ({placeholders})
+            ORDER BY al.level_category, al.level_name
+            """,
+            tuple(bid_list),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                bid = row.get('library_book_id')
+                lid = row.get('academic_level_id')
+                nm = (row.get('level_name') or '').strip().upper()
+                qty_raw = row.get('qty')
+            else:
+                bid = row[0] if len(row) > 0 else None
+                lid = row[1] if len(row) > 1 else None
+                nm = ((row[2] or '') if len(row) > 2 else '').strip().upper()
+                qty_raw = row[3] if len(row) > 3 else 1
+            if bid is None or lid is None:
+                continue
+            try:
+                lid_i = int(lid)
+            except (TypeError, ValueError):
+                continue
+            try:
+                qty_i = int(qty_raw)
+            except (TypeError, ValueError):
+                qty_i = 1
+            if qty_i < 1:
+                qty_i = 1
+            label = nm
+            ids_map[int(bid)].append({'id': lid_i, 'label': label, 'quantity': qty_i})
+    except Exception as e:
+        print(f"_library_enrich_books_with_allocations: {e}")
+
+    for b in books:
+        lst = ids_map.get(b['id'], [])
+        b['allocated_level_ids'] = [x['id'] for x in lst]
+        b['allocations_detail'] = [{'id': x['id'], 'label': x['label'], 'quantity': x['quantity']} for x in lst]
+        b['allocated_copies_sum'] = sum(x['quantity'] for x in lst)
+        ct = int(b.get('copies_total') or 1)
+        if ct < 1:
+            ct = 1
+        b['copies_total'] = ct
+        b['remaining_stock'] = max(0, ct - b['allocated_copies_sum'])
+        b['allocated_levels_display'] = ', '.join(
+            f"{x['label']} ×{x['quantity']}" for x in lst
+        ) if lst else ''
+
+
+def _library_stock_allocation_lines(cursor):
+    """Active books allocated to active academic levels (for stock in/out UI)."""
+    rows = []
+    try:
+        ensure_library_books_table(cursor)
+        ensure_library_book_allocations_table(cursor)
+        migrate_library_books_copies_and_allocation_qty(cursor)
+        cursor.execute("""
+            SELECT lb.id AS book_id,
+                   lb.book_name,
+                   lb.subject_id AS book_subject_id,
+                   lb.academic_category,
+                   COALESCE(lb.copies_total, 1) AS copies_total,
+                   lba.academic_level_id AS level_id,
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   COALESCE(lba.quantity, 1) AS quantity
+            FROM library_book_allocations lba
+            INNER JOIN library_books lb ON lb.id = lba.library_book_id
+            INNER JOIN academic_levels al ON al.id = lba.academic_level_id
+            WHERE COALESCE(lb.library_status, 'active') = 'active'
+              AND COALESCE(al.level_status, 'active') = 'active'
+            ORDER BY al.level_category, al.level_name, lb.book_name
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                bid = row.get('book_id')
+                lid = row.get('level_id')
+                qty = row.get('quantity')
+                ctot = row.get('copies_total')
+                bname = row.get('book_name')
+                bsub = row.get('book_subject_id')
+                acat = row.get('academic_category')
+                lname = row.get('level_name')
+                lcat = row.get('level_category')
+            else:
+                bid = row[0] if len(row) > 0 else None
+                bname = row[1] if len(row) > 1 else ''
+                bsub = row[2] if len(row) > 2 else None
+                acat = row[3] if len(row) > 3 else ''
+                ctot = row[4] if len(row) > 4 else 1
+                lid = row[5] if len(row) > 5 else None
+                lname = row[6] if len(row) > 6 else ''
+                lcat = row[7] if len(row) > 7 else ''
+                qty = row[8] if len(row) > 8 else 1
+            if bid is None or lid is None:
+                continue
+            try:
+                bid_i = int(bid)
+                lid_i = int(lid)
+                qty_i = int(qty or 1)
+                ctot_i = int(ctot or 1)
+            except (TypeError, ValueError):
+                continue
+            if qty_i < 1:
+                qty_i = 1
+            if ctot_i < 1:
+                ctot_i = 1
+            try:
+                bsub_i = int(bsub) if bsub is not None else None
+            except (TypeError, ValueError):
+                bsub_i = None
+            rows.append({
+                'book_id': bid_i,
+                'book_name': (bname or '').strip().upper(),
+                'book_subject_id': bsub_i,
+                'academic_category': (acat or '').strip().upper(),
+                'copies_total': ctot_i,
+                'level_id': lid_i,
+                'level_name': (lname or '').strip().upper(),
+                'level_category': (lcat or '').strip().upper(),
+                'quantity': qty_i,
+            })
+        if rows:
+            pairs = [(r['book_id'], r['level_id']) for r in rows]
+            copy_map = _library_copy_units_for_stock_lines(cursor, pairs)
+            for r in rows:
+                info = copy_map.get((r['book_id'], r['level_id']), {'in_stock': 0, 'codes': []})
+                r['tagged_in_stock'] = info['in_stock']
+                r['copy_codes'] = info['codes']
+    except Exception as e:
+        print(f"_library_stock_allocation_lines: {e}")
+    return rows
+
+
+def _library_recent_stock_movements(cursor, limit=15):
+    """Recent stock movements for librarian books inventory."""
+    rows = []
+    try:
+        ensure_library_book_stock_movements_table(cursor)
+        migrate_library_stock_movements_supplier_id(cursor)
+        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'supplier_id'")
+        has_supplier = bool(cursor.fetchone())
+        if has_supplier:
+            sql = """
+            SELECT m.id, m.movement_type, m.quantity, m.quantity_before, m.quantity_after,
+                   m.notes, m.performed_by_name, m.created_at,
+                   lb.book_name,
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   UPPER(TRIM(s.company_name)) AS supplier_company,
+                   s.phone AS supplier_phone
+            FROM library_book_stock_movements m
+            INNER JOIN library_books lb ON lb.id = m.library_book_id
+            INNER JOIN academic_levels al ON al.id = m.academic_level_id
+            LEFT JOIN library_book_suppliers s ON s.id = m.supplier_id
+            ORDER BY m.created_at DESC
+            LIMIT %s
+            """
+        else:
+            sql = """
+            SELECT m.id, m.movement_type, m.quantity, m.quantity_before, m.quantity_after,
+                   m.notes, m.performed_by_name, m.created_at,
+                   lb.book_name,
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   NULL AS supplier_company,
+                   NULL AS supplier_phone
+            FROM library_book_stock_movements m
+            INNER JOIN library_books lb ON lb.id = m.library_book_id
+            INNER JOIN academic_levels al ON al.id = m.academic_level_id
+            ORDER BY m.created_at DESC
+            LIMIT %s
+            """
+        cursor.execute(sql, (int(limit),))
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                created_raw = row.get('created_at')
+                rows.append({
+                    'id': row.get('id'),
+                    'movement_type': row.get('movement_type'),
+                    'quantity': int(row.get('quantity') or 0),
+                    'quantity_before': int(row.get('quantity_before') or 0),
+                    'quantity_after': int(row.get('quantity_after') or 0),
+                    'notes': row.get('notes') or '',
+                    'performed_by_name': row.get('performed_by_name') or '',
+                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+                    'book_name': (row.get('book_name') or '').strip().upper(),
+                    'level_name': (row.get('level_name') or '').strip().upper(),
+                    'level_category': (row.get('level_category') or '').strip().upper(),
+                    'supplier_company': (row.get('supplier_company') or '').strip().upper(),
+                    'supplier_phone': row.get('supplier_phone') or '',
+                })
+            else:
+                created_raw = row[7] if len(row) > 7 else None
+                rows.append({
+                    'id': row[0] if len(row) > 0 else None,
+                    'movement_type': row[1] if len(row) > 1 else '',
+                    'quantity': int(row[2] or 0) if len(row) > 2 else 0,
+                    'quantity_before': int(row[3] or 0) if len(row) > 3 else 0,
+                    'quantity_after': int(row[4] or 0) if len(row) > 4 else 0,
+                    'notes': row[5] if len(row) > 5 else '',
+                    'performed_by_name': row[6] if len(row) > 6 else '',
+                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+                    'book_name': ((row[8] or '') if len(row) > 8 else '').strip().upper(),
+                    'level_name': ((row[9] or '') if len(row) > 9 else '').strip().upper(),
+                    'level_category': ((row[10] or '') if len(row) > 10 else '').strip().upper(),
+                    'supplier_company': ((row[11] or '') if len(row) > 11 else '').strip().upper(),
+                    'supplier_phone': row[12] if len(row) > 12 else '',
+                })
+    except Exception as e:
+        print(f"_library_recent_stock_movements: {e}")
+    return rows
+
+
+def _library_format_stock_datetime(dt):
+    if dt is None:
+        return ''
+    try:
+        if hasattr(dt, 'strftime'):
+            return dt.strftime('%d %b %Y, %H:%M')
+    except Exception:
+        pass
+    return str(dt)[:16] if dt else ''
+
+
+def _library_stock_in_records(cursor, limit=100):
+    """Stock-in movements with copy reference IDs for librarian stock page."""
+    from collections import defaultdict
+
+    rows = []
+    try:
+        ensure_library_book_stock_movements_table(cursor)
+        ensure_library_book_copy_units_table(cursor)
+        migrate_library_stock_movements_supplier_id(cursor)
+        migrate_library_stock_movements_stock_subject_id(cursor)
+        lim = max(1, min(int(limit), 200))
+        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'supplier_id'")
+        has_supplier = bool(cursor.fetchone())
+        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'stock_subject_id'")
+        has_stock_subject = bool(cursor.fetchone())
+        stock_subject_sel = (
+            "m.stock_subject_id, "
+            "UPPER(TRIM(COALESCE(stock_sub.subject_name, sub.subject_name))) AS subject_name, "
+            "UPPER(TRIM(COALESCE(stock_sub.subject_code, sub.subject_code, ''))) AS subject_code, "
+            if has_stock_subject else
+            "NULL AS stock_subject_id, "
+            "UPPER(TRIM(sub.subject_name)) AS subject_name, "
+            "UPPER(TRIM(COALESCE(sub.subject_code, ''))) AS subject_code, "
+        )
+        stock_subject_join = (
+            "LEFT JOIN subjects stock_sub ON stock_sub.id = m.stock_subject_id "
+            if has_stock_subject else ""
+        )
+        if has_supplier:
+            stock_in_sql = f"""
+            SELECT m.id, m.library_book_id, m.academic_level_id, m.quantity, m.notes, m.created_at,
+                   lb.book_name, lb.book_category, lb.buying_price,
+                   {stock_subject_sel}
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   UPPER(TRIM(sup.company_name)) AS supplier_company,
+                   sup.phone AS supplier_phone
+            FROM library_book_stock_movements m
+            INNER JOIN library_books lb ON lb.id = m.library_book_id
+            LEFT JOIN subjects sub ON sub.id = lb.subject_id
+            {stock_subject_join}
+            INNER JOIN academic_levels al ON al.id = m.academic_level_id
+            LEFT JOIN library_book_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+            ORDER BY m.created_at DESC
+            LIMIT %s
+            """
+        else:
+            stock_in_sql = f"""
+            SELECT m.id, m.library_book_id, m.academic_level_id, m.quantity, m.notes, m.created_at,
+                   lb.book_name, lb.book_category, lb.buying_price,
+                   {stock_subject_sel}
+                   UPPER(TRIM(al.level_name)) AS level_name,
+                   UPPER(TRIM(al.level_category)) AS level_category,
+                   NULL AS supplier_company,
+                   NULL AS supplier_phone
+            FROM library_book_stock_movements m
+            INNER JOIN library_books lb ON lb.id = m.library_book_id
+            LEFT JOIN subjects sub ON sub.id = lb.subject_id
+            {stock_subject_join}
+            INNER JOIN academic_levels al ON al.id = m.academic_level_id
+            WHERE m.movement_type = 'in'
+            ORDER BY m.created_at DESC
+            LIMIT %s
+            """
+        cursor.execute(stock_in_sql, (lim,))
+        mov_rows = cursor.fetchall() or []
+        if not mov_rows:
+            return rows
+
+        mov_ids = []
+        for row in mov_rows:
+            if isinstance(row, dict):
+                mid = row.get('id')
+            else:
+                mid = row[0] if len(row) > 0 else None
+            if mid is not None:
+                mov_ids.append(int(mid))
+
+        codes_by_mov = defaultdict(list)
+        if mov_ids:
+            placeholders = ','.join(['%s'] * len(mov_ids))
+            cursor.execute(
+                f"""
+                SELECT stock_in_movement_id, copy_code
+                FROM library_book_copy_units
+                WHERE stock_in_movement_id IN ({placeholders})
+                ORDER BY copy_code ASC
+                """,
+                tuple(mov_ids),
+            )
+            for crow in cursor.fetchall() or []:
+                if isinstance(crow, dict):
+                    mov_id = crow.get('stock_in_movement_id')
+                    code = crow.get('copy_code')
+                else:
+                    mov_id = crow[0] if len(crow) > 0 else None
+                    code = crow[1] if len(crow) > 1 else None
+                if mov_id is not None and code:
+                    codes_by_mov[int(mov_id)].append(str(code).strip().upper())
+
+        for row in mov_rows:
+            if isinstance(row, dict):
+                created_raw = row.get('created_at')
+                mid = row.get('id')
+                ssid = row.get('stock_subject_id')
+                rows.append({
+                    'id': mid,
+                    'book_id': row.get('library_book_id'),
+                    'level_id': row.get('academic_level_id'),
+                    'stock_subject_id': int(ssid) if ssid is not None else None,
+                    'quantity': int(row.get('quantity') or 0),
+                    'notes': row.get('notes') or '',
+                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+                    'created_at_display': _library_format_stock_datetime(created_raw),
+                    'book_name': (row.get('book_name') or '').strip().upper(),
+                    'book_category': (row.get('book_category') or '').strip().upper(),
+                    'buying_price': float(row.get('buying_price') or 0),
+                    'subject_name': (row.get('subject_name') or '').strip().upper(),
+                    'subject_code': (row.get('subject_code') or '').strip().upper(),
+                    'level_name': (row.get('level_name') or '').strip().upper(),
+                    'level_category': (row.get('level_category') or '').strip().upper(),
+                    'supplier_company': (row.get('supplier_company') or '').strip().upper(),
+                    'supplier_phone': row.get('supplier_phone') or '',
+                    'copy_codes': codes_by_mov.get(int(mid), []) if mid is not None else [],
+                })
+            else:
+                created_raw = row[5] if len(row) > 5 else None
+                mid = row[0] if len(row) > 0 else None
+                ssid = row[9] if has_stock_subject and len(row) > 9 else None
+                sub_name_i = 10 if has_stock_subject else 9
+                sub_code_i = 11 if has_stock_subject else 10
+                lvl_name_i = 12 if has_stock_subject else 11
+                lvl_cat_i = 13 if has_stock_subject else 12
+                sup_co_i = 14 if has_stock_subject else 13
+                sup_ph_i = 15 if has_stock_subject else 14
+                rows.append({
+                    'id': mid,
+                    'book_id': row[1] if len(row) > 1 else None,
+                    'level_id': row[2] if len(row) > 2 else None,
+                    'stock_subject_id': int(ssid) if ssid is not None else None,
+                    'quantity': int(row[3] or 0) if len(row) > 3 else 0,
+                    'notes': row[4] if len(row) > 4 else '',
+                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+                    'created_at_display': _library_format_stock_datetime(created_raw),
+                    'book_name': ((row[6] or '') if len(row) > 6 else '').strip().upper(),
+                    'book_category': ((row[7] or '') if len(row) > 7 else '').strip().upper(),
+                    'buying_price': float(row[8] or 0) if len(row) > 8 else 0.0,
+                    'subject_name': ((row[sub_name_i] or '') if len(row) > sub_name_i else '').strip().upper(),
+                    'subject_code': ((row[sub_code_i] or '') if len(row) > sub_code_i else '').strip().upper(),
+                    'level_name': ((row[lvl_name_i] or '') if len(row) > lvl_name_i else '').strip().upper(),
+                    'level_category': ((row[lvl_cat_i] or '') if len(row) > lvl_cat_i else '').strip().upper(),
+                    'supplier_company': ((row[sup_co_i] or '') if len(row) > sup_co_i else '').strip().upper(),
+                    'supplier_phone': row[sup_ph_i] if len(row) > sup_ph_i else '',
+                    'copy_codes': codes_by_mov.get(int(mid), []) if mid is not None else [],
+                })
+        for r in rows:
+            r['copy_count'] = len(r.get('copy_codes') or [])
+        dist_by_mov = _library_teacher_distributions_by_movements(cursor, mov_ids)
+        students_by_mov = _library_student_issues_by_movements(cursor, mov_ids)
+        for r in rows:
+            mid = r.get('id')
+            dists = dist_by_mov.get(int(mid), []) if mid is not None else []
+            r['teacher_distributions'] = dists
+            allocated = sum(d.get('quantity', 0) for d in dists)
+            r['teacher_allocated_total'] = allocated
+            r['remaining_stock'] = max(0, int(r.get('quantity') or 0) - allocated)
+            student_issues = students_by_mov.get(int(mid), []) if mid is not None else []
+            r['student_allocations'] = student_issues
+            r['students_allocated_count'] = len(student_issues)
+    except Exception as e:
+        print(f"_library_stock_in_records: {e}")
+    return rows
+
+
+def _library_apply_stock_movement(cursor, book_id, level_id, movement_type, quantity, notes='', performed_by=None, performed_by_name='', supplier_id=None, stock_subject_id=None):
+    """
+    Stock in/out for an active book at an active allocated level.
+    movement_type: 'in' | 'out'
+    Returns (ok, message, extras) where extras may include copy_codes list.
+    """
+    extras = {'copy_codes': []}
+    movement_type = (movement_type or '').strip().lower()
+    if movement_type not in ('in', 'out'):
+        return False, 'Invalid movement type.', extras
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return False, 'Quantity must be a whole number.', extras
+    if quantity < 1:
+        return False, 'Quantity must be at least 1.', extras
+
+    ensure_library_books_table(cursor)
+    ensure_library_book_allocations_table(cursor)
+    ensure_library_book_stock_movements_table(cursor)
+    migrate_library_stock_movements_supplier_id(cursor)
+    migrate_library_stock_movements_stock_subject_id(cursor)
+    migrate_library_books_copies_and_allocation_qty(cursor)
+
+    stock_subject_id_val = None
+    if movement_type == 'in' and stock_subject_id is not None:
+        try:
+            stock_subject_id_val = int(stock_subject_id)
+        except (TypeError, ValueError):
+            stock_subject_id_val = None
+        if stock_subject_id_val and not _library_level_has_subject(cursor, level_id, stock_subject_id_val):
+            return False, 'Selected subject is not registered for this academic level.', extras
+
+    supplier_id_val = None
+    if movement_type == 'in' and supplier_id is not None:
+        try:
+            supplier_id_val = int(supplier_id)
+        except (TypeError, ValueError):
+            supplier_id_val = None
+        if supplier_id_val:
+            ensure_library_book_suppliers_table(cursor)
+            cursor.execute(
+                "SELECT id FROM library_book_suppliers WHERE id = %s",
+                (supplier_id_val,),
+            )
+            if not cursor.fetchone():
+                return False, 'Selected supplier was not found.', extras
+
+    cursor.execute(
+        """
+        SELECT lb.id, COALESCE(lb.library_status, 'active') AS st,
+               COALESCE(lb.copies_total, 1) AS ct,
+               UPPER(TRIM(lb.academic_category)) AS ac
+        FROM library_books lb
+        WHERE lb.id = %s
+        """,
+        (book_id,),
+    )
+    br = cursor.fetchone()
+    if not br:
+        return False, 'Book not found.', extras
+    if isinstance(br, dict):
+        book_st = (br.get('st') or 'active').lower()
+        copies_total = int(br.get('ct') or 1)
+        book_cat = (br.get('ac') or '').strip().upper()
+    else:
+        book_st = ((br[1] or 'active') if len(br) > 1 else 'active').lower()
+        copies_total = int(br[2] or 1) if len(br) > 2 else 1
+        book_cat = ((br[3] or '') if len(br) > 3 else '').strip().upper()
+    if book_st != 'active':
+        return False, 'Only active books can be stocked in or out.', extras
+    if copies_total < 1:
+        copies_total = 1
+
+    cursor.execute(
+        """
+        SELECT id, UPPER(TRIM(level_category)) AS lc,
+               COALESCE(level_status, 'active') AS st
+        FROM academic_levels
+        WHERE id = %s
+        """,
+        (level_id,),
+    )
+    lr = cursor.fetchone()
+    if not lr:
+        return False, 'Academic level not found.', extras
+    if isinstance(lr, dict):
+        level_st = (lr.get('st') or 'active').lower()
+        level_cat = (lr.get('lc') or '').strip().upper()
+    else:
+        level_st = ((lr[2] or 'active') if len(lr) > 2 else 'active').lower()
+        level_cat = ((lr[1] or '') if len(lr) > 1 else '').strip().upper()
+    if level_st != 'active':
+        return False, 'Only active academic levels can receive stock movements.', extras
+    if level_cat != book_cat:
+        return False, 'This level does not match the book\'s academic category.', extras
+
+    cursor.execute(
+        """
+        SELECT COALESCE(quantity, 1) AS qty
+        FROM library_book_allocations
+        WHERE library_book_id = %s AND academic_level_id = %s
+        """,
+        (book_id, level_id),
+    )
+    ar = cursor.fetchone()
+    if not ar:
+        return False, 'This book is not allocated to the selected level. Assign it to a level first.', extras
+    if isinstance(ar, dict):
+        qty_before = int(ar.get('qty') or 1)
+    else:
+        qty_before = int(ar[0] or 1) if ar else 1
+    if qty_before < 1:
+        qty_before = 1
+
+    notes_clean = (notes or '').strip()[:500] or None
+
+    tagged_in_stock = 0
+    if movement_type == 'in':
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(quantity), 0) AS s
+            FROM library_book_allocations
+            WHERE library_book_id = %s
+            """,
+            (book_id,),
+        )
+        sum_row = cursor.fetchone()
+        if isinstance(sum_row, dict):
+            allocated_sum = int(sum_row.get('s') or 0)
+        else:
+            allocated_sum = int(sum_row[0] or 0) if sum_row else 0
+        qty_after = qty_before + quantity
+        new_allocated_sum = allocated_sum + quantity
+        if new_allocated_sum > copies_total:
+            copies_total = new_allocated_sum
+            cursor.execute(
+                "UPDATE library_books SET copies_total = %s WHERE id = %s",
+                (copies_total, book_id),
+            )
+        cursor.execute(
+            """
+            UPDATE library_book_allocations
+            SET quantity = %s
+            WHERE library_book_id = %s AND academic_level_id = %s
+            """,
+            (qty_after, book_id, level_id),
+        )
+        cursor.execute(
+            """
+            UPDATE library_books
+            SET allocation_status = 'allocated'
+            WHERE id = %s
+            """,
+            (book_id,),
+        )
+        msg = f'Stocked in {quantity} cop{"ies" if quantity != 1 else "y"} (level total: {qty_after}).'
+    else:
+        if quantity > qty_before:
+            return False, f'Cannot stock out {quantity}; only {qty_before} at this level.', extras
+        ensure_library_book_copy_units_table(cursor)
+        tagged_in_stock = _library_count_in_stock_copy_units(cursor, book_id, level_id)
+        if tagged_in_stock > 0 and quantity > tagged_in_stock:
+            return (
+                False,
+                f'Cannot stock out {quantity}; only {tagged_in_stock} tagged cop'
+                f'{"ies" if tagged_in_stock != 1 else "y"} in stock (copy IDs).',
+                extras,
+            )
+        qty_after = qty_before - quantity
+        if qty_after < 1:
+            cursor.execute(
+                """
+                DELETE FROM library_book_allocations
+                WHERE library_book_id = %s AND academic_level_id = %s
+                """,
+                (book_id, level_id),
+            )
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c FROM library_book_allocations WHERE library_book_id = %s
+                """,
+                (book_id,),
+            )
+            cnt_row = cursor.fetchone()
+            if isinstance(cnt_row, dict):
+                remaining = int(cnt_row.get('c') or 0)
+            else:
+                remaining = int(cnt_row[0] or 0) if cnt_row else 0
+            cursor.execute(
+                """
+                UPDATE library_books
+                SET allocation_status = %s
+                WHERE id = %s
+                """,
+                ('unallocated' if remaining == 0 else 'allocated', book_id),
+            )
+            msg = f'Stocked out {quantity} cop{"ies" if quantity != 1 else "y"} (removed from this level).'
+        else:
+            cursor.execute(
+                """
+                UPDATE library_book_allocations
+                SET quantity = %s
+                WHERE library_book_id = %s AND academic_level_id = %s
+                """,
+                (qty_after, book_id, level_id),
+            )
+            msg = f'Stocked out {quantity} cop{"ies" if quantity != 1 else "y"} (level total: {qty_after}).'
+
+    cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'stock_subject_id'")
+    has_stock_subject_col = bool(cursor.fetchone())
+    if has_stock_subject_col:
+        cursor.execute(
+            """
+            INSERT INTO library_book_stock_movements
+                (library_book_id, academic_level_id, stock_subject_id, movement_type, quantity,
+                 quantity_before, quantity_after, notes, supplier_id, performed_by, performed_by_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                book_id,
+                level_id,
+                stock_subject_id_val if movement_type == 'in' else None,
+                movement_type,
+                quantity,
+                qty_before,
+                qty_after if movement_type == 'in' or qty_after >= 1 else 0,
+                notes_clean,
+                supplier_id_val if movement_type == 'in' else None,
+                performed_by,
+                (performed_by_name or '')[:255] or None,
+            ),
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO library_book_stock_movements
+                (library_book_id, academic_level_id, movement_type, quantity,
+                 quantity_before, quantity_after, notes, supplier_id, performed_by, performed_by_name)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                book_id,
+                level_id,
+                movement_type,
+                quantity,
+                qty_before,
+                qty_after if movement_type == 'in' or qty_after >= 1 else 0,
+                notes_clean,
+                supplier_id_val if movement_type == 'in' else None,
+                performed_by,
+                (performed_by_name or '')[:255] or None,
+            ),
+        )
+    movement_id = cursor.lastrowid
+    ensure_library_book_copy_units_table(cursor)
+    if movement_type == 'in':
+        copy_codes = _library_reserve_copy_codes(cursor, quantity)
+        _library_insert_copy_units_stock_in(cursor, book_id, level_id, movement_id, copy_codes)
+        extras['copy_codes'] = copy_codes
+        if copy_codes:
+            msg += f' Copy IDs: {", ".join(copy_codes)}.'
+    elif tagged_in_stock > 0:
+        out_codes = _library_stock_out_copy_units(cursor, book_id, level_id, quantity, movement_id)
+        extras['copy_codes'] = out_codes
+        if out_codes:
+            msg += f' Retired IDs: {", ".join(out_codes)}.'
+        if qty_after < 1:
+            leftover = _library_count_in_stock_copy_units(cursor, book_id, level_id)
+            if leftover > 0:
+                extra_codes = _library_stock_out_copy_units(cursor, book_id, level_id, leftover, movement_id)
+                extras['copy_codes'] = extras.get('copy_codes', []) + extra_codes
+    extras['movement_id'] = movement_id
+    return True, msg, extras
+
+
 def init_db():
     """Initialize database and tables - creates database if missing, then creates tables"""
     # First, ensure the database exists
@@ -1596,6 +4558,8 @@ def init_db():
                 """)
             except Exception as en_backfill_err:
                 print(f"Note: employee_number backfill: {en_backfill_err}")
+
+            ensure_employee_roles_schema(cursor)
             
             # Create employee_salaries table
             cursor.execute("""
@@ -1955,6 +4919,8 @@ def init_db():
                 ensure_subject_exam_combination_tables(cursor)
             except Exception as e:
                 print(f"Migration note (subjects.exam_total_marks): {e}")
+
+            ensure_library_books_table(cursor)
             
             # Create academic_years table (must be before terms, timetables, exams)
             cursor.execute("""
@@ -2031,6 +4997,8 @@ def init_db():
             except Exception as e:
                 print(f"Migration note for terms.is_locked: {e}")
                 pass
+
+            ensure_student_attendance_records_table(cursor)
             
             try:
                 cursor.execute("SHOW COLUMNS FROM terms WHERE Field = 'status'")
@@ -3235,6 +6203,26 @@ def _fetch_student_parent_by_admission(cursor, admission_raw):
     except Exception as ex:
         print(f"_fetch_student_parent_by_admission ensure parent: {ex}")
         return _run_left()
+
+
+def _mask_email_for_display(email):
+    """Partially hide email for parent reset hints (e.g. j***n@school.com)."""
+    em = (email or '').strip().lower()
+    if '@' not in em:
+        return ''
+    local, domain = em.split('@', 1)
+    if len(local) <= 1:
+        masked_local = '*'
+    elif len(local) == 2:
+        masked_local = local[0] + '*'
+    else:
+        masked_local = local[0] + ('*' * min(len(local) - 2, 6)) + local[-1]
+    return f'{masked_local}@{domain}'
+
+
+def _clear_parent_password_reset_session():
+    session.pop('parent_pwd_reset_student_id', None)
+    session.pop('parent_pwd_reset_dob_ok', None)
 
 
 def _fetch_parent_portal_user(cursor, admission_raw):
@@ -4955,7 +7943,185 @@ def api_parent_portal_check_admission():
             pass
 
 
+@app.route('/parent-forgot-password', methods=['GET', 'POST'])
+@app.route('/parent/forgot-password', methods=['GET', 'POST'])
+@app.route('/dashboard/parent/forgot-password', methods=['GET', 'POST'])
+def parent_forgot_password():
+    """Parent password reset: admission ID → child DOB → email on account → verification code by email."""
+    admission_prefill = (request.args.get('admission') or '').strip()
+
+    if request.method == 'POST':
+        action = (request.form.get('reset_action') or '').strip()
+        connection = get_db_connection()
+        if not connection:
+            flash('Database connection error. Please try again later.', 'error')
+            return redirect(url_for('parent_forgot_password'))
+        error = None
+        try:
+            with connection.cursor() as cursor:
+                ensure_users_portal_login_schema(cursor)
+                connection.commit()
+                if action == 'admission':
+                    raw = (request.form.get('admission') or '').strip()
+                    ak = _normalize_parent_admission(raw)
+                    if not _parent_admission_pattern_ok(ak):
+                        error = 'Enter a valid admission ID (letters and numbers only, e.g. STU001).'
+                    else:
+                        row = _fetch_student_parent_by_admission(cursor, raw)
+                        if not row:
+                            error = (
+                                'We could not find a student with that admission ID. '
+                                'Check the ID or contact the school.'
+                            )
+                        else:
+                            portal_user = _fetch_parent_portal_user(cursor, raw)
+                            if not portal_user:
+                                error = (
+                                    'No parent portal account exists for this admission yet. '
+                                    'Use Parent setup on the sign-in page to create one.'
+                                )
+                            else:
+                                canonical_sid = (row.get('student_id') or ak).strip()
+                                session['parent_pwd_reset_student_id'] = canonical_sid
+                                session.pop('parent_pwd_reset_dob_ok', None)
+                                return redirect(url_for('parent_forgot_password'))
+                elif action == 'dob':
+                    sid = session.get('parent_pwd_reset_student_id')
+                    if not sid:
+                        error = 'Session expired. Enter the admission ID again.'
+                    else:
+                        dob_in = _parse_dob_submitted(request.form.get('date_of_birth'))
+                        if dob_in is None:
+                            error = 'Enter a valid date of birth.'
+                        else:
+                            row = _fetch_student_parent_by_admission(cursor, sid)
+                            if not row:
+                                error = 'Record not found. Start again with the admission ID.'
+                                _clear_parent_password_reset_session()
+                            else:
+                                db_dob = row.get('date_of_birth')
+                                if db_dob is None:
+                                    error = (
+                                        'Date of birth is not on file for this student. Please contact the school.'
+                                    )
+                                else:
+                                    if hasattr(db_dob, 'date'):
+                                        db_dob = db_dob.date()
+                                    if dob_in != db_dob:
+                                        error = (
+                                            'That date of birth does not match our records. Try again or contact the school.'
+                                        )
+                                    else:
+                                        session['parent_pwd_reset_dob_ok'] = '1'
+                                        return redirect(url_for('parent_forgot_password'))
+                elif action == 'email':
+                    sid = session.get('parent_pwd_reset_student_id')
+                    if not sid or session.get('parent_pwd_reset_dob_ok') != '1':
+                        error = 'Session expired or date of birth not verified. Start again from the admission step.'
+                    else:
+                        email_in = normalize_login_email(request.form.get('email', ''))
+                        if not email_in or '@' not in email_in:
+                            error = 'Enter the email address on your parent portal account.'
+                        else:
+                            portal_user = _fetch_parent_portal_user(cursor, sid)
+                            if not portal_user:
+                                error = 'No portal account found. Start again or contact the school.'
+                                _clear_parent_password_reset_session()
+                            else:
+                                account_email = normalize_login_email(portal_user.get('email') or '')
+                                if not account_email:
+                                    error = (
+                                        'No email is stored on your portal account. Please contact the school office.'
+                                    )
+                                elif email_in != account_email:
+                                    error = (
+                                        'That email does not match our records for this admission. '
+                                        'Use the email you registered with, or contact the school.'
+                                    )
+                                else:
+                                    code = ''.join(secrets.choice('0123456789') for _ in range(6))
+                                    code_hash = generate_password_hash(code)
+                                    expires_at = datetime.utcnow() + timedelta(minutes=30)
+                                    full_name = (portal_user.get('full_name') or 'Parent').strip() or 'Parent'
+                                    if not send_password_reset_email(account_email, full_name, code):
+                                        error = (
+                                            'Could not send the verification email. Ask the school to check email settings, '
+                                            'or try again later.'
+                                        )
+                                    else:
+                                        cursor.execute(
+                                            """
+                                            DELETE FROM password_reset_tokens
+                                            WHERE LOWER(TRIM(email)) = %s AND consumed_at IS NULL
+                                            """,
+                                            (account_email,),
+                                        )
+                                        cursor.execute(
+                                            """
+                                            INSERT INTO password_reset_tokens
+                                                (email, account_type, account_id, code_hash, expires_at)
+                                            VALUES (%s, 'parent', %s, %s, %s)
+                                            """,
+                                            (account_email, portal_user['id'], code_hash, expires_at),
+                                        )
+                                        connection.commit()
+                                        _clear_parent_password_reset_session()
+                                        session['pwd_reset_email'] = account_email
+                                        flash(
+                                            'We sent a 6-digit code to your email. Enter it on the next page with your new password.',
+                                            'success',
+                                        )
+                                        return redirect(url_for('reset_password'))
+                else:
+                    error = 'Invalid step.'
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+        if error:
+            flash(error, 'error')
+            return redirect(url_for('parent_forgot_password'))
+
+    student_id_sess = session.get('parent_pwd_reset_student_id')
+    dob_ok = session.get('parent_pwd_reset_dob_ok') == '1'
+    masked_email = ''
+    if student_id_sess and dob_ok:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    portal_user = _fetch_parent_portal_user(cursor, student_id_sess)
+                    if portal_user:
+                        masked_email = _mask_email_for_display(portal_user.get('email') or '')
+            except Exception as e:
+                print(f"parent_forgot_password masked email: {e}")
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if student_id_sess and dob_ok:
+        step = 3
+    elif student_id_sess:
+        step = 2
+    else:
+        step = 1
+
+    return render_template(
+        'parent_forgot_password.html',
+        step=step,
+        admission_prefill=admission_prefill,
+        student_id_display=student_id_sess or '',
+        masked_email=masked_email,
+    )
+
+
+@app.route('/parent-portal-setup', methods=['GET', 'POST'])
 @app.route('/parent/portal-setup', methods=['GET', 'POST'])
+@app.route('/dashboard/parent/portal-setup', methods=['GET', 'POST'])
 def parent_portal_setup():
     """First-time parent portal: admission ID → verify child DOB → email + password (creates users row)."""
     admission_prefill = (request.args.get('admission') or '').strip()
@@ -5323,15 +8489,22 @@ def login():
                                         'Thank you for your service! Your account has been retired.'
                                     )
                                 if status == 'active':
-                                    session.permanent = bool(request.form.get('remember_me'))
-                                    session['user_id'] = employee['id']
-                                    session['email'] = employee['email']
-                                    session['full_name'] = employee['full_name']
-                                    session['role'] = employee['role']
-                                    session['employee_id'] = employee['employee_id']
-                                    session['profile_picture'] = employee.get('profile_picture')
-                                    flash(f'Welcome back, {employee["full_name"]}!', 'success')
-                                    return redirect(employee_dashboard_path())
+                                    ensure_employee_roles_schema(cursor)
+                                    allocated_roles = fetch_employee_allocated_roles(cursor, employee['id'])
+                                    if not allocated_roles:
+                                        allocated_roles = [
+                                            normalize_allocated_role(employee.get('role')) or 'employee'
+                                        ]
+                                    remember_me = bool(request.form.get('remember_me'))
+                                    if len(allocated_roles) == 1:
+                                        complete_employee_login_session(
+                                            employee, allocated_roles[0], remember_me=remember_me
+                                        )
+                                        flash(f'Welcome back, {employee["full_name"]}!', 'success')
+                                        return redirect(employee_dashboard_path())
+                                    session['auth_pending_employee_pk'] = employee['id']
+                                    session['auth_pending_remember_me'] = remember_me
+                                    return redirect(url_for('login_select_role'))
                                 return render_login_error('Your account status is invalid. Please contact support.')
                             return render_login_error(
                                 'Incorrect password. Check your password and try again, or use "Forgot password?" below.'
@@ -5438,6 +8611,80 @@ def login():
         parent_setup_admission='',
         login_error=None,
     )
+
+
+@app.route('/login/select-role', methods=['GET', 'POST'])
+@app.route('/login-select-role', methods=['GET', 'POST'])
+def login_select_role():
+    """After employee credentials are verified, choose which allocated role to use for this session."""
+    pending_pk = session.get('auth_pending_employee_pk')
+    if not pending_pk:
+        flash('Please sign in first.', 'info')
+        return redirect(url_for('login', role='employee'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error. Please try again later.', 'error')
+        return redirect(url_for('login', role='employee'))
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_employee_roles_schema(cursor)
+            connection.commit()
+            cursor.execute("SELECT * FROM employees WHERE id = %s", (pending_pk,))
+            employee = cursor.fetchone()
+            if not employee:
+                session.pop('auth_pending_employee_pk', None)
+                session.pop('auth_pending_remember_me', None)
+                flash('Session expired. Please sign in again.', 'error')
+                return redirect(url_for('login', role='employee'))
+
+            status = (employee.get('status') or '').lower()
+            if status not in ('active',):
+                session.pop('auth_pending_employee_pk', None)
+                session.pop('auth_pending_remember_me', None)
+                flash('Your account is not active. Please contact the school.', 'error')
+                return redirect(url_for('login', role='employee'))
+
+            allocated_roles = fetch_employee_allocated_roles(cursor, employee['id'])
+            if not allocated_roles:
+                allocated_roles = [normalize_allocated_role(employee.get('role')) or 'employee']
+
+            if request.method == 'POST':
+                chosen = normalize_allocated_role(request.form.get('selected_role', ''))
+                if chosen not in allocated_roles:
+                    return render_template(
+                        'login_select_role.html',
+                        employee_name=employee.get('full_name', ''),
+                        allocated_roles=allocated_roles,
+                        select_error='Please choose one of your assigned roles.',
+                    )
+                remember_me = bool(session.get('auth_pending_remember_me'))
+                complete_employee_login_session(employee, chosen, remember_me=remember_me)
+                flash(f'Welcome back, {employee["full_name"]}!', 'success')
+                return redirect(employee_dashboard_path())
+
+            if len(allocated_roles) == 1:
+                remember_me = bool(session.get('auth_pending_remember_me'))
+                complete_employee_login_session(employee, allocated_roles[0], remember_me=remember_me)
+                flash(f'Welcome back, {employee["full_name"]}!', 'success')
+                return redirect(employee_dashboard_path())
+
+            return render_template(
+                'login_select_role.html',
+                employee_name=employee.get('full_name', ''),
+                allocated_roles=allocated_roles,
+                select_error=None,
+            )
+    except Exception as e:
+        print(f"login_select_role error: {e}")
+        flash('An error occurred. Please try again.', 'error')
+        return redirect(url_for('login', role='employee'))
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 @app.route('/retrieve-password', methods=['GET', 'POST'])
@@ -5730,11 +8977,16 @@ def dashboard_parent():
             print(f"dashboard_parent spotlight exam: {ee}")
             spotlight_exam = None
 
+    library_student_id = (selected_student_id or '').strip()
+    if not library_student_id and spotlight_student:
+        library_student_id = (spotlight_student.get('student_id') or '').strip()
+
     return render_template('dashboards/dashboard_parent.html',
                          is_technician=is_technician,
                          current_view_role=current_view_role,
                          all_students=all_students if is_technician and viewing_as == 'parent' else [],
                          selected_student_id=selected_student_id,
+                         library_student_id=library_student_id,
                          spotlight_student=spotlight_student,
                          spotlight_fee=spotlight_fee,
                          spotlight_subjects=spotlight_subjects,
@@ -6402,6 +9654,325 @@ def _teacher_dashboard_analytics_empty():
     }
 
 
+def _curriculum_coordinator_dashboard_analytics_empty():
+    """Default shape for curriculum coordinator home dashboard charts."""
+    return {
+        'year_name': None,
+        'term_name': None,
+        'term_id': None,
+        'active_levels_count': 0,
+        'registered_subject_links': 0,
+        'students_in_session': 0,
+        'exam_rows_this_term': 0,
+        'marks_entries_this_term': 0,
+        'attendance_rows_this_term': 0,
+        'attendance_present_this_term': 0,
+        'attendance_absent_this_term': 0,
+        'attendance_rate_pct': 0.0,
+        'level_chart': {'labels': [], 'counts': []},
+        'subject_chart': {'labels': [], 'means': []},
+        'attendance_by_level_chart': {'labels': [], 'rates': []},
+    }
+
+
+def _fetch_curriculum_coordinator_dashboard_analytics(cursor):
+    """School-wide snapshot for the coordinator dashboard (current term when available)."""
+    out = _curriculum_coordinator_dashboard_analytics_empty()
+    try:
+        cursor.execute(
+            """
+            SELECT id, year_name
+            FROM academic_years
+            WHERE is_current = TRUE AND status = 'active'
+            LIMIT 1
+            """
+        )
+        year_row = cursor.fetchone()
+        current_academic_year_id = None
+        if year_row:
+            current_academic_year_id = year_row.get('id') if isinstance(year_row, dict) else year_row[0]
+            out['year_name'] = year_row.get('year_name') if isinstance(year_row, dict) else (year_row[1] if len(year_row) > 1 else None)
+
+        current_term_id = None
+        if current_academic_year_id:
+            cursor.execute(
+                """
+                SELECT id, term_name
+                FROM terms
+                WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                LIMIT 1
+                """,
+                (current_academic_year_id,),
+            )
+            term_row = cursor.fetchone()
+            if not term_row:
+                cursor.execute(
+                    """
+                    SELECT id, term_name FROM terms
+                    WHERE status = 'active' AND academic_year_id = %s
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (current_academic_year_id,),
+                )
+                term_row = cursor.fetchone()
+            if term_row:
+                current_term_id = term_row.get('id') if isinstance(term_row, dict) else term_row[0]
+                out['term_name'] = term_row.get('term_name') if isinstance(term_row, dict) else (term_row[1] if len(term_row) > 1 else None)
+
+        if not current_term_id:
+            cursor.execute(
+                """
+                SELECT t.id, t.term_name, ay.year_name
+                FROM terms t
+                JOIN academic_years ay ON t.academic_year_id = ay.id
+                WHERE t.status = 'active' AND ay.status = 'active'
+                ORDER BY ay.is_current DESC, t.is_current DESC, t.id DESC
+                LIMIT 1
+                """
+            )
+            any_term = cursor.fetchone()
+            if any_term:
+                if isinstance(any_term, dict):
+                    current_term_id = any_term.get('id')
+                    out['term_name'] = out['term_name'] or any_term.get('term_name')
+                    out['year_name'] = out['year_name'] or any_term.get('year_name')
+                else:
+                    current_term_id = any_term[0] if len(any_term) > 0 else None
+                    out['term_name'] = out['term_name'] or (any_term[1] if len(any_term) > 1 else None)
+                    out['year_name'] = out['year_name'] or (any_term[2] if len(any_term) > 2 else None)
+
+        if current_term_id is not None:
+            out['term_id'] = int(current_term_id)
+
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c FROM academic_levels
+                WHERE COALESCE(level_status, 'active') = 'active'
+                """
+            )
+            r = cursor.fetchone()
+            if r:
+                out['active_levels_count'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+        except Exception:
+            pass
+
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM subject_academic_levels sal
+                INNER JOIN academic_levels al ON sal.academic_level_id = al.id
+                INNER JOIN subjects s ON sal.subject_id = s.id
+                WHERE COALESCE(al.level_status, 'active') = 'active'
+                  AND COALESCE(s.status, 'active') = 'active'
+                """
+            )
+            r = cursor.fetchone()
+            if r:
+                out['registered_subject_links'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+        except Exception:
+            pass
+
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c FROM students
+                WHERE LOWER(TRIM(COALESCE(status, ''))) IN ('in session', 'active')
+                """
+            )
+            r = cursor.fetchone()
+            if r:
+                out['students_in_session'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+        except Exception:
+            pass
+
+        if current_term_id is not None:
+            try:
+                cursor.execute(
+                    "SELECT COUNT(*) AS c FROM exams WHERE term_id = %s",
+                    (current_term_id,),
+                )
+                r = cursor.fetchone()
+                if r:
+                    out['exam_rows_this_term'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+            except Exception:
+                pass
+            try:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS c
+                    FROM student_marks sm
+                    INNER JOIN exams e ON sm.exam_id = e.id
+                    WHERE e.term_id = %s AND sm.marks IS NOT NULL
+                    """,
+                    (current_term_id,),
+                )
+                r = cursor.fetchone()
+                if r:
+                    out['marks_entries_this_term'] = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+            except Exception:
+                pass
+
+        try:
+            cursor.execute(
+                """
+                SELECT al.level_name AS ln, COUNT(*) AS c
+                FROM students st
+                INNER JOIN academic_levels al
+                  ON TRIM(LOWER(st.current_grade)) = TRIM(LOWER(al.level_name))
+                WHERE LOWER(TRIM(COALESCE(st.status, ''))) IN ('in session', 'active')
+                  AND COALESCE(al.level_status, 'active') = 'active'
+                GROUP BY al.id, al.level_name
+                ORDER BY al.level_name ASC
+                """
+            )
+            for row in cursor.fetchall() or []:
+                ln = row.get('ln') if isinstance(row, dict) else (row[0] if row else '')
+                cv = row.get('c') if isinstance(row, dict) else (row[1] if len(row) > 1 else 0)
+                if ln:
+                    out['level_chart']['labels'].append(str(ln).strip()[:48])
+                    out['level_chart']['counts'].append(int(cv or 0))
+        except Exception:
+            pass
+
+        if not out['level_chart']['labels']:
+            try:
+                cursor.execute(
+                    """
+                    SELECT TRIM(st.current_grade) AS g, COUNT(*) AS c
+                    FROM students st
+                    WHERE LOWER(TRIM(COALESCE(st.status, ''))) IN ('in session', 'active')
+                      AND TRIM(COALESCE(st.current_grade, '')) <> ''
+                    GROUP BY TRIM(st.current_grade)
+                    ORDER BY c DESC, g ASC
+                    LIMIT 24
+                    """
+                )
+                for row in cursor.fetchall() or []:
+                    g = row.get('g') if isinstance(row, dict) else (row[0] if row else '')
+                    cv = row.get('c') if isinstance(row, dict) else (row[1] if len(row) > 1 else 0)
+                    if g:
+                        out['level_chart']['labels'].append(str(g).strip()[:48])
+                        out['level_chart']['counts'].append(int(cv or 0))
+            except Exception:
+                pass
+
+        if current_term_id is not None:
+            try:
+                ensure_subject_exam_total_marks_column(cursor)
+                cursor.execute(
+                    """
+                    SELECT sub.subject_name AS sn,
+                           AVG((100 * CAST(sm.marks AS DECIMAL(16,8)))
+                               / COALESCE(NULLIF(sub.exam_total_marks, 0), 100)) AS mean_m,
+                           COUNT(*) AS cnt
+                    FROM student_marks sm
+                    INNER JOIN exams e ON sm.exam_id = e.id AND e.term_id = %s
+                    INNER JOIN subjects sub ON sm.subject_id = sub.id
+                    INNER JOIN students st ON st.student_id = sm.student_id
+                    WHERE sm.marks IS NOT NULL
+                      AND LOWER(TRIM(COALESCE(st.status, ''))) IN ('in session', 'active')
+                    GROUP BY sub.id, sub.subject_name
+                    ORDER BY cnt DESC, sn ASC
+                    LIMIT 12
+                    """,
+                    (current_term_id,),
+                )
+                for row in cursor.fetchall() or []:
+                    sn = row.get('sn') if isinstance(row, dict) else (row[0] if row else '')
+                    mean_m = row.get('mean_m') if isinstance(row, dict) else (row[1] if len(row) > 1 else None)
+                    if not sn:
+                        continue
+                    try:
+                        mf = round(float(mean_m), 2) if mean_m is not None else 0.0
+                    except (TypeError, ValueError):
+                        mf = 0.0
+                    out['subject_chart']['labels'].append(str(sn).strip()[:40])
+                    out['subject_chart']['means'].append(mf)
+            except Exception:
+                pass
+
+            try:
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS c, COALESCE(SUM(sar.present), 0) AS pr
+                    FROM student_attendance_records sar
+                    INNER JOIN students st ON st.student_id = sar.student_id
+                    WHERE sar.term_id = %s
+                      AND LOWER(TRIM(COALESCE(st.status, ''))) IN ('in session', 'active')
+                    """,
+                    (int(current_term_id),),
+                )
+                r = cursor.fetchone()
+                if r:
+                    c = int((r.get('c') if isinstance(r, dict) else r[0]) or 0)
+                    pr = int((r.get('pr') if isinstance(r, dict) else r[1]) or 0)
+                    out['attendance_rows_this_term'] = c
+                    out['attendance_present_this_term'] = pr
+                    out['attendance_absent_this_term'] = max(0, c - pr)
+                    out['attendance_rate_pct'] = round(100.0 * pr / c, 1) if c else 0.0
+            except Exception:
+                pass
+
+            try:
+                cursor.execute(
+                    """
+                    SELECT al.level_name AS ln, COUNT(*) AS tot, COALESCE(SUM(sar.present), 0) AS pr
+                    FROM student_attendance_records sar
+                    INNER JOIN academic_levels al ON sar.academic_level_id = al.id
+                    INNER JOIN students st ON st.student_id = sar.student_id
+                    WHERE sar.term_id = %s
+                      AND LOWER(TRIM(COALESCE(st.status, ''))) IN ('in session', 'active')
+                    GROUP BY al.id, al.level_name
+                    ORDER BY al.level_name ASC
+                    """,
+                    (int(current_term_id),),
+                )
+                for row in cursor.fetchall() or []:
+                    ln = row.get('ln') if isinstance(row, dict) else (row[0] if row else '')
+                    tot = int((row.get('tot') if isinstance(row, dict) else row[1]) or 0)
+                    pr = int((row.get('pr') if isinstance(row, dict) else row[2]) or 0)
+                    if ln and tot > 0:
+                        pct = round(100.0 * pr / tot, 1)
+                        out['attendance_by_level_chart']['labels'].append(str(ln).strip()[:48])
+                        out['attendance_by_level_chart']['rates'].append(pct)
+            except Exception:
+                pass
+    except Exception as e:
+        import traceback
+        print(f"Error computing curriculum coordinator dashboard analytics: {e}")
+        print(traceback.format_exc())
+        return _curriculum_coordinator_dashboard_analytics_empty()
+    return out
+
+
+def ensure_student_attendance_records_table(cursor):
+    """Daily student attendance (per class, term, date)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_attendance_records (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                student_id VARCHAR(20) NOT NULL,
+                attendance_date DATE NOT NULL,
+                academic_level_id INT NOT NULL,
+                term_id INT NOT NULL,
+                present TINYINT(1) NOT NULL DEFAULT 1,
+                recorded_by_employee_id INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_student_date_level_term (
+                    student_id, attendance_date, academic_level_id, term_id
+                ),
+                INDEX idx_student_date (student_id, attendance_date),
+                INDEX idx_level_term_date (academic_level_id, term_id, attendance_date),
+                INDEX idx_sar_term_recorded (term_id, recorded_by_employee_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+    except Exception as e:
+        print(f"ensure_student_attendance_records_table: {e}")
+
+
 def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
     """KPIs for the teacher home dashboard for the current term (marks, attendance, exams)."""
     empty = _teacher_dashboard_analytics_empty()
@@ -6414,6 +9985,7 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
         return empty
     out = dict(empty)
     try:
+        ensure_student_attendance_records_table(cursor)
         ensure_subject_exam_total_marks_column(cursor)
         cursor.execute(
             """
@@ -6502,16 +10074,21 @@ def _compute_teacher_dashboard_analytics(cursor, teacher_id, term_id):
                 if rr:
                     out['attendance_present_cohort'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
 
-        cursor.execute(
-            """
-            SELECT COUNT(*) AS c FROM student_attendance_records
-            WHERE term_id = %s AND recorded_by_employee_id = %s
-            """,
-            (term_id, teacher_id),
-        )
-        rr = cursor.fetchone()
-        if rr:
-            out['attendance_entries_you_recorded'] = int((rr.get('c') if isinstance(rr, dict) else rr[0]) or 0)
+        try:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS c FROM student_attendance_records
+                WHERE term_id = %s AND recorded_by_employee_id = %s
+                """,
+                (term_id, teacher_id),
+            )
+            rr = cursor.fetchone()
+            if rr:
+                out['attendance_entries_you_recorded'] = int(
+                    (rr.get('c') if isinstance(rr, dict) else rr[0]) or 0
+                )
+        except Exception as att_rec_e:
+            print(f"Teacher dashboard attendance_entries skipped: {att_rec_e}")
 
         cursor.execute(
             """
@@ -6828,8 +10405,10 @@ def dashboard_employee():
     is_technician = user_role == 'technician'
     current_view_role = session.get('viewing_as_role', user_role)
     current_employee_role = session.get('viewing_as_employee_role', user_role if user_role in EMPLOYEE_SUB_ROLES else 'employee')
-    normalized_current_role = (current_employee_role or '').lower()
-    is_teacher_view = normalized_current_role in ('teacher', 'teachers')
+    dashboard_content_role = normalize_employee_dashboard_content_role(
+        user_role, is_technician, session.get('viewing_as_employee_role')
+    )
+    is_teacher_view = dashboard_content_role in ('teacher', 'teachers')
     
     # List of all employee roles for technician to view
     employee_roles_list = list(EMPLOYEE_SUB_ROLES)
@@ -6842,6 +10421,26 @@ def dashboard_employee():
     teacher_exam_timetable = []
     teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
     timetable_days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+    is_coordinator_view = dashboard_content_role == 'curriculum coordinator'
+    coordinator_dashboard = _curriculum_coordinator_dashboard_analytics_empty()
+    coordinator_dashboard_name = None
+    if isinstance(employee_data, dict):
+        coordinator_dashboard_name = employee_data.get('full_name') or employee_data.get('name')
+    if not coordinator_dashboard_name:
+        coordinator_dashboard_name = session.get('full_name')
+
+    if is_coordinator_view:
+        cc_conn = get_db_connection()
+        if cc_conn:
+            try:
+                with cc_conn.cursor() as cursor:
+                    coordinator_dashboard = _fetch_curriculum_coordinator_dashboard_analytics(cursor)
+            except Exception as ce:
+                print(f"Curriculum coordinator dashboard load: {ce}")
+                coordinator_dashboard = _curriculum_coordinator_dashboard_analytics_empty()
+            finally:
+                cc_conn.close()
 
     if is_teacher_view:
         sess_teacher_ref = session.get('viewing_as_employee_id') if is_technician else session.get('user_id')
@@ -7104,6 +10703,7 @@ def dashboard_employee():
                          is_technician=is_technician,
                          current_view_role=current_view_role,
                          current_employee_role=current_employee_role,
+                         dashboard_content_role=dashboard_content_role,
                          employee_roles_list=employee_roles_list,
                          teacher_dashboard_name=teacher_dashboard_name,
                          teacher_dashboard_term=teacher_dashboard_term,
@@ -7112,7 +10712,9 @@ def dashboard_employee():
                          teacher_timetable_grid=teacher_timetable_grid,
                          timetable_days_order=timetable_days_order,
                          teacher_exam_timetable=teacher_exam_timetable,
-                         teacher_dashboard_analytics=teacher_dashboard_analytics)
+                         teacher_dashboard_analytics=teacher_dashboard_analytics,
+                         coordinator_dashboard=coordinator_dashboard,
+                         coordinator_dashboard_name=coordinator_dashboard_name)
 
 
 @app.route('/dashboard/employee/tpad')
@@ -7737,6 +11339,294 @@ def teacher_my_classes():
                          timetable_data=timetable_data,
                          assignments=assignments,
                          days_order=days_order)
+
+
+@app.route('/dashboard/employee/class-books')
+@app.route('/teachers/class-books')
+@login_required
+def teacher_class_books():
+    """Teacher: classes allocated to them with library books to distribute."""
+    redir = _teacher_library_guard()
+    if redir:
+        return redir
+    teacher_id = _teacher_library_resolve_employee_id()
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    classes = []
+    teacher_name = None
+    if not teacher_id:
+        if is_technician:
+            flash('Select a teacher profile (View as) to manage class books.', 'info')
+        else:
+            flash('Could not resolve your teacher profile. Please sign out and sign in again.', 'error')
+        return render_template(
+            'dashboards/teacher_class_books.html',
+            role=user_role,
+            is_technician=is_technician,
+            teacher_name=None,
+            classes=[],
+        )
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_library_books_table(cursor)
+                connection.commit()
+                cursor.execute(
+                    "SELECT UPPER(TRIM(full_name)) AS full_name FROM employees WHERE id = %s",
+                    (teacher_id,),
+                )
+                tn = cursor.fetchone()
+                if tn:
+                    teacher_name = tn.get('full_name') if isinstance(tn, dict) else tn[0]
+                classes = _teacher_library_classes_summary(cursor, teacher_id)
+        except Exception as e:
+            print(f"teacher_class_books: {e}")
+            flash('Could not load your classes.', 'error')
+        finally:
+            connection.close()
+    return render_template(
+        'dashboards/teacher_class_books.html',
+        role=user_role,
+        is_technician=is_technician,
+        teacher_name=teacher_name,
+        classes=classes,
+    )
+
+
+@app.route('/dashboard/employee/class-books/<int:level_id>')
+@app.route('/teachers/class-books/<int:level_id>')
+@login_required
+def teacher_class_books_level(level_id):
+    """Teacher: books and copy references for one class."""
+    redir = _teacher_library_guard()
+    if redir:
+        return redir
+    teacher_id = _teacher_library_resolve_employee_id()
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    level_info = None
+    books = []
+    book_rows = []
+    teacher_name = None
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_library_books_table(cursor)
+                connection.commit()
+                cursor.execute(
+                    "SELECT UPPER(TRIM(full_name)) AS full_name FROM employees WHERE id = %s",
+                    (teacher_id,),
+                )
+                tn = cursor.fetchone()
+                if tn:
+                    teacher_name = tn.get('full_name') if isinstance(tn, dict) else tn[0]
+                if not teacher_id:
+                    flash('Could not identify your teacher account. Sign in again.', 'error')
+                    return redirect(employee_dash_url('class-books'))
+                if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+                    flash('You are not assigned to this class.', 'error')
+                    return redirect(employee_dash_url('class-books'))
+                cursor.execute(
+                    """
+                    SELECT id, UPPER(TRIM(level_category)) AS level_category,
+                           UPPER(TRIM(level_name)) AS level_name
+                    FROM academic_levels WHERE id = %s
+                    """,
+                    (level_id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    flash('Class not found.', 'error')
+                    return redirect(employee_dash_url('class-books'))
+                if isinstance(row, dict):
+                    level_info = {
+                        'id': row.get('id'),
+                        'level_category': row.get('level_category') or '',
+                        'level_name': row.get('level_name') or '',
+                    }
+                else:
+                    level_info = {
+                        'id': row[0],
+                        'level_category': row[1] or '',
+                        'level_name': row[2] or '',
+                    }
+                books = _teacher_library_books_for_level(cursor, teacher_id, level_id)
+                book_rows = _teacher_library_rows_from_books(books, cursor, level_id)
+        except Exception as e:
+            print(f"teacher_class_books_level: {e}")
+            flash('Could not load books for this class.', 'error')
+            return redirect(employee_dash_url('class-books'))
+        finally:
+            connection.close()
+    return render_template(
+        'dashboards/teacher_class_books_level.html',
+        role=user_role,
+        is_technician=is_technician,
+        level=level_info,
+        books=books,
+        book_rows=book_rows,
+        level_id=level_id,
+        teacher_name=teacher_name,
+    )
+
+
+@app.route('/dashboard/employee/class-books/lookup-student', methods=['GET'])
+@app.route('/teachers/class-books/lookup-student', methods=['GET'])
+@login_required
+def teacher_class_books_lookup_student():
+    """AJAX: verify student ID belongs to the selected class."""
+    redir = _teacher_library_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    level_id = request.args.get('academic_level_id', type=int)
+    student_id = (request.args.get('student_id') or '').strip()
+    copy_code = (request.args.get('copy_code') or '').strip()
+    subject_id = request.args.get('subject_id', type=int)
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not teacher_id:
+                return jsonify({'ok': False, 'message': 'Could not identify your teacher account.'}), 403
+            if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class.'}), 403
+            if not subject_id and copy_code:
+                subject_id = _teacher_library_subject_id_for_copy(cursor, copy_code, level_id)
+            student, err = _teacher_library_lookup_student_for_level(
+                cursor, student_id, level_id, subject_id=subject_id,
+            )
+            if err:
+                return jsonify({'ok': False, 'message': err}), 400
+            return jsonify({'ok': True, 'student': student})
+    except Exception as e:
+        print(f"teacher_class_books_lookup_student: {e}")
+        return jsonify({'ok': False, 'message': 'Could not look up student.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/class-books/search-students', methods=['GET'])
+@app.route('/teachers/class-books/search-students', methods=['GET'])
+@login_required
+def teacher_class_books_search_students():
+    """Live search: students in this class by ID or name."""
+    redir = _teacher_library_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    level_id = request.args.get('academic_level_id', type=int)
+    q = (request.args.get('q') or request.args.get('student_id') or '').strip()
+    copy_code = (request.args.get('copy_code') or '').strip()
+    subject_id = request.args.get('subject_id', type=int)
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+    if len(q) < 1:
+        return jsonify({'ok': True, 'students': []})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            if not teacher_id:
+                return jsonify({'ok': False, 'message': 'Could not identify your teacher account.'}), 403
+            if not _teacher_library_teacher_can_access_level(cursor, teacher_id, level_id):
+                return jsonify({'ok': False, 'message': 'You are not assigned to this class.'}), 403
+            if not subject_id and copy_code:
+                subject_id = _teacher_library_subject_id_for_copy(cursor, copy_code, level_id)
+            students = _teacher_library_search_students_for_level(
+                cursor, level_id, q, limit=25, subject_id=subject_id,
+            )
+            hint = None
+            if not students:
+                hint = _teacher_library_student_search_hint(cursor, level_id, q)
+            return jsonify({
+                'ok': True,
+                'students': students,
+                'count': len(students),
+                'level_name': _teacher_library_level_name(cursor, level_id) or '',
+                'hint': hint,
+            })
+    except Exception as e:
+        print(f"teacher_class_books_search_students: {e}")
+        return jsonify({'ok': False, 'message': 'Could not search students.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/class-books/issue', methods=['POST'])
+@app.route('/teachers/class-books/issue', methods=['POST'])
+@login_required
+def teacher_class_books_issue():
+    """Issue a library copy to a student by copy reference + student ID."""
+    redir = _teacher_library_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    data = request.get_json(silent=True) or {}
+    level_id = data.get('academic_level_id') or request.form.get('academic_level_id', type=int)
+    copy_code = data.get('copy_code') or request.form.get('copy_code') or ''
+    student_id = data.get('student_id') or request.form.get('student_id') or ''
+    notes = data.get('notes') or request.form.get('notes') or ''
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Class is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            ok, result = _teacher_library_issue_copy_to_student(
+                cursor, teacher_id, level_id, copy_code, student_id, notes=notes,
+            )
+            if not ok:
+                return jsonify({'ok': False, 'message': result}), 400
+            connection.commit()
+            return jsonify({'ok': True, 'message': 'Book issued successfully.', 'issue': result})
+    except Exception as e:
+        connection.rollback()
+        print(f"teacher_class_books_issue: {e}")
+        return jsonify({'ok': False, 'message': 'Could not issue book.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/class-books/return', methods=['POST'])
+@app.route('/teachers/class-books/return', methods=['POST'])
+@login_required
+def teacher_class_books_return():
+    """Return a previously issued copy."""
+    redir = _teacher_library_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    teacher_id = _teacher_library_resolve_employee_id()
+    data = request.get_json(silent=True) or {}
+    issue_id = data.get('issue_id') or request.form.get('issue_id', type=int)
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            ok, msg = _teacher_library_return_copy(cursor, teacher_id, issue_id)
+            if not ok:
+                return jsonify({'ok': False, 'message': msg}), 400
+            connection.commit()
+            return jsonify({'ok': True, 'message': msg})
+    except Exception as e:
+        connection.rollback()
+        print(f"teacher_class_books_return: {e}")
+        return jsonify({'ok': False, 'message': 'Could not return book.'}), 500
+    finally:
+        connection.close()
+
 
 # Finance Overview Route
 @app.route('/dashboard/employee/finance-overview')
@@ -11755,6 +15645,7 @@ def staff_and_salaries():
     active_count = 0
     pending_count = 0
     suspended_count = 0
+    roles_count = 0
     roles_set = set()
     filter_info = {'type': filter_type, 'month': filter_month, 'year': filter_year}
     
@@ -13140,6 +17031,7 @@ def staff_management():
                     ORDER BY e.created_at DESC
                 """)
                 employees = cursor.fetchall()
+                attach_allocated_roles_to_employees(cursor, employees)
         except Exception as e:
             print(f"Error fetching employees: {e}")
             flash('Error loading employees. Please try again.', 'error')
@@ -13154,7 +17046,8 @@ def staff_management():
                          employees=employees,
                          can_add=can_add,
                          can_edit=can_edit,
-                         can_delete=can_delete)
+                         can_delete=can_delete,
+                         employee_role_options=list(EMPLOYEE_SUB_ROLES))
 
 @app.route('/dashboard/employee/teacher-management')
 @login_required
@@ -13184,15 +17077,21 @@ def teacher_management():
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_employee_roles_schema(cursor)
                 cursor.execute(f"""
                     SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
                            e.profile_picture, e.created_at,
                            {_employee_staff_identity_sql('e')} AS staff_employee_number
                     FROM employees e
-                    WHERE e.role = 'teachers' OR e.role = 'teacher'
+                    WHERE e.role IN ('teachers', 'teacher')
+                       OR EXISTS (
+                           SELECT 1 FROM employee_roles er
+                           WHERE er.employee_id = e.id AND er.role IN ('teachers', 'teacher')
+                       )
                     ORDER BY e.full_name ASC
                 """)
                 teachers = cursor.fetchall()
+                attach_allocated_roles_to_employees(cursor, teachers)
         except Exception as e:
             print(f"Error fetching teachers: {e}")
             flash('Error loading teachers. Please try again.', 'error')
@@ -13209,7 +17108,8 @@ def teacher_management():
                          can_edit=can_edit,
                          can_delete=can_delete,
                          page_title='Teacher Management',
-                         filter_role='teachers')
+                         filter_role='teachers',
+                         employee_role_options=list(EMPLOYEE_SUB_ROLES))
 
 @app.route('/assign-roles-approve')
 @login_required
@@ -13236,6 +17136,7 @@ def assign_roles_approve():
                     ORDER BY e.created_at DESC
                 """)
                 employees = cursor.fetchall()
+                attach_allocated_roles_to_employees(cursor, employees)
         except Exception as e:
             print(f"Error fetching employees: {e}")
             flash('Error loading employees. Please try again.', 'error')
@@ -13246,22 +17147,27 @@ def assign_roles_approve():
                 except:
                     pass
     
-    return render_template('dashboards/assign_roles_approve.html', employees=employees)
+    return render_template(
+        'dashboards/assign_roles_approve.html',
+        employees=employees,
+        employee_role_options=list(EMPLOYEE_SUB_ROLES),
+    )
 
 @app.route('/approve-employee/<int:employee_id>', methods=['POST'])
 @login_required
 def approve_employee(employee_id):
-    """Approve employee, assign role, and send email"""
+    """Approve employee, assign role(s), and send email"""
     user_role = session.get('role', '').lower()
     
     if user_role not in EMPLOYEE_SUB_ROLES:
         return jsonify({'success': False, 'message': 'You do not have permission to approve employees.'}), 403
     
     data = request.get_json(silent=True) or {}
-    role = data.get('role', '').strip() if data else request.form.get('role', '').strip()
+    roles = parse_allocated_roles_payload(data)
     
-    if not role:
-        return jsonify({'success': False, 'message': 'Please select a role for the employee.'}), 400
+    if not roles:
+        return jsonify({'success': False, 'message': 'Please select at least one role for the employee.'}), 400
+    primary_role = roles[0]
     
     connection = get_db_connection()
     if not connection:
@@ -13284,15 +17190,15 @@ def approve_employee(employee_id):
             if employee.get('status') == 'active':
                 return jsonify({'success': False, 'message': f'Employee {employee.get("full_name")} is already active.'}), 400
             
-            # Update employee status to 'active' and assign role
+            # Update employee status to active and sync allocated roles
             cursor.execute("""
                 UPDATE employees 
-                SET status = 'active', role = %s, updated_at = CURRENT_TIMESTAMP
+                SET status = 'active', updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-            """, (role, employee_id))
+            """, (employee_id,))
+            sync_employee_allocated_roles(cursor, employee_id, roles, primary_role=primary_role)
 
-            role_lc = (role or '').strip().lower()
-            if role_lc in ('teachers', 'teacher'):
+            if 'teachers' in roles:
                 raw_staff = data.get('staff_employee_number')
                 staff_num = str(raw_staff).strip() if raw_staff is not None else ''
                 if not staff_num:
@@ -13321,11 +17227,12 @@ def approve_employee(employee_id):
             connection.commit()
             
             # Send approval email with role information
+            roles_label = ', '.join(r.title() for r in roles)
             email_sent = send_employee_approval_email(
                 employee.get('email'),
                 employee.get('full_name'),
                 employee.get('employee_id'),
-                role
+                roles_label,
             )
             
             if not email_sent:
@@ -13333,7 +17240,10 @@ def approve_employee(employee_id):
             
             return jsonify({
                 'success': True, 
-                'message': f'Employee {employee.get("full_name")} has been approved and assigned the role of {role.title()}. Email notification sent.'
+                'message': (
+                    f'Employee {employee.get("full_name")} has been approved with role(s): {roles_label}. '
+                    'Email notification sent.'
+                ),
             })
             
     except Exception as e:
@@ -13364,7 +17274,7 @@ def update_employee(employee_id):
     email = str(data.get('email', '')).strip().lower()
     phone = str(data.get('phone', '')).strip()
     id_number = str(data.get('id_number', '')).strip().upper()
-    role = str(data.get('role', '')).strip()
+    roles = parse_allocated_roles_payload(data)
     new_password = str(data.get('new_password', ''))
     staff_employee_number_raw = data.get('staff_employee_number')
     staff_num = None
@@ -13373,8 +17283,8 @@ def update_employee(employee_id):
         if not staff_num:
             return jsonify({'success': False, 'message': 'Staff number cannot be empty.'}), 400
     
-    if not all([full_name, email, phone, role]):
-        return jsonify({'success': False, 'message': 'Please fill in all required fields.'}), 400
+    if not all([full_name, email, phone]) or not roles:
+        return jsonify({'success': False, 'message': 'Please fill in all required fields and assign at least one role.'}), 400
     if new_password and len(new_password.strip()) < 6:
         return jsonify({'success': False, 'message': 'New password must be at least 6 characters long.'}), 400
     
@@ -13393,14 +17303,16 @@ def update_employee(employee_id):
             cursor.execute("SELECT id FROM employees WHERE email = %s AND id != %s", (email, employee_id))
             if cursor.fetchone():
                 return jsonify({'success': False, 'message': 'Email is already in use by another employee.'}), 400
+
+            primary_role = roles[0]
             
             if new_password.strip():
                 password_hash = generate_password_hash(new_password.strip())
                 cursor.execute("""
                     UPDATE employees 
-                    SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, password_hash = %s, updated_at = CURRENT_TIMESTAMP
+                    SET full_name = %s, email = %s, phone = %s, id_number = %s, password_hash = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (full_name, email, phone, id_number, role, password_hash, employee_id))
+                """, (full_name, email, phone, id_number, password_hash, employee_id))
 
                 # Verify hash is stored and can be used for login before commit.
                 cursor.execute("SELECT password_hash FROM employees WHERE id = %s", (employee_id,))
@@ -13416,9 +17328,11 @@ def update_employee(employee_id):
             else:
                 cursor.execute("""
                     UPDATE employees 
-                    SET full_name = %s, email = %s, phone = %s, id_number = %s, role = %s, updated_at = CURRENT_TIMESTAMP
+                    SET full_name = %s, email = %s, phone = %s, id_number = %s, updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (full_name, email, phone, id_number, role, employee_id))
+                """, (full_name, email, phone, id_number, employee_id))
+
+            sync_employee_allocated_roles(cursor, employee_id, roles, primary_role=primary_role)
 
             if staff_num is not None:
                 cursor.execute(
@@ -13563,6 +17477,13 @@ def get_employee(employee_id):
             
             if not employee:
                 return jsonify({'success': False, 'message': 'Employee not found.'}), 404
+
+            allocated_roles = fetch_employee_allocated_roles(cursor, employee_id)
+            if not allocated_roles:
+                legacy = normalize_allocated_role(employee.get('role'))
+                allocated_roles = [legacy] if legacy else ['employee']
+            employee['roles'] = allocated_roles
+            employee['role'] = allocated_roles[0]
             
             return jsonify({'success': True, 'employee': employee})
             
@@ -14158,6 +18079,128 @@ def _coerce_date_only(val):
         return None
 
 
+def _register_aggregate_analytics_empty():
+    """Default shape for staff attendance register aggregate analytics (filtered grid)."""
+    return {
+        'has_data': False,
+        'total_records': 0,
+        'present_count': 0,
+        'absent_count': 0,
+        'overall_pct': 0.0,
+        'by_level': [],
+        'by_day': [],
+    }
+
+
+def _attendance_register_row_present(val):
+    if val is None:
+        return False
+    if isinstance(val, bool):
+        return val
+    try:
+        return int(val) != 0
+    except (TypeError, ValueError):
+        return str(val).lower() in ('true', '1', 'yes', 't')
+
+
+def _compute_register_aggregate_analytics(cursor, term_id, selected_week_days, students_by_level):
+    """Sum saved attendance rows for visible students and dates in the current register view."""
+    out = _register_aggregate_analytics_empty()
+    if not term_id or not selected_week_days:
+        return out
+    date_list = []
+    date_label = {}
+    for d in selected_week_days:
+        ds = d.get('date_str')
+        if not ds:
+            continue
+        date_list.append(ds)
+        date_label[ds] = d.get('label') or ds
+    if not date_list:
+        return out
+    visible = []
+    sid_to_level = {}
+    for lg in students_by_level or []:
+        lname = str(lg.get('level_name') or '').strip() or 'Class'
+        for st in (lg.get('students') or []):
+            sid = st.get('student_id')
+            if sid is None:
+                continue
+            s = str(sid).strip()
+            if not s:
+                continue
+            visible.append(s)
+            sid_to_level[s] = lname
+    vis_unique = list(dict.fromkeys(visible))
+    if not vis_unique:
+        return out
+    ph_d = ','.join(['%s'] * len(date_list))
+    ph_s = ','.join(['%s'] * len(vis_unique))
+    cursor.execute(
+        f"""
+        SELECT sar.student_id, sar.attendance_date, sar.present
+        FROM student_attendance_records sar
+        WHERE sar.term_id = %s
+          AND sar.attendance_date IN ({ph_d})
+          AND sar.student_id IN ({ph_s})
+        """,
+        tuple([term_id] + date_list + vis_unique),
+    )
+    rows = cursor.fetchall() or []
+    if not rows:
+        return out
+    by_level = defaultdict(lambda: {'present': 0, 'total': 0})
+    by_day = defaultdict(lambda: {'present': 0, 'total': 0})
+    present_total = 0
+    for r in rows:
+        sid = str((r.get('student_id') if isinstance(r, dict) else r[0]) or '').strip()
+        dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
+        pr = r.get('present') if isinstance(r, dict) else r[2]
+        ds = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)[:10]
+        is_pr = _attendance_register_row_present(pr)
+        lvl = sid_to_level.get(sid, 'Unknown')
+        by_level[lvl]['total'] += 1
+        if is_pr:
+            by_level[lvl]['present'] += 1
+            present_total += 1
+        by_day[ds]['total'] += 1
+        if is_pr:
+            by_day[ds]['present'] += 1
+    n = len(rows)
+    out['has_data'] = True
+    out['total_records'] = n
+    out['present_count'] = present_total
+    out['absent_count'] = n - present_total
+    out['overall_pct'] = round(100.0 * present_total / n, 1) if n else 0.0
+    level_rows = []
+    for ln, agg in sorted(by_level.items(), key=lambda x: (x[0] or '').lower()):
+        t = agg['total']
+        p = agg['present']
+        level_rows.append({
+            'level_name': ln,
+            'present': p,
+            'absent': t - p,
+            'total': t,
+            'pct': round(100.0 * p / t, 1) if t else 0.0,
+        })
+    out['by_level'] = level_rows
+    day_rows = []
+    for ds in date_list:
+        agg = by_day.get(ds, {'present': 0, 'total': 0})
+        t = agg['total']
+        p = agg['present']
+        day_rows.append({
+            'date_str': ds,
+            'label': date_label.get(ds, ds),
+            'present': p,
+            'absent': t - p,
+            'total': t,
+            'pct': round(100.0 * p / t, 1) if t else None,
+        })
+    out['by_day'] = day_rows
+    return out
+
+
 def _attendance_register_get_context(students_by_level, is_teacher, req_args):
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
@@ -14184,6 +18227,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
     attendance_records = {}
     attendance_summary = {}
     schedule_days_list = []
+    register_aggregate_analytics = _register_aggregate_analytics_empty()
 
     connection = get_db_connection()
     if connection:
@@ -14409,6 +18453,9 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
                         else:
                             cat = 'none'
                         attendance_summary[sid] = {'present': pres, 'total': tot, 'pct': pct, 'category': cat}
+                    register_aggregate_analytics = _compute_register_aggregate_analytics(
+                        cursor, term_id, selected_week_days, students_by_level
+                    )
         except Exception as e:
             print(f"Error in _attendance_register_get_context: {e}")
         finally:
@@ -14446,6 +18493,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
         'schedule_days_list': schedule_days_list,
         'attendance_records': attendance_records,
         'attendance_summary': attendance_summary,
+        'register_aggregate_analytics': register_aggregate_analytics,
         'calendar_date_min': calendar_date_min,
         'calendar_date_max': calendar_date_max,
         'calendar_month_min': calendar_month_min,
@@ -15018,6 +19066,142 @@ def _parent_dashboard_auth():
         'is_technician': is_technician,
         'current_view_role': current_view_role,
     }
+
+
+def _parent_list_linked_children(cursor, parent_email):
+    """Basic child rows for parent portal list pages."""
+    children = []
+    pem = (parent_email or '').strip()
+    if not pem:
+        return children
+    try:
+        cursor.execute(
+            """
+            SELECT DISTINCT s.student_id, s.full_name, s.current_grade
+            FROM students s
+            INNER JOIN parents p ON s.student_id = p.student_id
+            WHERE p.email = %s AND s.status = 'in session'
+            ORDER BY s.full_name ASC
+            """,
+            (pem,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                children.append({
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'full_name': (row.get('full_name') or '').strip(),
+                    'current_grade': (row.get('current_grade') or '').strip(),
+                })
+            else:
+                children.append({
+                    'student_id': (row[0] or '').strip(),
+                    'full_name': (row[1] or '').strip(),
+                    'current_grade': (row[2] or '').strip(),
+                })
+    except Exception as e:
+        print(f"_parent_list_linked_children: {e}")
+    return children
+
+
+def _parent_may_view_student(cursor, parent_email, student_id):
+    """Return (allowed, sibling_count) for a parent viewing one child."""
+    pem = (parent_email or '').strip()
+    sid = (student_id or '').strip()
+    if not pem or not sid:
+        return False, 0
+    sibling_count = 0
+    allowed = False
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(DISTINCT s.student_id) AS cnt
+            FROM students s
+            INNER JOIN parents p ON s.student_id = p.student_id
+            WHERE p.email = %s AND s.status = 'in session'
+            """,
+            (pem,),
+        )
+        r = cursor.fetchone()
+        sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+
+        cursor.execute(
+            """
+            SELECT 1 FROM students s
+            INNER JOIN parents p ON s.student_id = p.student_id
+            WHERE p.email = %s
+              AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s))
+              AND s.status = 'in session'
+            LIMIT 1
+            """,
+            (pem, sid),
+        )
+        allowed = cursor.fetchone() is not None
+    except Exception as e:
+        print(f"_parent_may_view_student: {e}")
+    return allowed, sibling_count
+
+
+def _parent_student_library_books(cursor, student_id):
+    """Library copies issued to a student (active and returned)."""
+    ensure_library_book_student_issues_table(cursor)
+    books = []
+    sid = (student_id or '').strip()
+    if not sid:
+        return books
+    try:
+        cursor.execute(
+            """
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.status,
+                si.issued_at,
+                si.returned_at,
+                UPPER(TRIM(lb.book_name)) AS book_name,
+                UPPER(TRIM(COALESCE(s.subject_name, ''))) AS subject_name,
+                UPPER(TRIM(COALESCE(e.full_name, ''))) AS teacher_name,
+                UPPER(TRIM(COALESCE(al.level_name, ''))) AS level_name
+            FROM library_book_student_issues si
+            INNER JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN subjects s ON s.id = si.subject_id
+            LEFT JOIN employees e ON e.id = si.teacher_id
+            LEFT JOIN academic_levels al ON al.id = si.academic_level_id
+            WHERE LOWER(TRIM(si.student_id)) = LOWER(TRIM(%s))
+            ORDER BY
+                CASE WHEN si.status = 'issued' THEN 0 ELSE 1 END,
+                si.issued_at DESC,
+                si.copy_code ASC
+            """,
+            (sid,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                books.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'status': (row.get('status') or 'issued').strip(),
+                    'issued_at': row.get('issued_at'),
+                    'returned_at': row.get('returned_at'),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'subject_name': (row.get('subject_name') or '').strip(),
+                    'teacher_name': (row.get('teacher_name') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                })
+            else:
+                books.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'status': (row[2] or 'issued').strip(),
+                    'issued_at': row[3] if len(row) > 3 else None,
+                    'returned_at': row[4] if len(row) > 4 else None,
+                    'book_name': (row[5] or '').strip() if len(row) > 5 else '',
+                    'subject_name': (row[6] or '').strip() if len(row) > 6 else '',
+                    'teacher_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'level_name': (row[8] or '').strip() if len(row) > 8 else '',
+                })
+    except Exception as e:
+        print(f"_parent_student_library_books: {e}")
+    return books
 
 
 def _compute_progress_aggregates(progress_data):
@@ -15917,6 +20101,137 @@ def parent_attendance_detail(student_id):
         daily_points=analytics['daily_points'],
         recent_days=analytics['recent_days'],
         parent_student_id=student_id,
+        show_sibling_nav=sibling_count > 1,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/library')
+@app.route('/parent/library')
+@login_required
+def parent_library():
+    """List linked children; single child or technician selection redirects to library detail."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    selected_student_id = (ctx.get('selected_student_id') or '').strip()
+    if selected_student_id:
+        qs = f'?student_id={quote(selected_student_id)}'
+        return redirect(parent_dashboard_path(f'library/{selected_student_id}') + qs)
+
+    children = []
+    connection = get_db_connection()
+    if connection and parent_email:
+        try:
+            with connection.cursor() as cursor:
+                children = _parent_list_linked_children(cursor, parent_email)
+        except Exception as e:
+            print(f"parent_library: {e}")
+            flash('Error loading children.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if len(children) == 1:
+        return redirect(parent_dashboard_path(f"library/{children[0]['student_id']}"))
+
+    return render_template(
+        'dashboards/parent_library_list.html',
+        children=children,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/library/<student_id>')
+@app.route('/parent/library/<student_id>')
+@login_required
+def parent_library_detail(student_id):
+    """Parent view: library books issued to one linked child."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+
+    allowed = False
+    sibling_count = 0
+    student = None
+    books = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                allowed, sibling_count = _parent_may_view_student(cursor, parent_email, student_id)
+                if allowed:
+                    cursor.execute(
+                        """
+                        SELECT student_id, full_name, current_grade
+                        FROM students
+                        WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                          AND status = 'in session'
+                        LIMIT 1
+                        """,
+                        (student_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        if isinstance(row, dict):
+                            student = {
+                                'student_id': (row.get('student_id') or '').strip(),
+                                'full_name': (row.get('full_name') or '').strip(),
+                                'current_grade': (row.get('current_grade') or '').strip(),
+                            }
+                        else:
+                            student = {
+                                'student_id': (row[0] or '').strip(),
+                                'full_name': (row[1] or '').strip(),
+                                'current_grade': (row[2] or '').strip(),
+                            }
+                    books = _parent_student_library_books(cursor, student_id)
+        except Exception as e:
+            print(f"parent_library_detail: {e}")
+            flash('Error loading library books.', 'error')
+        finally:
+            if connection:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+
+    if not allowed:
+        flash('You cannot view library books for this student.', 'error')
+        return redirect(parent_dashboard_path('library'))
+
+    if not student:
+        flash('Student not found.', 'error')
+        return redirect(parent_dashboard_path('library'))
+
+    active_count = sum(1 for b in books if b.get('status') == 'issued')
+    returned_count = sum(1 for b in books if b.get('status') == 'returned')
+
+    return render_template(
+        'dashboards/parent_student_library.html',
+        student=student,
+        books=books,
+        active_count=active_count,
+        returned_count=returned_count,
+        parent_student_id=student.get('student_id') or student_id,
         show_sibling_nav=sibling_count > 1,
         is_technician=ctx['is_technician'],
         current_view_role=ctx['current_view_role'],
@@ -17637,12 +21952,17 @@ def academic_settings():
                 academic_levels_results = cursor.fetchall()
                 
                 for row in academic_levels_results:
+                    raw_ls = row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
+                    if isinstance(raw_ls, bytes):
+                        raw_ls = raw_ls.decode('utf-8', errors='ignore')
+                    ls = (str(raw_ls or 'active')).strip().lower()
+                    level_status_norm = 'active' if ls == 'active' else 'inactive'
                     academic_levels.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
                         'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
                         'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
-                        'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active')
+                        'level_status': level_status_norm,
                     })
                 
                 # Get academic years
@@ -19366,7 +23686,7 @@ def exam_subject_settings():
                     'member_totals': totals,
                     'member_ids': mids,
                 })
-            exam_column_order_slots = _build_exam_column_order_slots(name_map, combos_loaded)
+            exam_column_order_slots = _build_exam_column_order_slots(name_map, combos_loaded, base_category_order)
     except Exception as e:
         print(f"exam_subject_settings load: {e}")
         flash('Could not load subjects.', 'error')
@@ -21989,9 +26309,53 @@ def classes_subjects():
                 except Exception as e:
                     print(f"Note: teacher_subject_assignments fallback for classes-subjects: {e}")
 
+                ensure_subject_exam_display_order_columns(cursor)
+                all_level_sids = set()
+                for _lid, subdict in allocations_by_level.items():
+                    all_level_sids.update(int(x) for x in subdict.keys() if x is not None)
+                edo_by_sid = {}
+                id_to_gc_all = {}
+                if all_level_sids:
+                    ph = ','.join(['%s'] * len(all_level_sids))
+                    cursor.execute(
+                        f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
+                        tuple(all_level_sids),
+                    )
+                    for er in cursor.fetchall() or []:
+                        eid = er.get('id') if isinstance(er, dict) else er[0]
+                        if eid is not None:
+                            edo_by_sid[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+                    id_to_gc_all = fetch_subject_id_to_exam_group_category(cursor, list(all_level_sids))
+                base_cat_order = fetch_base_academic_level_category_order(cursor)
+
                 for level in academic_levels:
                     level_subjects = allocations_by_level.get(level['id'], {})
-                    level['subject_allocations'] = list(level_subjects.values())
+                    sort_rows = []
+                    for sid, info in level_subjects.items():
+                        try:
+                            sid_i = int(sid)
+                        except (TypeError, ValueError):
+                            continue
+                        gc = id_to_gc_all.get(sid_i, 'Uncategorized')
+                        sort_rows.append(
+                            {
+                                'id': sid_i,
+                                'subject_name': info.get('subject_name') or '',
+                                'subject_code': info.get('subject_code') or '',
+                                'exam_display_order': edo_by_sid.get(sid_i),
+                                'group_category': gc,
+                            }
+                        )
+                    sec_ord = build_exam_subject_section_order({r['group_category'] for r in sort_rows}, base_cat_order)
+                    sort_rows.sort(key=lambda r: exam_subject_column_sort_key(r, sec_ord))
+                    level['subject_allocations'] = [
+                        {
+                            'subject_id': r['id'],
+                            'subject_name': r['subject_name'],
+                            'subject_code': r['subject_code'],
+                        }
+                        for r in sort_rows
+                    ]
         except Exception as e:
             print(f"Error fetching academic levels: {e}")
         finally:
@@ -22118,7 +26482,41 @@ def classes_subjects_level_detail(level_id):
                         'teacher_employee_id': teacher_employee_id,
                     })
 
-                level_subjects = sorted(subjects_map.values(), key=lambda x: (x.get('subject_name') or '').lower())
+                if subjects_map:
+                    ensure_subject_exam_display_order_columns(cursor)
+                    ph = ','.join(['%s'] * len(subjects_map))
+                    cursor.execute(
+                        f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
+                        tuple(subjects_map.keys()),
+                    )
+                    edo_map = {}
+                    for er in cursor.fetchall() or []:
+                        eid = er.get('id') if isinstance(er, dict) else er[0]
+                        if eid is not None:
+                            edo_map[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+                    bridge = []
+                    for sid, val in subjects_map.items():
+                        bridge.append(
+                            {
+                                'id': int(sid),
+                                'subject_name': val['subject_name'],
+                                'subject_code': val['subject_code'],
+                                'exam_display_order': edo_map.get(int(sid)),
+                                'teachers': val['teachers'],
+                            }
+                        )
+                    sort_subjects_list_for_exam_columns(cursor, bridge)
+                    level_subjects = [
+                        {
+                            'subject_id': b['id'],
+                            'subject_name': b['subject_name'],
+                            'subject_code': b['subject_code'],
+                            'teachers': b['teachers'],
+                        }
+                        for b in bridge
+                    ]
+                else:
+                    level_subjects = []
                 total_allocated_teachers = sum(len(item.get('teachers') or []) for item in level_subjects)
         except Exception as e:
             print(f"Error loading classes-subjects level detail: {e}")
@@ -22135,6 +26533,1278 @@ def classes_subjects_level_detail(level_id):
         level=level,
         level_subjects=level_subjects,
         total_allocated_teachers=total_allocated_teachers,
+    )
+
+
+def _subject_allocated_to_academic_category(cursor, subject_id, academic_category):
+    """True if subject is allocated to any active academic level whose level_category matches (trim, case-insensitive)."""
+    try:
+        sid = int(subject_id)
+    except (TypeError, ValueError):
+        return False
+    cat = (academic_category or '').strip().upper()
+    if not cat:
+        return False
+    try:
+        cursor.execute(
+            """
+            SELECT 1 FROM subject_academic_levels sal
+            INNER JOIN academic_levels al ON al.id = sal.academic_level_id
+                AND COALESCE(al.level_status, 'active') = 'active'
+            WHERE sal.subject_id = %s
+              AND UPPER(TRIM(al.level_category)) = %s
+            LIMIT 1
+            """,
+            (sid, cat),
+        )
+        if cursor.fetchone():
+            return True
+        cursor.execute(
+            """
+            SELECT 1 FROM teacher_subject_assignments tsa
+            INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+                AND COALESCE(al.level_status, 'active') = 'active'
+            WHERE tsa.subject_id = %s
+              AND UPPER(TRIM(al.level_category)) = %s
+            LIMIT 1
+            """,
+            (sid, cat),
+        )
+        return bool(cursor.fetchone())
+    except Exception as e:
+        print(f"_subject_allocated_to_academic_category: {e}")
+        return False
+
+
+def _library_subjects_by_academic_category(cursor):
+    """
+    Map UPPER(TRIM(level_category)) -> list of {id, subject_name, subject_code}
+    from subject_academic_levels and teacher_subject_assignments (deduplicated).
+    """
+    from collections import defaultdict
+
+    merged = defaultdict(dict)
+    queries = (
+        """
+        SELECT UPPER(TRIM(al.level_category)) AS acad_cat, s.id AS subject_id, s.subject_name, s.subject_code
+        FROM subject_academic_levels sal
+        INNER JOIN academic_levels al ON al.id = sal.academic_level_id
+            AND COALESCE(al.level_status, 'active') = 'active'
+        INNER JOIN subjects s ON s.id = sal.subject_id
+            AND COALESCE(s.status, 'active') = 'active'
+        WHERE TRIM(COALESCE(al.level_category, '')) <> ''
+        """,
+        """
+        SELECT UPPER(TRIM(al.level_category)) AS acad_cat, s.id AS subject_id, s.subject_name, s.subject_code
+        FROM teacher_subject_assignments tsa
+        INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+            AND COALESCE(al.level_status, 'active') = 'active'
+        INNER JOIN subjects s ON s.id = tsa.subject_id
+            AND COALESCE(s.status, 'active') = 'active'
+        WHERE TRIM(COALESCE(al.level_category, '')) <> ''
+        """,
+    )
+    for sql in queries:
+        try:
+            cursor.execute(sql)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    cat = row.get('acad_cat') or ''
+                    sid = row.get('subject_id')
+                    name = row.get('subject_name') or ''
+                    code = row.get('subject_code') or ''
+                else:
+                    cat = (row[0] if len(row) > 0 else '') or ''
+                    sid = row[1] if len(row) > 1 else None
+                    name = (row[2] if len(row) > 2 else '') or ''
+                    code = (row[3] if len(row) > 3 else '') or ''
+                cat = (cat or '').strip().upper()
+                if not cat or sid is None:
+                    continue
+                try:
+                    sid_i = int(sid)
+                except (TypeError, ValueError):
+                    continue
+                merged[cat][sid_i] = {
+                    'id': sid_i,
+                    'subject_name': name,
+                    'subject_code': code or '',
+                }
+        except Exception as e:
+            print(f"_library_subjects_by_academic_category: {e}")
+
+    out = {}
+    for cat_key, submap in merged.items():
+        out[cat_key] = sorted(
+            submap.values(),
+            key=lambda x: (x.get('subject_name') or '').lower(),
+        )
+    return out
+
+
+def _books_inventory_librarian_guard():
+    """Redirect if current user is not allowed to manage library books inventory."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    effective = viewing_as_role if is_technician and viewing_as_role else user_role
+    if effective != 'librarian':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
+def _librarian_issue_return_classes_summary(cursor):
+    """Active classes with issue/return counts for librarian Issue/Return Records."""
+    ensure_library_book_student_issues_table(cursor)
+    rows = []
+    try:
+        cursor.execute("""
+            SELECT
+                al.id AS level_id,
+                UPPER(TRIM(al.level_category)) AS level_category,
+                UPPER(TRIM(al.level_name)) AS level_name,
+                UPPER(TRIM(COALESCE(al.level_code, ''))) AS level_code,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM library_book_student_issues si
+                    WHERE si.academic_level_id = al.id AND si.status = 'issued'
+                ), 0) AS active_issues,
+                COALESCE((
+                    SELECT COUNT(*)
+                    FROM library_book_student_issues si
+                    WHERE si.academic_level_id = al.id AND si.status = 'returned'
+                ), 0) AS returned_issues
+            FROM academic_levels al
+            WHERE COALESCE(al.level_status, 'active') = 'active'
+              AND TRIM(COALESCE(al.level_category, '')) <> ''
+            ORDER BY al.level_category, al.level_name
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'level_id': int(row.get('level_id') or 0),
+                    'level_category': (row.get('level_category') or '').strip(),
+                    'level_name': (row.get('level_name') or '').strip(),
+                    'level_code': (row.get('level_code') or '').strip(),
+                    'active_issues': int(row.get('active_issues') or 0),
+                    'returned_issues': int(row.get('returned_issues') or 0),
+                })
+            else:
+                rows.append({
+                    'level_id': int(row[0] or 0),
+                    'level_category': (row[1] or '').strip(),
+                    'level_name': (row[2] or '').strip(),
+                    'level_code': (row[3] or '').strip(),
+                    'active_issues': int(row[4] or 0),
+                    'returned_issues': int(row[5] or 0),
+                })
+    except Exception as e:
+        print(f"_librarian_issue_return_classes_summary: {e}")
+    return rows
+
+
+def _librarian_issue_return_level_records(cursor, level_id):
+    """Books issued to students at a class (by allocated teachers)."""
+    ensure_library_book_student_issues_table(cursor)
+    records = []
+    try:
+        level_id = int(level_id)
+    except (TypeError, ValueError):
+        return records
+    try:
+        cursor.execute(
+            """
+            SELECT
+                si.id AS issue_id,
+                UPPER(TRIM(si.copy_code)) AS copy_code,
+                si.student_id,
+                UPPER(TRIM(st.full_name)) AS student_name,
+                si.status,
+                si.issued_at,
+                si.returned_at,
+                UPPER(TRIM(lb.book_name)) AS book_name,
+                UPPER(TRIM(COALESCE(s.subject_name, ''))) AS subject_name,
+                UPPER(TRIM(COALESCE(e.full_name, ''))) AS teacher_name
+            FROM library_book_student_issues si
+            INNER JOIN students st ON st.student_id = si.student_id
+            INNER JOIN library_books lb ON lb.id = si.library_book_id
+            LEFT JOIN subjects s ON s.id = si.subject_id
+            LEFT JOIN employees e ON e.id = si.teacher_id
+            WHERE si.academic_level_id = %s
+            ORDER BY
+                CASE WHEN si.status = 'issued' THEN 0 ELSE 1 END,
+                si.issued_at DESC,
+                si.copy_code ASC
+            """,
+            (level_id,),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                records.append({
+                    'issue_id': int(row.get('issue_id') or 0),
+                    'copy_code': (row.get('copy_code') or '').strip(),
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'student_name': (row.get('student_name') or '').strip(),
+                    'status': (row.get('status') or 'issued').strip(),
+                    'issued_at': row.get('issued_at'),
+                    'returned_at': row.get('returned_at'),
+                    'book_name': (row.get('book_name') or '').strip(),
+                    'subject_name': (row.get('subject_name') or '').strip(),
+                    'teacher_name': (row.get('teacher_name') or '').strip(),
+                })
+            else:
+                records.append({
+                    'issue_id': int(row[0] or 0),
+                    'copy_code': (row[1] or '').strip(),
+                    'student_id': (row[2] or '').strip(),
+                    'student_name': (row[3] or '').strip(),
+                    'status': (row[4] or 'issued').strip(),
+                    'issued_at': row[5] if len(row) > 5 else None,
+                    'returned_at': row[6] if len(row) > 6 else None,
+                    'book_name': (row[7] or '').strip() if len(row) > 7 else '',
+                    'subject_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'teacher_name': (row[9] or '').strip() if len(row) > 9 else '',
+                })
+    except Exception as e:
+        print(f"_librarian_issue_return_level_records: {e}")
+    return records
+
+
+@app.route('/dashboard/employee/books-inventory/<int:book_id>/delete', methods=['POST'])
+@login_required
+def books_inventory_delete(book_id):
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            migrate_library_books_status_columns(cursor)
+            cursor.execute("DELETE FROM library_books WHERE id = %s", (book_id,))
+            connection.commit()
+            flash('Book removed from inventory.', 'success')
+    except Exception as e:
+        print(f"books_inventory_delete: {e}")
+        connection.rollback()
+        flash('Could not delete the book.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory'))
+
+
+@app.route('/dashboard/employee/books-inventory/<int:book_id>/toggle-suspend', methods=['POST'])
+@login_required
+def books_inventory_toggle_suspend(book_id):
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            migrate_library_books_status_columns(cursor)
+            cursor.execute(
+                """
+                UPDATE library_books
+                SET library_status = IF(library_status = 'suspended', 'active', 'suspended')
+                WHERE id = %s
+                """,
+                (book_id,),
+            )
+            connection.commit()
+            flash('Book suspension status updated.', 'success')
+    except Exception as e:
+        print(f"books_inventory_toggle_suspend: {e}")
+        connection.rollback()
+        flash('Could not update suspension status.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory'))
+
+
+@app.route('/dashboard/employee/books-inventory/<int:book_id>/allocate', methods=['POST'])
+@login_required
+def books_inventory_allocate(book_id):
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    raw_ids = request.form.getlist('academic_level_id')
+    level_ids = []
+    for r in raw_ids:
+        try:
+            level_ids.append(int(r))
+        except (TypeError, ValueError):
+            continue
+    level_ids = list(dict.fromkeys(level_ids))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            ensure_library_book_allocations_table(cursor)
+            migrate_library_books_status_columns(cursor)
+            migrate_library_books_copies_and_allocation_qty(cursor)
+            cursor.execute(
+                """
+                SELECT id, UPPER(TRIM(academic_category)) AS ac,
+                       COALESCE(copies_total, 1) AS ct
+                FROM library_books WHERE id = %s
+                """,
+                (book_id,),
+            )
+            br = cursor.fetchone()
+            if not br:
+                flash('Book not found.', 'error')
+                return redirect(employee_dash_url('books-inventory'))
+            if isinstance(br, dict):
+                book_cat = (br.get('ac') or '').strip().upper()
+                copies_total = int(br.get('ct') or 1)
+            else:
+                book_cat = ((br[1] or '') if len(br) > 1 else '').strip().upper()
+                copies_total = int(br[2] or 1) if len(br) > 2 else 1
+            if copies_total < 1:
+                copies_total = 1
+
+            if not level_ids:
+                cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
+                cursor.execute(
+                    """
+                    UPDATE library_books
+                    SET allocation_status = 'unallocated'
+                    WHERE id = %s
+                    """,
+                    (book_id,),
+                )
+                connection.commit()
+                flash('Level allocation updated (no levels selected).', 'success')
+                return redirect(employee_dash_url('books-inventory'))
+
+            placeholders = ','.join(['%s'] * len(level_ids))
+            cursor.execute(
+                f"""
+                SELECT id, UPPER(TRIM(level_category)) AS lvl_cat,
+                       COALESCE(level_status, 'active') AS st
+                FROM academic_levels
+                WHERE id IN ({placeholders})
+                """,
+                tuple(level_ids),
+            )
+            rows = cursor.fetchall() or []
+            if len(rows) != len(level_ids):
+                flash('One or more selected levels are invalid.', 'error')
+                return redirect(employee_dash_url('books-inventory'))
+            for row in rows:
+                if isinstance(row, dict):
+                    st = (row.get('st') or 'active').lower()
+                    lc = (row.get('lvl_cat') or '').strip().upper()
+                else:
+                    st = ((row[2] or 'active') if len(row) > 2 else 'active').lower()
+                    lc = ((row[1] or '') if len(row) > 1 else '').strip().upper()
+                if st != 'active':
+                    flash('Only active academic levels can be selected.', 'error')
+                    return redirect(employee_dash_url('books-inventory'))
+                if lc != book_cat:
+                    flash(
+                        'Each level must belong to the same academic category as this book '
+                        f'({book_cat or "—"}).',
+                        'error',
+                    )
+                    return redirect(employee_dash_url('books-inventory'))
+
+            qty_by_level = {}
+            assign_total = 0
+            for lid in level_ids:
+                q = request.form.get(f'qty_{lid}', type=int)
+                if q is None:
+                    raw_q = (request.form.get(f'qty_{lid}') or '1').strip()
+                    try:
+                        q = int(raw_q)
+                    except (TypeError, ValueError):
+                        q = None
+                if q is None or q < 1:
+                    flash('Each selected level needs a whole number of copies of at least 1.', 'error')
+                    return redirect(employee_dash_url('books-inventory'))
+                qty_by_level[lid] = q
+                assign_total += q
+            if assign_total > copies_total:
+                flash(
+                    f'Total copies assigned to levels ({assign_total}) cannot exceed catalog copies ({copies_total}).',
+                    'error',
+                )
+                return redirect(employee_dash_url('books-inventory'))
+
+            cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
+            for lid in level_ids:
+                q = qty_by_level[lid]
+                cursor.execute(
+                    """
+                    INSERT INTO library_book_allocations (library_book_id, academic_level_id, quantity)
+                    VALUES (%s, %s, %s)
+                    """,
+                    (book_id, lid, q),
+                )
+            cursor.execute(
+                """
+                UPDATE library_books
+                SET allocation_status = 'allocated'
+                WHERE id = %s
+                """,
+                (book_id,),
+            )
+            connection.commit()
+            flash('Level allocation saved.', 'success')
+    except Exception as e:
+        print(f"books_inventory_allocate: {e}")
+        connection.rollback()
+        flash('Could not save allocation.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory'))
+
+
+@app.route('/dashboard/employee/books-inventory/<int:book_id>/deallocate', methods=['POST'])
+@login_required
+def books_inventory_deallocate(book_id):
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            ensure_library_book_allocations_table(cursor)
+            migrate_library_books_status_columns(cursor)
+            cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
+            cursor.execute(
+                """
+                UPDATE library_books
+                SET allocation_status = 'unallocated'
+                WHERE id = %s
+                """,
+                (book_id,),
+            )
+            connection.commit()
+            flash('Book removed from all allocated levels.', 'success')
+    except Exception as e:
+        print(f"books_inventory_deallocate: {e}")
+        connection.rollback()
+        flash('Could not deallocate the book.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory'))
+
+
+@app.route('/dashboard/employee/books-inventory/stock', methods=['GET'])
+@login_required
+def books_inventory_stock():
+    """Book inventory stock page (stock in / stock out)."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    from flask import g
+    g.books_inventory_view = 'stock'
+    return books_inventory()
+
+
+@app.route('/dashboard/employee/issue-return-records')
+@app.route('/librarian/issue-return-records')
+@login_required
+def librarian_issue_return_records():
+    """Librarian: choose a class to view books issued to students by allocated teachers."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    classes = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_library_books_table(cursor)
+                connection.commit()
+                classes = _librarian_issue_return_classes_summary(cursor)
+        except Exception as e:
+            print(f"librarian_issue_return_records: {e}")
+            flash('Could not load classes.', 'error')
+        finally:
+            connection.close()
+    return render_template(
+        'dashboards/librarian_issue_return_records.html',
+        role=user_role,
+        is_technician=is_technician,
+        classes=classes,
+    )
+
+
+@app.route('/dashboard/employee/issue-return-records/<int:level_id>')
+@app.route('/librarian/issue-return-records/<int:level_id>')
+@login_required
+def librarian_issue_return_records_level(level_id):
+    """Librarian: issue/return records for one class."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    level = None
+    records = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_library_books_table(cursor)
+                connection.commit()
+                cursor.execute(
+                    """
+                    SELECT id, UPPER(TRIM(level_category)) AS level_category,
+                           UPPER(TRIM(level_name)) AS level_name,
+                           UPPER(TRIM(COALESCE(level_code, ''))) AS level_code
+                    FROM academic_levels
+                    WHERE id = %s
+                      AND COALESCE(level_status, 'active') = 'active'
+                    """,
+                    (level_id,),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    flash('Class not found.', 'error')
+                    return redirect(employee_dash_url('issue-return-records'))
+                if isinstance(row, dict):
+                    level = {
+                        'level_id': int(row.get('id') or 0),
+                        'level_category': (row.get('level_category') or '').strip(),
+                        'level_name': (row.get('level_name') or '').strip(),
+                        'level_code': (row.get('level_code') or '').strip(),
+                    }
+                else:
+                    level = {
+                        'level_id': int(row[0] or 0),
+                        'level_category': (row[1] or '').strip(),
+                        'level_name': (row[2] or '').strip(),
+                        'level_code': (row[3] or '').strip(),
+                    }
+                records = _librarian_issue_return_level_records(cursor, level_id)
+        except Exception as e:
+            print(f"librarian_issue_return_records_level: {e}")
+            flash('Could not load issue records for this class.', 'error')
+            return redirect(employee_dash_url('issue-return-records'))
+        finally:
+            connection.close()
+    active_count = sum(1 for r in records if r.get('status') == 'issued')
+    returned_count = sum(1 for r in records if r.get('status') == 'returned')
+    return render_template(
+        'dashboards/librarian_issue_return_records_level.html',
+        role=user_role,
+        is_technician=is_technician,
+        level=level,
+        level_id=level_id,
+        records=records,
+        active_count=active_count,
+        returned_count=returned_count,
+    )
+
+
+@app.route('/dashboard/employee/books-inventory/supplier-lookup', methods=['GET'])
+@login_required
+def books_inventory_supplier_lookup():
+    """Live lookup of book supplier by phone (stock in)."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'found': False, 'message': 'Permission denied.'}), 403
+    phone_raw = (request.args.get('phone') or '').strip()
+    norm = _normalize_library_supplier_phone(phone_raw)
+    if not norm:
+        return jsonify({
+            'ok': True,
+            'found': False,
+            'ready': False,
+            'message': 'Enter a valid phone number (at least 9 digits).',
+        })
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'found': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            supplier = _library_lookup_supplier_by_phone(cursor, norm)
+            if supplier:
+                return jsonify({
+                    'ok': True,
+                    'found': True,
+                    'ready': True,
+                    'supplier_id': supplier['id'],
+                    'phone': supplier['phone'],
+                    'company_name': supplier['company_name'],
+                    'message': 'Supplier found — company name filled in.',
+                })
+            return jsonify({
+                'ok': True,
+                'found': False,
+                'ready': True,
+                'phone': norm,
+                'message': 'New supplier — enter the company name.',
+            })
+    except Exception as e:
+        print(f"books_inventory_supplier_lookup: {e}")
+        return jsonify({'ok': False, 'found': False, 'message': 'Could not look up supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/stock-allocate-teachers', methods=['POST'])
+@login_required
+def books_inventory_stock_allocate_teachers():
+    """Save teacher allocations for an existing stock-in batch."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    data = request.get_json(silent=True) or {}
+    movement_id = data.get('movement_id')
+    raw_alloc = data.get('teacher_allocations')
+    if isinstance(raw_alloc, str):
+        allocations = _library_parse_teacher_distribution_payload(raw_alloc)
+    elif isinstance(raw_alloc, list):
+        allocations = _library_parse_teacher_distribution_payload(json.dumps(raw_alloc))
+    else:
+        allocations = []
+    try:
+        movement_id = int(movement_id)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'message': 'Stock-in record is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    performed_by = session.get('employee_id') or session.get('user_id')
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_book_stock_movements_table(cursor)
+            cursor.execute(
+                """
+                SELECT id, library_book_id, academic_level_id, quantity, movement_type
+                FROM library_book_stock_movements
+                WHERE id = %s
+                """,
+                (movement_id,),
+            )
+            mov = cursor.fetchone()
+            if not mov:
+                return jsonify({'ok': False, 'message': 'Stock-in record not found.'}), 404
+            if isinstance(mov, dict):
+                if (mov.get('movement_type') or '').lower() != 'in':
+                    return jsonify({'ok': False, 'message': 'Only stock-in batches can be allocated to teachers.'}), 400
+                book_id = int(mov.get('library_book_id'))
+                level_id = int(mov.get('academic_level_id'))
+                stock_qty = int(mov.get('quantity') or 0)
+            else:
+                if (mov[4] if len(mov) > 4 else '').lower() != 'in':
+                    return jsonify({'ok': False, 'message': 'Only stock-in batches can be allocated to teachers.'}), 400
+                book_id = int(mov[1])
+                level_id = int(mov[2])
+                stock_qty = int(mov[3] or 0)
+            dist_ok, dist_err = _library_save_teacher_distributions(
+                cursor,
+                movement_id,
+                book_id,
+                level_id,
+                allocations,
+                performed_by=performed_by,
+                stock_quantity=stock_qty,
+                replace_existing=True,
+            )
+            if not dist_ok:
+                connection.rollback()
+                return jsonify({'ok': False, 'message': dist_err or 'Could not save allocations.'}), 400
+            connection.commit()
+            dists = _library_teacher_distributions_by_movements(cursor, [movement_id]).get(movement_id, [])
+            allocated = sum(d.get('quantity', 0) for d in dists)
+            return jsonify({
+                'ok': True,
+                'teacher_distributions': dists,
+                'teacher_allocated_total': allocated,
+                'remaining_stock': max(0, stock_qty - allocated),
+            })
+    except Exception as e:
+        connection.rollback()
+        print(f"books_inventory_stock_allocate_teachers: {e}")
+        return jsonify({'ok': False, 'message': 'Could not save teacher allocations.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/level-subjects', methods=['GET'])
+@login_required
+def books_inventory_level_subjects():
+    """Subjects for an academic level (for stock-in subject dropdown)."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    level_id = request.args.get('academic_level_id', type=int)
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Academic level is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            subjects = _library_subjects_for_level(cursor, level_id)
+            return jsonify({'ok': True, 'subjects': subjects, 'count': len(subjects)})
+    except Exception as e:
+        print(f"books_inventory_level_subjects: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load subjects for this level.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/level-teachers', methods=['GET'])
+@login_required
+def books_inventory_level_teachers():
+    """Teachers assigned to subjects at an academic level (for stock-in distribution)."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    level_id = request.args.get('academic_level_id', type=int)
+    book_id = request.args.get('book_id', type=int)
+    subject_id = request.args.get('subject_id', type=int)
+    if not level_id:
+        return jsonify({'ok': False, 'message': 'Academic level is required.'}), 400
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            rows = _library_level_teacher_subject_assignments(
+                cursor, level_id, book_id, highlight_subject_id=subject_id,
+            )
+            return jsonify({
+                'ok': True,
+                'assignments': rows,
+                'count': len(rows),
+                'highlight_subject_id': subject_id,
+            })
+    except Exception as e:
+        print(f"books_inventory_level_teachers: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load teachers for this class.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/stock-in', methods=['GET', 'POST'])
+@login_required
+def books_inventory_stock_in():
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    if request.method == 'GET':
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    book_id = request.form.get('book_id', type=int)
+    level_id = request.form.get('academic_level_id', type=int)
+    stock_subject_id = request.form.get('stock_subject_id', type=int)
+    quantity = request.form.get('quantity', type=int)
+    notes = (request.form.get('notes') or '').strip()
+    supplier_phone = (request.form.get('supplier_phone') or '').strip()
+    supplier_company = (request.form.get('supplier_company_name') or '').strip()
+    teacher_allocations_raw = request.form.get('teacher_allocations') or ''
+    teacher_allocations = _library_parse_teacher_distribution_payload(teacher_allocations_raw)
+    if not book_id or not level_id:
+        flash('Please select a book and academic level.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    if not stock_subject_id:
+        flash('Please select the subject this stock-in is linked to.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    if not supplier_phone:
+        flash('Supplier phone number is required for stock in.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    performed_by = session.get('employee_id') or session.get('user_id')
+    performed_by_name = session.get('full_name') or session.get('employee_name') or ''
+    try:
+        with connection.cursor() as cursor:
+            supplier_id, supplier_err = _library_upsert_supplier_for_stock_in(
+                cursor, supplier_phone, supplier_company,
+            )
+            if supplier_err:
+                connection.rollback()
+                flash(supplier_err, 'error')
+                return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+            ok, msg, extras = _library_apply_stock_movement(
+                cursor, book_id, level_id, 'in', quantity, notes,
+                performed_by=performed_by, performed_by_name=performed_by_name,
+                supplier_id=supplier_id,
+                stock_subject_id=stock_subject_id,
+            )
+            if ok:
+                movement_id = extras.get('movement_id')
+                if movement_id and teacher_allocations:
+                    dist_ok, dist_err = _library_save_teacher_distributions(
+                        cursor,
+                        movement_id,
+                        book_id,
+                        level_id,
+                        teacher_allocations,
+                        performed_by=performed_by,
+                        stock_quantity=quantity,
+                    )
+                    if not dist_ok:
+                        connection.rollback()
+                        flash(dist_err or 'Could not save teacher allocations.', 'error')
+                        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+                connection.commit()
+                codes = extras.get('copy_codes') or []
+                if codes:
+                    session['last_stock_in_labels'] = {
+                        'book_id': book_id,
+                        'level_id': level_id,
+                        'quantity': quantity,
+                        'copy_codes': codes,
+                    }
+                if teacher_allocations:
+                    total_dist = sum(a['quantity'] for a in teacher_allocations)
+                    msg += f' {total_dist} cop{"ies" if total_dist != 1 else "y"} allocated to teacher(s) for distribution.'
+                flash(msg, 'success')
+            else:
+                connection.rollback()
+                flash(msg, 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"books_inventory_stock_in: {e}")
+        flash('Could not record stock in.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+
+
+@app.route('/dashboard/employee/books-inventory/stock-out', methods=['GET', 'POST'])
+@login_required
+def books_inventory_stock_out():
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    if request.method == 'GET':
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=out')
+    book_id = request.form.get('book_id', type=int)
+    level_id = request.form.get('academic_level_id', type=int)
+    quantity = request.form.get('quantity', type=int)
+    notes = (request.form.get('notes') or '').strip()
+    if not book_id or not level_id:
+        flash('Please select a book and academic level.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=out')
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?stock=out')
+    performed_by = session.get('employee_id') or session.get('user_id')
+    performed_by_name = session.get('full_name') or session.get('employee_name') or ''
+    try:
+        with connection.cursor() as cursor:
+            ok, msg, extras = _library_apply_stock_movement(
+                cursor, book_id, level_id, 'out', quantity, notes,
+                performed_by=performed_by, performed_by_name=performed_by_name,
+            )
+            if ok:
+                connection.commit()
+                codes = extras.get('copy_codes') or []
+                if codes:
+                    session['last_stock_out_labels'] = {
+                        'book_id': book_id,
+                        'level_id': level_id,
+                        'quantity': quantity,
+                        'copy_codes': codes,
+                    }
+                flash(msg, 'success')
+            else:
+                connection.rollback()
+                flash(msg, 'error')
+    except Exception as e:
+        connection.rollback()
+        print(f"books_inventory_stock_out: {e}")
+        flash('Could not record stock out.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory/stock') + '?stock=out')
+
+
+@app.route('/dashboard/employee/books-inventory', methods=['GET', 'POST'])
+@login_required
+def books_inventory():
+    """Register and list library books (librarian)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    effective = viewing_as_role if is_technician and viewing_as_role else user_role
+    if effective != 'librarian':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    from flask import g
+    inventory_view = getattr(g, 'books_inventory_view', 'catalog')
+    if request.endpoint == 'books_inventory_stock':
+        inventory_view = 'stock'
+
+    academic_categories = []
+    subjects_by_category = {}
+    books = []
+    inventory_academic_levels = []
+    library_level_allocation_summary = []
+    library_stock_lines = []
+    library_stock_movements_recent = []
+    library_stock_in_records = []
+    library_level_subjects = {}
+    open_stock_panel = None
+    last_stock_in_labels = None
+    last_stock_out_labels = None
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/books_inventory.html',
+            role=user_role,
+            is_technician=is_technician,
+            academic_categories=academic_categories,
+            subjects_by_category=subjects_by_category,
+            books=books,
+            library_books_client=[],
+            open_edit_book_id=None,
+            inventory_form_open_default=False,
+            inventory_academic_levels=[],
+            library_level_allocation_summary=[],
+            library_stock_lines=[],
+            library_stock_movements_recent=[],
+            library_stock_in_records=[],
+            library_level_subjects={},
+            open_stock_panel=None,
+            inventory_view='catalog',
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            connection.commit()
+
+            subjects_by_category = _library_subjects_by_academic_category(cursor)
+            academic_categories = sorted(subjects_by_category.keys(), key=lambda x: (x or '').lower())
+
+            if request.method == 'POST':
+                from decimal import Decimal, InvalidOperation
+
+                book_id_update = request.form.get('book_id', type=int)
+                book_category = (request.form.get('book_category') or '').strip()[:120].upper()
+                book_name = (request.form.get('book_name') or '').strip()[:255].upper()
+                desc_raw = (request.form.get('description') or '').strip()
+                description = desc_raw.upper() if desc_raw else None
+                raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
+                buying_price = None
+                if raw_price != '':
+                    try:
+                        buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
+                    except (InvalidOperation, ValueError):
+                        buying_price = None
+                academic_category = (request.form.get('academic_category') or '').strip().upper()
+                try:
+                    subject_id = int(request.form.get('subject_id') or 0)
+                except (TypeError, ValueError):
+                    subject_id = 0
+
+                ct_raw = (request.form.get('copies_total') or '').strip()
+                copies_total = None
+                if ct_raw == '':
+                    copies_total = 1
+                else:
+                    try:
+                        copies_total = int(ct_raw)
+                    except (TypeError, ValueError):
+                        copies_total = None
+                if copies_total is None or copies_total < 1:
+                    flash('Total copies must be a whole number of at least 1.', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+
+                if not book_category or not book_name:
+                    flash('Book category and book name are required.', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif buying_price is None:
+                    flash('Please enter a valid buying price (use numbers only, e.g. 1500 or 1500.50).', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif buying_price < 0:
+                    flash('Buying price cannot be negative.', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif not academic_category or not subject_id:
+                    flash('Please select an academic category and a subject.', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif academic_category not in subjects_by_category:
+                    flash('Please select a valid academic category from the list.', 'error')
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif not _subject_allocated_to_academic_category(cursor, subject_id, academic_category):
+                    flash(
+                        'That subject is not linked to the selected academic category in the curriculum. '
+                        'Pick a subject from the list for the category you chose.',
+                        'error',
+                    )
+                    if book_id_update:
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                elif book_id_update:
+                    try:
+                        cursor.execute("SELECT id FROM library_books WHERE id = %s", (book_id_update,))
+                        if not cursor.fetchone():
+                            flash('Book not found.', 'error')
+                            return redirect(employee_dash_url('books-inventory'))
+                        migrate_library_books_copies_and_allocation_qty(cursor)
+                        ensure_library_book_allocations_table(cursor)
+                        cursor.execute(
+                            """
+                            SELECT COALESCE(SUM(quantity), 0) AS s
+                            FROM library_book_allocations
+                            WHERE library_book_id = %s
+                            """,
+                            (book_id_update,),
+                        )
+                        sum_row = cursor.fetchone()
+                        if isinstance(sum_row, dict):
+                            allocated_sum = int(sum_row.get('s') or 0)
+                        else:
+                            allocated_sum = int(sum_row[0] or 0) if sum_row and len(sum_row) > 0 else 0
+                        if copies_total < allocated_sum:
+                            flash(
+                                'Total copies cannot be less than copies already assigned to levels. '
+                                'Lower allocations in the level dialog or raise total copies.',
+                                'error',
+                            )
+                            return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                        cursor.execute(
+                            """
+                            UPDATE library_books
+                            SET book_category = %s, book_name = %s, description = %s, buying_price = %s,
+                                academic_category = %s, subject_id = %s, copies_total = %s
+                            WHERE id = %s
+                            """,
+                            (
+                                book_category,
+                                book_name,
+                                description,
+                                buying_price,
+                                academic_category,
+                                subject_id,
+                                copies_total,
+                                book_id_update,
+                            ),
+                        )
+                        connection.commit()
+                        flash('Book updated successfully.', 'success')
+                        return redirect(employee_dash_url('books-inventory'))
+                    except IntegrityError:
+                        connection.rollback()
+                        flash('Could not save the book (invalid category or subject).', 'error')
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                    except Exception as e:
+                        connection.rollback()
+                        print(f"books_inventory update: {e}")
+                        flash('An error occurred while updating the book.', 'error')
+                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                else:
+                    try:
+                        cursor.execute(
+                            """
+                            INSERT INTO library_books
+                                (book_category, book_name, description, buying_price, academic_category, subject_id,
+                                 library_status, allocation_status, copies_total)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'active', 'unallocated', %s)
+                            """,
+                            (
+                                book_category,
+                                book_name,
+                                description,
+                                buying_price,
+                                academic_category,
+                                subject_id,
+                                copies_total,
+                            ),
+                        )
+                        connection.commit()
+                        flash('Book registered successfully.', 'success')
+                        return redirect(employee_dash_url('books-inventory'))
+                    except IntegrityError:
+                        connection.rollback()
+                        flash('Could not save the book (invalid category or subject).', 'error')
+                    except Exception as e:
+                        connection.rollback()
+                        print(f"books_inventory insert: {e}")
+                        flash('An error occurred while saving the book.', 'error')
+
+            cursor.execute("""
+                SELECT lb.id, lb.book_category, lb.book_name, lb.description, lb.buying_price,
+                       lb.library_status, lb.allocation_status, lb.copies_total, lb.created_at,
+                       lb.academic_category, lb.subject_id,
+                       s.subject_name, s.subject_code
+                FROM library_books lb
+                INNER JOIN subjects s ON s.id = lb.subject_id
+                ORDER BY lb.created_at DESC, lb.book_name ASC
+            """)
+            for row in cursor.fetchall() or []:
+                if isinstance(row, dict):
+                    bp = row.get('buying_price')
+                    if bp is not None:
+                        try:
+                            bp = float(bp)
+                        except (TypeError, ValueError):
+                            bp = 0.0
+                    else:
+                        bp = 0.0
+                    try:
+                        ctot = int(row.get('copies_total') or 1)
+                    except (TypeError, ValueError):
+                        ctot = 1
+                    if ctot < 1:
+                        ctot = 1
+                    books.append({
+                        'id': row['id'],
+                        'book_category': (row.get('book_category') or '').upper(),
+                        'book_name': (row.get('book_name') or '').upper(),
+                        'description': (row.get('description') or '').upper(),
+                        'buying_price': bp,
+                        'created_at': row.get('created_at'),
+                        'academic_category': (row.get('academic_category') or '').upper(),
+                        'subject_id': int(row.get('subject_id') or 0),
+                        'subject_name': (row.get('subject_name') or '').upper(),
+                        'subject_code': (row.get('subject_code') or '').upper(),
+                        'library_status': (row.get('library_status') or 'active'),
+                        'allocation_status': (row.get('allocation_status') or 'unallocated'),
+                        'copies_total': ctot,
+                    })
+                else:
+                    try:
+                        bp = float(row[4]) if len(row) > 4 and row[4] is not None else 0.0
+                    except (TypeError, ValueError):
+                        bp = 0.0
+                    try:
+                        sid_l = int(row[10]) if len(row) > 10 else 0
+                    except (TypeError, ValueError):
+                        sid_l = 0
+                    try:
+                        ctot_t = int(row[7]) if len(row) > 7 else 1
+                    except (TypeError, ValueError):
+                        ctot_t = 1
+                    if ctot_t < 1:
+                        ctot_t = 1
+                    books.append({
+                        'id': row[0],
+                        'book_category': ((row[1] or '') if len(row) > 1 else '').upper(),
+                        'book_name': ((row[2] or '') if len(row) > 2 else '').upper(),
+                        'description': ((row[3] or '') if len(row) > 3 else '').upper(),
+                        'buying_price': bp,
+                        'created_at': row[8] if len(row) > 8 else None,
+                        'academic_category': ((row[9] or '') if len(row) > 9 else '').upper(),
+                        'subject_id': sid_l,
+                        'subject_name': ((row[11] or '') if len(row) > 11 else '').upper(),
+                        'subject_code': ((row[12] or '') if len(row) > 12 else '').upper(),
+                        'library_status': (row[5] if len(row) > 5 else 'active') or 'active',
+                        'allocation_status': (row[6] if len(row) > 6 else 'unallocated') or 'unallocated',
+                        'copies_total': ctot_t,
+                    })
+            _library_enrich_books_with_allocations(cursor, books)
+            inventory_academic_levels = _library_inventory_academic_levels(cursor)
+            library_level_allocation_summary = _library_allocation_stock_by_level(cursor)
+            library_stock_lines = _library_stock_allocation_lines(cursor)
+            library_stock_movements_recent = _library_recent_stock_movements(cursor, limit=20)
+            library_stock_in_records = _library_stock_in_records(cursor, limit=100)
+            library_level_subjects = _library_subjects_by_level_map(cursor)
+            for b in books:
+                b['allocation_status'] = 'allocated' if b.get('allocated_level_ids') else 'unallocated'
+    except Exception as e:
+        print(f"books_inventory: {e}")
+        flash('Could not load the book inventory.', 'error')
+    finally:
+        connection.close()
+
+    open_edit_book_id = request.args.get('edit', type=int) if request.method == 'GET' else None
+    if open_edit_book_id is not None and open_edit_book_id not in {b['id'] for b in books}:
+        flash('Book not found.', 'error')
+        open_edit_book_id = None
+
+    library_books_client = [
+        {
+            'id': b['id'],
+            'book_category': b.get('book_category') or '',
+            'book_name': b.get('book_name') or '',
+            'description': b.get('description') or '',
+            'buying_price': float(b['buying_price']) if b.get('buying_price') is not None else 0.0,
+            'academic_category': b.get('academic_category') or '',
+            'subject_id': int(b.get('subject_id') or 0),
+            'copies_total': int(b.get('copies_total') or 1),
+            'allocated_level_ids': list(b.get('allocated_level_ids') or []),
+            'allocations_detail': list(b.get('allocations_detail') or []),
+            'allocated_copies_sum': int(b.get('allocated_copies_sum') or 0),
+            'remaining_stock': int(b.get('remaining_stock') or 0),
+            'allocation_status': b.get('allocation_status') or 'unallocated',
+        }
+        for b in books
+    ]
+    inventory_form_open_default = bool(
+        request.method == 'POST' and not request.form.get('book_id', type=int)
+    )
+    if request.method == 'GET' and inventory_view == 'stock':
+        stock_q = (request.args.get('stock') or '').strip().lower()
+        if stock_q in ('in', 'out'):
+            open_stock_panel = stock_q
+
+    def _enrich_last_stock_labels(payload):
+        if not payload or not library_stock_lines:
+            return payload
+        bid = payload.get('book_id')
+        lid = payload.get('level_id')
+        for ln in library_stock_lines:
+            if ln.get('book_id') == bid and ln.get('level_id') == lid:
+                payload = dict(payload)
+                payload['book_name'] = ln.get('book_name') or ''
+                payload['level_name'] = ln.get('level_name') or ''
+                payload['level_category'] = ln.get('level_category') or ''
+                break
+        return payload
+
+    last_stock_in_labels = _enrich_last_stock_labels(session.pop('last_stock_in_labels', None))
+    last_stock_out_labels = _enrich_last_stock_labels(session.pop('last_stock_out_labels', None))
+
+    return render_template(
+        'dashboards/books_inventory.html',
+        role=user_role,
+        is_technician=is_technician,
+        academic_categories=academic_categories,
+        subjects_by_category=subjects_by_category,
+        books=books,
+        library_books_client=library_books_client,
+        open_edit_book_id=open_edit_book_id,
+        inventory_form_open_default=inventory_form_open_default,
+        inventory_academic_levels=inventory_academic_levels,
+        library_level_allocation_summary=library_level_allocation_summary,
+        library_stock_lines=library_stock_lines,
+        library_stock_movements_recent=library_stock_movements_recent,
+        library_stock_in_records=library_stock_in_records,
+        library_level_subjects=library_level_subjects,
+        open_stock_panel=open_stock_panel,
+        inventory_view=inventory_view,
+        last_stock_in_labels=last_stock_in_labels,
+        last_stock_out_labels=last_stock_out_labels,
     )
 
 
@@ -25666,7 +31336,17 @@ def exam_analytics_detail(exam_id):
                             'exam_display_order': extra.get('exam_display_order'),
                         })
                     combos_loaded = fetch_subject_exam_combinations(cur_combo)
-                    merged_rows = merge_subjects_with_exam_combinations(subjects_for_merge, combos_loaded) if subjects_for_merge else distinct_subjects
+                    id_to_gc, section_order = sort_subjects_list_for_exam_columns(cur_combo, subjects_for_merge)
+                    merged_rows = (
+                        merge_subjects_with_exam_combinations(
+                            subjects_for_merge,
+                            combos_loaded,
+                            id_to_gc=id_to_gc,
+                            section_order=section_order,
+                        )
+                        if subjects_for_merge
+                        else distinct_subjects
+                    )
 
                     distinct_subjects_students = []
                     for mr in merged_rows or []:
@@ -26285,6 +31965,7 @@ def students_by_academic_level(level_id):
                     })
 
                 subjects_flat = [{**s} for s in subjects]
+                id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects_flat)
                 combinations_loaded = fetch_subject_exam_combinations(cursor)
                 subject_exam_max_map_base = {
                     int(s['id']): subject_exam_max_raw_marks(s.get('exam_total_marks'))
@@ -26296,7 +31977,12 @@ def students_by_academic_level(level_id):
                 if is_teacher and teacher_id:
                     subjects = subjects_flat
                 else:
-                    subjects = merge_subjects_with_exam_combinations(subjects_flat, combinations_loaded)
+                    subjects = merge_subjects_with_exam_combinations(
+                        subjects_flat,
+                        combinations_loaded,
+                        id_to_gc=id_to_gc,
+                        section_order=section_order,
+                    )
                 
                 # Get exams for this academic level: unique by exam_name only (one row per exam name)
                 # For teachers, only show exams for their assigned subjects
@@ -27588,6 +33274,7 @@ def reports():
         try:
             with connection.cursor() as cursor:
                 ensure_subject_exam_display_order_columns(cursor)
+                ensure_subject_exam_total_marks_column(cursor)
                 stats_snapshot = _fetch_reports_snapshot_counts(cursor)
                 # Get academic levels
                 cursor.execute("""
@@ -27735,7 +33422,8 @@ def reports():
                         # Get exams for this level (optionally filtered by term/year/exam group)
                         cursor.execute(f"""
                             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
-                                   s.subject_name, s.subject_code, ay.year_name, t.term_name
+                                   s.subject_name, s.subject_code, s.exam_total_marks,
+                                   ay.year_name, t.term_name
                             FROM exams e
                             LEFT JOIN subjects s ON e.subject_id = s.id
                             LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
@@ -27756,13 +33444,19 @@ def reports():
                         for ex in exam_rows:
                             exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
                             subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
-                            subject_name = (ex.get('subject_name') or ex.get('subject_code') or 'N/A') if isinstance(ex, dict) else (ex[4] or ex[5] or 'N/A')
+                            if isinstance(ex, dict):
+                                subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
+                                subject_etm = ex.get('exam_total_marks')
+                            else:
+                                subject_name = ex[4] or ex[5] or 'N/A'
+                                subject_etm = ex[6] if len(ex) > 6 else None
                             
                             if not subject_id:
                                 continue
                             if subject_id not in subject_stats:
                                 subject_stats[subject_id] = {
                                     'subject_name': subject_name,
+                                    'exam_total_marks': subject_etm,
                                     'exam_ids': [],
                                     'marks': [],
                                     'mean': 0, 'min': None, 'max': None, 'count': 0,
@@ -27770,27 +33464,28 @@ def reports():
                                 }
                             subject_stats[subject_id]['exam_ids'].append(exam_id)
                             
-                            # Get marks for this exam
+                            # Get marks for this exam (scaled to /100 using exam subject settings)
                             cursor.execute("""
-                                SELECT sm.student_id, sm.marks
+                                SELECT sm.student_id, sm.marks, sub.exam_total_marks
                                 FROM student_marks sm
                                 INNER JOIN students st ON sm.student_id = st.student_id
+                                INNER JOIN subjects sub ON sm.subject_id = sub.id
                                 WHERE sm.exam_id = %s AND st.current_grade = %s
                             """, (exam_id, level_name))
                             mark_rows = cursor.fetchall() or []
                             for mr in mark_rows:
                                 sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
                                 mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
-                                try:
-                                    mfloat = float(mval) if mval is not None else None
-                                    if mfloat is not None:
-                                        subject_stats[subject_id]['marks'].append(mfloat)
-                                        all_marks_for_class.append(mfloat)
-                                        students_in_class.add(sid)
-                                        if mfloat >= 50:
-                                            subject_stats[subject_id]['pass_count'] += 1
-                                except (TypeError, ValueError):
-                                    pass
+                                etm = mr.get('exam_total_marks') if isinstance(mr, dict) else (mr[2] if len(mr) > 2 else None)
+                                if etm is None:
+                                    etm = subject_stats[subject_id].get('exam_total_marks')
+                                scaled = raw_mark_to_percentage(mval, etm)
+                                if scaled is not None:
+                                    subject_stats[subject_id]['marks'].append(scaled)
+                                    all_marks_for_class.append(scaled)
+                                    students_in_class.add(sid)
+                                    if scaled >= 50:
+                                        subject_stats[subject_id]['pass_count'] += 1
                         
                         # Compute subject stats
                         subject_list = []
@@ -28724,16 +34419,18 @@ def _finance_overview_class_summaries(student_rows):
 
 
 def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None):
-    """Exam aggregates for one class (same logic as exam reports)."""
+    """Exam aggregates for one class (scaled marks /100 using exam subject settings)."""
     level_name = lev['level_name']
     subject_stats = {}
     all_marks_for_class = []
     students_in_class = set()
     try:
+        ensure_subject_exam_total_marks_column(cursor)
         cursor.execute(
             """
             SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
-                   s.subject_name, s.subject_code, ay.year_name, t.term_name
+                   s.subject_name, s.subject_code, s.exam_total_marks,
+                   ay.year_name, t.term_name
             FROM exams e
             LEFT JOIN subjects s ON e.subject_id = s.id
             LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
@@ -28749,16 +34446,18 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
         for ex in exam_rows:
             exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
             subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
-            subject_name = (
-                (ex.get('subject_name') or ex.get('subject_code') or 'N/A')
-                if isinstance(ex, dict)
-                else (ex[4] or ex[5] or 'N/A')
-            )
+            if isinstance(ex, dict):
+                subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
+                subject_etm = ex.get('exam_total_marks')
+            else:
+                subject_name = ex[4] or ex[5] or 'N/A'
+                subject_etm = ex[6] if len(ex) > 6 else None
             if not subject_id:
                 continue
             if subject_id not in subject_stats:
                 subject_stats[subject_id] = {
                     'subject_name': subject_name,
+                    'exam_total_marks': subject_etm,
                     'exam_ids': [],
                     'marks': [],
                     'mean': 0,
@@ -28771,9 +34470,10 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
             subject_stats[subject_id]['exam_ids'].append(exam_id)
             cursor.execute(
                 """
-                SELECT sm.student_id, sm.marks
+                SELECT sm.student_id, sm.marks, sub.exam_total_marks
                 FROM student_marks sm
                 INNER JOIN students st ON sm.student_id = st.student_id
+                INNER JOIN subjects sub ON sm.subject_id = sub.id
                 WHERE sm.exam_id = %s AND st.current_grade = %s
                 """,
                 (exam_id, level_name),
@@ -28781,16 +34481,16 @@ def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_yea
             for mr in cursor.fetchall() or []:
                 sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
                 mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
-                try:
-                    mfloat = float(mval) if mval is not None else None
-                    if mfloat is not None:
-                        subject_stats[subject_id]['marks'].append(mfloat)
-                        all_marks_for_class.append(mfloat)
-                        students_in_class.add(sid)
-                        if mfloat >= 50:
-                            subject_stats[subject_id]['pass_count'] += 1
-                except (TypeError, ValueError):
-                    pass
+                etm = mr.get('exam_total_marks') if isinstance(mr, dict) else (mr[2] if len(mr) > 2 else None)
+                if etm is None:
+                    etm = subject_stats[subject_id].get('exam_total_marks')
+                scaled = raw_mark_to_percentage(mval, etm)
+                if scaled is not None:
+                    subject_stats[subject_id]['marks'].append(scaled)
+                    all_marks_for_class.append(scaled)
+                    students_in_class.add(sid)
+                    if scaled >= 50:
+                        subject_stats[subject_id]['pass_count'] += 1
         subject_list = []
         for _sid, sdata in subject_stats.items():
             marks = sdata['marks']
@@ -29178,6 +34878,7 @@ def _build_exam_marks_by_student(rows):
         by_sid[sid]['marks'].sort(
             key=lambda x: (
                 x.get('exam_date') or '',
+                int(x.get('_exam_cat_i', 10**6)),
                 int(x.get('exam_display_order') or 1000000000),
                 str(x.get('subject_name') or ''),
             )
@@ -29658,17 +35359,27 @@ def _build_academic_report_payload(cursor, report_type, f):
             })
         return {'title': 'Teacher timetable', 'columns': cols, 'rows': rows, 'meta': meta}
 
+    if report_type.startswith('exam_'):
+        try:
+            ensure_subject_exam_total_marks_column(cursor)
+        except Exception:
+            pass
+
     if report_type == 'exam_all_students_performance':
         cols = ['position', 'admission_number', 'full_name']
         default_grade_bands, _subject_grade_bands = _load_grade_bands_for_reports()
         if default_grade_bands:
             meta['grade_bands'] = default_grade_bands
+        meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
                    TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
-                   sm.marks, COALESCE(st.profile_image, '') AS profile_image
+                   sm.marks, COALESCE(st.profile_image, '') AS profile_image,
+                   sub.id AS subject_id,
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
+                   sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -29681,7 +35392,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                    TRIM(COALESCE(st.current_grade, '')) AS current_grade,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
-                   sm.marks
+                   sm.marks,
+                   sub.id AS subject_id,
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
+                   sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -29721,6 +35435,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             cursor.execute(q_no_image, params)
         grouped = {}
         subject_names_set = set()
+        subject_meta = {}
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
                 admission_number = r.get('student_id')
@@ -29729,8 +35444,11 @@ def _build_academic_report_payload(cursor, report_type, f):
                 cur_grade = str(r.get('current_grade') or '').strip()
                 subject_name = r.get('subject_name')
                 subject_code = r.get('subject_code')
-                mark_val = _float_marks(r.get('marks'))
+                raw_mark_val = r.get('marks')
+                exam_total_marks = r.get('exam_total_marks')
                 raw_pf = str(r.get('profile_image') or '').strip() if include_profile_image else ''
+                sub_id_raw = r.get('subject_id')
+                eo_raw = r.get('subject_exam_display_order')
             else:
                 admission_number = r[0] if len(r) > 0 else None
                 full_name = r[1] if len(r) > 1 else None
@@ -29738,9 +35456,31 @@ def _build_academic_report_payload(cursor, report_type, f):
                 cur_grade = str(r[3]).strip() if len(r) > 3 and r[3] is not None else ''
                 subject_name = r[4] if len(r) > 4 else None
                 subject_code = r[5] if len(r) > 5 else None
-                mark_val = _float_marks(r[6] if len(r) > 6 else None)
-                raw_pf = str(r[7]).strip() if include_profile_image and len(r) > 7 else ''
+                raw_mark_val = r[6] if len(r) > 6 else None
+                if include_profile_image:
+                    raw_pf = str(r[7]).strip() if len(r) > 7 else ''
+                    sub_id_raw = r[8] if len(r) > 8 else None
+                    eo_raw = r[9] if len(r) > 9 else None
+                    exam_total_marks = r[10] if len(r) > 10 else None
+                else:
+                    raw_pf = ''
+                    sub_id_raw = r[7] if len(r) > 7 else None
+                    eo_raw = r[8] if len(r) > 8 else None
+                    exam_total_marks = r[9] if len(r) > 9 else None
+            mark_val = raw_mark_to_percentage(raw_mark_val, exam_total_marks)
             subject_label = str(subject_name or '').strip() or str(subject_code or '').strip() or 'SUBJECT'
+            try:
+                sid_i = int(sub_id_raw) if sub_id_raw is not None else None
+            except (TypeError, ValueError):
+                sid_i = None
+            try:
+                eo_i = int(eo_raw)
+            except (TypeError, ValueError):
+                eo_i = 1000000000
+            if subject_label and sid_i:
+                prev = subject_meta.get(subject_label)
+                if not prev or eo_i < prev.get('edo', 1000000000):
+                    subject_meta[subject_label] = {'sid': sid_i, 'edo': eo_i}
             if admission_number not in grouped:
                 grouped[admission_number] = {
                     'admission_number': admission_number,
@@ -29765,7 +35505,27 @@ def _build_academic_report_payload(cursor, report_type, f):
                     grouped[admission_number]['subject_marks'][subject_label] = []
                 grouped[admission_number]['subject_marks'][subject_label].append(mark_val)
 
-        subject_columns = sorted(subject_names_set)
+        sids_for_cols = list({m['sid'] for m in subject_meta.values() if m.get('sid')})
+        id_to_gc_all_perf = fetch_subject_id_to_exam_group_category(cursor, sids_for_cols) if sids_for_cols else {}
+        base_cs_perf = fetch_base_academic_level_category_order(cursor)
+        sec_cs_perf = build_exam_subject_section_order(
+            set(id_to_gc_all_perf.values()) or {'Uncategorized'}, base_cs_perf
+        )
+
+        def _all_students_subj_col_sort(lbl):
+            m = subject_meta.get(lbl) or {}
+            sid = m.get('sid')
+            if not sid:
+                return (10**9, 10**9, lbl.lower())
+            gc = id_to_gc_all_perf.get(sid, 'Uncategorized')
+            try:
+                ci = sec_cs_perf.index(gc)
+            except ValueError:
+                ci = len(sec_cs_perf)
+            edo = int(m.get('edo') or 1000000000)
+            return (ci, edo, lbl.lower())
+
+        subject_columns = sorted(subject_names_set, key=_all_students_subj_col_sort)
         cols.extend(subject_columns)
         cols.extend(['total_marks', 'mean', 'grade'])
 
@@ -29860,10 +35620,11 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'meta': {**meta, 'hint': 'Select a class/level to aggregate marks by teacher (supervisor or subject teacher).' },
             }
         cols = ['teacher_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
+        meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT COALESCE(sup.full_name, tch.full_name, 'Unassigned') AS teacher_name,
                    COALESCE(sub.subject_name, 'N/A') AS subject_name,
-                   sm.marks
+                   sm.marks, sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -29893,7 +35654,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         for r in cursor.fetchall() or []:
             tn = r.get('teacher_name') if isinstance(r, dict) else r[0]
             sn = r.get('subject_name') if isinstance(r, dict) else r[1]
-            mv = _float_marks(r.get('marks') if isinstance(r, dict) else r[2])
+            raw_mv = r.get('marks') if isinstance(r, dict) else (r[2] if len(r) > 2 else None)
+            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
+            mv = raw_mark_to_percentage(raw_mv, etm)
             if mv is None:
                 continue
             grp[(tn or 'Unassigned', sn or 'N/A')].append(mv)
@@ -29917,10 +35680,12 @@ def _build_academic_report_payload(cursor, report_type, f):
             ensure_subject_exam_display_order_columns(cursor)
         except Exception:
             pass
+        meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name, sm.marks,
                    sub.id AS subject_id,
-                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
+                   sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -29952,7 +35717,9 @@ def _build_academic_report_payload(cursor, report_type, f):
         for r in cursor.fetchall() or []:
             ln = r.get('level_name') if isinstance(r, dict) else r[0]
             sn = r.get('subject_name') if isinstance(r, dict) else r[1]
-            mv = _float_marks(r.get('marks') if isinstance(r, dict) else r[2])
+            raw_mv = r.get('marks') if isinstance(r, dict) else (r[2] if len(r) > 2 else None)
+            etm = r.get('exam_total_marks') if isinstance(r, dict) else (r[5] if len(r) > 5 else None)
+            mv = raw_mark_to_percentage(raw_mv, etm)
             if mv is None:
                 continue
             sid_raw = r.get('subject_id') if isinstance(r, dict) else (r[3] if len(r) > 3 else None)
@@ -29972,16 +35739,39 @@ def _build_academic_report_payload(cursor, report_type, f):
                 grp_level_subj[(ln, sn)].append(mv)
                 grp_subj[sn].append(mv)
 
+        int_sids_rep = [k for k in subj_name_by_id if isinstance(k, int)]
+        id_to_gc_rep = fetch_subject_id_to_exam_group_category(cursor, int_sids_rep) if int_sids_rep else {}
+        base_cat_rep = fetch_base_academic_level_category_order(cursor)
+        sec_order_rep = build_exam_subject_section_order(
+            set(id_to_gc_rep.values()) or {'Uncategorized'}, base_cat_rep
+        )
+
         def _level_subj_sort_key(k):
             ln, k2 = k
             if isinstance(k2, int):
-                return (str(ln or '').lower(), int(subj_ord.get(k2, 1000000000)), (subj_name_by_id.get(k2) or '').lower(), k2)
-            return (str(ln or '').lower(), 1000000000, str(k2).lower(), 0)
+                gc = id_to_gc_rep.get(k2, 'Uncategorized')
+                try:
+                    ci = sec_order_rep.index(gc)
+                except ValueError:
+                    ci = len(sec_order_rep)
+                return (
+                    str(ln or '').lower(),
+                    ci,
+                    int(subj_ord.get(k2, 1000000000)),
+                    (subj_name_by_id.get(k2) or '').lower(),
+                    k2,
+                )
+            return (str(ln or '').lower(), 10**9, 1000000000, str(k2).lower(), 0)
 
         def _subj_perf_sort_key(k):
             if isinstance(k, int):
-                return (int(subj_ord.get(k, 1000000000)), (subj_name_by_id.get(k) or '').lower(), k)
-            return (1000000000, str(k).lower(), 0)
+                gc = id_to_gc_rep.get(k, 'Uncategorized')
+                try:
+                    ci = sec_order_rep.index(gc)
+                except ValueError:
+                    ci = len(sec_order_rep)
+                return (ci, int(subj_ord.get(k, 1000000000)), (subj_name_by_id.get(k) or '').lower(), k)
+            return (10**9, 1000000000, str(k).lower(), 0)
 
         if report_type == 'exam_class_performance':
             cols = ['level_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
@@ -30050,10 +35840,12 @@ def _build_academic_report_payload(cursor, report_type, f):
             meta['grade_bands'] = default_grade_bands
         if subject_grade_bands:
             meta['subject_grade_bands'] = {str(k): v for k, v in subject_grade_bands.items()}
+        meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
-                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
+                   COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
+                   sub.exam_total_marks
             FROM student_marks sm
             INNER JOIN exams e ON sm.exam_id = e.id
             INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -30086,7 +35878,8 @@ def _build_academic_report_payload(cursor, report_type, f):
             q_no_image = """
                 SELECT st.student_id, st.full_name, al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                        e.exam_name, e.exam_date, sm.marks, e.subject_id,
-                       COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order
+                       COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
+                       sub.exam_total_marks
                 FROM student_marks sm
                 INNER JOIN exams e ON sm.exam_id = e.id
                 INNER JOIN academic_levels al ON e.academic_level_id = al.id
@@ -30124,13 +35917,25 @@ def _build_academic_report_payload(cursor, report_type, f):
                     photo_url = ''
             subject_id_val = None
             exam_ord_val = None
-            if include_profile_image:
-                subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[8] if len(r) > 8 else None)
-                exam_ord_val = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[9] if len(r) > 9 else None)
+            exam_total_marks = None
+            raw_marks_val = None
+            if isinstance(r, dict):
+                subject_id_val = r.get('subject_id')
+                exam_ord_val = r.get('subject_exam_display_order')
+                exam_total_marks = r.get('exam_total_marks')
+                raw_marks_val = r.get('marks')
+            elif include_profile_image:
+                subject_id_val = r[8] if len(r) > 8 else None
+                exam_ord_val = r[9] if len(r) > 9 else None
+                exam_total_marks = r[10] if len(r) > 10 else None
+                raw_marks_val = r[6] if len(r) > 6 else None
             else:
-                subject_id_val = r.get('subject_id') if isinstance(r, dict) else (r[7] if len(r) > 7 else None)
-                exam_ord_val = r.get('subject_exam_display_order') if isinstance(r, dict) else (r[8] if len(r) > 8 else None)
-            grade_code = _grade_from_settings(subject_id_val, r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else None), default_grade_bands, subject_grade_bands)
+                subject_id_val = r[7] if len(r) > 7 else None
+                exam_ord_val = r[8] if len(r) > 8 else None
+                exam_total_marks = r[9] if len(r) > 9 else None
+                raw_marks_val = r[6] if len(r) > 6 else None
+            scaled_marks = raw_mark_to_percentage(raw_marks_val, exam_total_marks)
+            grade_code = _grade_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
             rows.append({
                 'student_id': r.get('student_id') if isinstance(r, dict) else r[0],
                 'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
@@ -30138,12 +35943,45 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'subject_name': r.get('subject_name') if isinstance(r, dict) else r[3],
                 'exam_name': r.get('exam_name') if isinstance(r, dict) else r[4],
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
-                'marks': r.get('marks') if isinstance(r, dict) else (r[6] if len(r) > 6 else ''),
+                'marks': scaled_marks if scaled_marks is not None else '',
                 'student_photo': photo_url,
                 'subject_id': subject_id_val,
                 'grade_code': grade_code,
                 'exam_display_order': int(exam_ord_val) if exam_ord_val is not None and str(exam_ord_val).strip().isdigit() else (int(exam_ord_val) if isinstance(exam_ord_val, int) else 1000000000),
             })
+        row_sids = []
+        for rw in rows:
+            v = rw.get('subject_id')
+            if v is not None:
+                try:
+                    row_sids.append(int(v))
+                except (TypeError, ValueError):
+                    continue
+        id_to_gc_rows = fetch_subject_id_to_exam_group_category(cursor, row_sids) if row_sids else {}
+        base_rows = fetch_base_academic_level_category_order(cursor)
+        sec_rows = build_exam_subject_section_order(set(id_to_gc_rows.values()) or {'Uncategorized'}, base_rows)
+        for rw in rows:
+            v = rw.get('subject_id')
+            if v is None:
+                rw['_exam_cat_i'] = 10**6
+                continue
+            try:
+                gc = id_to_gc_rows.get(int(v), 'Uncategorized')
+            except (TypeError, ValueError):
+                gc = 'Uncategorized'
+            try:
+                rw['_exam_cat_i'] = sec_rows.index(gc)
+            except ValueError:
+                rw['_exam_cat_i'] = len(sec_rows)
+        rows.sort(
+            key=lambda row: (
+                str(row.get('student_id') or '').lower(),
+                str(row.get('exam_date') or ''),
+                row.get('_exam_cat_i', 10**6),
+                int(row.get('exam_display_order') or 1000000000),
+                str(row.get('subject_name') or '').lower(),
+            )
+        )
         meta['row_limit'] = 3000
         title = 'Individual student — exam performance' if report_type == 'exam_individual_performance' else 'Individual exam performance'
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
@@ -32717,15 +38555,25 @@ def add_academic_level():
 @app.route('/system-settings/academic-level/<int:level_id>/toggle-status', methods=['POST'])
 @login_required
 def toggle_academic_level_status(level_id):
-    """Toggle academic level status between active and inactive"""
+    """Toggle academic level status between active and inactive (suspend / unsuspend)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
     
-    # Allow technicians and accountants
     is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
     is_technician = user_role == 'technician'
-    
-    if not (is_technician or is_accountant):
+    has_edit_academic_level_permission = check_permission_or_role(
+        'edit_academic_level',
+        ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'accountant'],
+    )
+    has_manage_academic_levels_permission = check_permission_or_role(
+        'manage_academic_levels',
+        ['head of institution', 'deputy head of institution', 'curriculum coordinator'],
+    )
+    if not (
+        is_technician
+        or has_edit_academic_level_permission
+        or has_manage_academic_levels_permission
+    ):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     # Get current status from database
@@ -32742,7 +38590,12 @@ def toggle_academic_level_status(level_id):
             if not result:
                 return jsonify({'success': False, 'message': 'Academic level not found.'}), 404
             
-            current_status = result.get('level_status') if isinstance(result, dict) else result[0]
+            raw = result.get('level_status') if isinstance(result, dict) else result[0]
+            if isinstance(raw, bytes):
+                raw = raw.decode('utf-8', errors='ignore')
+            current_status = (str(raw or 'active')).strip().lower()
+            if current_status != 'active':
+                current_status = 'inactive'
             new_status = 'inactive' if current_status == 'active' else 'active'
             
             # Update status

@@ -21,7 +21,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6" x-data="{ activeSubSection: '{{ request.args.get('tab', 'academic-level') }}' }">
+<div class="p-4 lg:p-6" x-data="{ activeSubSection: '{{ request.args.get('tab', 'academic-level') }}', showAcademicLevelForm: false }">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
@@ -34,21 +34,21 @@
     <!-- Sub-section Navigation Tabs -->
     <div class="mb-4 sm:mb-6 bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-2 sm:p-3">
         <nav class="flex space-x-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide" style="scrollbar-width: none; -ms-overflow-style: none;">
-            <button @click="activeSubSection = 'academic-level'"
+            <button @click="activeSubSection = 'academic-level'; showAcademicLevelForm = false"
                     :class="activeSubSection === 'academic-level' ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
                     class="flex-shrink-0 py-2.5 sm:py-3 px-3 sm:px-5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center space-x-1.5 sm:space-x-2 min-w-fit">
                 <i class="fas fa-layer-group text-sm sm:text-base"></i>
                 <span class="whitespace-nowrap hidden sm:inline">Academic Levels</span>
                 <span class="whitespace-nowrap sm:hidden">Levels</span>
             </button>
-            <button @click="activeSubSection = 'academic-year'"
+            <button @click="activeSubSection = 'academic-year'; showAcademicLevelForm = false"
                     :class="activeSubSection === 'academic-year' ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
                     class="flex-shrink-0 py-2.5 sm:py-3 px-3 sm:px-5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center space-x-1.5 sm:space-x-2 min-w-fit">
                 <i class="fas fa-calendar-check text-sm sm:text-base"></i>
                 <span class="whitespace-nowrap hidden sm:inline">Academic Years</span>
                 <span class="whitespace-nowrap sm:hidden">Years</span>
             </button>
-            <button @click="activeSubSection = 'term-settings'"
+            <button @click="activeSubSection = 'term-settings'; showAcademicLevelForm = false"
                     :class="activeSubSection === 'term-settings' ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'"
                     class="flex-shrink-0 py-2.5 sm:py-3 px-3 sm:px-5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center space-x-1.5 sm:space-x-2 min-w-fit">
                 <i class="fas fa-calendar-week text-sm sm:text-base"></i>
@@ -71,15 +71,33 @@
                 <i class="fas fa-layer-group text-blue-600 mr-2"></i>
                 Academic Level Registration
             </h3>
-            <p class="text-gray-600 dark:text-gray-400 text-sm">Register and manage academic levels (e.g., Primary, Secondary, etc.)</p>
+            <p class="text-gray-600 dark:text-gray-400 text-sm mb-4">Register and manage academic levels (e.g., Primary, Secondary, etc.)</p>
+            <button type="button"
+                    x-show="!showAcademicLevelForm"
+                    x-cloak
+                    @click="showAcademicLevelForm = true"
+                    class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-white bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-md hover:shadow-lg transition-all">
+                <i class="fas fa-plus-circle" aria-hidden="true"></i>
+                Register academic level
+            </button>
         </div>
 
         <!-- Add New Academic Level Form -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
-            <h4 class="text-lg font-semibold text-gray-900 dark:text-white mb-4 sm:mb-6 flex items-center">
-                <i class="fas fa-plus-circle text-green-600 mr-2"></i>
-                Add New Academic Level
-            </h4>
+        <div x-show="showAcademicLevelForm"
+             x-cloak
+             class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 sm:p-6 mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 sm:mb-6">
+                <h4 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center">
+                    <i class="fas fa-plus-circle text-green-600 mr-2"></i>
+                    Add New Academic Level
+                </h4>
+                <button type="button"
+                        @click="showAcademicLevelForm = false"
+                        class="inline-flex items-center justify-center px-4 py-2 rounded-lg text-sm font-semibold border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                    <i class="fas fa-times mr-2" aria-hidden="true"></i>
+                    Cancel
+                </button>
+            </div>
             <form action="/system-settings/academic-level" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -158,9 +176,28 @@
                                 {{ level.level_description or '-' }}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-3 py-1.5 text-xs font-semibold rounded-full {% if level.level_status == 'active' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300{% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
-                                    {{ level.level_status|title }}
-                                </span>
+                                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                                    {% if level.level_status == 'active' %}
+                                    <span class="level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300" data-level-id="{{ level.id }}">
+                                        <i class="fas fa-check-circle" aria-hidden="true"></i>
+                                        Active
+                                    </span>
+                                    {% else %}
+                                    <span class="level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200" data-level-id="{{ level.id }}">
+                                        <i class="fas fa-pause-circle" aria-hidden="true"></i>
+                                        Suspended
+                                    </span>
+                                    {% endif %}
+                                    <label class="relative inline-flex items-center cursor-pointer shrink-0"
+                                           title="{% if level.level_status == 'active' %}Suspend this level{% else %}Unsuspend (activate) this level{% endif %}">
+                                        <span class="sr-only">{% if level.level_status == 'active' %}Suspend{% else %}Unsuspend{% endif %} academic level</span>
+                                        <input type="checkbox"
+                                               class="sr-only peer academic-level-suspend-toggle"
+                                               data-level-id="{{ level.id }}"
+                                               {% if level.level_status == 'active' %}checked{% endif %}>
+                                        <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                                    </label>
+                                </div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                 <div class="flex items-center justify-end space-x-2">
@@ -194,14 +231,33 @@
                 {% for level in academic_levels %}
                 <div class="bg-gradient-to-br from-white to-gray-50 dark:from-gray-700 dark:to-gray-800 border-2 border-gray-200 dark:border-gray-600 rounded-xl p-5 shadow-md">
                     <div class="mb-4 pb-4 border-b-2 border-gray-200 dark:border-gray-600">
-                        <div class="flex items-start justify-between mb-2">
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-2">
                             <div class="flex-1 min-w-0 pr-3">
                                 <h3 class="text-lg font-bold text-gray-900 dark:text-white break-words leading-snug mb-1">{{ level.level_name }}</h3>
                                 <p class="text-sm text-gray-600 dark:text-gray-400">{{ level.level_category }}</p>
                             </div>
-                            <span class="px-3 py-1.5 text-xs font-semibold rounded-full flex-shrink-0 {% if level.level_status == 'active' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300{% else %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300{% endif %}">
-                                {{ level.level_status|title }}
-                            </span>
+                            <div class="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:shrink-0">
+                                {% if level.level_status == 'active' %}
+                                <span class="level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300" data-level-id="{{ level.id }}">
+                                    <i class="fas fa-check-circle" aria-hidden="true"></i>
+                                    Active
+                                </span>
+                                {% else %}
+                                <span class="level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200" data-level-id="{{ level.id }}">
+                                    <i class="fas fa-pause-circle" aria-hidden="true"></i>
+                                    Suspended
+                                </span>
+                                {% endif %}
+                                <label class="relative inline-flex items-center cursor-pointer shrink-0"
+                                       title="{% if level.level_status == 'active' %}Suspend this level{% else %}Unsuspend (activate) this level{% endif %}">
+                                    <span class="sr-only">{% if level.level_status == 'active' %}Suspend{% else %}Unsuspend{% endif %} academic level</span>
+                                    <input type="checkbox"
+                                           class="sr-only peer academic-level-suspend-toggle"
+                                           data-level-id="{{ level.id }}"
+                                           {% if level.level_status == 'active' %}checked{% endif %}>
+                                    <div class="w-11 h-6 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600"></div>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     {% if level.level_description %}
@@ -1026,6 +1082,32 @@
 
 <script>
 const _academicSysEmpPrefix = {{ employee_dash_url()|tojson }};
+
+function setAcademicLevelStatusPills(levelId, newStatus) {
+    const active = newStatus === 'active';
+    const pillClass = active
+        ? 'level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+        : 'level-status-pill inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200';
+    const pillHtml = active
+        ? '<i class="fas fa-check-circle" aria-hidden="true"></i> Active'
+        : '<i class="fas fa-pause-circle" aria-hidden="true"></i> Suspended';
+    document.querySelectorAll('.level-status-pill[data-level-id="' + levelId + '"]').forEach(function (el) {
+        el.className = pillClass;
+        el.innerHTML = pillHtml;
+    });
+}
+
+function setAcademicLevelSuspendToggles(levelId, checked) {
+    document.querySelectorAll('.academic-level-suspend-toggle[data-level-id="' + levelId + '"]').forEach(function (cb) {
+        cb.checked = checked;
+    });
+}
+
+function setAcademicLevelSuspendTogglesDisabled(levelId, disabled) {
+    document.querySelectorAll('.academic-level-suspend-toggle[data-level-id="' + levelId + '"]').forEach(function (cb) {
+        cb.disabled = disabled;
+    });
+}
 // Close Edit Level Modal Function
 function closeEditLevelModal() {
     const editLevelModal = document.getElementById('editLevelModal');
@@ -1054,6 +1136,43 @@ function closeEditTermModal() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Suspend / unsuspend academic level (toggle active ↔ inactive)
+    document.querySelectorAll('.academic-level-suspend-toggle').forEach(function (toggle) {
+        toggle.addEventListener('change', function () {
+            const levelId = this.getAttribute('data-level-id');
+            const isChecked = this.checked;
+
+            setAcademicLevelSuspendTogglesDisabled(levelId, true);
+
+            fetch(_academicSysEmpPrefix + '/system-settings/academic-level/' + levelId + '/toggle-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin'
+            })
+                .then(function (response) { return response.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        var ns = data.new_status || (isChecked ? 'active' : 'inactive');
+                        setAcademicLevelStatusPills(levelId, ns);
+                        setAcademicLevelSuspendToggles(levelId, ns === 'active');
+                        document.querySelectorAll('.edit-level-btn[data-level-id="' + levelId + '"]').forEach(function (btn) {
+                            btn.setAttribute('data-level-status', ns);
+                        });
+                    } else {
+                        setAcademicLevelSuspendToggles(levelId, !isChecked);
+                        alert(data.message || 'Failed to update status. Please try again.');
+                    }
+                })
+                .catch(function () {
+                    setAcademicLevelSuspendToggles(levelId, !isChecked);
+                    alert('An error occurred while updating the status. Please try again.');
+                })
+                .finally(function () {
+                    setAcademicLevelSuspendTogglesDisabled(levelId, false);
+                });
+        });
+    });
+
     // Edit Academic Level Modal
     const editLevelButtons = document.querySelectorAll('.edit-level-btn');
     const editLevelModal = document.getElementById('editLevelModal');
@@ -1084,7 +1203,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } else {
                 statusToggle.checked = false;
                 statusValue.value = 'inactive';
-                statusLabel.textContent = 'Inactive';
+                statusLabel.textContent = 'Suspended';
                 statusLabel.className = 'text-sm font-medium text-gray-600 dark:text-gray-400';
             }
             
@@ -1105,7 +1224,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 editStatusLabel.className = 'text-sm font-medium text-green-600 dark:text-green-400';
                 editStatusValue.value = 'active';
             } else {
-                editStatusLabel.textContent = 'Inactive';
+                editStatusLabel.textContent = 'Suspended';
                 editStatusLabel.className = 'text-sm font-medium text-gray-600 dark:text-gray-400';
                 editStatusValue.value = 'inactive';
             }

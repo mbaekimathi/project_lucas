@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Choose role — {{ school_settings.school_name or 'School portal' }}{% endblock %}
+{% block body_class %}public-site cbc-saas cbc-saas--premium login-page-public login-select-role-page{% endblock %}
+{% block content %}
+<div class="cbc-premium-page py-6 sm:py-8 md:py-14 px-4 sm:px-6">
+    <div class="cbc-premium-login-shell cbc-premium-login-shell--select-role max-w-5xl mx-auto w-full min-w-0">
+        <aside class="cbc-premium-login-aside cbc-premium-login-aside--compact hidden sm:flex sm:flex-col sm:justify-end">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Staff portal</p>
+            <h1 class="mt-3 text-2xl md:text-3xl font-extrabold text-white tracking-tight leading-tight">One account, multiple roles</h1>
+            <p class="mt-3 text-white/75 text-sm leading-relaxed max-w-sm">
+                Your sign-in is verified. Choose how you want to work in {{ school_settings.school_name or 'the portal' }} for this session — menus and permissions follow the role you pick.
+            </p>
+            <ul class="mt-5 space-y-2 text-sm text-white/70 list-none pl-0">
+                <li class="flex gap-2"><i class="fas fa-check text-emerald-400/90 mt-0.5 shrink-0" aria-hidden="true"></i><span>You can sign out and pick a different role anytime</span></li>
+            </ul>
+        </aside>
+
+        <div class="cbc-premium-surface login-auth-card login-select-role-card w-full min-w-0 p-5 sm:p-8 md:p-10">
+            <p class="text-xs font-bold uppercase tracking-[0.2em] text-white/60 sm:hidden">Staff sign-in</p>
+            <h2 class="mt-2 sm:mt-0 text-xl sm:text-2xl font-extrabold text-white tracking-tight">Choose your role</h2>
+            <p class="mt-2 text-sm text-white/60 leading-relaxed max-w-prose">
+                Signed in as <strong class="text-white/90 font-semibold">{{ employee_name }}</strong>.
+                Tap a role to open your dashboard.
+            </p>
+
+            {% if select_error %}
+            <div class="mt-4 sm:mt-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm font-medium text-red-900 dark:border-red-800 dark:bg-red-950/50 dark:text-red-100" role="alert">
+                {{ select_error }}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('login_select_role') }}" id="login_select_role_form" class="mt-5 sm:mt-6">
+                <fieldset class="cbc-role-picker border-0 p-0 m-0 min-w-0" id="login_role_fieldset">
+                    <legend class="sr-only">Select your role for this session</legend>
+                    <div class="cbc-role-picker__grid {% if allocated_roles|length > 4 %}cbc-role-picker__grid--many{% endif %}">
+                        {% for role in allocated_roles %}
+                        <label class="cbc-role-picker__option">
+                            <input type="radio" name="selected_role" value="{{ role }}" required
+                                   class="cbc-role-picker__radio">
+                            <span class="cbc-role-picker__icon" aria-hidden="true">
+                                {% if role == 'teachers' %}<i class="fas fa-chalkboard-user"></i>
+                                {% elif role == 'technician' %}<i class="fas fa-screwdriver-wrench"></i>
+                                {% elif role == 'head of institution' or role == 'deputy head of institution' %}<i class="fas fa-building-columns"></i>
+                                {% elif role == 'curriculum coordinator' %}<i class="fas fa-book-open"></i>
+                                {% elif role == 'accountant' %}<i class="fas fa-calculator"></i>
+                                {% elif role == 'secretary' %}<i class="fas fa-clipboard"></i>
+                                {% elif role == 'librarian' %}<i class="fas fa-book"></i>
+                                {% elif role == 'warden' %}<i class="fas fa-bed"></i>
+                                {% elif role == 'transport manager' %}<i class="fas fa-bus"></i>
+                                {% elif role == 'super admin' %}<i class="fas fa-shield-halved"></i>
+                                {% else %}<i class="fas fa-user-tie"></i>
+                                {% endif %}
+                            </span>
+                            <span class="cbc-role-picker__label capitalize">{{ role }}</span>
+                            <span class="cbc-role-picker__check" aria-hidden="true"><i class="fas fa-circle-check"></i></span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
+                <div id="login_role_submitting" class="login-role-submitting hidden mt-5 sm:mt-6" role="status" aria-live="polite">
+                    <div class="flex items-center justify-center gap-3 rounded-xl border border-white/15 bg-white/5 px-4 py-4 text-sm font-semibold text-white/80">
+                        <i class="fas fa-spinner fa-spin text-emerald-400" aria-hidden="true"></i>
+                        <span>Opening your dashboard…</span>
+                    </div>
+                </div>
+                <noscript>
+                    <button type="submit" class="mt-5 sm:mt-6 w-full cbc-cta-red justify-center py-3.5 sm:py-4 text-sm sm:text-base font-bold shadow-lg shadow-black/20 min-h-[48px]">
+                        Continue to dashboard
+                    </button>
+                </noscript>
+            </form>
+
+            <p class="mt-5 sm:mt-6 text-center text-xs sm:text-sm text-white/45">
+                <a href="{{ url_for('login', role='employee') }}" class="text-white/70 hover:text-white underline-offset-2 hover:underline inline-flex items-center justify-center gap-1.5 min-h-[44px] px-2 touch-manipulation">
+                    Sign in as someone else
+                </a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var form = document.getElementById('login_select_role_form');
+    var fieldset = document.getElementById('login_role_fieldset');
+    var statusEl = document.getElementById('login_role_submitting');
+    if (!form) return;
+
+    var submitting = false;
+
+    function showSubmitting() {
+        if (statusEl) statusEl.classList.remove('hidden');
+        if (fieldset) {
+            fieldset.setAttribute('aria-busy', 'true');
+            fieldset.style.pointerEvents = 'none';
+            fieldset.style.opacity = '0.65';
+        }
+    }
+
+    form.addEventListener('change', function (e) {
+        if (submitting) return;
+        if (!e.target || e.target.name !== 'selected_role' || e.target.type !== 'radio') return;
+        if (!e.target.checked) return;
+        submitting = true;
+        showSubmitting();
+        form.submit();
+    });
+})();
+</script>
+{% endblock %}

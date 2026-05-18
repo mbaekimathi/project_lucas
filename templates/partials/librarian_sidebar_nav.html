@@ -1,0 +1,15 @@
+<a href="{{ employee_dash_url('books-inventory') }}"
+   class="sidebar-item {% if request.endpoint == 'books_inventory' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book w-5"></i>
+    <span>Books Inventory</span>
+</a>
+<a href="{{ employee_dash_url('books-inventory/stock') }}"
+   class="sidebar-item {% if request.endpoint == 'books_inventory_stock' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-boxes-stacked w-5"></i>
+    <span>Book Inventory Stock</span>
+</a>
+<a href="{{ employee_dash_url('issue-return-records') }}"
+   class="sidebar-item {% if request.endpoint in ('librarian_issue_return_records', 'librarian_issue_return_records_level') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Issue / Return</span>
+</a>

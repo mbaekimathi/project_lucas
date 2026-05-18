@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student.full_name }} — Library - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% if session.get('role', '').lower() == 'technician' %}
+<a href="{{ employee_dash_url('role-switch') }}"
+   class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
+    <i class="fas fa-exchange-alt w-5"></i>
+    <span>Role Switch</span>
+</a>
+{% endif %}
+<a href="{{ parent_dash_url() }}" class="sidebar-item">
+    <i class="fas fa-home w-5"></i>
+    <span>Dashboard</span>
+</a>
+<a href="{{ parent_dash_url('student-fees') }}" class="sidebar-item">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / Payments</span>
+</a>
+<a href="{{ parent_dash_url('exam-progress') }}" class="sidebar-item">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam Results</span>
+</a>
+<a href="{{ parent_dash_url('attendance') }}" class="sidebar-item">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+</a>
+<a href="{{ parent_dash_url('library') }}" class="sidebar-item sidebar-item-active">
+    <i class="fas fa-book w-5"></i>
+    <span>Library</span>
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto">
+    {% if is_technician and current_view_role == 'parent' %}
+    <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Viewing library books for this student</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <select
+                    class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]"
+                    onchange="var b={{ parent_dash_url('library')|tojson }};var v=this.value;if(v){window.location.href=b+'/'+encodeURIComponent(v)+'?student_id='+encodeURIComponent(v);}">
+                    <option value="">-- Jump to another student --</option>
+                    {% for st in all_students %}
+                    {% set sid = st.get('student_id', '') or st[1] if st else '' %}
+                    <option value="{{ sid }}" {% if sid == parent_student_id %}selected{% endif %}>
+                        {{ st.get('full_name', '') or st[2] if st else '' }} — {{ sid }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if show_sibling_nav %}
+    <a href="{{ parent_dash_url('library') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 mb-4 py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Choose another child
+    </a>
+    {% else %}
+    <a href="{{ parent_dash_url() }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 mb-4 py-2">
+        <i class="fas fa-arrow-left mr-2"></i>Back to dashboard
+    </a>
+    {% endif %}
+
+    <div class="page-hero mb-6 sm:mb-8 rounded-2xl overflow-hidden bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700 shadow-lg">
+        <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+            <div class="flex items-center gap-4">
+                <div class="w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+                    <i class="fas fa-book-open text-white text-2xl" aria-hidden="true"></i>
+                </div>
+                <div class="min-w-0">
+                    <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">{{ student.full_name }}</h1>
+                    <p class="mt-1 text-sm text-violet-100 font-mono">{{ student.student_id }} · {{ student.current_grade or 'Grade N/A' }}</p>
+                    <p class="mt-2 text-sm text-violet-100/90">Library books issued to your child by their teacher</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-6 flex flex-wrap gap-2 text-xs">
+        <span class="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200">
+            {{ active_count }} currently with student
+        </span>
+        {% if returned_count > 0 %}
+        <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+            {{ returned_count }} returned
+        </span>
+        {% endif %}
+    </div>
+
+    {% if books %}
+    <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden dark:border-gray-700 dark:bg-gray-900/90">
+        <div class="overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
+                        <th class="px-4 py-3 whitespace-nowrap">Copy ref</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Book</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Subject</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Class</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Teacher</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Status</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Issued</th>
+                        <th class="px-4 py-3 whitespace-nowrap">Returned</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for book in books %}
+                    <tr class="hover:bg-violet-50/50 dark:hover:bg-violet-950/20 {% if book.status == 'returned' %}opacity-75{% endif %}">
+                        <td class="px-4 py-3 font-mono text-xs font-bold text-violet-800 dark:text-violet-200 whitespace-nowrap">{{ book.copy_code }}</td>
+                        <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ book.book_name }}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ book.subject_name or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap">{{ book.level_name or '—' }}</td>
+                        <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ book.teacher_name or '—' }}</td>
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            {% if book.status == 'issued' %}
+                            <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                                <i class="fas fa-circle text-[6px]" aria-hidden="true"></i> With student
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                <i class="fas fa-undo text-[10px]" aria-hidden="true"></i> Returned
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
+                            {{ book.issued_at.strftime('%d %b %Y') if book.issued_at else '—' }}
+                        </td>
+                        <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
+                            {{ book.returned_at.strftime('%d %b %Y') if book.returned_at else '—' }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-900/50">
+        <i class="fas fa-book-open text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
+        <p class="text-gray-700 dark:text-gray-300 font-medium">No library books issued yet</p>
+        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+            When your child's teacher issues a school library book to them, it will appear here.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

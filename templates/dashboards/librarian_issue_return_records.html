@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Issue / Return Records - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% include "partials/librarian_sidebar_nav.html" %}
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-2">
+            {% for category, message in messages %}
+            <div class="rounded-xl border px-4 py-3 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 text-gray-800 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-100{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <header class="relative overflow-hidden rounded-2xl sm:rounded-3xl shadow-lg mb-8">
+            <div class="absolute inset-0 bg-gradient-to-br from-teal-600 via-emerald-600 to-cyan-700"></div>
+            <div class="relative px-6 py-8 sm:px-8 sm:py-10">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div class="w-14 h-14 rounded-2xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
+                        <i class="fas fa-exchange-alt text-white text-2xl" aria-hidden="true"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h1 class="text-2xl sm:text-3xl font-bold text-white tracking-tight">Issue / Return Records</h1>
+                        <p class="mt-1 text-sm sm:text-base text-teal-100/95">
+                            Select a class to view books issued to students by teachers allocated library copies.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        {% if classes %}
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {% for cls in classes %}
+            <a href="{{ employee_dash_url('issue-return-records/' ~ cls.level_id) }}"
+               class="group block rounded-2xl border border-gray-200/90 bg-white p-5 shadow-sm transition hover:border-teal-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/90 dark:hover:border-teal-600/50">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-600 dark:text-teal-400">{{ cls.level_category }}</p>
+                        <h2 class="mt-1 text-lg font-bold text-gray-900 dark:text-white truncate">{{ cls.level_name }}</h2>
+                        {% if cls.level_code %}
+                        <p class="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400">{{ cls.level_code }}</p>
+                        {% endif %}
+                    </div>
+                    <span class="shrink-0 flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-600 group-hover:bg-teal-100 dark:bg-teal-950/50 dark:text-teal-300">
+                        <i class="fas fa-chevron-right text-sm" aria-hidden="true"></i>
+                    </span>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2 text-xs">
+                    {% if cls.active_issues > 0 %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                        <i class="fas fa-book-reader text-emerald-600"></i> {{ cls.active_issues }} issued
+                    </span>
+                    {% else %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-400">
+                        No active issues
+                    </span>
+                    {% endif %}
+                    {% if cls.returned_issues > 0 %}
+                    <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                        <i class="fas fa-undo text-slate-500"></i> {{ cls.returned_issues }} returned
+                    </span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-900/50">
+            <i class="fas fa-chalkboard text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
+            <p class="text-gray-700 dark:text-gray-300 font-medium">No classes found</p>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Active academic levels will appear here once configured in Academic Settings.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

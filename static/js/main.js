@@ -138,9 +138,10 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Auto-dismiss flash messages after 5 seconds
-    const flashMessages = document.querySelectorAll('.bg-red-100, .bg-green-100, .bg-blue-100');
-    flashMessages.forEach(message => {
+    // Auto-dismiss only elements explicitly marked as dismissible flash banners.
+    // Do NOT match generic Tailwind utility classes (e.g. .bg-green-100) — those are used for
+    // status badges, table chips, and legends site-wide; matching them caused UI to vanish after 5s.
+    document.querySelectorAll('[data-auto-dismiss-flash="true"]').forEach(message => {
         setTimeout(() => {
             message.style.transition = 'opacity 0.5s';
             message.style.opacity = '0';

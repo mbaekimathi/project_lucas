@@ -107,26 +107,22 @@
                         <!-- Role Selection and Approve -->
                         <div class="flex flex-col space-y-2 sm:space-y-3 w-full sm:w-auto lg:w-64 xl:w-72">
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Assign Role:
+                                Assign roles <span class="text-gray-500 font-normal">(one or more)</span>
                             </label>
-                            <select :id="'role-select-' + {{ employee.id }}"
-                                    data-emp-id="{{ employee.id }}"
-                                    @change="onApproveRoleChange({{ employee.id }}, $event.target.value)"
-                                    class="w-full px-3 sm:px-4 py-2.5 sm:py-3 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all min-h-[44px]">
-                                <option value="">Select a role...</option>
-                                <option value="employee">Employee</option>
-                                <option value="super admin">Super Admin</option>
-                                <option value="head of institution">Head of Institution</option>
-                                <option value="deputy head of institution">Deputy Head of Institution</option>
-                                <option value="curriculum coordinator">Curriculum Coordinator</option>
-                                <option value="teachers">Teachers</option>
-                                <option value="accountant">Accountant</option>
-                                <option value="secretary">Secretary</option>
-                                <option value="librarian">Librarian</option>
-                                <option value="warden">Warden</option>
-                                <option value="transport manager">Transport Manager</option>
-                                <option value="technician">Technician</option>
-                            </select>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-900/40"
+                                 data-approve-roles-box="{{ employee.id }}">
+                                {% for role_opt in employee_role_options %}
+                                <label class="inline-flex items-center gap-2 text-xs sm:text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
+                                    <input type="checkbox"
+                                           name="approve-roles-{{ employee.id }}"
+                                           value="{{ role_opt }}"
+                                           @change="onApproveRolesChange({{ employee.id }})"
+                                           class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+                                    <span class="capitalize">{{ role_opt }}</span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">The first role you tick becomes the primary role on their profile.</p>
                             <div id="teacher-staff-row-{{ employee.id }}" class="hidden space-y-1.5 pt-1">
                                 <label for="teacher-staff-number-{{ employee.id }}" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
                                     Allocate staff number <span class="text-gray-500 dark:text-gray-400 font-normal">(teacher)</span>
@@ -155,7 +151,7 @@
                             <button @click="approveEmployee({{ employee.id }}, '{{ employee.full_name }}')" 
                                     class="w-full bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-medium py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg transition-all flex items-center justify-center gap-2 sm:gap-2.5 min-h-[44px] text-sm sm:text-base shadow-sm hover:shadow-md">
                                 <i class="fas fa-check-circle text-base sm:text-lg"></i>
-                                <span>Approve & Assign Role</span>
+                                <span>Approve &amp; assign roles</span>
                             </button>
                         </div>
                     </div>
@@ -508,10 +504,16 @@ function assignRolesApprove() {
             }, 5000);
         },
 
-        onApproveRoleChange(employeeId, value) {
+        getSelectedApproveRoles(employeeId) {
+            const boxes = document.querySelectorAll('input[name="approve-roles-' + employeeId + '"]:checked');
+            return Array.from(boxes).map(function (el) { return el.value; });
+        },
+
+        onApproveRolesChange(employeeId) {
             const row = document.getElementById('teacher-staff-row-' + employeeId);
             if (!row) return;
-            const isTeacher = value === 'teachers' || value === 'teacher';
+            const roles = this.getSelectedApproveRoles(employeeId);
+            const isTeacher = roles.indexOf('teachers') !== -1;
             row.classList.toggle('hidden', !isTeacher);
             if (!isTeacher) {
                 this.resetApproveStaffCheck(employeeId);
@@ -674,16 +676,14 @@ function assignRolesApprove() {
         },
         
         async approveEmployee(employeeId, employeeName) {
-            const roleSelect = document.getElementById(`role-select-${employeeId}`);
-            const selectedRole = roleSelect.value;
+            const selectedRoles = this.getSelectedApproveRoles(employeeId);
             
-            if (!selectedRole) {
-                this.showMessage('Please select a role for the employee before approving.', 'error');
-                roleSelect.focus();
+            if (!selectedRoles.length) {
+                this.showMessage('Please select at least one role for the employee before approving.', 'error');
                 return;
             }
 
-            if (selectedRole === 'teachers' || selectedRole === 'teacher') {
+            if (selectedRoles.indexOf('teachers') !== -1) {
                 const staffEl = document.getElementById('teacher-staff-number-' + employeeId);
                 const sn = staffEl ? staffEl.value.trim() : '';
                 if (sn) {
@@ -700,14 +700,14 @@ function assignRolesApprove() {
                 }
             }
             
-            const roleTitle = this.toTitleCase(selectedRole);
-            if (!confirm(`Are you sure you want to approve ${employeeName} and assign them the role of ${roleTitle}? An email notification will be sent to their email address.`)) {
+            const rolesLabel = selectedRoles.map(r => this.toTitleCase(r)).join(', ');
+            if (!confirm(`Approve ${employeeName} with role(s): ${rolesLabel}? An email notification will be sent.`)) {
                 return;
             }
             
             try {
-                const payload = { role: selectedRole };
-                if (selectedRole === 'teachers' || selectedRole === 'teacher') {
+                const payload = { roles: selectedRoles };
+                if (selectedRoles.indexOf('teachers') !== -1) {
                     const staffEl = document.getElementById('teacher-staff-number-' + employeeId);
                     payload.staff_employee_number = staffEl ? staffEl.value.trim() : '';
                 }
