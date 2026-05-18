@@ -16,7 +16,8 @@
     --ms-idx-w: 2.5rem;
     --ms-student-w: clamp(10.5rem, 22vw, 16rem);
     --ms-total-w: 3.25rem;
-    --ms-rank-w: 3rem;
+    --ms-code-w: 2.75rem;
+    --ms-pts-w: 3rem;
 }
 
 /* Marks lock countdown — teleported to body so it sits above app chrome (main is z-10, header z-50) */
@@ -114,7 +115,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 .marks-sheet-table col.marks-col-idx { width: var(--ms-idx-w); }
 .marks-sheet-table col.marks-col-student { width: var(--ms-student-w); }
 .marks-sheet-table col.marks-col-total { width: var(--ms-total-w); }
-.marks-sheet-table col.marks-col-rank { width: var(--ms-rank-w); }
+.marks-sheet-table col.marks-col-code { width: var(--ms-code-w); }
+.marks-sheet-table col.marks-col-pts { width: var(--ms-pts-w); }
 
 /* Small screens: stop over-squeezing columns; allow gentle horizontal scroll */
 @media (max-width: 767px) {
@@ -575,7 +577,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
             {% endif %}
             <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. The <strong>Rnk</strong> column is the overall rank by that summary score.
+                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a> bands: the row&apos;s <strong>mean %</strong> across subjects with a mark (same 0–100 scale as subject grades) is matched to the band&apos;s code and allocation points.
             </p>
         </div>
 
@@ -609,7 +611,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                         <col>
                         {% endfor %}
                         <col class="marks-col-total">
-                        <col class="marks-col-rank">
+                        <col class="marks-col-code">
+                        <col class="marks-col-pts">
                     </colgroup>
                     <thead class="bg-gray-100 dark:bg-gray-700">
                         <tr>
@@ -643,7 +646,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% else %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
                             {% endif %}
-                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight">Rnk</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Grade code from Grades Registration (default bands)">Code</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
@@ -680,7 +684,8 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             </td>
                             {% endfor %}
                             <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-xs sm:text-base font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 leading-tight tabular-nums" x-text="getTotal(student.student_id) || '-'"></td>
-                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight" x-text="getRank(student.student_id) || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight tabular-nums" x-text="getOverallGradeCode(student.student_id) || '-'"></td>
+                            <td class="px-0.5 py-1.5 sm:px-2 sm:py-2 text-center text-[10px] sm:text-base font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 leading-tight tabular-nums" x-text="getOverallGradePoints(student.student_id) || '-'"></td>
                         </tr>
                         </template>
                     </tbody>
@@ -695,6 +700,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-sm font-bold text-emerald-800 dark:text-emerald-300 tabular-nums"
                                 x-text="summaryColumnFooterMean()"></td>
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                         </tr>
                         <tr>
                             <td class="sticky-col sticky-col-1 px-2 py-2 text-center text-xs font-bold text-gray-600 dark:text-gray-300">G</td>
@@ -703,6 +709,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             <td class="marks-td-subject px-0.5 py-2 text-center text-[10px] sm:text-sm font-extrabold text-violet-700 dark:text-violet-300"
                                 x-text="getSubjectGrade({{ subject.id }}) || '-'"></td>
                             {% endfor %}
+                            <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                             <td class="px-0.5 py-2 text-center text-[10px] sm:text-xs font-bold text-gray-600 dark:text-gray-300">—</td>
                         </tr>
@@ -1337,30 +1344,67 @@ function marksSheet() {
             return avg === null ? '—' : String(avg);
         },
 
-        getRank(studentId) {
+        /**
+         * Mean percentage (0–100) across subjects with a mark — matches subject-grade scale
+         * so overall Code / Pts align with Grades Registration default bands.
+         */
+        getOverallMeanPctForGrading(studentId) {
             if (!this.selectedExam) return null;
-            
-            const totals = this.studentIdList
-                .map(id => ({ id, total: this.getSummaryScoreNumeric(id) }))
-                .filter(x => x.total !== null)
-                .sort((a, b) => b.total - a.total);
-            
-            for (let i = 0; i < totals.length; i++) {
-                if (totals[i].id === studentId) {
-                    let rank = i + 1;
-                    // Handle ties
-                    while (i > 0 && totals[i-1].total === totals[i].total) {
-                        rank--;
-                        i--;
-                    }
-                    const suffix = (rank % 100 >= 11 && rank % 100 <= 13) ? 'th' :
-                                   (rank % 10 === 1) ? 'st' :
-                                   (rank % 10 === 2) ? 'nd' :
-                                   (rank % 10 === 3) ? 'rd' : 'th';
-                    return rank + suffix;
+            let sumPct = 0;
+            let count = 0;
+            for (const subjectId of this.subjectIds) {
+                let pct = null;
+                if (this.displayScaled) {
+                    pct = this.getScaledPct(studentId, subjectId);
+                } else {
+                    const raw = this.getMarkNumeric(studentId, subjectId);
+                    if (raw === null) continue;
+                    const mx = this.subjectExamMaxFor(subjectId);
+                    if (!mx) continue;
+                    pct = (100 * raw) / mx;
+                }
+                if (pct !== null) {
+                    sumPct += pct;
+                    count += 1;
                 }
             }
+            return count ? sumPct / count : null;
+        },
+
+        findDefaultBandForPct(pct) {
+            if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return null;
+            const mv = Number(pct);
+            const bands = this.defaultGradeBands || [];
+            for (const band of bands) {
+                const start = Number(band.start ?? 0);
+                const end = Number(band.end ?? 0);
+                if (mv >= start && mv <= end) return band;
+            }
             return null;
+        },
+
+        getOverallGradeCode(studentId) {
+            const pct = this.getOverallMeanPctForGrading(studentId);
+            if (pct === null) return null;
+            const band = this.findDefaultBandForPct(pct);
+            if (!band) return null;
+            const c = (band.code || '').toString().trim();
+            if (c) return c;
+            const lbl = (band.label || '').toString().trim();
+            return lbl || null;
+        },
+
+        getOverallGradePoints(studentId) {
+            const pct = this.getOverallMeanPctForGrading(studentId);
+            if (pct === null) return null;
+            const band = this.findDefaultBandForPct(pct);
+            if (!band) return null;
+            const ap = band.allocation_points;
+            if (ap === null || ap === undefined || ap === '') return null;
+            const n = Number(ap);
+            if (Number.isNaN(n)) return null;
+            if (Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+            return String(Math.round(n * 100) / 100);
         },
 
         findVisibleMarkInput(row, col) {

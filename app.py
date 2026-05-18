@@ -5266,6 +5266,7 @@ def init_db():
                     code VARCHAR(20) NOT NULL,
                     meaning VARCHAR(255) NOT NULL,
                     description TEXT,
+                    allocation_points DECIMAL(6,2) NULL,
                     created_by INT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -5293,6 +5294,10 @@ def init_db():
                 cursor.execute("ALTER TABLE grade_registrations ADD COLUMN level_label VARCHAR(100) NULL AFTER end_mark")
             except Exception as e:
                 print(f"Note: grade_registrations.level_label may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE grade_registrations ADD COLUMN allocation_points DECIMAL(6,2) NULL AFTER description")
+            except Exception as e:
+                print(f"Note: grade_registrations.allocation_points may already exist: {e}")
 
             # Subject-specific grade overrides; used only when a subject is edited.
             cursor.execute("""
@@ -5323,6 +5328,7 @@ def init_db():
                     code VARCHAR(20) NOT NULL,
                     start_mark DECIMAL(5,2) NOT NULL,
                     end_mark DECIMAL(5,2) NOT NULL,
+                    allocation_points DECIMAL(6,2) NULL,
                     created_by INT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -5332,6 +5338,10 @@ def init_db():
                     INDEX idx_subject_mark_override_subject (subject_id)
                 )
             """)
+            try:
+                cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN allocation_points DECIMAL(6,2) NULL AFTER end_mark")
+            except Exception as e:
+                print(f"Note: subject_grade_mark_overrides.allocation_points may already exist: {e}")
             
             # Create fee_structures table
             cursor.execute("""
@@ -10904,7 +10914,8 @@ def grades_registration():
                         gr.level_label,
                         gr.code,
                         gr.meaning,
-                        gr.description
+                        gr.description,
+                        gr.allocation_points
                     FROM grade_registrations gr
                     LEFT JOIN academic_levels al ON al.id = gr.academic_level_id
                     ORDER BY COALESCE(gr.start_mark, -1) DESC, COALESCE(gr.end_mark, -1) DESC, gr.code
@@ -10920,7 +10931,7 @@ def grades_registration():
                 active_subjects = cursor.fetchall() or []
 
                 cursor.execute("""
-                    SELECT subject_id, code, start_mark, end_mark
+                    SELECT subject_id, code, start_mark, end_mark, allocation_points
                     FROM subject_grade_mark_overrides
                     ORDER BY subject_id, code
                 """)
@@ -10953,6 +10964,7 @@ def grades_registration():
                             'level_label': row.get('level_label'),
                             'meaning': row.get('meaning'),
                             'description': row.get('description'),
+                            'allocation_points': row.get('allocation_points'),
                         })
                     else:
                         defaults_as_dict.append({
@@ -10962,6 +10974,7 @@ def grades_registration():
                             'level_label': row[5] if len(row) > 5 else None,
                             'meaning': row[7] if len(row) > 7 else None,
                             'description': row[8] if len(row) > 8 else None,
+                            'allocation_points': row[9] if len(row) > 9 else None,
                         })
 
                 overrides_by_subject = {}
@@ -10971,16 +10984,22 @@ def grades_registration():
                         code = row.get('code')
                         sm = row.get('start_mark')
                         em = row.get('end_mark')
+                        ap = row.get('allocation_points')
                     else:
                         sid = row[0]
                         code = row[1]
                         sm = row[2]
                         em = row[3]
+                        ap = row[4] if len(row) > 4 else None
                     if sid is None or not code:
                         continue
                     if sid not in overrides_by_subject:
                         overrides_by_subject[sid] = {}
-                    overrides_by_subject[sid][str(code).upper()] = {'start_mark': sm, 'end_mark': em}
+                    overrides_by_subject[sid][str(code).upper()] = {
+                        'start_mark': sm,
+                        'end_mark': em,
+                        'allocation_points': ap,
+                    }
 
                 for srow in active_subjects:
                     if isinstance(srow, dict):
@@ -10995,6 +11014,9 @@ def grades_registration():
                     for d in defaults_as_dict:
                         code_key = str(d.get('code') or '').upper()
                         ov = overrides_by_subject.get(sid, {}).get(code_key)
+                        def_pts = d.get('allocation_points')
+                        ov_pts = ov.get('allocation_points') if ov else None
+                        merged_pts = ov_pts if ov_pts is not None else def_pts
                         merged_bands.append({
                             'code': d.get('code'),
                             'level_label': d.get('level_label'),
@@ -11002,6 +11024,7 @@ def grades_registration():
                             'description': d.get('description'),
                             'start_mark': ov.get('start_mark') if ov else d.get('start_mark'),
                             'end_mark': ov.get('end_mark') if ov else d.get('end_mark'),
+                            'allocation_points': merged_pts,
                         })
                     subject_grade_allocations.append({
                         'subject_id': sid,
@@ -11027,13 +11050,24 @@ def grades_registration():
     )
 
 
+def _grades_registration_schedule_roles():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    effective_role = viewing_as_role if user_role == 'technician' and viewing_as_role else user_role
+    return effective_role, (
+        'curriculum coordinator',
+        'head of institution',
+        'deputy head of institution',
+        'super admin',
+        'accountant',
+        'technician',
+    )
+
+
 @app.route('/dashboard/employee/grades-registration/default/save', methods=['POST'])
 @login_required
 def save_default_grade_registration():
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
-    effective_role = viewing_as_role if user_role == 'technician' and viewing_as_role else user_role
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
     if effective_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
@@ -11044,6 +11078,14 @@ def save_default_grade_registration():
     code = (request.form.get('code') or '').strip().upper()
     meaning = (request.form.get('meaning') or '').strip()
     description = (request.form.get('description') or '').strip()
+    points_raw = (request.form.get('allocation_points') or '').strip()
+    allocation_points = None
+    if points_raw:
+        try:
+            allocation_points = float(points_raw)
+        except Exception:
+            flash('Please provide a valid numeric points value, or leave it blank.', 'error')
+            return redirect(employee_dashboard_path('grades-registration'))
     try:
         start_mark = float(start_mark_raw)
         end_mark = float(end_mark_raw)
@@ -11066,9 +11108,9 @@ def save_default_grade_registration():
     try:
         with connection.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO grade_registrations (academic_level_id, start_mark, end_mark, level_label, code, meaning, description, created_by)
-                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s)
-            """, (start_mark, end_mark, level_label, code, meaning, description, session.get('user_id')))
+                INSERT INTO grade_registrations (academic_level_id, start_mark, end_mark, level_label, code, meaning, description, allocation_points, created_by)
+                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (start_mark, end_mark, level_label, code, meaning, description, allocation_points, session.get('user_id')))
             connection.commit()
         flash('Default grade saved successfully.', 'success')
     except Exception as e:
@@ -11080,13 +11122,153 @@ def save_default_grade_registration():
     return redirect(employee_dashboard_path('grades-registration'))
 
 
+@app.route('/dashboard/employee/grades-registration/default/update/<int:grade_id>', methods=['POST'])
+@login_required
+def update_default_grade_registration(grade_id):
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    start_mark_raw = (request.form.get('start_mark') or '').strip()
+    end_mark_raw = (request.form.get('end_mark') or '').strip()
+    level_label = (request.form.get('level_label') or '').strip()
+    code = (request.form.get('code') or '').strip().upper()
+    meaning = (request.form.get('meaning') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    points_raw = (request.form.get('allocation_points') or '').strip()
+    allocation_points = None
+    if points_raw:
+        try:
+            allocation_points = float(points_raw)
+        except Exception:
+            flash('Please provide a valid numeric points value, or leave it blank.', 'error')
+            return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        start_mark = float(start_mark_raw)
+        end_mark = float(end_mark_raw)
+    except Exception:
+        flash('Please provide valid start and end marks.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    if start_mark > end_mark:
+        flash('Start mark must be less than or equal to end mark.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    if not (level_label and code and meaning):
+        flash('Please provide mark level, code, and meaning.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT code FROM grade_registrations WHERE id = %s",
+                (grade_id,),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                flash('Grade not found.', 'error')
+                return redirect(employee_dashboard_path('grades-registration'))
+            old_code = (
+                (existing.get('code') or '').strip()
+                if isinstance(existing, dict)
+                else (existing[0] or '').strip()
+            )
+
+            cursor.execute(
+                """
+                UPDATE grade_registrations
+                SET start_mark = %s, end_mark = %s, level_label = %s, code = %s,
+                    meaning = %s, description = %s, allocation_points = %s, created_by = %s
+                WHERE id = %s
+                """,
+                (
+                    start_mark,
+                    end_mark,
+                    level_label,
+                    code,
+                    meaning,
+                    description,
+                    allocation_points,
+                    session.get('user_id'),
+                    grade_id,
+                ),
+            )
+            if old_code.upper() != code.upper():
+                cursor.execute(
+                    """
+                    UPDATE subject_grade_mark_overrides
+                    SET code = %s
+                    WHERE UPPER(TRIM(code)) = UPPER(TRIM(%s))
+                    """,
+                    (code, old_code),
+                )
+            connection.commit()
+        flash('Default grade updated successfully.', 'success')
+    except Exception as e:
+        print(f"Error updating default grade: {e}")
+        connection.rollback()
+        flash('Error updating default grade. The code may already exist for this level.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/default/delete/<int:grade_id>', methods=['POST'])
+@login_required
+def delete_default_grade_registration(grade_id):
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT code FROM grade_registrations WHERE id = %s",
+                (grade_id,),
+            )
+            existing = cursor.fetchone()
+            if not existing:
+                flash('Grade not found.', 'error')
+                return redirect(employee_dashboard_path('grades-registration'))
+            band_code = (
+                (existing.get('code') or '').strip()
+                if isinstance(existing, dict)
+                else (existing[0] or '').strip()
+            )
+            if band_code:
+                cursor.execute(
+                    """
+                    DELETE FROM subject_grade_mark_overrides
+                    WHERE UPPER(TRIM(code)) = UPPER(TRIM(%s))
+                    """,
+                    (band_code,),
+                )
+            cursor.execute("DELETE FROM grade_registrations WHERE id = %s", (grade_id,))
+            connection.commit()
+        flash('Default grade deleted. Subject mark overrides for this code were removed.', 'success')
+    except Exception as e:
+        print(f"Error deleting default grade: {e}")
+        connection.rollback()
+        flash('Error deleting default grade.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
 @app.route('/dashboard/employee/grades-registration/subject/save', methods=['POST'])
 @login_required
 def save_subject_grade_override():
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
-    effective_role = viewing_as_role if user_role == 'technician' and viewing_as_role else user_role
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
     if effective_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
@@ -11128,10 +11310,7 @@ def save_subject_grade_override():
 @app.route('/dashboard/employee/grades-registration/subject/save-ranges', methods=['POST'])
 @login_required
 def save_subject_grade_ranges():
-    user_role = session.get('role', '').lower()
-    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    schedule_management_roles = ['curriculum coordinator', 'head of institution', 'deputy head of institution', 'super admin', 'accountant', 'technician']
-    effective_role = viewing_as_role if user_role == 'technician' and viewing_as_role else user_role
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
     if effective_role not in schedule_management_roles:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
@@ -11144,9 +11323,12 @@ def save_subject_grade_ranges():
     codes = request.form.getlist('code')
     start_marks = request.form.getlist('start_mark')
     end_marks = request.form.getlist('end_mark')
+    allocation_points_list = request.form.getlist('allocation_points')
     if not (codes and len(codes) == len(start_marks) == len(end_marks)):
         flash('Invalid grade range payload.', 'error')
         return redirect(employee_dashboard_path('grades-registration'))
+    if len(allocation_points_list) < len(codes):
+        allocation_points_list = list(allocation_points_list) + [''] * (len(codes) - len(allocation_points_list))
 
     rows = []
     try:
@@ -11158,7 +11340,14 @@ def save_subject_grade_ranges():
                 raise ValueError('Missing code')
             if sm > em:
                 raise ValueError('Start mark cannot exceed end mark')
-            rows.append((c, sm, em))
+            ap_raw = (allocation_points_list[idx] if idx < len(allocation_points_list) else '').strip()
+            ap = None
+            if ap_raw:
+                try:
+                    ap = float(ap_raw)
+                except Exception:
+                    raise ValueError('Invalid points')
+            rows.append((c, sm, em, ap))
     except Exception:
         flash('Please provide valid start/end marks for every grade code.', 'error')
         return redirect(employee_dashboard_path('grades-registration'))
@@ -11170,11 +11359,11 @@ def save_subject_grade_ranges():
     try:
         with connection.cursor() as cursor:
             cursor.execute("DELETE FROM subject_grade_mark_overrides WHERE subject_id = %s", (int(subject_id_raw),))
-            for c, sm, em in rows:
+            for c, sm, em, ap in rows:
                 cursor.execute("""
-                    INSERT INTO subject_grade_mark_overrides (subject_id, code, start_mark, end_mark, created_by)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (int(subject_id_raw), c, sm, em, session.get('user_id')))
+                    INSERT INTO subject_grade_mark_overrides (subject_id, code, start_mark, end_mark, allocation_points, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (int(subject_id_raw), c, sm, em, ap, session.get('user_id')))
             connection.commit()
         flash('Subject grade allocation updated successfully.', 'success')
     except Exception as e:
@@ -31500,32 +31689,36 @@ def exam_analytics_detail(exam_id):
                 subject_grade_bands = {}
                 try:
                     cur2.execute("""
-                        SELECT code, level_label, start_mark, end_mark
+                        SELECT code, level_label, start_mark, end_mark, allocation_points
                         FROM grade_registrations
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY start_mark DESC, end_mark DESC
                     """)
                     for grow in (cur2.fetchall() or []):
                         if isinstance(grow, dict):
+                            ap = grow.get('allocation_points')
                             default_grade_bands.append({
                                 'code': (grow.get('code') or '').strip(),
                                 'label': (grow.get('level_label') or '').strip(),
                                 'start': float(grow.get('start_mark') or 0),
-                                'end': float(grow.get('end_mark') or 0)
+                                'end': float(grow.get('end_mark') or 0),
+                                'allocation_points': float(ap) if ap is not None else None,
                             })
                         else:
+                            apv = grow[4] if len(grow) > 4 else None
                             default_grade_bands.append({
                                 'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
                                 'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
                                 'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
-                                'end': float(grow[3] or 0) if len(grow) > 3 else 0.0
+                                'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                                'allocation_points': float(apv) if apv is not None else None,
                             })
                 except Exception as ge:
                     print(f"Note: grade_registrations lookup skipped: {ge}")
 
                 try:
                     cur2.execute("""
-                        SELECT subject_id, code, start_mark, end_mark
+                        SELECT subject_id, code, start_mark, end_mark, allocation_points
                         FROM subject_grade_mark_overrides
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -31533,19 +31726,23 @@ def exam_analytics_detail(exam_id):
                     for srow in (cur2.fetchall() or []):
                         if isinstance(srow, dict):
                             sid = int(srow.get('subject_id') or 0)
+                            ap = srow.get('allocation_points')
                             band = {
                                 'code': (srow.get('code') or '').strip(),
                                 'label': '',
                                 'start': float(srow.get('start_mark') or 0),
-                                'end': float(srow.get('end_mark') or 0)
+                                'end': float(srow.get('end_mark') or 0),
+                                'allocation_points': float(ap) if ap is not None else None,
                             }
                         else:
                             sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                            apv = srow[4] if len(srow) > 4 else None
                             band = {
                                 'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
                                 'label': '',
                                 'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
-                                'end': float(srow[3] or 0) if len(srow) > 3 else 0.0
+                                'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'allocation_points': float(apv) if apv is not None else None,
                             }
                         if sid <= 0:
                             continue
@@ -32293,32 +32490,36 @@ def students_by_academic_level(level_id):
                 # Load grading bands (default + subject-specific) for column mean grade display.
                 try:
                     cursor.execute("""
-                        SELECT code, level_label, start_mark, end_mark
+                        SELECT code, level_label, start_mark, end_mark, allocation_points
                         FROM grade_registrations
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY start_mark DESC, end_mark DESC
                     """)
                     for grow in (cursor.fetchall() or []):
                         if isinstance(grow, dict):
+                            ap = grow.get('allocation_points')
                             default_grade_bands.append({
                                 'code': (grow.get('code') or '').strip(),
                                 'label': (grow.get('level_label') or '').strip(),
                                 'start': float(grow.get('start_mark') or 0),
                                 'end': float(grow.get('end_mark') or 0),
+                                'allocation_points': float(ap) if ap is not None else None,
                             })
                         else:
+                            apv = grow[4] if len(grow) > 4 else None
                             default_grade_bands.append({
                                 'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
                                 'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
                                 'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
                                 'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
+                                'allocation_points': float(apv) if apv is not None else None,
                             })
                 except Exception as ge:
                     print(f"Note: grade_registrations lookup skipped on students-by-level: {ge}")
 
                 try:
                     cursor.execute("""
-                        SELECT subject_id, code, start_mark, end_mark
+                        SELECT subject_id, code, start_mark, end_mark, allocation_points
                         FROM subject_grade_mark_overrides
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -32326,19 +32527,23 @@ def students_by_academic_level(level_id):
                     for srow in (cursor.fetchall() or []):
                         if isinstance(srow, dict):
                             sid = int(srow.get('subject_id') or 0)
+                            ap = srow.get('allocation_points')
                             band = {
                                 'code': (srow.get('code') or '').strip(),
                                 'label': '',
                                 'start': float(srow.get('start_mark') or 0),
                                 'end': float(srow.get('end_mark') or 0),
+                                'allocation_points': float(ap) if ap is not None else None,
                             }
                         else:
                             sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                            apv = srow[4] if len(srow) > 4 else None
                             band = {
                                 'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
                                 'label': '',
                                 'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
                                 'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'allocation_points': float(apv) if apv is not None else None,
                             }
                         if sid <= 0:
                             continue
@@ -35162,34 +35367,38 @@ def _build_academic_report_payload(cursor, report_type, f):
         subject_bands = {}
         try:
             cursor.execute("""
-                SELECT code, level_label, meaning, start_mark, end_mark
+                SELECT code, level_label, meaning, start_mark, end_mark, allocation_points
                 FROM grade_registrations
                 WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                 ORDER BY start_mark DESC, end_mark DESC
             """)
             for grow in (cursor.fetchall() or []):
                 if isinstance(grow, dict):
+                    ap = grow.get('allocation_points')
                     default_bands.append({
                         'code': (grow.get('code') or '').strip(),
                         'label': (grow.get('level_label') or '').strip(),
                         'meaning': (grow.get('meaning') or '').strip(),
                         'start': float(grow.get('start_mark') or 0),
                         'end': float(grow.get('end_mark') or 0),
+                        'allocation_points': float(ap) if ap is not None else None,
                     })
                 else:
+                    apv = grow[5] if len(grow) > 5 else None
                     default_bands.append({
                         'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
                         'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
                         'meaning': ((grow[2] if len(grow) > 2 else '') or '').strip(),
                         'start': float(grow[3] or 0) if len(grow) > 3 else 0.0,
                         'end': float(grow[4] or 0) if len(grow) > 4 else 0.0,
+                        'allocation_points': float(apv) if apv is not None else None,
                     })
         except Exception as ge:
             print(f"Note: grade_registrations lookup skipped on academic reports: {ge}")
 
         try:
             cursor.execute("""
-                SELECT subject_id, code, start_mark, end_mark
+                SELECT subject_id, code, start_mark, end_mark, allocation_points
                 FROM subject_grade_mark_overrides
                 WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                 ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -35197,19 +35406,23 @@ def _build_academic_report_payload(cursor, report_type, f):
             for srow in (cursor.fetchall() or []):
                 if isinstance(srow, dict):
                     sid = int(srow.get('subject_id') or 0)
+                    ap = srow.get('allocation_points')
                     band = {
                         'code': (srow.get('code') or '').strip(),
                         'label': '',
                         'start': float(srow.get('start_mark') or 0),
                         'end': float(srow.get('end_mark') or 0),
+                        'allocation_points': float(ap) if ap is not None else None,
                     }
                 else:
                     sid = int(srow[0] or 0) if len(srow) > 0 else 0
+                    apv = srow[4] if len(srow) > 4 else None
                     band = {
                         'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
                         'label': '',
                         'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
                         'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                        'allocation_points': float(apv) if apv is not None else None,
                     }
                 if sid <= 0:
                     continue
@@ -35218,6 +35431,18 @@ def _build_academic_report_payload(cursor, report_type, f):
                 subject_bands[sid].append(band)
         except Exception as se:
             print(f"Note: subject_grade_mark_overrides lookup skipped on academic reports: {se}")
+
+        code_to_default_pts = {}
+        for b in default_bands:
+            ck = (b.get('code') or '').strip().upper()
+            if ck and b.get('allocation_points') is not None:
+                code_to_default_pts[ck] = b['allocation_points']
+        for _sid, blist in subject_bands.items():
+            for b in blist:
+                if b.get('allocation_points') is None:
+                    ck = (b.get('code') or '').strip().upper()
+                    if ck in code_to_default_pts:
+                        b['allocation_points'] = code_to_default_pts[ck]
 
         return default_bands, subject_bands
 
