@@ -587,132 +587,129 @@
     <div class="space-y-8">
         {% for row in rows %}
         {% set grade = row.grade or '-' %}
-        <div class="preview-card rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800 {% if not loop.last %}print:break-after-page{% endif %}">
-            <div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">
-                <div class="flex items-center justify-between gap-3">
-                    <div>
-                        <h3 class="text-base font-bold">{{ school_settings.school_name or 'School' }}</h3>
-                        <p class="text-xs opacity-90">{{ school_settings.school_address or school_settings.address or 'Address not set' }}</p>
-                        <p class="text-xs opacity-90">
-                            {{ school_settings.phone or school_settings.phone_number or '' }}
-                            {% if school_settings.email or school_settings.school_email %} | {{ school_settings.email or school_settings.school_email }}{% endif %}
-                        </p>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        {% if school_settings.school_logo %}
-                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 bg-white">
-                        {% else %}
-                        <div class="w-14 h-14 rounded-md border border-dashed border-white/50"></div>
-                        {% endif %}
-                        <span class="text-xs font-semibold px-2 py-1 rounded bg-white/20">Position #{{ row.position }}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="p-4">
+        <article class="ar-rc {% if not loop.last %}print:break-after-page{% endif %}">
+            <div class="ar-rc-deco ar-rc-deco--tr"></div>
+            <div class="ar-rc-deco ar-rc-deco--bl"></div>
+            <div class="ar-rc-inner">
                 {% set af = meta.applied_filters if meta and meta.applied_filters else {} %}
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Student</p>
-                        <p class="font-semibold text-gray-900 dark:text-white">{{ row.full_name }}</p>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Admission No: {{ row.admission_number }}</p>
-                        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: {{ row.level_name or af.class_level or '-' }}</p>
-                    </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">
-                        {% if row.student_photo %}
-                        <img src="{{ row.student_photo }}" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">
-                        {% else %}
-                        <div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">
-                            <span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>
-                        </div>
-                        {% endif %}
-                    </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">
-                        <p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Year: {{ af.academic_year or '-' }} | Term: {{ af.term or '-' }}</p>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Exam: {{ af.exam_name or '-' }}</p>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: {% if meta and meta.exam_window and meta.exam_window.exam_count is defined and meta.exam_window.exam_count is not none %}{{ meta.exam_window.exam_count }}{% else %}-{% endif %}</p>
-                    </div>
-                </div>
-                <div class="ar-fit-sheet rounded-lg border border-gray-200 dark:border-gray-700 mb-4">
-                    <table class="ar-fit-table w-full">
-                        <thead class="bg-gray-50 dark:bg-gray-900/40">
-                            <tr>
-                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>
-                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject Code</th>
-                                <th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
-                            {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
-                            {% if not row_subject_cols %}
-                                {% set row_subject_cols = subject_columns %}
+                <header class="ar-rc-header">
+                    <div class="ar-rc-header-main">
+                        <div class="ar-rc-logo-wrap">
+                            {% if school_settings.school_logo %}
+                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="School logo" class="ar-rc-logo">
+                            {% else %}
+                            <span class="text-[10px] text-gray-400 font-semibold">LOGO</span>
                             {% endif %}
-                            {% for sc in row_subject_cols %}
-                            <tr class="border-b border-gray-100 dark:border-gray-700">
-                                <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ loop.index }}</td>
-                                <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">{{ sc }}</td>
-                                <td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">{% if row.get(sc) not in (None, '') %}{{ row.get(sc)|round|int }}{% else %}-{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                        </div>
+                        <div class="ar-rc-title-block">
+                            <p class="ar-rc-kicker">Official academic report</p>
+                            <h2 class="ar-rc-title">REPORT CARD</h2>
+                            <p class="ar-rc-school-name">{{ school_settings.school_name or 'School' }}</p>
+                            <p class="ar-rc-school-contact">
+                                {% if school_settings.school_address or school_settings.address %}{{ school_settings.school_address or school_settings.address }}{% endif %}
+                                {% if school_settings.phone or school_settings.phone_number %}{% if school_settings.school_address or school_settings.address %} · {% endif %}{{ school_settings.phone or school_settings.phone_number }}{% endif %}
+                                {% if school_settings.email or school_settings.school_email %}{% if school_settings.school_address or school_settings.address or school_settings.phone or school_settings.phone_number %} · {% endif %}{{ school_settings.email or school_settings.school_email }}{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <div class="ar-rc-badge">
+                        <p class="ar-rc-badge-label">Class rank</p>
+                        <p class="ar-rc-badge-value">{{ row.position }}</p>
+                    </div>
+                </header>
+                <div class="ar-rc-meta-grid">
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Student name:</span><span class="ar-rc-meta-value">{{ row.full_name }}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Class / section:</span><span class="ar-rc-meta-value">{{ row.level_name or row.current_grade or af.class_level or '-' }}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">School year:</span><span class="ar-rc-meta-value">{% if af.academic_year and 'Year ID' not in af.academic_year %}{{ af.academic_year }}{% else %}-{% endif %}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Term / exam:</span><span class="ar-rc-meta-value">
+                        {%- set term_val = af.term if af.term and 'Term ID' not in af.term else '' -%}
+                        {%- set exam_val = af.exam_name if af.exam_name and af.exam_name not in ('All exams', '') else '' -%}
+                        {%- if exam_val and term_val and term_val.upper() in exam_val.upper() -%}{{ exam_val }}
+                        {%- elif exam_val and term_val -%}{{ term_val }} · {{ exam_val }}
+                        {%- elif exam_val -%}{{ exam_val }}
+                        {%- elif term_val -%}{{ term_val }}
+                        {%- else -%}-{%- endif -%}
+                    </span></div>
                 </div>
-                <div class="grid grid-cols-3 gap-2">
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
-                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Total Marks</p>
-                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.total_marks|round|int }}</p>
+                <div class="ar-rc-body-grid ar-rc-body-grid--split">
+                    <div>
+                        <table class="ar-rc-table">
+                            <thead>
+                                <tr>
+                                    <th class="ar-rc-th-subj">Subject</th>
+                                    <th>Total</th>
+                                    <th>Obtained</th>
+                                    <th>Grade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set row_class = (row.current_grade or row.level_name or af.class_level or '')|trim %}
+                                {% set row_subject_cols = subject_columns_by_class.get(row_class) if subject_columns_by_class and row_class else subject_columns %}
+                                {% if not row_subject_cols %}{% set row_subject_cols = subject_columns %}{% endif %}
+                                {% for sc in row_subject_cols %}
+                                {% set mark_raw = row.get(sc) %}
+                                {% set sub_grade = namespace(val='-') %}
+                                {% if mark_raw not in (None, '') and meta and meta.grade_bands %}
+                                    {% set m = mark_raw|float %}
+                                    {% for gb in meta.grade_bands %}
+                                        {% set gb_start = gb.start|float if gb.start is not none else none %}
+                                        {% set gb_end = gb.end|float if gb.end is not none else none %}
+                                        {% if gb_start is not none and gb_end is not none and m >= gb_start and m <= gb_end %}
+                                            {% set sub_grade.val = gb.code or gb.label or '-' %}
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                                <tr>
+                                    <td class="ar-rc-td-subj">{{ sc }}</td>
+                                    <td class="ar-rc-td-num">100</td>
+                                    <td class="ar-rc-td-num">{% if mark_raw not in (None, '') %}{{ mark_raw|round|int }}{% else %}-{% endif %}</td>
+                                    <td class="ar-rc-td-num">{{ sub_grade.val }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
-                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Mean</p>
-                        <p class="text-lg font-bold text-gray-900 dark:text-white">{{ row.mean|round|int }}</p>
-                    </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">
-                        <p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Grade</p>
-                        <p>
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold
-                                {% if grade == 'A' %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300
-                                {% elif grade == 'B' %}bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300
-                                {% elif grade == 'C' %}bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300
-                                {% elif grade == 'D' %}bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300
-                                {% elif grade == 'F' %}bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300
-                                {% else %}bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300{% endif %}">{{ grade }}</span>
-                        </p>
+                    <div class="text-center">
+                        {% if row.student_photo %}
+                        <img src="{{ row.student_photo }}" alt="Student photo" class="ar-rc-photo mx-auto">
+                        {% else %}
+                        <div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400">Student photo</div>
+                        {% endif %}
+                        <div class="ar-rc-summary-box mt-3">
+                            <table><tbody>
+                                <tr><td>Total marks</td><td>{{ row.total_marks|round|int }}</td></tr>
+                                <tr><td>Mean</td><td>{{ row.mean|round|int }}</td></tr>
+                                <tr><td>Overall grade</td><td>{{ grade }}</td></tr>
+                                <tr><td>Class rank</td><td>{{ row.position }}</td></tr>
+                            </tbody></table>
+                        </div>
                     </div>
                 </div>
-                <div class="mt-4 text-xs text-gray-600 dark:text-gray-400">
-                    <span class="font-semibold">Grade scale:</span>
+                <div class="ar-rc-stats-row">
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">{{ row.total_marks|round|int }}</p></div>
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">{{ row.mean|round|int }}</p></div>
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">{{ grade }}</p></div>
+                </div>
+                <p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span>
                     {% if meta and meta.grade_bands and meta.grade_bands|length %}
-                        {% for gb in meta.grade_bands %}
-                            {{ (gb.code or gb.label or '-') }}: {{ gb.start }}-{{ gb.end }}{% if not loop.last %}, {% endif %}
-                        {% endfor %}
-                    {% else %}
-                        Configured grade settings
-                    {% endif %}
+                        {% for gb in meta.grade_bands %}{{ (gb.code or gb.label or '-') }}: {{ gb.start }}-{{ gb.end }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}Configured grade settings{% endif %}
+                </p>
+                <div class="ar-rc-feedback">
+                    <p class="ar-rc-feedback-title">Teacher's feedback</p>
+                    <div class="ar-rc-feedback-lines">
+                        <div class="ar-rc-feedback-line"></div>
+                        <div class="ar-rc-feedback-line"></div>
+                        <div class="ar-rc-feedback-line"></div>
+                    </div>
                 </div>
-                <div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                    <p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>
-                </div>
-                <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Parent acknowledgement</p>
-                        <p>Signature: ____________________</p>
-                        <p class="mt-2">Date: ____________________</p>
-                    </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Class teacher</p>
-                        <p>Signature: ____________________</p>
-                        <p class="mt-2">Date: ____________________</p>
-                    </div>
-                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-                        <p class="font-semibold uppercase mb-6">Principal signature / stamp</p>
-                        <p>Signature: ____________________</p>
-                        <p class="mt-2">Date: ____________________</p>
-                    </div>
+                <div class="ar-rc-signatures">
+                    <div><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
+                    <div><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>
+                    <div><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>
                 </div>
             </div>
-        </div>
+        </article>
         {% endfor %}
     </div>
     {% endif %}
@@ -817,6 +814,110 @@
 </div>
 
 <style>
+/* Report card layout (matches academic reports builder) */
+.ar-report-preview-page .ar-rc {
+    --ar-rc-navy: #1e3a5f;
+    --ar-rc-green: var(--brand-primary, #166534);
+    --ar-rc-accent: var(--brand-secondary, #22c55e);
+    position: relative;
+    background: #fff;
+    color: #111827;
+    border: 2px solid #111827;
+    border-radius: 4px;
+    padding: 1.25rem 1.35rem 1.5rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+}
+.ar-report-preview-page .ar-rc-deco { pointer-events: none; position: absolute; z-index: 0; }
+.ar-report-preview-page .ar-rc-deco--tr {
+    top: -2rem; right: -2rem; width: 7rem; height: 7rem;
+    background: linear-gradient(135deg, var(--ar-rc-accent) 0%, var(--ar-rc-green) 55%, transparent 56%);
+    opacity: 0.35; border-radius: 0 0 0 100%;
+}
+.ar-report-preview-page .ar-rc-deco--bl {
+    bottom: -2.5rem; left: -2.5rem; width: 8rem; height: 8rem;
+    background: linear-gradient(315deg, var(--ar-rc-navy) 0%, #2d5a8a 45%, transparent 46%);
+    opacity: 0.2; border-radius: 0 100% 0 0;
+}
+.ar-report-preview-page .ar-rc-inner { position: relative; z-index: 1; }
+.ar-report-preview-page .ar-rc-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 1rem; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e5e7eb;
+}
+.ar-report-preview-page .ar-rc-header-main { display: flex; align-items: flex-start; gap: 0.85rem; min-width: 0; flex: 1; }
+.ar-report-preview-page .ar-rc-logo-wrap {
+    flex-shrink: 0; width: 4.25rem; height: 4.25rem;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px solid #e5e7eb; border-radius: 8px; background: #fff; padding: 0.25rem;
+}
+.ar-report-preview-page .ar-rc-logo { max-width: 100%; max-height: 100%; object-fit: contain; }
+.ar-report-preview-page .ar-rc-kicker {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ar-rc-green); margin: 0 0 0.15rem;
+}
+.ar-report-preview-page .ar-rc-title {
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem); font-weight: 800; letter-spacing: 0.06em;
+    text-transform: uppercase; color: #111827; margin: 0; line-height: 1.1;
+}
+.ar-report-preview-page .ar-rc-school-name { font-size: 0.95rem; font-weight: 700; color: #374151; margin: 0.35rem 0 0.15rem; }
+.ar-report-preview-page .ar-rc-school-contact { font-size: 0.72rem; color: #4b5563; line-height: 1.45; margin: 0; }
+.ar-report-preview-page .ar-rc-badge {
+    flex-shrink: 0; text-align: right; padding: 0.35rem 0.65rem;
+    border: 2px solid var(--ar-rc-navy); border-radius: 6px; background: #f8fafc;
+}
+.ar-report-preview-page .ar-rc-badge-label {
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin: 0;
+}
+.ar-report-preview-page .ar-rc-badge-value { font-size: 1.35rem; font-weight: 800; color: var(--ar-rc-navy); margin: 0; line-height: 1.2; }
+.ar-report-preview-page .ar-rc-meta-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0.65rem 1.5rem; margin-bottom: 1rem; font-size: 0.8rem;
+}
+.ar-report-preview-page .ar-rc-meta-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem; min-width: 0; }
+.ar-report-preview-page .ar-rc-meta-label { font-weight: 700; color: #374151; white-space: nowrap; }
+.ar-report-preview-page .ar-rc-meta-value {
+    flex: 1; min-width: 0; border-bottom: 1px solid #9ca3af; padding-bottom: 0.1rem; font-weight: 600; color: #111827;
+}
+.ar-report-preview-page .ar-rc-body-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+@media (min-width: 768px) {
+    .ar-report-preview-page .ar-rc-body-grid--split { grid-template-columns: 1fr min(11rem, 28%); }
+}
+.ar-report-preview-page .ar-rc-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; table-layout: fixed; }
+.ar-report-preview-page .ar-rc-table thead th {
+    background: var(--ar-rc-navy); color: #fff; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; font-size: 0.68rem; padding: 0.45rem 0.35rem;
+    border: 1px solid #152a45; text-align: center; vertical-align: middle;
+}
+.ar-report-preview-page .ar-rc-table thead th.ar-rc-th-subj { text-align: left; padding-left: 0.5rem; }
+.ar-report-preview-page .ar-rc-table tbody td { border: 1px solid #d1d5db; padding: 0.35rem 0.4rem; vertical-align: middle; color: #111827; }
+.ar-report-preview-page .ar-rc-table tbody tr:nth-child(even) td { background: #f9fafb; }
+.ar-report-preview-page .ar-rc-table .ar-rc-td-subj { text-align: left; font-weight: 600; }
+.ar-report-preview-page .ar-rc-table .ar-rc-td-num { text-align: center; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ar-report-preview-page .ar-rc-summary-box { border: 2px solid var(--ar-rc-navy); border-radius: 4px; overflow: hidden; font-size: 0.75rem; }
+.ar-report-preview-page .ar-rc-summary-box table { width: 100%; border-collapse: collapse; }
+.ar-report-preview-page .ar-rc-summary-box td { border: 1px solid #d1d5db; padding: 0.35rem 0.4rem; font-weight: 600; text-align: center; }
+.ar-report-preview-page .ar-rc-summary-box td:first-child { text-align: left; font-weight: 700; background: #f3f4f6; }
+.ar-report-preview-page .ar-rc-stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0.85rem 0; }
+.ar-report-preview-page .ar-rc-stat { border: 1px solid #d1d5db; border-radius: 4px; padding: 0.45rem 0.5rem; text-align: center; background: #f9fafb; }
+.ar-report-preview-page .ar-rc-stat-label {
+    font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 0 0 0.15rem;
+}
+.ar-report-preview-page .ar-rc-stat-value { font-size: 1.1rem; font-weight: 800; color: var(--ar-rc-navy); margin: 0; }
+.ar-report-preview-page .ar-rc-feedback-title {
+    font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #111827; margin: 0 0 0.5rem;
+}
+.ar-report-preview-page .ar-rc-feedback-lines {
+    border: 1px solid #d1d5db; border-radius: 4px; padding: 0.5rem 0.65rem; min-height: 3.5rem; background: #fff;
+}
+.ar-report-preview-page .ar-rc-feedback-line { border-bottom: 1px solid #cbd5e1; height: 1.35rem; margin-bottom: 0.35rem; }
+.ar-report-preview-page .ar-rc-feedback-line:last-child { margin-bottom: 0; border-bottom: none; }
+.ar-report-preview-page .ar-rc-grade-scale { font-size: 0.68rem; color: #4b5563; margin-top: 0.5rem; line-height: 1.4; }
+.ar-report-preview-page .ar-rc-signatures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; font-size: 0.68rem; }
+.ar-report-preview-page .ar-rc-sig-title {
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #374151; margin: 0 0 1.25rem;
+}
+.ar-report-preview-page .ar-rc-photo {
+    width: 4.5rem; height: 5.5rem; object-fit: cover; border: 2px solid #d1d5db; border-radius: 4px; background: #fff;
+}
 .ar-report-preview-page .ar-fit-sheet {
     width: 100%;
     max-width: 100%;
@@ -870,7 +971,8 @@
     margin: 0 !important;
     padding: 0 !important;
   }
-  .preview-card {
+  .preview-card,
+  .ar-rc {
     break-inside: avoid;
     page-break-inside: avoid;
     box-shadow: none !important;

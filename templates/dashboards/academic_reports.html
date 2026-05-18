@@ -282,6 +282,349 @@
         width: 100% !important;
         min-width: 0 !important;
     }
+    #ar-preview-wrap .ar-rc {
+        break-inside: avoid;
+        page-break-inside: avoid;
+        box-shadow: none !important;
+    }
+}
+/* Report card layout (print-friendly, school branding) */
+.ar-rc {
+    --ar-rc-navy: #1e3a5f;
+    --ar-rc-green: var(--brand-primary, #166534);
+    --ar-rc-accent: var(--brand-secondary, #22c55e);
+    position: relative;
+    background: #fff;
+    color: #111827;
+    border: 2px solid #111827;
+    border-radius: 4px;
+    padding: 1.25rem 1.35rem 1.5rem;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+}
+.dark .ar-rc {
+    background: #fff;
+    color: #111827;
+}
+.ar-rc-deco {
+    pointer-events: none;
+    position: absolute;
+    z-index: 0;
+}
+.ar-rc-deco--tr {
+    top: -2rem;
+    right: -2rem;
+    width: 7rem;
+    height: 7rem;
+    background: linear-gradient(135deg, var(--ar-rc-accent) 0%, var(--ar-rc-green) 55%, transparent 56%);
+    opacity: 0.35;
+    border-radius: 0 0 0 100%;
+}
+.ar-rc-deco--bl {
+    bottom: -2.5rem;
+    left: -2.5rem;
+    width: 8rem;
+    height: 8rem;
+    background: linear-gradient(315deg, var(--ar-rc-navy) 0%, #2d5a8a 45%, transparent 46%);
+    opacity: 0.2;
+    border-radius: 0 100% 0 0;
+}
+.ar-rc-inner {
+    position: relative;
+    z-index: 1;
+}
+.ar-rc-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+.ar-rc-header-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    min-width: 0;
+    flex: 1;
+}
+.ar-rc-logo-wrap {
+    flex-shrink: 0;
+    width: 4.25rem;
+    height: 4.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    padding: 0.25rem;
+}
+.ar-rc-logo {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+.ar-rc-title-block {
+    min-width: 0;
+}
+.ar-rc-kicker {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ar-rc-green);
+    margin: 0 0 0.15rem;
+}
+.ar-rc-title {
+    font-size: clamp(1.35rem, 2.5vw, 1.75rem);
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #111827;
+    margin: 0;
+    line-height: 1.1;
+}
+.ar-rc-school-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #374151;
+    margin: 0.35rem 0 0.15rem;
+}
+.ar-rc-school-contact {
+    font-size: 0.72rem;
+    color: #4b5563;
+    line-height: 1.45;
+    margin: 0;
+}
+.ar-rc-badge {
+    flex-shrink: 0;
+    text-align: right;
+    padding: 0.35rem 0.65rem;
+    border: 2px solid var(--ar-rc-navy);
+    border-radius: 6px;
+    background: #f8fafc;
+}
+.ar-rc-badge-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #64748b;
+    margin: 0;
+}
+.ar-rc-badge-value {
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: var(--ar-rc-navy);
+    margin: 0;
+    line-height: 1.2;
+}
+.ar-rc-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.65rem 1.5rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+}
+.ar-rc-meta-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.ar-rc-meta-label {
+    font-weight: 700;
+    color: #374151;
+    white-space: nowrap;
+}
+.ar-rc-meta-value {
+    flex: 1;
+    min-width: 0;
+    border-bottom: 1px solid #9ca3af;
+    padding-bottom: 0.1rem;
+    font-weight: 600;
+    color: #111827;
+}
+.ar-rc-body-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 768px) {
+    .ar-rc-body-grid--split {
+        grid-template-columns: 1fr min(11rem, 28%);
+    }
+}
+.ar-rc-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+    table-layout: fixed;
+}
+.ar-rc-table thead th {
+    background: var(--ar-rc-navy);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.68rem;
+    padding: 0.45rem 0.35rem;
+    border: 1px solid #152a45;
+    text-align: center;
+    vertical-align: middle;
+}
+.ar-rc-table thead th.ar-rc-th-subj {
+    text-align: left;
+    padding-left: 0.5rem;
+}
+.ar-rc-table tbody td {
+    border: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+    vertical-align: middle;
+    color: #111827;
+}
+.ar-rc-table tbody tr:nth-child(even) td {
+    background: #f9fafb;
+}
+.ar-rc-table .ar-rc-td-subj {
+    text-align: left;
+    font-weight: 600;
+}
+.ar-rc-table .ar-rc-td-num {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.ar-rc-summary-box {
+    border: 2px solid var(--ar-rc-navy);
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 0.75rem;
+}
+.ar-rc-summary-box table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.ar-rc-summary-box th {
+    background: var(--ar-rc-navy);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    padding: 0.4rem 0.35rem;
+    border: 1px solid #152a45;
+}
+.ar-rc-summary-box td {
+    border: 1px solid #d1d5db;
+    padding: 0.35rem 0.4rem;
+    font-weight: 600;
+    text-align: center;
+}
+.ar-rc-summary-box td:first-child {
+    text-align: left;
+    font-weight: 700;
+    background: #f3f4f6;
+}
+.ar-rc-stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+    margin: 0.85rem 0;
+}
+.ar-rc-stat {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.45rem 0.5rem;
+    text-align: center;
+    background: #f9fafb;
+}
+.ar-rc-stat-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin: 0 0 0.15rem;
+}
+.ar-rc-stat-value {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--ar-rc-navy);
+    margin: 0;
+}
+.ar-rc-feedback {
+    margin-top: 0.85rem;
+}
+.ar-rc-feedback-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #111827;
+    margin: 0 0 0.5rem;
+}
+.ar-rc-feedback-lines {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 0.5rem 0.65rem;
+    min-height: 3.5rem;
+    background: #fff;
+}
+.ar-rc-feedback-line {
+    border-bottom: 1px solid #cbd5e1;
+    height: 1.35rem;
+    margin-bottom: 0.35rem;
+}
+.ar-rc-feedback-line:last-child {
+    margin-bottom: 0;
+    border-bottom: none;
+}
+.ar-rc-grade-scale {
+    font-size: 0.68rem;
+    color: #4b5563;
+    margin-top: 0.5rem;
+    line-height: 1.4;
+}
+.ar-rc-signatures {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.75rem;
+    margin-top: 1rem;
+    font-size: 0.68rem;
+}
+.ar-rc-sig-block {
+    border-top: 1px solid #9ca3af;
+    padding-top: 0.35rem;
+}
+.ar-rc-sig-title {
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #374151;
+    margin: 0 0 1.25rem;
+}
+.ar-rc-photo {
+    width: 4.5rem;
+    height: 5.5rem;
+    object-fit: cover;
+    border: 2px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+}
+.ar-rc-class-banner {
+    margin-bottom: 1rem;
+}
+.ar-rc-class-banner .ar-rc {
+    margin-bottom: 0;
+}
+#ar-preview-wrap .ar-rc table.ar-marks-matrix thead th {
+    background: var(--ar-rc-navy) !important;
+    color: #fff !important;
+    border-color: #152a45 !important;
 }
 /* Workspace: compact, responsive; preview scrolls inside viewport on large screens */
 .ar-page {
@@ -1319,6 +1662,188 @@
     return String(Math.round(n));
   }
 
+  /** Selected option label from a filter dropdown (falls back to empty). */
+  function filterSelectText(selectId) {
+    var el = document.getElementById(selectId);
+    if (!el || !el.options || el.selectedIndex < 0) return '';
+    return String(el.options[el.selectedIndex].text || '').trim();
+  }
+
+  function stripTechnicalIdLabel(text) {
+    var s = String(text || '').trim();
+    if (!s) return '';
+    if (/^(Year|Term|Level|Teacher) ID \d+$/i.test(s)) return '';
+    if (/^From\s+.+\s+to\s+/i.test(s)) return '';
+    return s;
+  }
+
+  /** Short exam title: "2026-2027 - TERM 2 - OPENING EXAM" → "TERM 2 · OPENING EXAM". */
+  function shortExamLabel(name) {
+    var s = String(name || '').trim();
+    if (!s || /^all exams$/i.test(s)) return '';
+    var parts = s.split(' - ').map(function(p) { return p.trim(); }).filter(Boolean);
+    if (parts.length >= 3) {
+      var termPart = '';
+      for (var i = 0; i < parts.length - 1; i++) {
+        if (/^term\b/i.test(parts[i])) { termPart = parts[i]; break; }
+      }
+      if (!termPart) termPart = parts[parts.length - 2];
+      return termPart + ' · ' + parts[parts.length - 1];
+    }
+    if (parts.length === 2) return parts[1];
+    return s.replace(/^From\s+/i, '').replace(/\s+\(\d{4}-\d{2}-\d{2}\).*$/i, '').trim();
+  }
+
+  function reportSchoolYearLabel(af) {
+    var ui = filterSelectText('gf-year');
+    if (ui && ui.indexOf('All years') === -1) {
+      return ui.replace(/\s*\(current\)\s*$/i, '').trim();
+    }
+    var fromAf = stripTechnicalIdLabel((af && af.academic_year) || '');
+    return fromAf || '-';
+  }
+
+  function reportTermLabel(af) {
+    var ui = filterSelectText('gf-term');
+    if (ui && ui.indexOf('Any') === -1 && ui.indexOf('not set') === -1) {
+      var t = ui.replace(/\s*\(current\)\s*$/i, '').trim();
+      var dash = t.indexOf(' — ');
+      if (dash > 0) t = t.slice(0, dash).trim();
+      return t;
+    }
+    return stripTechnicalIdLabel((af && af.term) || '') || '';
+  }
+
+  function reportExamLabel(af, ew) {
+    ew = ew || {};
+    af = af || {};
+    var uiExam = filterSelectText('gf-exam-name');
+    if (uiExam && uiExam.indexOf('Select exam') === -1) return shortExamLabel(uiExam);
+    var fromAf = shortExamLabel(af.exam_name);
+    if (fromAf) return fromAf;
+    if (ew.label && !/^all exams$/i.test(ew.label)) return shortExamLabel(ew.label);
+    if (ew.first_exam_name) {
+      var shortN = shortExamLabel(ew.first_exam_name);
+      var n = parseInt(ew.exam_count, 10);
+      if (n > 1 && shortN) return shortN + ' (' + n + ' sittings)';
+      return shortN;
+    }
+    return '';
+  }
+
+  function reportTermExamLine(af, ew) {
+    var term = reportTermLabel(af);
+    var exam = reportExamLabel(af, ew);
+    if (term && exam) return term + ' · ' + exam;
+    return term || exam || '-';
+  }
+
+  function schoolContactLineHtml() {
+    var parts = [];
+    if (SCHOOL_INFO.address) parts.push(escapeHtml(SCHOOL_INFO.address));
+    if (SCHOOL_INFO.phone) parts.push(escapeHtml(SCHOOL_INFO.phone));
+    if (SCHOOL_INFO.email) parts.push(escapeHtml(SCHOOL_INFO.email));
+    return parts.length ? parts.join(' · ') : 'Contact details not configured in school settings.';
+  }
+
+  /** Report card header: logo, title, school name, contact, optional badge (e.g. rank). */
+  function renderReportCardHeader(reportTitle, badge) {
+    badge = badge || null;
+    var logoInner = SCHOOL_INFO.logo
+      ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="ar-rc-logo">'
+      : '<div class="ar-rc-logo-wrap flex items-center justify-center text-[10px] text-gray-400 font-semibold">LOGO</div>';
+    var badgeHtml = '';
+    if (badge && (badge.label || badge.value != null)) {
+      badgeHtml =
+        '<div class="ar-rc-badge">' +
+          '<p class="ar-rc-badge-label">' + escapeHtml(badge.label || 'Rank') + '</p>' +
+          '<p class="ar-rc-badge-value">' + escapeHtml(badge.value != null ? badge.value : '—') + '</p>' +
+        '</div>';
+    }
+    return '' +
+      '<div class="ar-rc-header">' +
+        '<div class="ar-rc-header-main">' +
+          '<div class="ar-rc-logo-wrap">' + logoInner + '</div>' +
+          '<div class="ar-rc-title-block">' +
+            '<p class="ar-rc-kicker">Official academic report</p>' +
+            '<h2 class="ar-rc-title">' + escapeHtml(reportTitle || 'REPORT CARD') + '</h2>' +
+            '<p class="ar-rc-school-name">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</p>' +
+            '<p class="ar-rc-school-contact">' + schoolContactLineHtml() + '</p>' +
+          '</div>' +
+        '</div>' +
+        badgeHtml +
+      '</div>';
+  }
+
+  function renderReportCardMetaGrid(pairs) {
+    return '<div class="ar-rc-meta-grid">' +
+      pairs.map(function(p) {
+        return '' +
+          '<div class="ar-rc-meta-item">' +
+            '<span class="ar-rc-meta-label">' + escapeHtml(p.label) + ':</span>' +
+            '<span class="ar-rc-meta-value">' + escapeHtml(p.value || '—') + '</span>' +
+          '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  function renderReportCardSignatures() {
+    return '' +
+      '<div class="ar-rc-signatures">' +
+        '<div><p class="ar-rc-sig-title">Parent acknowledgement</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div><p class="ar-rc-sig-title">Class teacher</p><p>Signature: ____________________</p><p>Date: ____________________</p></div>' +
+        '<div><p class="ar-rc-sig-title">Principal</p><p>Signature / stamp: ____________________</p><p>Date: ____________________</p></div>' +
+      '</div>';
+  }
+
+  function gradeCodeFromMark(mark, bandsList) {
+    var n = parseFloat(mark);
+    if (isNaN(n)) return '—';
+    var list = bandsList || [];
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i] || {};
+      var start = parseFloat(b.start);
+      var end = parseFloat(b.end);
+      if (!isNaN(start) && !isNaN(end) && n >= start && n <= end) {
+        var code = String(b.code || b.label || '').trim();
+        if (code) return code;
+      }
+    }
+    return '—';
+  }
+
+  function renderReportCardFeedback(descriptorText) {
+    return '' +
+      '<div class="ar-rc-feedback">' +
+        '<p class="ar-rc-feedback-title">Teacher\'s feedback</p>' +
+        (descriptorText
+          ? '<p class="text-xs text-gray-600 mb-2"><span class="font-bold">Descriptor:</span> ' + escapeHtml(descriptorText) + '</p>'
+          : '') +
+        '<div class="ar-rc-feedback-lines">' +
+          '<div class="ar-rc-feedback-line"></div>' +
+          '<div class="ar-rc-feedback-line"></div>' +
+          '<div class="ar-rc-feedback-line"></div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function renderReportCardClassBanner(className, subtitle) {
+    var sub = subtitle
+      ? '<p class="text-xs text-gray-600 mt-1 mb-0">' + escapeHtml(subtitle) + '</p>'
+      : '';
+    return '' +
+      '<div class="ar-rc-class-banner">' +
+        '<article class="ar-rc">' +
+          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
+          '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
+          '<div class="ar-rc-inner">' +
+            renderReportCardHeader('Class performance · ' + (className || '—'), null) +
+            sub +
+          '</div>' +
+        '</article>' +
+      '</div>';
+  }
+
   /** Display label for teacher on timetable grids: allocated staff number (not portal login, not DB pk). */
   function rowTeacherStaffId(row) {
     if (!row) return '';
@@ -1510,124 +2035,69 @@
     function renderStudentCard(row, classPosition) {
       const grade = String(row.grade || '-');
       const meaning = gradeMeaning(grade);
-      const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
       const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
-      const photoBlock = row.student_photo && String(row.student_photo).trim()
-        ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
-        : '<div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">' +
-            '<span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>' +
-          '</div>';
-      const subjectRows = cardSubjectColumns.map(function(subjectName, idx) {
+      const classLabel = (row.current_grade && String(row.current_grade).trim())
+        ? row.current_grade
+        : (row.level_name || af.class_level || '-');
+      const rankVal = classPosition != null ? classPosition : (row.position || '-');
+      const termExamLabel = reportTermExamLine(af, ew);
+      const photoHtml = row.student_photo && String(row.student_photo).trim()
+        ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
+        : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
+      const subjectRows = cardSubjectColumns.map(function(subjectName) {
         const mark = row[subjectName];
-        const zebra = idx % 2 === 1 ? ' bg-slate-50/70 dark:bg-slate-800/25' : '';
+        const subGrade = gradeCodeFromMark(mark, bands);
         return '' +
-          '<tr class="' + zebra + '">' +
-            '<td class="px-4 py-2.5 text-sm tabular-nums text-slate-600 dark:text-slate-400">' + (idx + 1) + '</td>' +
-            '<td class="px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-white">' + escapeHtml(subjectName) + '</td>' +
-            '<td class="px-4 py-2.5 text-sm text-right font-medium tabular-nums text-slate-900 dark:text-slate-100">' + escapeHtml(formatReportMark(mark)) + '</td>' +
+          '<tr>' +
+            '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
+            '<td class="ar-rc-td-num">100</td>' +
+            '<td class="ar-rc-td-num">' + escapeHtml(formatReportMark(mark)) + '</td>' +
+            '<td class="ar-rc-td-num">' + escapeHtml(subGrade) + '</td>' +
           '</tr>';
       }).join('');
-      return '' +
-        '<div class="rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden mb-8 bg-white dark:bg-slate-900 shadow-lg shadow-slate-200/50 dark:shadow-none ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-          '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-5 py-4">' +
-            '<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">' +
-              '<div class="min-w-0">' +
-                '<p class="text-[10px] font-bold uppercase tracking-widest text-white/80">Official transcript preview</p>' +
-                '<h3 class="text-lg font-bold tracking-tight truncate">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
-                '<p class="text-xs text-white/85 mt-1">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
-                '<p class="text-xs text-white/85">' + escapeHtml(SCHOOL_INFO.phone || '') + ((SCHOOL_INFO.email ? ' · ' + SCHOOL_INFO.email : '')) + '</p>' +
-              '</div>' +
-              '<div class="flex items-center gap-3 shrink-0">' +
-                (SCHOOL_INFO.logo
-                  ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-16 h-16 object-contain rounded-xl border border-white/30 bg-white shadow-md">'
-                  : '<div class="w-16 h-16 rounded-xl border-2 border-dashed border-white/40 bg-white/10"></div>') +
-                '<div class="text-right">' +
-                  '<p class="text-[10px] uppercase font-semibold text-white/75">Rank</p>' +
-                  '<p class="text-2xl font-black tabular-nums">' + escapeHtml(classPosition != null ? classPosition : (row.position || '-')) + '</p>' +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="p-5 sm:p-6">' +
-            '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 mb-5">' +
-              '<div class="lg:col-span-8 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/50 p-4">' +
-                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Learner</p>' +
-                '<p class="text-lg font-bold text-slate-900 dark:text-white mt-1">' + escapeHtml(row.full_name || '-') + '</p>' +
-                '<div class="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">' +
-                  '<div><span class="text-slate-500 dark:text-slate-400 block">Class</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml((row.current_grade && String(row.current_grade).trim()) ? row.current_grade : (row.level_name || af.class_level || '-')) + '</span></div>' +
-                  '<div><span class="text-slate-500 dark:text-slate-400 block">Year</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.academic_year || '-') + '</span></div>' +
-                  '<div><span class="text-slate-500 dark:text-slate-400 block">Term</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(af.term || '-') + '</span></div>' +
-                  '<div><span class="text-slate-500 dark:text-slate-400 block">Exams</span><span class="font-semibold text-slate-800 dark:text-slate-200">' + escapeHtml(examsCovered) + '</span></div>' +
-                '</div>' +
-              '</div>' +
-              '<div class="lg:col-span-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex items-center justify-center bg-white dark:bg-slate-900">' +
-                photoBlock +
-              '</div>' +
-              '<div class="lg:col-span-12 rounded-xl border border-dashed border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/50 p-4">' +
-                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Session context</p>' +
-                '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs text-slate-700 dark:text-slate-300">' +
-                  '<div class="flex gap-2"><span class="text-slate-400 shrink-0 w-14">Exam</span><span class="font-medium">' + escapeHtml(af.exam_name || '-') + '</span></div>' +
-                  '<div class="flex gap-2"><span class="text-slate-400 shrink-0 w-14">Period</span><span class="font-medium">' + escapeHtml(af.academic_year || '-') + ' · ' + escapeHtml(af.term || '-') + '</span></div>' +
-                '</div>' +
-              '</div>' +
-            '</div>' +
-            '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 mb-5 shadow-sm">' +
-              '<table class="ar-fit-table ar-simple-table w-full border-collapse">' +
-                '<colgroup><col style="width:8%"><col><col style="width:18%"></colgroup>' +
-                '<thead>' +
-                  '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-                    '<th class="text-left text-[11px] font-bold uppercase tracking-wider">#</th>' +
-                    '<th class="text-left text-[11px] font-bold uppercase tracking-wider">Subject code</th>' +
-                    '<th class="text-right text-[11px] font-bold uppercase tracking-wider">Marks</th>' +
-                  '</tr>' +
-                '</thead>' +
-                '<tbody class="divide-y divide-slate-100 dark:divide-slate-800">' + subjectRows + '</tbody>' +
-              '</table>' +
-            '</div>' +
-            '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
-                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Total marks</p>' +
-                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(formatReportMark(row.total_marks)) + '</p>' +
-              '</div>' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
-                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Mean</p>' +
-                '<p class="text-2xl font-bold tabular-nums text-slate-900 dark:text-white mt-1">' + escapeHtml(formatReportMark(row.mean)) + '</p>' +
-              '</div>' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">' +
-                '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Grade</p>' +
-                '<p class="mt-2"><span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></p>' +
-              '</div>' +
-            '</div>' +
-            '<div class="rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 px-4 py-3 text-xs text-slate-600 dark:text-slate-400 mb-5">' +
-              '<span class="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">Grade scale · </span>' + gradeLegend +
-            '</div>' +
-            '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-5">' +
-              '<p class="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Teacher comments</p>' +
-              '<p class="text-xs text-slate-600 dark:text-slate-400 mb-3"><span class="font-semibold text-slate-700 dark:text-slate-300">Descriptor:</span> ' + escapeHtml(meaning || '—') + '</p>' +
-              '<div class="border-t border-dashed border-slate-300 dark:border-slate-600 pt-3 min-h-[4rem]">' +
-                '<p class="text-[11px] text-slate-400 uppercase tracking-wide mb-1">Written remarks</p>' +
-                '<p class="text-sm text-slate-400">_______________________________________________________________________________</p>' +
-              '</div>' +
-            '</div>' +
-            '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-700 dark:text-slate-300">' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
-                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Parent acknowledgement</p>' +
-                '<p>Signature: _________________________________</p>' +
-                '<p class="mt-3">Date: _____________________________________</p>' +
-              '</div>' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
-                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Class teacher</p>' +
-                '<p>Signature: _________________________________</p>' +
-                '<p class="mt-3">Date: _____________________________________</p>' +
-              '</div>' +
-              '<div class="rounded-xl border border-slate-200 dark:border-slate-700 p-4">' +
-                '<p class="font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-8">Principal</p>' +
-                '<p>Signature / stamp: __________________________</p>' +
-                '<p class="mt-3">Date: _____________________________________</p>' +
-              '</div>' +
-            '</div>' +
-          '</div>' +
+      const summaryBox = '' +
+        '<div class="ar-rc-summary-box mt-3">' +
+          '<table><tbody>' +
+            '<tr><td>Total marks</td><td>' + escapeHtml(formatReportMark(row.total_marks)) + '</td></tr>' +
+            '<tr><td>Mean</td><td>' + escapeHtml(formatReportMark(row.mean)) + '</td></tr>' +
+            '<tr><td>Overall grade</td><td>' + escapeHtml(grade) + '</td></tr>' +
+            '<tr><td>Class rank</td><td>' + escapeHtml(rankVal) + '</td></tr>' +
+          '</tbody></table>' +
         '</div>';
+      return '' +
+        '<article class="ar-rc mb-8 print:break-after-page">' +
+          '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
+          '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
+          '<div class="ar-rc-inner">' +
+            renderReportCardHeader('REPORT CARD', { label: 'Class rank', value: rankVal }) +
+            renderReportCardMetaGrid([
+              { label: 'Student name', value: row.full_name || '-' },
+              { label: 'Class / section', value: classLabel },
+              { label: 'School year', value: reportSchoolYearLabel(af) },
+              { label: 'Term / exam', value: termExamLabel }
+            ]) +
+            '<div class="ar-rc-body-grid ar-rc-body-grid--split">' +
+              '<div>' +
+                '<table class="ar-rc-table">' +
+                  '<thead><tr>' +
+                    '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th>' +
+                  '</tr></thead>' +
+                  '<tbody>' + subjectRows + '</tbody>' +
+                '</table>' +
+              '</div>' +
+              '<div class="text-center">' + photoHtml + summaryBox + '</div>' +
+            '</div>' +
+            '<div class="ar-rc-stats-row">' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
+            '</div>' +
+            '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
+            renderReportCardFeedback(meaning || '') +
+            renderReportCardSignatures() +
+          '</div>' +
+        '</article>';
+
     }
 
     function renderClassTable(className, list) {
@@ -1735,15 +2205,20 @@
           '</tfoot>'
         : '';
 
-      return '' +
-        '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
-          '<table class="' + matrixClass + ' w-full border-collapse">' +
-            colgroup +
-            head +
-            '<tbody>' + body + '</tbody>' +
-            foot +
-          '</table>' +
-        '</div>';
+      var classSubtitle = [reportSchoolYearLabel(af), reportTermExamLine(af, ew)].filter(function(x) { return x && x !== '-'; }).join(' · ');
+      return renderReportCardClassBanner(className, classSubtitle) +
+        '<article class="ar-rc">' +
+          '<div class="ar-rc-inner">' +
+            '<div class="ar-fit-sheet">' +
+              '<table class="' + matrixClass + ' w-full border-collapse">' +
+                colgroup +
+                head +
+                '<tbody>' + body + '</tbody>' +
+                foot +
+              '</table>' +
+            '</div>' +
+          '</div>' +
+        '</article>';
     }
 
     const classBlocks = Object.keys(groupedByClass).sort(function(a, b) {
@@ -2609,120 +3084,77 @@
     const overallAvgText = overallAvg === null ? '-' : String(Math.round(overallAvg));
     const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
 
-    const tableRows = subjects.map(function(item, idx) {
-      const pill = item.grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(item.grade);
+    const tableRows = subjects.map(function(item) {
       return '' +
-        '<tr class="border-b border-gray-100 dark:border-gray-700">' +
-          '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">' + (idx + 1) + '</td>' +
-          '<td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-white">' + escapeHtml(item.subject) + '</td>' +
-          '<td class="px-3 py-2 text-sm text-gray-900 dark:text-gray-100">' + escapeHtml(item.markVal) + '</td>' +
-          '<td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">' + escapeHtml(item.trendText) + '</td>' +
-          '<td class="px-3 py-2 text-sm"><span class="inline-flex items-center px-2 py-0.5 rounded-full font-semibold ' + pill + '">' + escapeHtml(item.grade) + '</span></td>' +
+        '<tr>' +
+          '<td class="ar-rc-td-subj">' + escapeHtml(item.subject) +
+            (item.trendText && item.trendText !== '-' ? '<br><span class="text-[10px] font-normal text-gray-500">Trend: ' + escapeHtml(item.trendText) + '</span>' : '') +
+          '</td>' +
+          '<td class="ar-rc-td-num">100</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(item.markVal) + '</td>' +
+          '<td class="ar-rc-td-num">' + escapeHtml(item.grade) + '</td>' +
         '</tr>';
     }).join('');
 
-    const logoHtml = SCHOOL_INFO.logo
-      ? '<img src="' + escapeHtml(SCHOOL_INFO.logo) + '" alt="School logo" class="w-14 h-14 object-contain rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
-      : '<div class="w-14 h-14 rounded-md border border-dashed border-gray-300 dark:border-gray-600"></div>';
-    const studentPhotoPlaceholder = (first.student_photo && String(first.student_photo).trim())
-      ? '<img src="' + escapeHtml(first.student_photo) + '" alt="Student photo" class="w-16 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-700 bg-white">'
-      : '<div class="w-16 h-20 rounded-md border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/40 flex items-center justify-center">' +
-          '<span class="text-[10px] text-gray-500 dark:text-gray-400 text-center leading-tight">Student<br>Photo</span>' +
-        '</div>';
+    const ewInd = (bundle.meta || {}).exam_window || {};
+    const termExamLabel = reportTermExamLine(af, ewInd);
+    const examsCount = (((bundle.meta || {}).exam_window || {}).exam_count != null)
+      ? String((bundle.meta || {}).exam_window.exam_count) : '-';
+    const photoHtml = (first.student_photo && String(first.student_photo).trim())
+      ? '<img src="' + escapeHtml(first.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
+      : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
+    const summaryBox = '' +
+      '<div class="ar-rc-summary-box mt-3"><table><tbody>' +
+        '<tr><td>Overall average</td><td>' + escapeHtml(overallAvgText) + '</td></tr>' +
+        '<tr><td>Overall grade</td><td>' + escapeHtml(overallGrade) + '</td></tr>' +
+        '<tr><td>Subjects passed</td><td>' + escapeHtml(String(passCount)) + '</td></tr>' +
+        '<tr><td>Exams covered</td><td>' + escapeHtml(examsCount) + '</td></tr>' +
+      '</tbody></table></div>';
+    const gradeLegendInd = (
+      Array.isArray((bundle.meta || {}).grade_bands) && (bundle.meta || {}).grade_bands.length
+        ? (bundle.meta || {}).grade_bands.map(function(g) {
+            const code = String(g.code || g.label || '').trim();
+            const start = g.start;
+            const end = g.end;
+            return code ? (escapeHtml(code) + ': ' + escapeHtml(start) + '-' + escapeHtml(end)) : '';
+          }).filter(Boolean).join(', ')
+        : 'Configured grade settings'
+    );
 
     return '' +
-      '<div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">' +
-        '<div class="bg-gradient-to-r from-brand-primary to-brand-secondary text-white px-4 py-3">' +
-          '<div class="flex items-center justify-between gap-4">' +
+      '<article class="ar-rc">' +
+        '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
+        '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
+        '<div class="ar-rc-inner">' +
+          renderReportCardHeader('REPORT CARD', null) +
+          renderReportCardMetaGrid([
+            { label: 'Student name', value: first.full_name || '-' },
+            { label: 'Class / section', value: first.level_name || '-' },
+            { label: 'School year', value: reportSchoolYearLabel(af) },
+            { label: 'Term / exam', value: termExamLabel }
+          ]) +
+          '<div class="ar-rc-body-grid ar-rc-body-grid--split">' +
             '<div>' +
-              '<h3 class="text-lg font-bold">' + escapeHtml(SCHOOL_INFO.name || 'School') + '</h3>' +
-              '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.address || 'Address not set') + '</p>' +
-              '<p class="text-xs opacity-90">' + escapeHtml(SCHOOL_INFO.phone || '') + (SCHOOL_INFO.email ? ' | ' + escapeHtml(SCHOOL_INFO.email) : '') + '</p>' +
+              '<table class="ar-rc-table">' +
+                '<thead><tr>' +
+                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th>' +
+                '</tr></thead>' +
+                '<tbody>' + tableRows + '</tbody>' +
+              '</table>' +
             '</div>' +
-            logoHtml +
+            '<div class="text-center">' + photoHtml + summaryBox + '</div>' +
           '</div>' +
+          '<div class="ar-rc-stats-row">' +
+            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
+            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
+            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
+          '</div>' +
+          '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendInd + '</p>' +
+          renderReportCardFeedback('') +
+          renderReportCardSignatures() +
         '</div>' +
-        '<div class="p-4 bg-white dark:bg-gray-800">' +
-          '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm mb-4">' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-2">' +
-              '<p class="text-xs text-gray-500 dark:text-gray-400">Student</p>' +
-              '<p class="font-semibold text-gray-900 dark:text-white">' + escapeHtml(first.full_name || '-') + '</p>' +
-              '<p class="text-xs text-gray-600 dark:text-gray-400 mt-1">Class: ' + escapeHtml(first.level_name || '-') + '</p>' +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 flex items-center justify-center">' +
-              studentPhotoPlaceholder +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 sm:col-span-3">' +
-              '<p class="text-xs text-gray-500 dark:text-gray-400">Report details</p>' +
-              '<p class="text-xs text-gray-600 dark:text-gray-400">Year: ' + escapeHtml(af.academic_year || '-') + ' | Term: ' + escapeHtml(af.term || '-') + '</p>' +
-              '<p class="text-xs text-gray-600 dark:text-gray-400">Exam: ' + escapeHtml(af.exam_name || '-') + '</p>' +
-              '<p class="text-xs text-gray-600 dark:text-gray-400">Exams covered: ' + escapeHtml((((bundle.meta || {}).exam_window || {}).exam_count != null) ? String((bundle.meta || {}).exam_window.exam_count) : '-') + '</p>' +
-            '</div>' +
-          '</div>' +
-          '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall average</p>' +
-              '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(overallAvgText) + '</p>' +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Overall grade</p>' +
-              '<p class="text-lg font-bold text-gray-900 dark:text-white">' + escapeHtml(overallGrade) + '</p>' +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-gray-50 dark:bg-gray-900/30">' +
-              '<p class="text-[11px] uppercase text-gray-500 dark:text-gray-400">Subjects passed</p>' +
-              '<p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">' + escapeHtml(String(passCount)) + '</p>' +
-            '</div>' +
-          '</div>' +
-          '<div class="ar-fit-sheet rounded-lg border border-gray-200 dark:border-gray-700">' +
-            '<table class="ar-fit-table ar-simple-table w-full">' +
-              '<thead class="bg-gray-50 dark:bg-gray-900/40">' +
-                '<tr>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">#</th>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Subject code</th>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Marks</th>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Trend</th>' +
-                  '<th class="px-3 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase">Grade</th>' +
-                '</tr>' +
-              '</thead>' +
-              '<tbody>' + tableRows + '</tbody>' +
-            '</table>' +
-          '</div>' +
-          '<div class="mt-4 text-xs text-gray-600 dark:text-gray-400">' +
-            '<span class="font-semibold">Grade scale:</span> ' +
-            (
-              Array.isArray((bundle.meta || {}).grade_bands) && (bundle.meta || {}).grade_bands.length
-                ? (bundle.meta || {}).grade_bands.map(function(g) {
-                    const code = String(g.code || g.label || '').trim();
-                    const start = g.start;
-                    const end = g.end;
-                    return code ? (escapeHtml(code) + ': ' + escapeHtml(start) + '-' + escapeHtml(end)) : '';
-                  }).filter(Boolean).join(', ')
-                : 'Configured grade settings'
-            ) +
-          '</div>' +
-          '<div class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-            '<p class="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400 mb-1">Teacher comments</p>' +
-            '<p class="text-sm text-gray-500 dark:text-gray-400">............................................................................................................................</p>' +
-          '</div>' +
-          '<div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-gray-600 dark:text-gray-400">' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-              '<p class="font-semibold uppercase mb-6">Parent acknowledgement</p>' +
-              '<p>Signature: ____________________</p>' +
-              '<p class="mt-2">Date: ____________________</p>' +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-              '<p class="font-semibold uppercase mb-6">Class teacher</p>' +
-              '<p>Signature: ____________________</p>' +
-              '<p class="mt-2">Date: ____________________</p>' +
-            '</div>' +
-            '<div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3">' +
-              '<p class="font-semibold uppercase mb-6">Principal signature / stamp</p>' +
-              '<p>Signature: ____________________</p>' +
-              '<p class="mt-2">Date: ____________________</p>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
+      '</article>';
+
   }
 
   async function loadDetails() {

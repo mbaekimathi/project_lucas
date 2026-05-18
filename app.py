@@ -35730,8 +35730,29 @@ def _build_academic_report_payload(cursor, report_type, f):
         return (band.get('code') or band.get('label') or '').strip()
 
     def _lookup_name(query, value):
-        if value is None:
+        if value is None or value == '':
             return None
+        try:
+            cursor.execute(query, (value,))
+            rr = cursor.fetchone()
+            if not rr:
+                return None
+            return rr.get('name') if isinstance(rr, dict) else rr[0]
+        except Exception:
+            return None
+
+    def _short_exam_label(exam_name):
+        """User-friendly exam title (drop year/term prefix when redundant)."""
+        s = str(exam_name or '').strip()
+        if not s:
+            return ''
+        parts = [p.strip() for p in s.split(' - ') if p.strip()]
+        if len(parts) >= 3:
+            term_part = next((p for p in parts if p.upper().startswith('TERM')), parts[-2])
+            return f"{term_part} · {parts[-1]}"
+        if len(parts) == 2:
+            return parts[-1]
+        return s
 
     def _resolve_exam_window():
         """Get first-to-latest exam span for current filters."""
@@ -35779,27 +35800,27 @@ def _build_academic_report_payload(cursor, report_type, f):
         first_date = first_date_obj.strftime('%Y-%m-%d') if hasattr(first_date_obj, 'strftime') else (str(first_date_obj)[:10] if first_date_obj else '')
         last_date = last_date_obj.strftime('%Y-%m-%d') if hasattr(last_date_obj, 'strftime') else (str(last_date_obj)[:10] if last_date_obj else '')
 
-        label = 'All exams'
-        if first_name and last_name:
-            label = f"From {first_name} ({first_date or '-'}) to {last_name} ({last_date or '-'})"
-        elif first_name:
-            label = first_name
+        count = len(items)
+        short_first = _short_exam_label(first_name)
+        short_last = _short_exam_label(last_name)
+        if count <= 1 and short_first:
+            label = short_first
+        elif count > 1 and short_first and short_first == short_last:
+            label = f"{short_first} ({count} sittings)"
+        elif count > 1 and short_first:
+            label = f"{short_first} (+{count - 1} more)"
+        elif short_first:
+            label = short_first
+        else:
+            label = 'All exams'
         return {
             'first_exam_name': first_name,
             'first_exam_date': first_date,
             'last_exam_name': last_name,
             'last_exam_date': last_date,
-            'exam_count': len(items),
+            'exam_count': count,
             'label': label,
         }
-        try:
-            cursor.execute(query, (value,))
-            rr = cursor.fetchone()
-            if not rr:
-                return None
-            return rr.get('name') if isinstance(rr, dict) else rr[0]
-        except Exception:
-            return None
 
     year_name = _lookup_name("SELECT year_name AS name FROM academic_years WHERE id = %s", ay)
     term_name = _lookup_name("SELECT term_name AS name FROM terms WHERE id = %s", tid)
