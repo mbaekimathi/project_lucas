@@ -2,7 +2,7 @@
 {% set marketing_premium_shell = request.endpoint in ['home', 'login', 'login_select_role', 'admission'] %}
 <!DOCTYPE html>
 <html lang="en" class="{% if not public_site_topnav and session.get('user_id') %}role-portal-scroll{% endif %}" x-data="{ 
-    darkMode: localStorage.getItem('darkMode') === 'true',
+    darkMode: typeof window.portalResolveDarkMode === 'function' ? window.portalResolveDarkMode() : false,
     sidebarOpen: window.innerWidth >= 1024,
     isDesktop: window.innerWidth >= 1024,
     userClosedSidebar: false,
@@ -46,14 +46,10 @@
             }, 150);
         });
         
-        // Watch dark mode changes
+        // Watch dark mode changes (user choice overrides school default)
         $watch('darkMode', value => {
-            localStorage.setItem('darkMode', value ? 'true' : 'false');
-            document.documentElement.classList.toggle('dark', value);
-            document.documentElement.style.colorScheme = value ? 'dark' : 'light';
-            if (document.body) {
-                document.body.classList.toggle('dark', value);
-            }
+            if (typeof window.portalSaveDarkMode === 'function') window.portalSaveDarkMode(value);
+            if (typeof window.portalApplyDarkMode === 'function') window.portalApplyDarkMode(value);
         });
         
         // Store initial scroll position

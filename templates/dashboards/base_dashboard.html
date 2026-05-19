@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en" x-data="{ 
-    darkMode: localStorage.getItem('darkMode') === 'true', 
+    darkMode: typeof window.portalResolveDarkMode === 'function' ? window.portalResolveDarkMode() : false,
     sidebarOpen: true,
     profileDropdownOpen: false, 
     notificationDropdownOpen: false,
@@ -26,9 +26,8 @@
         document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
         
         $watch('darkMode', value => {
-            localStorage.setItem('darkMode', value ? 'true' : 'false');
-            document.documentElement.classList.toggle('dark', value);
-            document.documentElement.style.colorScheme = value ? 'dark' : 'light';
+            if (typeof window.portalSaveDarkMode === 'function') window.portalSaveDarkMode(value);
+            if (typeof window.portalApplyDarkMode === 'function') window.portalApplyDarkMode(value);
         });
         
         // Handle window resize with debounce
@@ -617,7 +616,7 @@
                     </div>
 
                     <!-- Dark Mode Toggle -->
-                    <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)" 
+                    <button @click="darkMode = !darkMode" 
                             class="p-2 sm:p-2.5 text-white hover:bg-white/20 active:bg-white/30 rounded-lg transition-all duration-300 transform hover:scale-110 active:scale-95 backdrop-blur-sm glass-effect touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center">
                         <i class="fas fa-moon text-base sm:text-lg md:text-xl transition-transform duration-300" 
                            x-show="!darkMode"

@@ -1,8 +1,34 @@
 {# Apply saved light/dark before first paint — prevents flash on navigation #}
 <script>
 (function () {
-    try {
-        var isDark = localStorage.getItem('darkMode') === 'true';
+    var defaultDark = {{ ((school_settings.default_theme_mode|default('dark')) == 'dark')|tojson }};
+
+    window.__portalThemeConfig = { defaultDark: defaultDark };
+
+    window.portalResolveDarkMode = function () {
+        try {
+            var explicit = localStorage.getItem('darkModeUserChoice');
+            if (!explicit) {
+                var legacy = localStorage.getItem('darkMode');
+                if (legacy === 'true') explicit = 'dark';
+                else if (legacy === 'false') explicit = 'light';
+            }
+            if (explicit === 'dark') return true;
+            if (explicit === 'light') return false;
+            return !!defaultDark;
+        } catch (e) {
+            return !!defaultDark;
+        }
+    };
+
+    window.portalSaveDarkMode = function (isDark) {
+        try {
+            localStorage.setItem('darkModeUserChoice', isDark ? 'dark' : 'light');
+            localStorage.setItem('darkMode', isDark ? 'true' : 'false');
+        } catch (e) { /* private mode */ }
+    };
+
+    window.portalApplyDarkMode = function (isDark) {
         var root = document.documentElement;
         if (isDark) {
             root.classList.add('dark');
@@ -11,7 +37,13 @@
             root.classList.remove('dark');
             root.style.colorScheme = 'light';
         }
-    } catch (e) { /* private mode / blocked storage */ }
+        if (document.body) {
+            document.body.classList.toggle('dark', isDark);
+        }
+    };
+
+    var isDark = window.portalResolveDarkMode();
+    window.portalApplyDarkMode(isDark);
 })();
 </script>
 <style id="theme-mode-boot">

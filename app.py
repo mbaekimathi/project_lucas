@@ -617,6 +617,7 @@ def _default_school_data():
         'allow_registration': True,
         'default_language': 'en',
         'timezone': 'Africa/Nairobi',
+        'default_theme_mode': 'dark',
     }
 
 
@@ -664,6 +665,7 @@ def get_school_settings():
                             else True,
                             'default_language': (result.get('default_language') or 'en').strip()[:10],
                             'timezone': (result.get('timezone') or 'Africa/Nairobi').strip()[:64],
+                            'default_theme_mode': (result.get('default_theme_mode') or 'dark').strip().lower()[:10],
                         }
                     else:
                         school_data = {
@@ -686,6 +688,7 @@ def get_school_settings():
                             'allow_registration': True,
                             'default_language': 'en',
                             'timezone': 'Africa/Nairobi',
+                            'default_theme_mode': 'dark',
                         }
     except Exception:
         pass
@@ -958,6 +961,7 @@ def ensure_school_general_settings_columns(cursor):
         ('allow_registration', "TINYINT(1) NOT NULL DEFAULT 1", 'maintenance_mode'),
         ('default_language', "VARCHAR(10) NOT NULL DEFAULT 'en'", 'allow_registration'),
         ('timezone', "VARCHAR(64) NOT NULL DEFAULT 'Africa/Nairobi'", 'default_language'),
+        ('default_theme_mode', "VARCHAR(10) NOT NULL DEFAULT 'dark'", 'timezone'),
     ]
     for col_name, col_def, after_col in cols:
         try:
@@ -22844,11 +22848,15 @@ def system_settings():
             term['days_remaining'] = None
     
     _cfg = get_school_settings()
+    _theme = (_cfg.get('default_theme_mode') or 'dark').strip().lower()
+    if _theme not in ('light', 'dark'):
+        _theme = 'dark'
     general_data = {
         'maintenance_mode': bool(_cfg.get('maintenance_mode')),
         'allow_registration': bool(_cfg.get('allow_registration', True)),
         'default_language': _cfg.get('default_language') or 'en',
         'timezone': _cfg.get('timezone') or 'Africa/Nairobi',
+        'default_theme_mode': _theme,
     }
 
     return render_template('dashboards/system_settings.html', 
@@ -43615,6 +43623,7 @@ def update_general_settings():
     allow_registration = 1 if '1' in request.form.getlist('allow_registration') else 0
     default_language = (request.form.get('default_language') or 'en').strip().lower()[:10]
     timezone_val = (request.form.get('timezone') or 'Africa/Nairobi').strip()[:64]
+    default_theme_mode = (request.form.get('default_theme_mode') or 'dark').strip().lower()
 
     if default_language not in ('en', 'es', 'fr', 'sw'):
         default_language = 'en'
@@ -43623,6 +43632,8 @@ def update_general_settings():
     })
     if timezone_val not in allowed_tz:
         timezone_val = 'Africa/Nairobi'
+    if default_theme_mode not in ('light', 'dark'):
+        default_theme_mode = 'dark'
 
     connection = get_db_connection()
     if connection:
@@ -43639,10 +43650,10 @@ def update_general_settings():
                     """
                     UPDATE school_settings
                     SET maintenance_mode = %s, allow_registration = %s,
-                        default_language = %s, timezone = %s
+                        default_language = %s, timezone = %s, default_theme_mode = %s
                     WHERE id = %s
                     """,
-                    (maintenance_mode, allow_registration, default_language, timezone_val, school_id),
+                    (maintenance_mode, allow_registration, default_language, timezone_val, default_theme_mode, school_id),
                 )
                 connection.commit()
                 invalidate_school_settings_cache()
