@@ -8,13 +8,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">My Profile</h1>
-        <p class="text-gray-600 dark:text-gray-400">View and manage your parent profile information</p>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Profile' %}
+{% set role_hero_subtitle = 'View and manage your parent profile information' %}
+{% set role_hero_icon_class = 'fa-layer-group' %}
+{% include 'dashboards/includes/role_hero.html' %}
 
+
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <!-- Profile Card -->
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
         <div class="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8">

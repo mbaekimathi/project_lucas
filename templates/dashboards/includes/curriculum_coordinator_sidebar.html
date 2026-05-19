@@ -1,0 +1,161 @@
+{% set _cc_nav = cc_nav_scope|default('all') %}
+
+{% if _cc_nav in ('all', 'classes') %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Classes</p>
+<a href="{{ employee_dash_url('classes-subjects') }}"
+   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book w-5"></i>
+    <span>Classes &amp; subjects</span>
+    {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('subject-class-allocation') }}"
+   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-tasks w-5"></i>
+    <span>Subject allocation</span>
+    {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-subject-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Register subjects</span>
+    {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'students') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Students</p>
+<a href="{{ employee_dash_url('student-management') }}"
+   class="sidebar-item {% if request.endpoint == 'student_management' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student academic</span>
+    {% if request.endpoint == 'student_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-management/student-attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+    {% if request.endpoint == 'student_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-management/students-progress') }}"
+   class="sidebar-item {% if request.endpoint in ('students_progress', 'student_progress_detail') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students progress</span>
+    {% if request.endpoint in ('students_progress', 'student_progress_detail') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'timetable') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Timetable</p>
+<a href="{{ employee_dash_url('timetable-management') }}"
+   class="sidebar-item {% if request.endpoint == 'timetable_management' and not request.path.endswith('/register-timetable') and not request.path.endswith('/manage-timetable') and not request.path.endswith('/timetable-analytics') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Timetable management</span>
+    {% if request.endpoint == 'timetable_management' and not request.path.endswith('/register-timetable') and not request.path.endswith('/manage-timetable') and not request.path.endswith('/timetable-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('timetable-management/register-timetable') }}"
+   class="sidebar-item {% if request.path.endswith('/register-timetable') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-plus-circle w-5"></i>
+    <span>Manual allocation</span>
+    {% if request.path.endswith('/register-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('timetable-management/manage-timetable') }}"
+   class="sidebar-item {% if request.path.endswith('/manage-timetable') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-edit w-5"></i>
+    <span>Manage timetable</span>
+    {% if request.path.endswith('/manage-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('timetable-management/timetable-analytics') }}"
+   class="sidebar-item {% if request.path.endswith('/timetable-analytics') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-bar w-5"></i>
+    <span>Timetable analytics</span>
+    {% if request.path.endswith('/timetable-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'exams') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Exams</p>
+<a href="{{ employee_dash_url('exam-evaluation') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam registration</span>
+    {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exams-assessments') }}"
+   class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments') or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Exams &amp; assessments</span>
+    {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments') or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exam-analytics') }}"
+   class="sidebar-item {% if request.endpoint in ('exam_analytics', 'exam_analytics_detail', 'exam_analytics_slot') or request.path.endswith('/exam-analytics') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Exam analytics</span>
+    {% if request.endpoint in ('exam_analytics', 'exam_analytics_detail', 'exam_analytics_slot') or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exam-timetable') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Exams timetable</span>
+    {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'reports') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Reports</p>
+<a href="{{ employee_dash_url('reports') }}"
+   class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail', 'reports_class_analytics') or request.path.endswith('/reports') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-alt w-5"></i>
+    <span>Reports</span>
+    {% if request.endpoint in ('reports', 'reports_class_detail', 'reports_class_analytics') or request.path.endswith('/reports') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'school') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">School</p>
+<a href="{{ employee_dash_url('notifications') }}"
+   class="sidebar-item {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+    {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _cc_nav in ('all', 'settings') %}
+<p class="px-3 {% if _cc_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Settings</p>
+<a href="{{ employee_staff_settings_url('curriculum coordinator') }}"
+   class="sidebar-item {% if request.endpoint == 'curriculum_timetable_settings' or '/curriculum-timetable-settings' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-sliders-h w-5"></i>
+    <span>Timetable settings</span>
+    {% if request.endpoint == 'curriculum_timetable_settings' or '/curriculum-timetable-settings' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-settings') }}"
+   class="sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Academic settings</span>
+    {% if request.endpoint == 'academic_settings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('academic-schedule-management') }}"
+   class="sidebar-item {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clock w-5"></i>
+    <span>Schedule management</span>
+    {% if request.endpoint == 'academic_schedule_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exam-subject-settings') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_subject_settings' or request.path.rstrip('/').endswith('/exam-subject-settings') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-layer-group w-5"></i>
+    <span>Exam subject settings</span>
+    {% if request.endpoint == 'exam_subject_settings' or request.path.rstrip('/').endswith('/exam-subject-settings') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('timetable-sessions') }}"
+   class="sidebar-item {% if request.endpoint == 'exam_timetable_settings' or request.path.rstrip('/').endswith('/timetable-sessions') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Timetable sessions</span>
+    {% if request.endpoint == 'exam_timetable_settings' or request.path.rstrip('/').endswith('/timetable-sessions') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('grades-registration') }}"
+   class="sidebar-item {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-list-check w-5"></i>
+    <span>Grade settings</span>
+    {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}

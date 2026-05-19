@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}Visual analytics — {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'insights' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% set ad = accountant_dashboard|default({}) %}
+{% set rev = ad.revenue|default({}) %}
+
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14 space-y-5">
+
+        <header class="accounts-hero rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+            <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
+                <a href="{{ employee_dash_url() }}"
+                   class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                    <i class="fas fa-arrow-left"></i> Accountant dashboard
+                </a>
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-chart-pie opacity-80"></i>
+                    <span>Accounts · Visual analytics</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Financial charts</h1>
+                <p class="mt-1.5 text-sm text-slate-300/90 max-w-2xl leading-relaxed">
+                    Graphical view of revenue, payroll, and payables — same live data as the summary dashboard.
+                </p>
+            </div>
+            <div class="accounts-hero-band px-4 sm:px-6 pb-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-emerald">Total income</p>
+                        <p class="accounts-stat-value">KES {{ ad.total_income_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-amber">Total disbursed</p>
+                        <p class="accounts-stat-value">KES {{ ad.total_outflow_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-sky">Net position</p>
+                        <p class="accounts-stat-value">KES {{ ad.net_position_display|default('0.00') }}</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <section class="accounts-panel rounded-xl overflow-hidden p-4 sm:p-5">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="fas fa-coins text-amber-500"></i> Revenue by source
+                </h2>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-4">Student fees, government grants, and private income</p>
+                <div class="h-64 relative">
+                    <canvas id="acc-chart-revenue" aria-label="Revenue breakdown chart"></canvas>
+                    <p class="accounts-chart-empty">No data to chart yet</p>
+                </div>
+            </section>
+
+            <section class="accounts-panel rounded-xl overflow-hidden p-4 sm:p-5">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="fas fa-scale-balanced text-teal-600"></i> Income vs disbursements
+                </h2>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-4">Total school income compared to money paid out</p>
+                <div class="h-64 relative">
+                    <canvas id="acc-chart-income-outflow" aria-label="Income versus outflow chart"></canvas>
+                    <p class="accounts-chart-empty">No data to chart yet</p>
+                </div>
+            </section>
+
+            <section class="accounts-panel rounded-xl overflow-hidden p-4 sm:p-5">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="fas fa-wallet text-violet-600"></i> Payroll metrics
+                </h2>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-4">Due, paid, outstanding, and this month</p>
+                <div class="h-64 relative">
+                    <canvas id="acc-chart-payroll" aria-label="Payroll metrics chart"></canvas>
+                    <p class="accounts-chart-empty">No data to chart yet</p>
+                </div>
+            </section>
+
+            <section class="accounts-panel rounded-xl overflow-hidden p-4 sm:p-5">
+                <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <i class="fas fa-file-invoice-dollar text-amber-600"></i> Payables &amp; invoices
+                </h2>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-4">Stock-in and miscellaneous payments</p>
+                <div class="h-64 relative">
+                    <canvas id="acc-chart-payables" aria-label="Payables chart"></canvas>
+                    <p class="accounts-chart-empty">No data to chart yet</p>
+                </div>
+            </section>
+        </div>
+
+        <section class="accounts-panel rounded-xl overflow-hidden p-4 sm:p-5">
+            <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <i class="fas fa-chart-pie text-emerald-600"></i> Disbursement split
+            </h2>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1 mb-4">Payroll vs supplier / misc payables (lifetime disbursed)</p>
+            <div class="h-56 max-w-md mx-auto relative">
+                <canvas id="acc-chart-outflow-split" aria-label="Outflow split chart"></canvas>
+                <p class="accounts-chart-empty">No data to chart yet</p>
+            </div>
+        </section>
+
+    </div>
+</div>
+
+<script type="application/json" id="acc-visual-chart-data">{{ chart_data|default({})|tojson }}</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var payload = document.getElementById('acc-visual-chart-data');
+    if (!payload || typeof Chart === 'undefined') return;
+    var data;
+    try { data = JSON.parse(payload.textContent); } catch (e) { return; }
+
+    var isDark = document.documentElement.classList.contains('dark');
+    var tick = isDark ? '#94a3b8' : '#64748b';
+    var grid = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.15)';
+
+    function kesTooltip(ctx) {
+        var v = ctx.raw;
+        if (v == null) return '';
+        return ' KES ' + Number(v).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function barChart(id, labels, amounts, colors) {
+        var el = document.getElementById(id);
+        if (!el || !labels || !labels.length) return;
+        var hasData = amounts.some(function (n) { return Number(n) > 0; });
+        if (!hasData) return;
+        new Chart(el.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'KES',
+                    data: amounts,
+                    backgroundColor: colors,
+                    borderRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) { return (ctx.dataset.label || '') + kesTooltip(ctx); }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: tick, maxRotation: 35, minRotation: 0 }, grid: { color: grid } },
+                    y: { beginAtZero: true, ticks: { color: tick }, grid: { color: grid } }
+                }
+            }
+        });
+        var empty = el.closest('.relative');
+        if (empty) {
+            var msg = empty.querySelector('.accounts-chart-empty');
+            if (msg) msg.style.display = 'none';
+        }
+    }
+
+    function doughnutChart(id, labels, amounts, colors) {
+        var el = document.getElementById(id);
+        if (!el || !labels || !labels.length) return;
+        var hasData = amounts.some(function (n) { return Number(n) > 0; });
+        if (!hasData) return;
+        new Chart(el.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: amounts,
+                    backgroundColor: colors,
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: tick, boxWidth: 12, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function (ctx) {
+                                return ctx.label + ':' + kesTooltip(ctx);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        var emptyDn = el.closest('.relative');
+        if (emptyDn) {
+            var msgDn = emptyDn.querySelector('.accounts-chart-empty');
+            if (msgDn) msgDn.style.display = 'none';
+        }
+    }
+
+    var rb = data.revenue_breakdown || {};
+    barChart('acc-chart-revenue', rb.labels, rb.amounts,
+        ['rgba(56, 189, 248, 0.85)', 'rgba(52, 211, 153, 0.85)', 'rgba(167, 139, 250, 0.85)']);
+
+    var io = data.income_vs_outflow || {};
+    barChart('acc-chart-income-outflow', io.labels, io.amounts,
+        ['rgba(16, 185, 129, 0.85)', 'rgba(245, 158, 11, 0.85)']);
+
+    var pr = data.payroll || {};
+    barChart('acc-chart-payroll', pr.labels, pr.amounts,
+        ['rgba(56, 189, 248, 0.85)', 'rgba(52, 211, 153, 0.85)', 'rgba(251, 191, 36, 0.85)', 'rgba(13, 148, 136, 0.85)']);
+
+    var inv = data.payables || {};
+    barChart('acc-chart-payables', inv.labels, inv.amounts,
+        ['rgba(251, 191, 36, 0.85)', 'rgba(52, 211, 153, 0.85)', 'rgba(167, 139, 250, 0.85)', 'rgba(56, 189, 248, 0.85)']);
+
+    var os = data.outflow_split || {};
+    doughnutChart('acc-chart-outflow-split', os.labels, os.amounts,
+        ['rgba(139, 92, 246, 0.9)', 'rgba(245, 158, 11, 0.9)']);
+});
+</script>
+{% endblock %}

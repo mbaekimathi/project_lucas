@@ -1,0 +1,15 @@
+{% set sf_tab = sf_tab|default('students') %}
+<nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-black/20 mt-4" aria-label="Student fees sections">
+    <a href="{{ employee_dash_url('student-fees') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if sf_tab == 'students' %}is-active{% endif %}">
+        <i class="fas fa-user-graduate"></i> Students &amp; payments
+    </a>
+    <a href="{{ employee_dash_url('student-fees/fee-structures') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if sf_tab == 'structures' %}is-active{% endif %}">
+        <i class="fas fa-list-alt"></i> Fee structures
+    </a>
+    <a href="{{ employee_dash_url('student-fees/payments-audit') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if sf_tab == 'audit' %}is-active{% endif %}">
+        <i class="fas fa-history"></i> Payments audit
+    </a>
+</nav>

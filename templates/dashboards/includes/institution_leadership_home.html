@@ -1,0 +1,57 @@
+{% set _home_deputy = (dashboard_content_role or '')|lower == 'deputy head of institution' %}
+{% set role_theme = 'deputy' if _home_deputy else 'leadership' %}
+{% set role_hero_eyebrow = 'Deputy head dashboard' if _home_deputy else 'Head of institution' %}
+{% set role_hero_title = 'School leadership overview' %}
+{% set role_hero_subtitle = 'Quick access to staff, students, academics, finance, and school operations. Use the sidebar for the full menu on each section.' %}
+{% set role_hero_icon_class = 'fa-building-columns' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+    <a href="{{ employee_dash_url('staff-management') }}" class="role-quick-card">
+        <i class="fas fa-user-tie text-blue-600 dark:text-blue-400"></i>
+        <span>Staff management</span>
+        <small>Directory, roles, and employee records</small>
+    </a>
+    <a href="{{ employee_dash_url('student-management') }}" class="role-quick-card">
+        <i class="fas fa-user-graduate text-indigo-600 dark:text-indigo-400"></i>
+        <span>Student management</span>
+        <small>Enrolment, profiles, and student records</small>
+    </a>
+    <a href="{{ employee_dash_url('classes-subjects') }}" class="role-quick-card">
+        <i class="fas fa-chalkboard-teacher text-violet-600 dark:text-violet-400"></i>
+        <span>Classes &amp; subjects</span>
+        <small>Curriculum structure and allocations</small>
+    </a>
+    <a href="{{ employee_dash_url('timetable-management') }}" class="role-quick-card">
+        <i class="fas fa-table text-teal-600 dark:text-teal-400"></i>
+        <span>Timetable</span>
+        <small>Schedules and teaching periods</small>
+    </a>
+    <a href="{{ employee_dash_url('exams-assessments') }}" class="role-quick-card">
+        <i class="fas fa-clipboard-check text-amber-600 dark:text-amber-400"></i>
+        <span>Exams &amp; results</span>
+        <small>Assessments, marks, and analytics</small>
+    </a>
+    <a href="{{ employee_dash_url('finance-overview') }}" class="role-quick-card">
+        <i class="fas fa-chart-pie text-emerald-600 dark:text-emerald-400"></i>
+        <span>Finance overview</span>
+        <small>Fees, collections, and financial summary</small>
+    </a>
+    <a href="{{ employee_dash_url('communication') }}" class="role-quick-card">
+        <i class="fas fa-broadcast-tower text-rose-600 dark:text-rose-400"></i>
+        <span>Communication</span>
+        <small>Messages to parents, staff, and students</small>
+    </a>
+    <a href="{{ employee_dash_url('tpad') }}" class="role-quick-card">
+        <i class="fas fa-clipboard-list text-slate-600 dark:text-slate-400"></i>
+        <span>TPAD</span>
+        <small>Teacher performance and appraisal</small>
+    </a>
+    {% if _home_deputy %}
+    <a href="/technician/system-settings#academic-year" class="role-quick-card">
+        <i class="fas fa-calendar-alt text-purple-600 dark:text-purple-400"></i>
+        <span>Academic year settings</span>
+        <small>Terms, sessions, and calendar setup</small>
+    </a>
+    {% endif %}
+</div>

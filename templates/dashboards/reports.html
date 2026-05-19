@@ -5,6 +5,8 @@
 {% block extra_head %}
 <style>
     .reports-filter-card {
+        font-size: 0.75rem;
+        line-height: 1.3;
         background: linear-gradient(145deg, rgba(255,255,255,0.98) 0%, rgba(250,250,252,0.98) 100%);
         box-shadow: 0 4px 24px -4px rgba(128, 0, 32, 0.08), 0 0 0 1px rgba(128, 0, 32, 0.06);
     }
@@ -12,45 +14,286 @@
         background: linear-gradient(145deg, rgba(31, 41, 55, 0.98) 0%, rgba(17, 24, 39, 0.98) 100%);
         box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.06);
     }
+    .reports-filter-card .reports-filter-heading {
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+    .reports-filter-card .reports-filter-defaults {
+        font-size: 0.6875rem;
+        font-weight: 500;
+    }
     .reports-filter-select {
-        min-height: 2.75rem;
+        min-height: 2rem;
+        font-size: 0.75rem;
+        font-weight: 500;
         appearance: none;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
-        background-position: right 0.75rem center;
-        background-size: 1.125rem;
-        padding-right: 2.5rem;
+        background-position: right 0.4rem center;
+        background-size: 0.875rem;
+        padding-right: 1.75rem;
+    }
+    @media (max-width: 639px) {
+        .reports-filter-card {
+            font-size: 0.6875rem;
+        }
+        .reports-filter-card .reports-filter-heading {
+            font-size: 0.6875rem;
+        }
+        .reports-filter-card .reports-filter-defaults {
+            font-size: 0.625rem;
+        }
+        .reports-filter-label {
+            font-size: 0.5rem;
+        }
+        .reports-filter-select {
+            min-height: 1.75rem;
+            font-size: 0.6875rem !important;
+            line-height: 1.25;
+        }
+        .reports-filter-select option {
+            font-size: 0.6875rem;
+        }
+        .reports-filter-actions .reports-btn {
+            min-height: 1.75rem;
+            font-size: 0.6875rem !important;
+        }
     }
     .dark .reports-filter-select {
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
     }
+    .reports-filter-field { gap: 0.15rem; }
+    .reports-filter-label {
+        font-size: 0.5625rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: rgb(107 114 128);
+        line-height: 1.15;
+    }
+    .dark .reports-filter-label { color: rgb(156 163 175); }
+    .reports-filter-actions .reports-btn {
+        min-height: 2rem;
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        width: 100%;
+        justify-content: center;
+    }
+    .portal-page-root.role-page { min-width: 0; }
+    .reports-class-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    @media (min-width: 640px) {
+        .reports-class-list { gap: 1.5rem; }
+    }
+    .reports-class-card-header {
+        padding: 0.625rem 0.75rem;
+    }
+    @media (min-width: 640px) {
+        .reports-class-card-header {
+            padding: 1rem 1.5rem;
+        }
+    }
+    .reports-class-title {
+        font-size: 0.875rem;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+    @media (min-width: 640px) {
+        .reports-class-title { font-size: 1.25rem; }
+    }
+    .reports-class-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem 0.5rem;
+        margin-top: 0.35rem;
+        font-size: 0.6875rem;
+        line-height: 1.3;
+    }
+    .reports-class-stats i {
+        font-size: 0.5625rem;
+        margin-right: 0.15rem;
+    }
+    @media (min-width: 640px) {
+        .reports-class-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+        }
+        .reports-class-stats i {
+            font-size: 0.6875rem;
+            margin-right: 0.25rem;
+        }
+    }
+    .reports-class-body {
+        padding: 0.625rem 0.75rem;
+    }
+    @media (min-width: 640px) {
+        .reports-class-body { padding: 1rem 1.5rem; }
+    }
+    .reports-empty {
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+    .reports-empty__icon {
+        width: 2.75rem;
+        height: 2.75rem;
+        font-size: 1.125rem;
+    }
+    @media (min-width: 640px) {
+        .reports-empty { font-size: 0.875rem; }
+        .reports-empty__icon {
+            width: 4rem;
+            height: 4rem;
+            font-size: 1.5rem;
+        }
+    }
+    .reports-scroll-hint {
+        display: none;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgb(100 116 139);
+        margin-bottom: 0.5rem;
+    }
+    .dark .reports-scroll-hint { color: rgb(148 163 184); }
+  @media (max-width: 767px) {
+        .reports-scroll-hint { display: flex; align-items: center; gap: 0.35rem; }
+    }
     .reports-fit-sheet {
         width: 100%;
         max-width: 100%;
-        overflow: hidden;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        margin: 0 -0.25rem;
+        padding: 0 0.25rem 0.5rem;
     }
     .reports-fit-table {
-        width: 100% !important;
-        max-width: 100% !important;
-        min-width: 0 !important;
-        table-layout: fixed;
+        width: 100%;
+        min-width: 32rem;
         border-collapse: collapse;
+        font-size: 0.75rem;
     }
     .reports-fit-table th,
     .reports-fit-table td {
-        padding: 0.5rem 0.35rem;
-        white-space: normal;
-        word-break: break-word;
-        overflow: hidden;
+        padding: 0.4rem 0.35rem;
+        white-space: nowrap;
+    }
+    @media (min-width: 768px) {
+        .reports-fit-table {
+            min-width: 0;
+            width: 100% !important;
+            table-layout: fixed;
+            font-size: 0.875rem;
+        }
+        .reports-fit-table th,
+        .reports-fit-table td {
+            padding: 0.5rem 0.4rem;
+        }
+    }
+    @media (min-width: 768px) {
+        .reports-fit-table th,
+        .reports-fit-table td {
+            white-space: normal;
+            word-break: break-word;
+        }
+        .reports-fit-table th:first-child,
+        .reports-fit-table td:first-child { width: 28%; }
     }
     .reports-fit-table th:first-child,
     .reports-fit-table td:first-child {
-        width: 28%;
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background: inherit;
+        box-shadow: 2px 0 6px -2px rgba(15, 23, 42, 0.08);
+        max-width: 7.5rem;
+        white-space: normal;
+        word-break: break-word;
+    }
+    .reports-fit-table thead th:first-child {
+        background: rgb(249 250 251);
+    }
+    .dark .reports-fit-table thead th:first-child {
+        background: rgb(17 24 39);
+    }
+    .reports-fit-table tbody td:first-child {
+        background: #fff;
+    }
+    .dark .reports-fit-table tbody td:first-child {
+        background: rgb(31 41 55);
+    }
+    .reports-fit-table tfoot td:first-child {
+        background: rgb(249 250 251);
+    }
+    .dark .reports-fit-table tfoot td:first-child {
+        background: rgb(17 24 39 / 0.6);
+    }
+    @media (max-width: 639px) {
+        .reports-class-title {
+            font-size: 0.75rem !important;
+        }
+        .reports-class-stats {
+            font-size: 0.625rem !important;
+        }
+        .reports-class-stats i {
+            font-size: 0.5rem;
+        }
+        .reports-scroll-hint {
+            font-size: 0.5625rem;
+            margin-bottom: 0.35rem;
+        }
+        .reports-fit-table {
+            min-width: 30rem;
+            font-size: 0.6875rem !important;
+        }
+        .reports-fit-table th,
+        .reports-fit-table td {
+            padding: 0.3rem 0.25rem !important;
+            font-size: 0.6875rem !important;
+        }
+        .reports-class-body .text-center {
+            font-size: 0.6875rem;
+            padding-top: 1.5rem;
+            padding-bottom: 1.5rem;
+        }
+        .reports-empty {
+            font-size: 0.6875rem !important;
+        }
+        .reports-empty__title {
+            font-size: 0.8125rem !important;
+        }
+        .reports-empty__hint {
+            font-size: 0.625rem !important;
+        }
+    }
+    @media (min-width: 480px) {
+        .reports-filter-actions .reports-btn {
+            width: auto;
+            min-width: 6.5rem;
+        }
     }
 </style>
 {% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'reports' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 <a href="{{ employee_dash_url('reports') }}" 
    class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
     <i class="fas fa-file-alt w-5"></i>
@@ -69,63 +312,58 @@
     <span>Accounts / Fees</span>
 </a>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6">
-    <div class="mb-4 sm:mb-6">
-        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-            <i class="fas fa-chart-bar text-brand-primary mr-2 sm:mr-3"></i>
-            Reports
-        </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400">Choose year, term, class, and <strong>exam</strong> (defaults to the school-wide current exam when it matches). Means and pass rates use <strong>scaled marks (/100)</strong> from Exam subject settings (raw ÷ exam total × 100). <strong>Code</strong> and <strong>Points</strong> follow <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-brand-primary">Grades Registration</a> bands (mean % rounded down to a whole number before matching).</p>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Reports' %}
+{% set role_hero_subtitle = 'Exam performance by class — scaled marks (/100), pass rates, and grade codes from Grades Registration.' %}
+{% set role_hero_icon_class = 'fa-chart-line' %}
+{% include 'dashboards/includes/role_hero.html' %}
 
-    <div class="mb-6">
-        <div class="reports-filter-card rounded-2xl border border-gray-200/90 dark:border-gray-600/60 p-5 sm:p-7 md:p-8 backdrop-blur-sm">
-            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-gray-200/90 dark:border-gray-600/50">
-                <div class="flex items-start gap-3 sm:gap-4 min-w-0">
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-md shadow-brand-primary/20">
-                        <i class="fas fa-sliders-h text-white text-sm" aria-hidden="true"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <h2 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white tracking-tight">Report filters</h2>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed max-w-xl">Set year, term, and exam scope, then pick a class or keep all classes. Changes apply after a short pause or when you use the buttons below.</p>
-                    </div>
+
+<div class="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="mb-3 sm:mb-4">
+        <div class="reports-filter-card rounded-lg sm:rounded-xl border border-gray-200/90 dark:border-gray-600/60 p-3 sm:p-4 backdrop-blur-sm">
+            <form method="GET" action="{{ url_for('reports') }}" id="reports-filter-form" class="space-y-2.5 sm:space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pb-2 border-b border-gray-200/80 dark:border-gray-600/50">
+                    <h2 class="reports-filter-heading text-gray-900 dark:text-white flex items-center gap-1">
+                        <i class="fas fa-sliders-h text-brand-primary text-[10px]" aria-hidden="true"></i>
+                        Filters
+                    </h2>
+                    <a href="{{ url_for('reports') }}"
+                       class="reports-filter-defaults text-brand-primary hover:underline inline-flex items-center gap-0.5">
+                        <i class="fas fa-rotate-left text-[9px] opacity-80" aria-hidden="true"></i>
+                        Defaults
+                    </a>
                 </div>
-                <a href="{{ url_for('reports') }}"
-                   class="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-brand-primary/40 hover:text-brand-primary dark:hover:border-brand-primary/50 dark:hover:text-brand-primary/90 transition-all shadow-sm">
-                    <i class="fas fa-rotate-left text-xs opacity-80" aria-hidden="true"></i>
-                    Current term defaults
-                </a>
-            </div>
 
-            <form method="GET" action="{{ url_for('reports') }}" id="reports-filter-form" class="pt-6 space-y-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
-                    <div class="flex flex-col gap-2 min-w-0">
-                        <label for="academic_year_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Academic year</label>
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                    <div class="reports-filter-field flex flex-col min-w-0">
+                        <label for="academic_year_id" class="reports-filter-label">Year</label>
                         <select name="academic_year_id" id="academic_year_id"
-                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
+                                class="reports-filter-select w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-1.5 py-1 text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/25 transition-colors">
                             <option value="">All years</option>
                             {% for year in academic_years %}
                             <option value="{{ year.id }}" {% if selected_academic_year_id == year.id %}selected{% endif %}>{{ year.year_name }}{% if year.is_current %} · Current{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="flex flex-col gap-2 min-w-0">
-                        <label for="term_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Term</label>
+                    <div class="reports-filter-field flex flex-col min-w-0">
+                        <label for="term_id" class="reports-filter-label">Term</label>
                         <select name="term_id" id="term_id"
-                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
+                                class="reports-filter-select w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-1.5 py-1 text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/25 transition-colors">
                             <option value="">All terms</option>
                             {% for term in terms %}
                             <option value="{{ term.id }}" {% if selected_term_id == term.id %}selected{% endif %}>{{ term.term_name }}{% if term.academic_year_id %} · Year {{ term.academic_year_id }}{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="flex flex-col gap-2 min-w-0">
-                        <label for="exam_i" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Exam</label>
+                    <div class="reports-filter-field flex flex-col min-w-0">
+                        <label for="exam_i" class="reports-filter-label">Exam</label>
                         <select name="exam_i" id="exam_i"
-                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
+                                class="reports-filter-select w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-1.5 py-1 text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/25 transition-colors">
                             <option value="-1" {% if (selected_exam_i|default(-1)) == -1 %}selected{% endif %}>All exams (combined)</option>
                             {% for opt in exam_group_options|default([]) %}
                             <option value="{{ loop.index0 }}" {% if (selected_exam_i|default(-1)) == loop.index0 %}selected{% endif %}>
@@ -134,32 +372,28 @@
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-
-                <div class="rounded-xl border-2 border-dashed border-gray-200 dark:border-gray-600 bg-gray-50/90 dark:bg-gray-900/40 px-4 py-4 sm:px-5 sm:py-5">
-                    <div class="flex flex-col gap-2 max-w-3xl">
-                        <label for="level_id" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Class / level</label>
+                    <div class="reports-filter-field flex flex-col min-w-0 col-span-2 lg:col-span-1">
+                        <label for="level_id" class="reports-filter-label">Class</label>
                         <select name="level_id" id="level_id"
-                                class="reports-filter-select w-full rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-3.5 py-2.5 text-sm font-medium text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/25 transition-colors">
-                            <option value="" {% if selected_level_id is none %}selected{% endif %}>All classes — full school report</option>
+                                class="reports-filter-select w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-1.5 py-1 text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/25 transition-colors">
+                            <option value="" {% if selected_level_id is none %}selected{% endif %}>All classes</option>
                             {% for level in academic_levels %}
                             <option value="{{ level.id }}" {% if selected_level_id == level.id %}selected{% endif %}>
                                 {{ level.level_name }}{% if level.level_category %} · {{ level.level_category }}{% endif %}
                             </option>
                             {% endfor %}
                         </select>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">One class narrows tables to that grade; all classes rolls every active level into the same view.</p>
                     </div>
                 </div>
 
-                <div class="flex flex-wrap items-center justify-end gap-2 pt-4 border-t border-gray-100 dark:border-gray-700/80">
+                <div class="reports-filter-actions flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700/80">
                     <button type="submit"
-                            class="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:shadow-brand-primary/25 transition-all min-w-[8.5rem]">
-                        <i class="fas fa-chart-line text-sm" aria-hidden="true"></i>
+                            class="reports-btn inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-white bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary shadow-sm transition-all">
+                        <i class="fas fa-chart-line text-[10px]" aria-hidden="true"></i>
                         Generate
                     </button>
                     <a href="{{ url_for('reports') }}"
-                       class="inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-semibold border-2 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                       class="reports-btn inline-flex items-center justify-center px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                         Reset
                     </a>
                 </div>
@@ -169,15 +403,15 @@
 
     {% if report_data is not none %}
     {% if report_data|length > 0 %}
-    <div class="space-y-6 mb-6">
+    <div class="reports-class-list mb-4 sm:mb-6">
         {% for class_report in report_data %}
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="bg-gradient-to-r from-brand-primary to-brand-secondary px-4 sm:px-6 py-4">
-                <h3 class="text-lg sm:text-xl font-bold text-white flex items-center">
-                    <i class="fas fa-graduation-cap mr-3"></i>
+        <div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden min-w-0">
+            <div class="reports-class-card-header bg-gradient-to-r from-brand-primary to-brand-secondary">
+                <h3 class="reports-class-title text-white flex items-center gap-1.5 sm:gap-2">
+                    <i class="fas fa-graduation-cap shrink-0 text-[10px] sm:text-base"></i>
                     {{ class_report.level_name }}{% if class_report.level_category %} ({{ class_report.level_category }}){% endif %}
                 </h3>
-                <div class="flex flex-wrap gap-4 mt-2 text-white/90 text-sm">
+                <div class="reports-class-stats text-white/90">
                     <span><i class="fas fa-users mr-1"></i> {{ class_report.student_count }} student(s)</span>
                     <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}/100</strong></span>
                     {% if class_report.class_grade_mean is not none %}
@@ -190,81 +424,84 @@
                     <span><i class="fas fa-book mr-1"></i> {{ class_report.subjects|length }} subject(s)</span>
                 </div>
             </div>
-            <div class="p-4 sm:p-6 reports-fit-sheet">
-                <table class="reports-fit-table w-full text-sm">
+            <div class="reports-class-body">
+                <p class="reports-scroll-hint" aria-hidden="true"><i class="fas fa-arrows-left-right text-[9px]"></i> Swipe for more columns</p>
+                <div class="reports-fit-sheet">
+                <table class="reports-fit-table w-full">
                     <thead>
                         <tr class="border-b border-gray-200 dark:border-gray-700">
-                            <th class="text-left py-3 px-2 font-semibold text-gray-900 dark:text-white">Subject</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Mean /100</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Highest /100</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Lowest /100</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Entries</th>
-                            <th class="text-right py-3 px-2 font-semibold text-gray-900 dark:text-white">Pass Rate</th>
-                            <th class="text-right py-3 px-2 font-semibold text-amber-800 dark:text-amber-300">Code</th>
-                            <th class="text-right py-3 px-2 font-semibold text-amber-800 dark:text-amber-300">Points</th>
+                            <th class="text-left font-semibold text-gray-900 dark:text-white">Subject</th>
+                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Mean</span><span class="hidden sm:inline">Mean /100</span></th>
+                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Hi</span><span class="hidden sm:inline">Highest /100</span></th>
+                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Lo</span><span class="hidden sm:inline">Lowest /100</span></th>
+                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">N</span><span class="hidden sm:inline">Entries</span></th>
+                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Pass</span><span class="hidden sm:inline">Pass Rate</span></th>
+                            <th class="text-right font-semibold text-amber-800 dark:text-amber-300">Code</th>
+                            <th class="text-right font-semibold text-amber-800 dark:text-amber-300"><span class="sm:hidden">Pts</span><span class="hidden sm:inline">Points</span></th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for subj in class_report.subjects %}
                         <tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                            <td class="py-3 px-2 font-medium text-gray-900 dark:text-white">{{ subj.subject_name }}</td>
-                            <td class="text-right py-3 px-2">
+                            <td class="font-medium text-gray-900 dark:text-white">{{ subj.subject_name }}</td>
+                            <td class="text-right">
                                 <span class="{% if subj.mean >= 70 %}text-green-600 dark:text-green-400{% elif subj.mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-semibold">{{ subj.mean }}</span>
                             </td>
-                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ subj.max|default('-') }}</td>
-                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ subj.min|default('-') }}</td>
-                            <td class="text-right py-3 px-2 text-gray-600 dark:text-gray-400">{{ subj.count }}</td>
-                            <td class="text-right py-3 px-2">
+                            <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.max|default('-') }}</td>
+                            <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.min|default('-') }}</td>
+                            <td class="text-right text-gray-600 dark:text-gray-400">{{ subj.count }}</td>
+                            <td class="text-right">
                                 <span class="{% if subj.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif subj.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-medium">{{ subj.pass_rate }}%</span>
                             </td>
-                            <td class="text-right py-3 px-2 font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_code|default('—') }}</td>
-                            <td class="text-right py-3 px-2 font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_points|default('—') }}</td>
+                            <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_code|default('—') }}</td>
+                            <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_points|default('—') }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                     {% if class_report.subjects %}
                     <tfoot>
                         <tr class="bg-gray-50 dark:bg-gray-900/60 border-t-2 border-gray-300 dark:border-gray-600 font-semibold text-gray-900 dark:text-white">
-                            <td class="py-3 px-2">Overall (class)</td>
-                            <td class="text-right py-3 px-2">
+                            <td>Overall (class)</td>
+                            <td class="text-right">
                                 <span class="{% if class_report.class_mean >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_mean }}</span>
                             </td>
-                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ class_report.class_max if class_report.class_max is not none else '—' }}</td>
-                            <td class="text-right py-3 px-2 text-gray-700 dark:text-gray-300">{{ class_report.class_min if class_report.class_min is not none else '—' }}</td>
-                            <td class="text-right py-3 px-2 text-gray-600 dark:text-gray-400">{{ class_report.total_marks_entries|default(0) }}</td>
-                            <td class="text-right py-3 px-2">
+                            <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_max if class_report.class_max is not none else '—' }}</td>
+                            <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_min if class_report.class_min is not none else '—' }}</td>
+                            <td class="text-right text-gray-600 dark:text-gray-400">{{ class_report.total_marks_entries|default(0) }}</td>
+                            <td class="text-right">
                                 <span class="{% if class_report.class_pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_pass_rate|default(0) }}%</span>
                             </td>
-                            <td class="text-right py-3 px-2 font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_code|default('—') }}</td>
-                            <td class="text-right py-3 px-2 font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_points|default('—') }}</td>
+                            <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_code|default('—') }}</td>
+                            <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_points|default('—') }}</td>
                         </tr>
                     </tfoot>
                     {% endif %}
                 </table>
                 {% if not class_report.subjects %}
-                <p class="text-center text-gray-500 dark:text-gray-400 py-8">No exam data recorded for this class in the selected period.</p>
+                <p class="reports-empty text-center text-gray-500 dark:text-gray-400 py-6 sm:py-8">No exam data recorded for this class in the selected period.</p>
                 {% endif %}
+                </div>
             </div>
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-8 text-center mb-6">
-        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
-            <i class="fas fa-inbox text-gray-400 text-2xl"></i>
+    <div class="reports-empty bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5 sm:p-8 text-center mb-4 sm:mb-6">
+        <div class="reports-empty__icon bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+            <i class="fas fa-inbox text-gray-400"></i>
         </div>
         <p class="text-gray-600 dark:text-gray-400">No exam data found for the selected filters.</p>
-        <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">Try different filters or ensure exams and marks have been recorded.</p>
+        <p class="reports-empty__hint text-gray-500 dark:text-gray-500 mt-1">Try different filters or ensure exams and marks have been recorded.</p>
     </div>
     {% endif %}
     {% else %}
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-8 sm:p-12 mb-6">
+    <div class="reports-empty bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5 sm:p-12 mb-4 sm:mb-6">
         <div class="text-center">
-            <div class="w-20 h-20 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-file-alt text-brand-primary text-4xl"></i>
+            <div class="reports-empty__icon w-14 h-14 sm:w-20 sm:h-20 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                <i class="fas fa-file-alt text-brand-primary text-2xl sm:text-4xl"></i>
             </div>
-            <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-2">Generate Exam Report</h2>
-            <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Select filters above to immediately focus on the report you need.</p>
+            <h2 class="reports-empty__title text-base sm:text-xl font-bold text-gray-900 dark:text-white mb-1.5 sm:mb-2">Generate Exam Report</h2>
+            <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Select filters above to focus on the report you need.</p>
         </div>
     </div>
     {% endif %}

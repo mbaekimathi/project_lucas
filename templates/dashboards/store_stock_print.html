@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ movement.reference_number }} — {{ school_settings.school_name or 'School' }}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 24px; color: #111; background: #f8fafc; }
+        .receipt { max-width: 480px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px 32px; }
+        .school { text-align: center; border-bottom: 2px solid #800020; padding-bottom: 16px; margin-bottom: 20px; }
+        .school h1 { margin: 0; font-size: 1.25rem; color: #800020; }
+        .school p { margin: 6px 0 0; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
+        .ref { font-family: ui-monospace, monospace; font-size: 1.125rem; font-weight: 700; color: #800020; }
+        .badge { display: inline-block; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 10px; border-radius: 999px; margin-top: 8px; }
+        .badge-in { background: #d1fae5; color: #065f46; }
+        .badge-out { background: #ffedd5; color: #9a3412; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.875rem; }
+        th, td { text-align: left; padding: 8px 0; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+        th { width: 38%; color: #64748b; font-weight: 600; font-size: 0.7rem; text-transform: uppercase; }
+        td { font-weight: 500; }
+        .total-row td { font-size: 1rem; font-weight: 700; border-bottom: none; padding-top: 12px; }
+        .pending { color: #b45309; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; }
+        .footer { margin-top: 24px; padding-top: 16px; border-top: 1px dashed #cbd5e1; font-size: 0.7rem; color: #94a3b8; text-align: center; }
+        .no-print { text-align: center; margin-bottom: 20px; }
+        .no-print button { background: #800020; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+        .no-print button:hover { filter: brightness(1.1); }
+        @media print {
+            body { background: #fff; padding: 0; }
+            .no-print { display: none !important; }
+            .receipt { border: none; box-shadow: none; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button type="button" onclick="window.print()">Print receipt</button>
+    </div>
+    <div class="receipt">
+        <div class="school">
+            <h1>{{ school_settings.school_name or 'School' }}</h1>
+            <p>Store stock {{ movement.movement_type }} receipt</p>
+        </div>
+        <div style="text-align: center;">
+            <div class="ref">{{ movement.reference_number }}</div>
+            <span class="badge {% if movement.movement_type == 'in' %}badge-in{% else %}badge-out{% endif %}">
+                Stock {{ movement.movement_type }}
+            </span>
+        </div>
+        <table>
+            <tr><th>Date</th><td>{% if movement.created_at and movement.created_at.strftime %}{{ movement.created_at.strftime('%d %b %Y, %H:%M') }}{% elif movement.created_at %}{{ movement.created_at }}{% else %}—{% endif %}</td></tr>
+            <tr><th>Item ref</th><td>{{ movement.item_ref }}</td></tr>
+            <tr><th>Item</th><td>{{ movement.item_name }}</td></tr>
+            <tr><th>Category</th><td>{{ movement.item_category }}</td></tr>
+            <tr><th>Measure</th><td>{{ movement.measure }}</td></tr>
+            <tr><th>Quantity</th><td>{{ movement.quantity }}</td></tr>
+            {% if movement.movement_type == 'in' %}
+            <tr><th>Buying price</th><td>{% if movement.buying_price is not none %}{{ '%.2f'|format(movement.buying_price) }}{% else %}—{% endif %}</td></tr>
+            <tr class="total-row"><th>Total amount</th><td>{% if movement.total_amount is not none %}{{ '%.2f'|format(movement.total_amount) }}{% else %}—{% endif %}</td></tr>
+            <tr><th>Payment</th><td><span class="pending">{{ movement.payment_status }}</span></td></tr>
+            {% if movement.supplier_name %}
+            <tr><th>Supplier</th><td>{{ movement.supplier_name }}{% if movement.supplier_phone %}<br><span style="font-size:0.8em;color:#64748b">{{ movement.supplier_phone }}</span>{% endif %}</td></tr>
+            {% endif %}
+            {% else %}
+            <tr><th>Purpose</th><td>{{ movement.stock_out_purpose or '—' }}</td></tr>
+            <tr><th>Stock before</th><td>{{ movement.quantity_before }}</td></tr>
+            <tr><th>Stock after</th><td>{{ movement.quantity_after }}</td></tr>
+            {% endif %}
+            {% if movement.notes %}<tr><th>Notes</th><td>{{ movement.notes }}</td></tr>{% endif %}
+            {% if movement.performed_by_name %}<tr><th>Recorded by</th><td>{{ movement.performed_by_name }}</td></tr>{% endif %}
+        </table>
+        <div class="footer">Generated from school store system · {{ movement.reference_number }}</div>
+    </div>
+    <script>if (window.location.search.indexOf('auto=1') !== -1) window.print();</script>
+</body>
+</html>

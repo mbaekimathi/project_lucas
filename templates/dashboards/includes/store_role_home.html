@@ -1,0 +1,24 @@
+{% set role_theme = 'store' %}
+{% set role_hero_eyebrow = 'Store manager' %}
+{% set role_hero_title = 'Store & inventory' %}
+{% set role_hero_subtitle = 'Stock movements, item catalog, and staff requisitions.' %}
+{% set role_hero_icon_class = 'fa-boxes-stacked' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <a href="{{ employee_dash_url('store-stock') }}" class="role-quick-card">
+        <i class="fas fa-arrow-right-arrow-left text-amber-600 dark:text-amber-400"></i>
+        <span>Stock in &amp; out</span>
+        <small>Record stock received and issued</small>
+    </a>
+    <a href="{{ employee_dash_url('store-inventory') }}" class="role-quick-card">
+        <i class="fas fa-boxes-stacked text-orange-600 dark:text-orange-400"></i>
+        <span>Item catalog</span>
+        <small>Manage store items and measures</small>
+    </a>
+    <a href="{{ employee_dash_url('store-requisitions') }}" class="role-quick-card">
+        <i class="fas fa-clipboard-list text-slate-600 dark:text-slate-400"></i>
+        <span>Requisitions</span>
+        <small>Staff requests and fulfilment</small>
+    </a>
+</div>

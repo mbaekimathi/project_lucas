@@ -1,149 +1,135 @@
 {% extends "base.html" %}
 
+{% block body_class %}sf-accounts-layout{% endblock %}
+
 {% block title %}Staff and Salaries - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<!-- Staff and Salaries Links -->
-<a href="{{ employee_dash_url('staff-and-salaries') }}" 
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-users-cog w-5"></i>
-    <span>Staff and Salaries</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-
-<button type="button" 
-        @click="$store.salaryModal.open()"
-        class="sidebar-item w-full text-left">
-    <i class="fas fa-money-bill-wave w-5"></i>
-    <span>Register Salary</span>
-</button>
-
-<button type="button" 
-        @click="$store.paySalaryModal.open()"
-        class="sidebar-item w-full text-left">
-    <i class="fas fa-hand-holding-usd w-5"></i>
-    <span>Pay Salary</span>
-</button>
-
-<a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}" 
-   class="sidebar-item">
-    <i class="fas fa-file-invoice-dollar w-5"></i>
-    <span>Salary Records</span>
-</a>
-
-<a href="{{ employee_dash_url('staff-and-salaries/salary-audits') }}" 
-   class="sidebar-item">
-    <i class="fas fa-history w-5"></i>
-    <span>Salary Audits</span>
-</a>
+{% set show_payroll_actions = true %}
+{% include 'dashboards/includes/accountant_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="{ activeTab: 'employees' }">
-    <!-- Header -->
-    <div class="mb-4 sm:mb-6">
-        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-            <div>
-                <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2 sm:gap-3">
-                    <i class="fas fa-users-cog text-green-600 dark:text-green-400"></i>
-                    <span>Payroll Management</span>
-                </h1>
-                <p class="text-xs sm:text-sm md:text-base text-gray-600 dark:text-gray-400">
-                    Manage staff members, salary records, and audit trails
+<style>
+.accounts-page { --acc-ink: #0f172a; --acc-muted: #64748b; --acc-line: #e2e8f0; --acc-surface: #ffffff; --acc-teal: #0d9488; --acc-teal-dark: #0f766e; }
+.dark .accounts-page { --acc-ink: #f1f5f9; --acc-muted: #94a3b8; --acc-line: #1e293b; --acc-surface: #0f172a; }
+.accounts-hero { background: linear-gradient(125deg, #0f172a 0%, #1e3a5f 38%, #134e4a 100%); }
+.accounts-stat { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); }
+.accounts-panel { background: var(--acc-surface); border: 1px solid var(--acc-line); box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 12px 32px -8px rgba(15,23,42,0.08); }
+.accounts-panel-head { background: linear-gradient(180deg, #f8fafc 0%, #fff 100%); border-bottom: 1px solid var(--acc-line); }
+.dark .accounts-panel-head { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); }
+.finance-table thead th { background: #f1f5f9; color: #475569; font-weight: 600; letter-spacing: 0.04em; }
+.dark .finance-table thead th { background: #1e293b; color: #94a3b8; }
+.finance-table tbody tr { transition: background 0.15s ease; }
+.finance-table tbody tr:hover { background: #f0fdfa; }
+.dark .finance-table tbody tr:hover { background: rgba(13,148,136,0.08); }
+.accounts-tab { color: #94a3b8; background: transparent; }
+.accounts-tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
+.accounts-tab.is-active { background: rgba(255,255,255,0.14); color: #fff; }
+.accounts-btn-primary { background: linear-gradient(135deg, #0d9488, #0f766e); box-shadow: 0 2px 10px rgba(13,148,136,0.35); }
+.accounts-btn-primary:hover { filter: brightness(1.06); }
+.accounts-btn-ghost { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; }
+.accounts-btn-ghost:hover { background: rgba(255,255,255,0.18); }
+.accounts-modal { border: 1px solid var(--acc-line); box-shadow: 0 24px 48px -12px rgba(15,23,42,0.25); }
+.accounts-field { border-color: var(--acc-line); background: #fafbfc; }
+.accounts-field:focus { border-color: #14b8a6; box-shadow: 0 0 0 3px rgba(20,184,166,0.2); outline: none; }
+.dark .accounts-field { background: #0f172a; }
+.accounts-empty { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); }
+.dark .accounts-empty { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); }
+.accounts-badge-active { background: #d1fae5; color: #065f46; }
+.accounts-badge-pending { background: #fef3c7; color: #92400e; }
+.accounts-badge-warn { background: #fee2e2; color: #991b1b; }
+.dark .accounts-badge-active { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+.dark .accounts-badge-pending { background: rgba(251,191,36,0.15); color: #fcd34d; }
+.dark .accounts-badge-warn { background: rgba(248,113,113,0.15); color: #fca5a5; }
+</style>
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14" x-data="{ activeTab: 'employees' }">
+    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-landmark opacity-80"></i>
+                    <span>Accounts · Payroll</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Staff &amp; salaries</h1>
+                <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                    Employee payroll register, salary disbursements, and audit trail.
                 </p>
             </div>
+            <div class="flex flex-wrap gap-2 shrink-0">
+                <button type="button" @click="$store.salaryModal.open()"
+                        class="accounts-btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white">
+                    <i class="fas fa-file-invoice"></i> Register salary
+                </button>
+                <button type="button" @click="$store.paySalaryModal.open()"
+                        class="accounts-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold">
+                    <i class="fas fa-hand-holding-usd"></i> Pay salary
+                </button>
+            </div>
         </div>
-        
-        <!-- Tabs Navigation -->
-        <div class="border-b border-gray-200 dark:border-gray-700 mb-4 sm:mb-6">
-            <nav class="flex space-x-1 sm:space-x-2 overflow-x-auto" aria-label="Tabs">
-                <button @click="activeTab = 'employees'" 
-                        :class="activeTab === 'employees' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
-                    <i class="fas fa-users"></i>
-                    <span>Employees & Payrolls</span>
-                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ employees|length }}</span>
+        <div class="px-4 sm:px-6 pb-4 border-t border-white/10 bg-black/15"
+             x-data="payrollAnalyticsHeader()"
+             x-init="init()">
+            <script type="application/json" id="payroll-analytics-json">{{ payment_analytics|default({})|tojson }}</script>
+            <div class="flex items-center justify-between gap-2 mb-2.5">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-teal-100/80">Payment analytics</span>
+                <button type="button" @click="refresh()" :disabled="loading"
+                        class="text-[10px] font-medium text-teal-200 hover:text-white disabled:opacity-40 transition"
+                        title="Refresh totals">
+                    <i class="fas fa-sync-alt mr-1" :class="loading && 'fa-spin'"></i>Refresh
                 </button>
-                <button @click="activeTab = 'records'" 
-                        :class="activeTab === 'records' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    <span>Salary Records</span>
-                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ salary_records|length }}</span>
-                </button>
-                <button @click="activeTab = 'audits'" 
-                        :class="activeTab === 'audits' ? 'border-green-500 text-green-600 dark:text-green-400' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'"
-                        class="whitespace-nowrap py-2 sm:py-3 px-3 sm:px-4 border-b-2 font-medium text-sm sm:text-base transition-colors flex items-center gap-2">
-                    <i class="fas fa-history"></i>
-                    <span>Salary Audits</span>
-                    <span class="ml-1 px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">{{ audits|length }}</span>
-                </button>
-            </nav>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-sky-200/90">Payroll due</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('payroll_due_display')"></p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-emerald-200/90">Paid (period)</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('paid_current_period_display')"></p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-amber-200/90">Outstanding</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('outstanding_display')"></p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-teal-200/90">This month</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('paid_this_month_display')"></p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-violet-200/90">Pending staff</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="analyticNum('pending_staff_count')"></p>
+                </div>
+                <div class="accounts-stat rounded-lg px-2.5 py-2">
+                    <p class="text-[9px] font-medium uppercase tracking-wide text-slate-200/90">Disbursed</p>
+                    <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('total_disbursed_display')"></p>
+                </div>
+            </div>
         </div>
-    </div>
+    </header>
 
     <!-- Tab 1: Employees & Payrolls -->
     <div x-show="activeTab === 'employees'" x-cloak>
-        <!-- Stats Cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm sm:text-base opacity-90 mb-1">Active Staff</p>
-                    <p class="text-2xl sm:text-3xl font-bold">{{ active_count }}</p>
-                </div>
-                <i class="fas fa-user-check text-3xl sm:text-4xl opacity-80"></i>
-            </div>
-        </div>
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm sm:text-base opacity-90 mb-1">Pending Approval</p>
-                    <p class="text-2xl sm:text-3xl font-bold">{{ pending_count }}</p>
-                </div>
-                <i class="fas fa-clock text-3xl sm:text-4xl opacity-80"></i>
-            </div>
-        </div>
-        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm sm:text-base opacity-90 mb-1">Suspended</p>
-                    <p class="text-2xl sm:text-3xl font-bold">{{ suspended_count }}</p>
-                </div>
-                <i class="fas fa-user-slash text-3xl sm:text-4xl opacity-80"></i>
-            </div>
-        </div>
-        <div class="bg-gradient-to-br from-gray-500 to-gray-600 rounded-xl p-4 sm:p-5 text-white shadow-lg">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-sm sm:text-base opacity-90 mb-1">Total Roles</p>
-                    <p class="text-2xl sm:text-3xl font-bold">{{ roles_count }}</p>
-                </div>
-                <i class="fas fa-user-tag text-3xl sm:text-4xl opacity-80"></i>
-            </div>
-        </div>
-    </div>
 
     <!-- Employees Table -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div class="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <h2 class="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                    <i class="fas fa-list text-green-600 dark:text-green-400"></i>
-                    <span>All Employees</span>
-                </h2>
-                <div class="flex items-center gap-2 w-full sm:w-auto">
-                    <input type="text" 
-                           id="searchEmployees" 
-                           placeholder="Search employees..."
-                           class="w-full sm:w-64 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+    <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700 mb-5">
+        <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                    <i class="fas fa-users text-sm"></i>
+                </span>
+                <div>
+                    <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">All employees</h2>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Payroll register · salary actions</p>
                 </div>
             </div>
+            <input type="text" id="searchEmployees" placeholder="Search employees…"
+                   class="accounts-field w-full sm:w-64 rounded-lg border px-3 py-2 text-sm dark:text-white">
         </div>
-
         <div class="overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
+            <table class="finance-table min-w-full w-full border-collapse text-left text-sm">
+                <thead>
                     <tr>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
                         <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee ID</th>
@@ -153,13 +139,13 @@
                         <th class="px-4 sm:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="employeesTableBody">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800" id="employeesTableBody">
                     {% if employees %}
                         {% for employee in employees %}
                         <tr class="employee-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
                                 <div class="flex items-center">
-                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-3">
+                                    <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-teal-600 to-teal-800 flex items-center justify-center flex-shrink-0 mr-3">
                                         {% if employee.get('profile_picture') %}
                                         <img src="{{ url_for('static', filename=employee.profile_picture) }}" 
                                              alt="{{ employee.full_name }}" 
@@ -252,7 +238,7 @@
                                     </button>
                                     {% else %}
                                     <button type="button" 
-                                            @click="$store.salaryModal.open()"
+                                            @click="$store.salaryModal.open({{ employee.id }})"
                                             class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 transition-colors p-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/20"
                                             title="Register Salary">
                                         <i class="fas fa-money-bill-wave"></i>
@@ -273,16 +259,16 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
     </div>
     
     <!-- Tab 2: Salary Records -->
     <div x-show="activeTab === 'records'" x-cloak x-data="filterData()">
         <!-- Period Filter -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 mb-4 sm:mb-6">
+        <div class="accounts-panel rounded-xl p-3 sm:p-4 mb-4 sm:mb-6 dark:border-slate-700">
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
                 <div class="flex items-center gap-2">
-                    <i class="fas fa-filter text-green-600 dark:text-green-400"></i>
+                    <i class="fas fa-filter text-teal-600 dark:text-teal-400"></i>
                     <span class="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Filter by Period:</span>
                 </div>
                 <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 flex-1">
@@ -332,57 +318,39 @@
             </div>
         </div>
 
-        <!-- Summary Stats -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Amount to Pay</p>
-                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalAmountToPay">KES 0.00</p>
-                    </div>
-                    <i class="fas fa-money-bill-wave text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
-                </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4 sm:mb-6">
+            <div class="accounts-panel rounded-lg px-3 py-2.5">
+                <p class="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Amount to pay</p>
+                <p class="text-sm font-bold tabular-nums text-slate-900 dark:text-white" id="totalAmountToPay">KES 0.00</p>
             </div>
-            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Paid</p>
-                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalPaid">KES 0.00</p>
-                    </div>
-                    <i class="fas fa-check-circle text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
-                </div>
+            <div class="accounts-panel rounded-lg px-3 py-2.5">
+                <p class="text-[9px] font-semibold uppercase tracking-wide text-emerald-600">Total paid</p>
+                <p class="text-sm font-bold tabular-nums text-emerald-700 dark:text-emerald-400" id="totalPaid">KES 0.00</p>
             </div>
-            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-3 sm:p-4 md:p-5 text-white shadow-lg">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-xs sm:text-sm md:text-base opacity-90 mb-1">Total Balance</p>
-                        <p class="text-lg sm:text-xl md:text-2xl font-bold" id="totalBalance">KES 0.00</p>
-                    </div>
-                    <i class="fas fa-balance-scale text-2xl sm:text-3xl md:text-4xl opacity-80"></i>
-                </div>
+            <div class="accounts-panel rounded-lg px-3 py-2.5">
+                <p class="text-[9px] font-semibold uppercase tracking-wide text-amber-600">Balance</p>
+                <p class="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-400" id="totalBalance">KES 0.00</p>
             </div>
         </div>
 
-        <!-- Salary Records Table -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="p-3 sm:p-4 md:p-6 border-b border-gray-200 dark:border-gray-700">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-                    <h2 class="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-list text-green-600 dark:text-green-400"></i>
-                        <span>Employee Salary Records</span>
-                    </h2>
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <input type="text" 
-                               id="searchRecords" 
-                               placeholder="Search employees..."
-                               class="w-full sm:w-64 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                        <i class="fas fa-file-invoice-dollar text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Salary records</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Disbursements · balances</p>
                     </div>
                 </div>
+                <input type="text" id="searchRecords" placeholder="Search employees…"
+                       class="accounts-field w-full sm:w-64 rounded-lg border px-3 py-2 text-sm dark:text-white">
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead class="bg-gray-50 dark:bg-gray-700">
+                <table class="finance-table min-w-full w-full border-collapse text-left text-sm">
+                    <thead>
                         <tr>
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Phone</th>
@@ -393,13 +361,13 @@
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="recordsTableBody">
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800" id="recordsTableBody">
                         {% if salary_records %}
                             {% for record in salary_records %}
                             <tr class="record-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                 <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
                                     <div class="flex items-center">
-                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
+                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-teal-600 to-teal-800 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
                                             <i class="fas fa-user text-white text-xs sm:text-sm"></i>
                                         </div>
                                         <div>
@@ -486,31 +454,29 @@
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
     </div>
     
     <!-- Tab 3: Salary Audits -->
     <div x-show="activeTab === 'audits'" x-cloak>
-        <!-- Audit Records Table -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            <div class="p-3 sm:p-4 md:p-6 border-b border-gray-200 dark:border-gray-700">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
-                    <h2 class="text-base sm:text-lg md:text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        <i class="fas fa-list text-green-600 dark:text-green-400"></i>
-                        <span>Audit Trail</span>
-                    </h2>
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <input type="text" 
-                               id="searchAudits" 
-                               placeholder="Search audits..."
-                               class="w-full sm:w-64 px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                        <i class="fas fa-history text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Audit trail</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Salary edits · change log</p>
                     </div>
                 </div>
+                <input type="text" id="searchAudits" placeholder="Search audits…"
+                       class="accounts-field w-full sm:w-64 rounded-lg border px-3 py-2 text-sm dark:text-white">
             </div>
 
             <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                    <thead class="bg-gray-50 dark:bg-gray-700">
+                <table class="finance-table min-w-full w-full border-collapse text-left text-sm">
+                    <thead>
                         <tr>
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Employee</th>
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Field</th>
@@ -520,13 +486,13 @@
                             <th class="px-3 sm:px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Date & Time</th>
                         </tr>
                     </thead>
-                    <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700" id="auditsTableBody">
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800" id="auditsTableBody">
                         {% if audits %}
                             {% for audit in audits %}
                             <tr class="audit-row hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                 <td class="px-3 sm:px-4 md:px-6 py-3 sm:py-4 whitespace-nowrap">
                                     <div class="flex items-center">
-                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
+                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-full overflow-hidden bg-gradient-to-br from-teal-600 to-teal-800 flex items-center justify-center flex-shrink-0 mr-2 sm:mr-3">
                                             <i class="fas fa-user text-white text-xs sm:text-sm"></i>
                                         </div>
                                         <div>
@@ -595,8 +561,9 @@
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
     </div>
+</div>
 </div>
 
 <!-- Register Salary Modal -->
@@ -613,15 +580,15 @@
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+    <div class="fixed inset-0 bg-slate-900/70 transition-opacity backdrop-blur-sm" 
          @click="$store.salaryModal.close()"></div>
     
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        <div class="accounts-modal relative bg-white dark:bg-slate-900 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
              @click.stop>
             <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+            <div class="sticky top-0 bg-gradient-to-r from-slate-800 to-teal-900 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
                 <div class="flex items-center space-x-3">
                     <i class="fas fa-money-bill-wave text-white text-xl sm:text-2xl"></i>
                     <h2 class="text-lg sm:text-xl font-bold text-white">Register Salary</h2>
@@ -650,12 +617,18 @@
                         Select Employee <span class="text-red-500">*</span>
                     </label>
                     <select x-model="employeeId" required
-                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
-                        <option value="">Select Employee</option>
-                        {% for employee in employees %}
-                        <option value="{{ employee.id }}">{{ employee.full_name }} ({{ employee.employee_id }}) - {{ employee.role|title }}</option>
-                        {% endfor %}
+                            :disabled="loadingEmployees"
+                            class="w-full px-4 py-2.5 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all disabled:opacity-60">
+                        <option value="">Select active employee</option>
+                        <template x-for="emp in registerEmployees" :key="emp.id">
+                            <option :value="String(emp.id)" x-text="emp.label"></option>
+                        </template>
                     </select>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Only active employees without a registered salary are listed.</p>
+                    <p x-show="!loadingEmployees && registerEmployees.length === 0" x-cloak
+                       class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                        No active employees pending salary registration.
+                    </p>
                 </div>
 
                 <!-- Effective Date -->
@@ -867,7 +840,7 @@
                 </div>
 
                 <!-- Net Salary Summary -->
-                <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 sm:p-5 text-white">
+                <div class="bg-gradient-to-r from-slate-800 to-teal-900 rounded-lg p-4 sm:p-5 text-white">
                     <div class="flex justify-between items-center">
                         <span class="text-lg font-semibold">Net Salary:</span>
                         <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
@@ -883,7 +856,7 @@
                     </button>
                     <button type="submit" 
                             :disabled="loading"
-                            class="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="flex-1 px-4 py-2.5 accounts-btn-primary text-white rounded-lg transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                         <span x-show="!loading">Register Salary</span>
                         <span x-show="loading" class="flex items-center justify-center gap-2">
                             <i class="fas fa-spinner fa-spin"></i>
@@ -897,10 +870,52 @@
 </div>
 
 <script>
+function payrollAnalyticsHeader() {
+    return {
+        analytics: {},
+        loading: false,
+        analyticsUrl: {{ employee_dash_url('staff-and-salaries/payment-analytics')|tojson }},
+        init() {
+            const el = document.getElementById('payroll-analytics-json');
+            try {
+                this.analytics = el && el.textContent ? JSON.parse(el.textContent) : {};
+            } catch (e) {
+                this.analytics = {};
+            }
+            this.refresh();
+        },
+        kes(key) {
+            return 'KES ' + (this.analytics[key] || '0.00');
+        },
+        analyticNum(key) {
+            return this.analytics[key] != null ? this.analytics[key] : 0;
+        },
+        refresh() {
+            if (!this.analyticsUrl) return;
+            this.loading = true;
+            fetch(this.analyticsUrl, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin'
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.ok && data.analytics) {
+                        this.analytics = data.analytics;
+                    }
+                })
+                .catch(() => {})
+                .finally(() => { this.loading = false; });
+        }
+    };
+}
+
 // Salary Modal Alpine.js Component
 function salaryModalData() {
     return {
         employeeId: '',
+        paymentPeriod: 'Monthly',
+        registerEmployees: [],
+        loadingEmployees: false,
         effectiveDate: '',
         basicSalary: '',
         houseAllowance: '',
@@ -917,6 +932,54 @@ function salaryModalData() {
         loading: false,
         error: '',
         success: '',
+
+        init() {
+            this.seedRegisterEmployees();
+            this.$watch('$store.salaryModal.isOpen', (open) => {
+                if (open) {
+                    this.loadActiveEmployees().then(() => {
+                        const prefill = this.$store.salaryModal.prefillEmployeeId;
+                        if (prefill) {
+                            this.employeeId = String(prefill);
+                        }
+                    });
+                } else {
+                    this.resetForm();
+                }
+            });
+        },
+
+        formatEmployeeOption(emp) {
+            const role = (emp.role || '').trim();
+            const roleLabel = role ? role.charAt(0).toUpperCase() + role.slice(1) : '';
+            return `${emp.full_name} (${emp.employee_id})${roleLabel ? ' - ' + roleLabel : ''}`;
+        },
+
+        seedRegisterEmployees() {
+            const raw = {{ active_employees_for_register | tojson }};
+            this.registerEmployees = (raw || []).map(emp => ({
+                id: emp.id,
+                label: this.formatEmployeeOption(emp)
+            }));
+        },
+
+        async loadActiveEmployees() {
+            this.loadingEmployees = true;
+            try {
+                const response = await fetch('{{ employee_dash_url('staff-and-salaries/get-active-employees-for-register') }}');
+                const data = await response.json();
+                if (data.success && Array.isArray(data.employees)) {
+                    this.registerEmployees = data.employees.map(emp => ({
+                        id: emp.id,
+                        label: this.formatEmployeeOption(emp)
+                    }));
+                }
+            } catch (e) {
+                console.error('Failed to load active employees:', e);
+            } finally {
+                this.loadingEmployees = false;
+            }
+        },
         
         get totalEarnings() {
             const basic = parseFloat(this.basicSalary) || 0;
@@ -974,6 +1037,19 @@ function salaryModalData() {
             
             if (!this.basicSalary || parseFloat(this.basicSalary) <= 0) {
                 this.error = 'Basic salary is required and must be greater than 0';
+                this.loading = false;
+                return;
+            }
+
+            if (!this.paymentPeriod) {
+                this.error = 'Please select a payment period';
+                this.loading = false;
+                return;
+            }
+
+            const selectedId = parseInt(this.employeeId, 10);
+            if (!this.registerEmployees.some(emp => emp.id === selectedId)) {
+                this.error = 'Selected employee is not eligible. Choose an active employee without a registered salary.';
                 this.loading = false;
                 return;
             }
@@ -1037,6 +1113,7 @@ function salaryModalData() {
         
         resetForm() {
             this.employeeId = '';
+            this.paymentPeriod = 'Monthly';
             this.effectiveDate = '';
             this.basicSalary = '';
             this.houseAllowance = '';
@@ -1394,11 +1471,14 @@ function editSalaryModalData() {
 document.addEventListener('alpine:init', () => {
     Alpine.store('salaryModal', {
         isOpen: false,
-        open() {
+        prefillEmployeeId: null,
+        open(employeeId = null) {
+            this.prefillEmployeeId = employeeId != null ? employeeId : null;
             this.isOpen = true;
         },
         close() {
             this.isOpen = false;
+            this.prefillEmployeeId = null;
         }
     });
     
@@ -1796,15 +1876,15 @@ document.addEventListener('DOMContentLoaded', function() {
      class="fixed inset-0 z-50 overflow-y-auto"
      style="display: none;">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+    <div class="fixed inset-0 bg-slate-900/70 transition-opacity backdrop-blur-sm" 
          @click="closeModal()"></div>
     
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+        <div class="accounts-modal relative bg-white dark:bg-slate-900 rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
              @click.stop>
             <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-purple-500 to-purple-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+            <div class="sticky top-0 bg-gradient-to-r from-slate-800 to-violet-900 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
                 <div class="flex items-center space-x-3">
                     <i class="fas fa-edit text-white text-xl sm:text-2xl"></i>
                     <h2 class="text-lg sm:text-xl font-bold text-white">Edit Salary - <span x-text="employeeName"></span></h2>
@@ -2041,7 +2121,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
                 <!-- Net Salary Summary -->
-                <div class="bg-gradient-to-r from-purple-500 to-purple-600 rounded-lg p-4 sm:p-5 text-white">
+                <div class="bg-gradient-to-r from-slate-800 to-violet-900 rounded-lg p-4 sm:p-5 text-white">
                     <div class="flex justify-between items-center">
                         <span class="text-lg font-semibold">Net Salary:</span>
                         <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
@@ -2057,7 +2137,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </button>
                     <button type="submit" 
                             :disabled="loading"
-                            class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                            class="flex-1 px-4 py-2.5 accounts-btn-primary text-white rounded-lg transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                         <span x-show="!loading">Update Salary</span>
                         <span x-show="loading" class="flex items-center justify-center gap-2">
                             <i class="fas fa-spinner fa-spin"></i>
@@ -2084,15 +2164,15 @@ document.addEventListener('DOMContentLoaded', function() {
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+    <div class="fixed inset-0 bg-slate-900/70 transition-opacity backdrop-blur-sm" 
          @click="closeModal()"></div>
     
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        <div class="accounts-modal relative bg-white dark:bg-slate-900 rounded-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
              @click.stop>
             <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-blue-500 to-blue-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+            <div class="sticky top-0 bg-gradient-to-r from-slate-800 to-sky-900 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
                 <div class="flex items-center space-x-3">
                     <i class="fas fa-eye text-white text-xl sm:text-2xl"></i>
                     <h2 class="text-lg sm:text-xl font-bold text-white">Salary Details - <span x-text="employeeName"></span></h2>
@@ -2225,7 +2305,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
 
                     <!-- Net Salary Summary -->
-                    <div class="bg-gradient-to-r from-green-500 to-green-600 rounded-lg p-4 sm:p-5 text-white">
+                    <div class="bg-gradient-to-r from-slate-800 to-teal-900 rounded-lg p-4 sm:p-5 text-white">
                         <div class="flex justify-between items-center">
                             <span class="text-lg font-semibold">Net Salary:</span>
                             <span class="text-2xl font-bold" x-text="'KES ' + formatCurrency(netSalary)"></span>
@@ -2241,7 +2321,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                         <button type="button" 
                                 @click="openEditModal()"
-                                class="flex-1 px-4 py-2.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all font-medium">
+                                class="flex-1 px-4 py-2.5 accounts-btn-primary text-white rounded-lg transition-all font-medium">
                             <i class="fas fa-edit mr-2"></i>
                             Edit Salary
                         </button>
@@ -2267,15 +2347,15 @@ document.addEventListener('DOMContentLoaded', function() {
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+    <div class="fixed inset-0 bg-slate-900/70 transition-opacity backdrop-blur-sm" 
          @click="$store.paySalaryModal.close()"></div>
     
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        <div class="accounts-modal relative bg-white dark:bg-slate-900 rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
              @click.stop>
             <!-- Header -->
-            <div class="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
+            <div class="sticky top-0 bg-gradient-to-r from-slate-800 to-teal-900 px-4 sm:px-6 py-4 rounded-t-2xl flex items-center justify-between z-10">
                 <div class="flex items-center space-x-3">
                     <i class="fas fa-hand-holding-usd text-white text-xl sm:text-2xl"></i>
                     <h2 class="text-lg sm:text-xl font-bold text-white">Pay Salary</h2>
@@ -2426,7 +2506,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </button>
                         <button type="submit" 
                                 :disabled="loading || !employeeId || !amountPaid || !paymentDate || !paymentMethod"
-                                class="flex-1 px-4 py-2.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg hover:from-green-600 hover:to-green-700 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                                class="flex-1 px-4 py-2.5 accounts-btn-primary text-white rounded-lg transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                             <span x-show="!loading">Record Payment</span>
                             <span x-show="loading" class="flex items-center justify-center gap-2">
                                 <i class="fas fa-spinner fa-spin"></i>

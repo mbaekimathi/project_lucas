@@ -2,14 +2,32 @@
 
 {% block title %}{{ student.full_name }} - Progress Report - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'students' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'students' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'exams' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'students' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 <a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
     <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
     <a href="{{ url_for('students_progress') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
         <i class="fas fa-arrow-left mr-2"></i>Back to Students
     </a>

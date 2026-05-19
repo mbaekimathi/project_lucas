@@ -2,25 +2,17 @@
 
 {% block title %}Classes & Subjects - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('classes-subjects') }}"
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-book w-5"></i>
-    <span>Classes & Subjects</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-</a>
-
-<a href="{{ employee_dash_url('subject-class-allocation') }}"
-   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-tasks w-5"></i>
-    <span>Subject & Class Allocation Panel</span>
-</a>
-
-<a href="{{ employee_dash_url('academic-subject-registration') }}"
-   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-list w-5"></i>
-    <span>Register Subjects</span>
-</a>
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'classes' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block extra_head %}
@@ -31,9 +23,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-5">Classes &amp; subjects</h1>
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Academic' %}
+    {% set role_hero_title = 'Classes & subjects' %}
+    {% set role_hero_subtitle = 'Browse academic levels and open subject details for each class.' %}
+    {% set role_hero_icon_class = 'fa-chalkboard' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
         {% if academic_levels %}
         <div class="mb-3 max-w-sm">
@@ -101,8 +97,7 @@
             </div>
         </section>
         {% endif %}
-    </div>
-</div>
+</motion.div>
 {% if academic_levels %}
 <script>
 (function () {

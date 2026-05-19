@@ -3,11 +3,14 @@
 {% block title %}Issue / Return — {{ level.level_name if level else 'Class' }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% include "partials/librarian_sidebar_nav.html" %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
+</a>
+{% include 'dashboards/includes/librarian_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content">
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}

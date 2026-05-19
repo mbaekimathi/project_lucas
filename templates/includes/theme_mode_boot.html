@@ -1,0 +1,24 @@
+{# Apply saved light/dark before first paint — prevents flash on navigation #}
+<script>
+(function () {
+    try {
+        var isDark = localStorage.getItem('darkMode') === 'true';
+        var root = document.documentElement;
+        if (isDark) {
+            root.classList.add('dark');
+            root.style.colorScheme = 'dark';
+        } else {
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+        }
+    } catch (e) { /* private mode / blocked storage */ }
+})();
+</script>
+<style id="theme-mode-boot">
+    html { color-scheme: light; background-color: #f8fafc; }
+    html.dark { color-scheme: dark; background-color: #020617; }
+    html.role-portal-scroll { background-color: #eef2f6; }
+    html.role-portal-scroll.dark { background-color: #0b1120; }
+    body { background-color: inherit; color: #0f172a; }
+    html.dark body { color: #f1f5f9; }
+</style>

@@ -2,6 +2,8 @@
 
 {% block title %}Student Management - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
 {% block extra_head %}
 <style>
   .student-mgmt-table-scroll {
@@ -20,9 +22,20 @@
 {% endblock %}
 
 {% block sidebar_content %}
-<!-- Student Management Links -->
 {% set user_role = session.get('role', '')|lower %}
 {% set viewing_as_role = session.get('viewing_as_employee_role', '')|lower %}
+{% set nav_role = (dashboard_content_role or viewing_as_role or user_role)|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'students' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'students' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'students' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
+<!-- Student Management Links -->
 {% set is_curriculum_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator' %}
 {% if not is_curriculum_coordinator %}
 <a href="{{ employee_dash_url('student-management') }}" 
@@ -58,12 +71,13 @@
     <span>Fees / Payments</span>
 </a>
 {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
 <script>const _studentEmpPrefix = {{ employee_dash_url()|tojson }};</script>
 <script type="application/json" id="student-management-rows">{{ students_for_json|tojson }}</script>
-<div class="p-3 sm:p-4 md:p-6 lg:p-8 w-full max-w-full min-w-0 overflow-x-hidden page-content max-w-7xl mx-auto pb-[max(1rem,env(safe-area-inset-bottom))]" 
+<div class="p-3 sm:p-4 md:p-6 lg:p-8 w-full max-w-full min-w-0 overflow-x-hidden page-content max-w-7xl mx-auto pb-[max(1rem,env(safe-area-inset-bottom))] role-page role-page--{{ portal_page_variant|default('default') }}" 
      x-data="{ 
          studentsList: [],
          sortBy: 'registered_desc',
@@ -258,10 +272,12 @@
          }
      }"
      x-init="initStudentList()">
-    <div class="mb-4 sm:mb-6">
-        <h1 class="text-lg sm:text-2xl md:text-[1.65rem] font-bold text-gray-900 dark:text-white tracking-tight break-words">Student management</h1>
-        <p class="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">Search, filter, and sort below. Phones use cards; tablets and desktops use the full table.</p>
-    </div>
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Students' %}
+    {% set role_hero_title = 'Student management' %}
+    {% set role_hero_subtitle = 'Search, filter, and sort below. Phones use cards; tablets and desktops use the full table.' %}
+    {% set role_hero_icon_class = 'fa-user-graduate' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
         <!-- Statistics: 1 col phone → 2 col tablet → 4 col desktop -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 mb-5 sm:mb-6">

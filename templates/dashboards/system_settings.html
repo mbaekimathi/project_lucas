@@ -2,111 +2,27 @@
 
 {% block title %}System Settings - {{ school_data.get('school_name', 'Modern School') }}{% endblock %}
 
+{% block extra_head %}
+{% include 'dashboards/includes/system_settings_sidebar_styles.html' %}
+{% include 'dashboards/includes/theme_font_picker_styles.html' %}
+{% if portal_google_fonts_all_href %}
+<link href="{{ portal_google_fonts_all_href }}" rel="stylesheet">
+{% endif %}
+{% endblock %}
+
 {% block sidebar_content %}
-<div class="space-y-1" x-data="{ currentHash: window.location.hash || '' }" @hashchange.window="currentHash = window.location.hash || ''">
-    {% if is_technician or is_accountant %}
-    <a href="{{ dashboard_home_url() }}"
-        class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
-        <span>Dashboard</span>
-    </a>
-
-    <div class="px-4 py-2">
-        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Academic</h3>
-    </div>
-
-    {% if is_accountant %}
-    <a href="{{ employee_dash_url('student-fees') }}"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800 {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-money-check-alt w-5 text-center" aria-hidden="true"></i>
-        <span>Student Fees</span>
-        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
-    </a>
-    {% endif %}
-
-    <a href="{{ employee_dash_url('academic-settings') }}"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800 {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-calendar-alt w-5 text-center" aria-hidden="true"></i>
-        <span>Academic settings</span>
-        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
-    </a>
-    <a href="{{ employee_dash_url('academic-schedule-management') }}"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800 {% if request.endpoint == 'academic_schedule_management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clock w-5 text-center" aria-hidden="true"></i>
-        <span>Academic schedule management</span>
-        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
-    </a>
-
-    <div class="px-4 py-2 pt-4">
-        <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">System Configuration</h3>
-    </div>
-
-    <a href="{{ employee_dash_url('system-settings') }}#school-profile"
-        @click.prevent="currentHash = '#school-profile'; window.location.hash = 'school-profile'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
-        :class="currentHash === '#school-profile' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
-        <i class="fas fa-school w-5 text-center"></i>
-        <span>School Profile</span>
-    </a>
-
-    <a href="{{ employee_dash_url('system-settings') }}#general-settings"
-        @click.prevent="currentHash = '#general-settings'; window.location.hash = 'general-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
-        :class="currentHash === '#general-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
-        <i class="fas fa-sliders-h w-5 text-center"></i>
-        <span>General Settings</span>
-    </a>
-
-    <a href="{{ employee_dash_url('system-settings') }}#academic-year"
-        @click.prevent="currentHash = '#academic-year'; window.location.hash = 'academic-year'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
-        :class="currentHash === '#academic-year' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
-        <i class="fas fa-calendar-alt w-5 text-center"></i>
-        <span>Academic Year</span>
-    </a>
-
-    <a href="{{ employee_dash_url('system-settings') }}#theme-colors"
-        @click.prevent="currentHash = '#theme-colors'; window.location.hash = 'theme-colors'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
-        :class="currentHash === '#theme-colors' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
-        <i class="fas fa-palette w-5 text-center"></i>
-        <span>Theme & Colors</span>
-    </a>
-
-    <a href="{{ employee_dash_url('system-settings') }}#login-settings"
-        @click.prevent="currentHash = '#login-settings'; window.location.hash = 'login-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if(typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800"
-        :class="currentHash === '#login-settings' ? 'bg-gray-100 dark:bg-gray-800 text-brand-primary dark:text-brand-secondary font-medium border-l-4 border-green-500' : ''">
-        <i class="fas fa-sign-in-alt w-5 text-center"></i>
-        <span>Login Page</span>
-    </a>
-
-    <div class="pt-4 pb-2">
-        <hr class="border-t border-gray-200 dark:border-gray-700 mx-4">
-        <p class="px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-2">Advanced</p>
-    </div>
-
-    <a href="{{ employee_dash_url('integration-settings') }}"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800">
-        <i class="fas fa-plug w-5 text-center"></i>
-        <span>Integrations</span>
-    </a>
-
-    <a href="{{ employee_dash_url('database') }}"
-        class="sidebar-item hover:bg-gray-100 dark:hover:bg-gray-800">
-        <i class="fas fa-database w-5 text-center"></i>
-        <span>Database</span>
-    </a>
-    {% else %}
-    <div class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-        Sidebar links are available for users with system settings access.
-    </div>
-    {% endif %}
-</div>
+{% include 'dashboards/includes/system_settings_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div id="settings-content" class="settings-page-root bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 min-h-[240px] sm:min-h-[400px] w-full max-w-6xl mx-auto min-w-0 box-border"
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'System Settings' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-cog' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div id="settings-content" class="settings-page-root bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-lg p-4 sm:p-6 min-h-[240px] sm:min-h-[400px] w-full max-w-6xl mx-auto min-w-0 box-border portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
     x-data="{ activeSection: window.location.hash ? window.location.hash.substring(1) : '' }"
     @hashchange.window="activeSection = window.location.hash ? window.location.hash.substring(1) : ''">
     <div x-show="!activeSection" class="text-center py-16">
@@ -1732,24 +1648,7 @@
                 </div>
             </div>
 
-            <!-- Font Family -->
-            <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-200 dark:border-gray-700">
-                <label for="font_family" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    <i class="fas fa-font text-blue-500 mr-2"></i>
-                    Font Family
-                </label>
-                <select id="font_family" name="font_family"
-                    class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
-                    <option value="Inter" {% if theme_settings.font_family=='Inter' %}selected{% endif %}>Inter
-                        (Modern Sans)</option>
-                    <option value="Poppins" {% if theme_settings.font_family=='Poppins' %}selected{% endif %}>
-                        Poppins (Geometric Sans)</option>
-                    <option value="Roboto" {% if theme_settings.font_family=='Roboto' %}selected{% endif %}>Roboto
-                        (Classic Sans)</option>
-                    <option value="Open Sans" {% if theme_settings.font_family=='Open Sans' %}selected{% endif %}>
-                        Open Sans (Friendly)</option>
-                </select>
-            </div>
+            {% include 'dashboards/includes/theme_font_picker.html' %}
 
             <!-- Submit Button -->
             <div class="flex justify-end space-x-4 pt-4">

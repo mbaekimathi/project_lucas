@@ -1,0 +1,184 @@
+{% set ad = accountant_dashboard|default({}) %}
+{% set rev = ad.revenue|default({}) %}
+{% set pr = ad.payroll|default({}) %}
+{% set inv = ad.payments|default({}) %}
+
+<div class="accounts-page min-h-screen bg-[#eef2f6] dark:bg-[#0b1120]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14 space-y-5">
+
+        <header class="accounts-hero rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+            <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-chart-pie opacity-80"></i>
+                    <span>Accounts · Overview</span>
+                </div>
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="min-w-0">
+                        <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Accountant dashboard</h1>
+                        <p class="mt-1.5 text-sm text-slate-300/90 max-w-2xl leading-relaxed">
+                            Live summary across revenue, payroll, and payables — same metrics as each module page.
+                        </p>
+                    </div>
+                    <a href="{{ employee_dash_url('visual-analytics') }}"
+                       class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shrink-0 transition">
+                        <i class="fas fa-chart-pie"></i>
+                        Visual analytics
+                    </a>
+                </div>
+            </div>
+
+            <div class="accounts-hero-band px-4 sm:px-6 pb-4 sm:pb-5">
+                <p class="accounts-section-title mb-2.5">Financial position</p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-emerald">Total income</p>
+                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.total_income_display|default('0.00') }}</p>
+                        <p class="accounts-stat-meta">{{ rev.total_count|default(0) }} revenue entries</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-amber">Total disbursed</p>
+                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.total_outflow_display|default('0.00') }}</p>
+                        <p class="accounts-stat-meta">
+                            Payroll KES {{ ad.payroll_outflow_display|default('0.00') }} · Payables KES {{ ad.payables_outflow_display|default('0.00') }}
+                        </p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-3 py-2.5">
+                        <p class="accounts-stat-label stat-sky">Net (income − outflow)</p>
+                        <p class="accounts-stat-value accounts-stat-value--lg">KES {{ ad.net_position_display|default('0.00') }}</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        <i class="fas fa-chart-line text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Revenue</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Student fees, government &amp; private income</p>
+                    </div>
+                </div>
+                <a href="{{ employee_dash_url('revenue') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
+                    Open revenue <i class="fas fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-amber">Total income</p>
+                        <p class="accounts-stat-value">KES {{ rev.total_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-sky">Student fees</p>
+                        <p class="accounts-stat-value">KES {{ rev.fees_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-emerald">Government</p>
+                        <p class="accounts-stat-value">KES {{ rev.government_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-violet">Private</p>
+                        <p class="accounts-stat-value">KES {{ rev.private_display|default('0.00') }}</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                        <i class="fas fa-wallet text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Staff &amp; salaries</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Payroll due, outstanding &amp; disbursements</p>
+                    </div>
+                </div>
+                <a href="{{ employee_dash_url('staff-and-salaries') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
+                    Open payroll <i class="fas fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-sky">Payroll due</p>
+                        <p class="accounts-stat-value">KES {{ pr.payroll_due_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-emerald">Paid (period)</p>
+                        <p class="accounts-stat-value">KES {{ pr.paid_current_period_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-amber">Outstanding</p>
+                        <p class="accounts-stat-value">KES {{ pr.outstanding_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-teal">This month</p>
+                        <p class="accounts-stat-value">KES {{ pr.paid_this_month_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-violet">Pending staff</p>
+                        <p class="accounts-stat-value">{{ pr.pending_staff_count|default(0) }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-teal">Disbursed</p>
+                        <p class="accounts-stat-value">KES {{ pr.total_disbursed_display|default('0.00') }}</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                        <i class="fas fa-file-invoice-dollar text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Payments &amp; invoices</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Stock-in payables and other disbursements</p>
+                    </div>
+                </div>
+                <a href="{{ employee_dash_url('payments-invoices') }}"
+                   class="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-100 transition">
+                    Open payables <i class="fas fa-arrow-right text-[10px]"></i>
+                </a>
+            </div>
+            <div class="accounts-metrics-band px-4 sm:px-5 py-4">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-amber">Outstanding</p>
+                        <p class="accounts-stat-value">KES {{ inv.stock_in_outstanding_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-emerald">Stock paid</p>
+                        <p class="accounts-stat-value">KES {{ inv.stock_in_paid_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-violet">Other</p>
+                        <p class="accounts-stat-value">KES {{ inv.misc_total_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-sky">Invoiced</p>
+                        <p class="accounts-stat-value">KES {{ inv.stock_in_invoiced_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-teal">This month</p>
+                        <p class="accounts-stat-value">KES {{ inv.paid_this_month_display|default('0.00') }}</p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="accounts-stat-label stat-teal">Disbursed</p>
+                        <p class="accounts-stat-value">KES {{ inv.total_disbursed_display|default('0.00') }}</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</div>

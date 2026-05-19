@@ -3,36 +3,19 @@
 {% block title %}Exam subject settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-    <a href="{{ employee_dash_url() }}"
-       class="w-full sidebar-item"
-       aria-label="Back to staff dashboard">
-        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
-        <span>Back to dashboard</span>
-    </a>
-    <a href="{{ employee_dash_url('exam-evaluation') }}"
-       class="w-full sidebar-item"
-       aria-label="Exam and evaluation registration">
-        <i class="fas fa-clipboard-check w-5" aria-hidden="true"></i>
-        <span>Exam &amp; evaluation</span>
-    </a>
-    <a href="{{ employee_dash_url('timetable-sessions') }}"
-       class="w-full sidebar-item"
-       aria-label="Open exam timetable settings">
-        <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
-        <span>Timetable sessions</span>
-    </a>
-    <a href="{{ employee_dash_url('exam-subject-settings') }}"
-       class="w-full sidebar-item sidebar-item-active"
-       aria-label="Exam subject total marks">
-        <i class="fas fa-book-open w-5" aria-hidden="true"></i>
-        <span>Exam subject settings</span>
-    </a>
-</div>
+{% set cc_nav_scope = 'settings' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Exam subject settings' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-clipboard-check' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div>
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex flex-wrap items-center gap-3">
             <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg">

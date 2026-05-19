@@ -2,8 +2,15 @@
 
 {% block title %}{{ page_title|default('Staff Management') }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
-{% if filter_role == 'teachers' %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') and filter_role != 'teachers' %}
+{% set leadership_nav_scope = 'staff' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif filter_role == 'teachers' %}
 <!-- Teacher Management Links -->
 <a href="{{ employee_dash_url('teacher-management') }}" 
    class="sidebar-item sidebar-item-active">
@@ -84,7 +91,7 @@
   {% endif %}
 {% endfor %}
 
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto" x-data="staffManagement()" x-init="init()">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="staffManagement()" x-init="init()">
 
     <!-- Hero -->
     <div class="page-hero mb-6 sm:mb-8">

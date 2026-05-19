@@ -1,0 +1,169 @@
+<style>
+.theme-font-picker {
+    position: relative;
+    overflow: hidden;
+    border-radius: 1rem;
+    border: 1px solid var(--acc-line, #e2e8f0);
+    background: linear-gradient(145deg, #f8fafc 0%, #ffffff 42%, #f0fdfa 100%);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -8px rgba(15, 23, 42, 0.08);
+}
+.dark .theme-font-picker {
+    border-color: #1e293b;
+    background: linear-gradient(145deg, #0f172a 0%, #0f172a 40%, #042f2e 100%);
+}
+.theme-font-picker::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 10rem;
+    height: 10rem;
+    background: radial-gradient(circle at 100% 0%, rgba(20, 184, 166, 0.15) 0%, transparent 65%);
+    pointer-events: none;
+}
+.theme-font-picker__head {
+    position: relative;
+    padding: 1rem 1.15rem 0.75rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+}
+.dark .theme-font-picker__head {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.theme-font-picker__title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.dark .theme-font-picker__title {
+    color: #f1f5f9;
+}
+.theme-font-picker__title i {
+    width: 1.85rem;
+    height: 1.85rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background: linear-gradient(135deg, #0d9488, #6366f1);
+    color: #fff;
+    font-size: 0.75rem;
+}
+.theme-font-picker__sub {
+    margin-top: 0.35rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: #64748b;
+}
+.dark .theme-font-picker__sub {
+    color: #94a3b8;
+}
+.theme-font-picker__body {
+    position: relative;
+    padding: 1rem 1.15rem 1.15rem;
+}
+.theme-font-picker__label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.4rem;
+}
+.dark .theme-font-picker__label {
+    color: #94a3b8;
+}
+.theme-font-picker__select-wrap {
+    position: relative;
+}
+.theme-font-picker__select {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 0.75rem 2.5rem 0.75rem 1rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    line-height: 1.35;
+    color: #0f172a;
+    background: #ffffff;
+    border: 2px solid #e2e8f0;
+    border-radius: 0.75rem;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.dark .theme-font-picker__select {
+    color: #f1f5f9;
+    background: #0f172a;
+    border-color: #334155;
+}
+.theme-font-picker__select:hover {
+    border-color: #99f6e4;
+}
+.theme-font-picker__select:focus {
+    outline: none;
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.25);
+}
+.theme-font-picker__select-icon {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.7rem;
+    color: #64748b;
+    pointer-events: none;
+}
+.dark .theme-font-picker__select-icon {
+    color: #94a3b8;
+}
+.theme-font-picker__preview {
+    margin-top: 1rem;
+    padding: 1rem 1.1rem;
+    border-radius: 0.75rem;
+    border: 1px dashed rgba(13, 148, 136, 0.35);
+    background: rgba(255, 255, 255, 0.65);
+}
+.dark .theme-font-picker__preview {
+    border-color: rgba(45, 212, 191, 0.35);
+    background: rgba(0, 0, 0, 0.2);
+}
+.theme-font-picker__preview-kicker {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #0d9488;
+    margin-bottom: 0.35rem;
+}
+.dark .theme-font-picker__preview-kicker {
+    color: #5eead4;
+}
+.theme-font-picker__preview-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.25;
+}
+.dark .theme-font-picker__preview-title {
+    color: #f8fafc;
+}
+.theme-font-picker__preview-body {
+    margin-top: 0.35rem;
+    font-size: 0.8125rem;
+    color: #475569;
+    line-height: 1.5;
+}
+.dark .theme-font-picker__preview-body {
+    color: #cbd5e1;
+}
+@media (max-width: 639px) {
+    .theme-font-picker__select {
+        font-size: 0.875rem;
+        padding: 0.65rem 2.25rem 0.65rem 0.85rem;
+    }
+    .theme-font-picker__preview-title {
+        font-size: 1.05rem;
+    }
+}
+</style>

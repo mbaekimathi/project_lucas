@@ -1,0 +1,104 @@
+{% set _acct_nav = accountant_nav_scope|default('all') %}
+
+{% if _acct_nav in ('all', 'fees') %}
+<p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Student fees</p>
+{% if can_add_fee_structure|default(false) %}
+<button type="button" @click="$store.feeStructure.open()"
+        class="sidebar-item w-full text-left">
+    <i class="fas fa-plus-circle w-5"></i>
+    <span>Add fee structure</span>
+</button>
+{% endif %}
+<a href="{{ employee_dash_url('student-fees') }}"
+   class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Student fees</span>
+    {% if request.endpoint == 'student_fees' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-fees/fee-structures') }}"
+   class="sidebar-item {% if request.endpoint == 'fee_structures' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-list-alt w-5"></i>
+    <span>Fee structures</span>
+    {% if request.endpoint == 'fee_structures' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-fees/payments-audit') }}"
+   class="sidebar-item {% if request.endpoint == 'payments_audit' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-history w-5"></i>
+    <span>Payments audit</span>
+    {% if request.endpoint == 'payments_audit' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _acct_nav in ('all', 'finance') %}
+<p class="px-3 {% if _acct_nav == 'all' %}pt-3{% else %}pt-2{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Finance</p>
+<a href="{{ employee_dash_url('payments-invoices') }}"
+   class="sidebar-item {% if request.endpoint == 'accountant_payments_invoices' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-invoice-dollar w-5"></i>
+    <span>Payments / invoices</span>
+    {% if request.endpoint == 'accountant_payments_invoices' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('revenue') }}"
+   class="sidebar-item {% if request.endpoint == 'accountant_revenue' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-hand-holding-usd w-5"></i>
+    <span>Revenue</span>
+    {% if request.endpoint == 'accountant_revenue' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _acct_nav in ('all', 'payroll') %}
+<p class="px-3 {% if _acct_nav == 'all' %}pt-3{% else %}pt-2{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Payroll</p>
+<a href="{{ employee_dash_url('staff-and-salaries') }}"
+   class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Staff &amp; salaries</span>
+    {% if request.endpoint == 'staff_and_salaries' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% if show_payroll_actions|default(false) %}
+<button type="button" @click="$store.salaryModal.open()"
+        class="sidebar-item w-full text-left">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Register salary</span>
+</button>
+<button type="button" @click="$store.paySalaryModal.open()"
+        class="sidebar-item w-full text-left">
+    <i class="fas fa-hand-holding-usd w-5"></i>
+    <span>Pay salary</span>
+</button>
+{% endif %}
+<a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}"
+   class="sidebar-item {% if request.endpoint == 'salary_records' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-invoice w-5"></i>
+    <span>Salary records</span>
+    {% if request.endpoint == 'salary_records' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('staff-and-salaries/salary-audits') }}"
+   class="sidebar-item {% if request.endpoint == 'salary_audits' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Salary audits</span>
+    {% if request.endpoint == 'salary_audits' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _acct_nav in ('all', 'insights') %}
+<p class="px-3 {% if _acct_nav == 'all' %}pt-3{% else %}pt-2{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Insights</p>
+<a href="{{ employee_dash_url('visual-analytics') }}"
+   class="sidebar-item {% if request.endpoint == 'accountant_visual_analytics' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-pie w-5"></i>
+    <span>Visual analytics</span>
+    {% if request.endpoint == 'accountant_visual_analytics' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('notifications') }}"
+   class="sidebar-item {% if request.endpoint in ('notifications', 'accountant_notifications') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+    {% if request.endpoint in ('notifications', 'accountant_notifications') %}
+        {% if pending_count is defined and pending_count > 0 %}
+        <span class="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ pending_count }}</span>
+        {% else %}
+        <i class="fas fa-check-circle ml-auto text-green-500"></i>
+        {% endif %}
+    {% elif pending_count is defined and pending_count > 0 %}
+    <span class="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ pending_count }}</span>
+    {% endif %}
+</a>
+{% endif %}

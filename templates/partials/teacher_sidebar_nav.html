@@ -1,29 +1,3 @@
-{# Shared teacher sidebar links for pages that override sidebar_content #}
-<a href="{{ employee_dash_url() }}"
-   class="sidebar-item {% if request.endpoint == 'dashboard_employee' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-home w-5"></i>
-    <span>Dashboard</span>
-</a>
-<a href="{{ employee_dash_url('my-classes') }}"
-   class="sidebar-item {% if request.endpoint == 'teacher_my_classes' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>My Classes</span>
-</a>
-<a href="{{ employee_dash_url('class-books') }}"
-   class="sidebar-item {% if request.endpoint in ('teacher_class_books', 'teacher_class_books_level') or '/class-books' in request.path %}sidebar-item-active{% endif %}">
-    <i class="fas fa-book-open w-5"></i>
-    <span>Class books</span>
-    {% if request.endpoint in ('teacher_class_books', 'teacher_class_books_level') or '/class-books' in request.path %}
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
-    {% endif %}
-</a>
-<a href="{{ employee_dash_url('exams-assessments') }}"
-   class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-list w-5"></i>
-    <span>Exams &amp; Assessments</span>
-</a>
-<a href="{{ employee_dash_url('student-management/student-attendance') }}"
-   class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
-    <i class="fas fa-check-circle w-5"></i>
-    <span>Attendance</span>
-</a>
+{# Legacy include — use scoped teacher sidebar on sub-pages #}
+{% set teacher_nav_scope = teacher_nav_scope|default('classes') %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}

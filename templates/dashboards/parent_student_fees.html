@@ -2,30 +2,16 @@
 
 {% block title %}Fees / Payments - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-{% block sidebar_content %}
-{% if session.get('role', '').lower() == 'technician' %}
-<a href="{{ employee_dash_url('role-switch') }}" 
-   class="sidebar-item mb-2 border-b border-gray-200 dark:border-gray-700 pb-4">
-    <i class="fas fa-exchange-alt w-5"></i>
-    <span>Role Switch</span>
-</a>
-{% endif %}
 
-<!-- Parent Links -->
-<a href="{{ parent_dash_url() }}" 
-   class="sidebar-item">
-    <i class="fas fa-home w-5"></i>
-    <span>Dashboard</span>
-</a>
-<a href="{{ parent_dash_url('student-fees') }}" 
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-money-bill-wave w-5"></i>
-    <span>Fees / Payments</span>
-</a>
+{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+
+{% block sidebar_content %}
+{% set parent_nav_scope = 'fees' %}
+{% include 'dashboards/includes/parent_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="portal-page-root role-page role-page--parent p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
     <!-- Technician Student Selector -->
     {% if is_technician and current_view_role == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
@@ -59,25 +45,19 @@
     </div>
     {% endif %}
 
-    <!-- Page Header -->
-    <div class="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 mb-6">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-white mb-2">Fees & Payments</h1>
-                <p class="text-orange-100">View detailed fees and payment information for all your children</p>
-            </div>
-            <div class="hidden sm:block">
-                <i class="fas fa-money-bill-wave text-white text-5xl opacity-20"></i>
-            </div>
-        </div>
-    </div>
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Parent portal' %}
+    {% set role_hero_title = 'Fees & payments' %}
+    {% set role_hero_subtitle = 'View detailed fees and payment information for all your children.' %}
+    {% set role_hero_icon_class = 'fa-money-bill-wave' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
     {% if children %}
     <!-- Children's Fees Details -->
     {% for child in children %}
     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden mb-6">
         <!-- Student Header -->
-        <div class="bg-gradient-to-r from-orange-500 to-orange-600 p-6">
+        <div class="bg-gradient-to-r from-orange-600 to-amber-600 p-6">
             <div class="flex items-center justify-between flex-wrap gap-4">
                 <div class="flex items-center gap-4">
                     <div class="bg-white/20 rounded-full p-4">

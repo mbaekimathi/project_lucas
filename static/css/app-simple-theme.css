@@ -570,3 +570,72 @@ main .container,
     font-size: 16px !important;
   }
 }
+
+/* ----- Portal: accounts-style canvas (logged-in dashboards) ----- */
+html.role-portal-scroll {
+  background-color: #eef2f6;
+}
+
+.dark html.role-portal-scroll {
+  background-color: #0b1120;
+}
+
+body.role-portal-layout.app-shell {
+  background: linear-gradient(180deg, #ecfdf5 0%, #eef2f6 45%, #f8fafc 100%) !important;
+}
+
+.dark body.role-portal-layout.app-shell {
+  background: linear-gradient(180deg, #0b1120 0%, #0f172a 50%, #020617 100%) !important;
+}
+
+body.role-portal-layout main section.bg-white {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.dark body.role-portal-layout main section.bg-white {
+  background: #0f172a !important;
+  border-color: #1e293b !important;
+}
+
+.dark body.role-portal-layout main section.bg-gray-50 {
+  background: #1e293b !important;
+  border-color: #1e293b !important;
+}
+
+body.role-portal-layout main .text-gray-500,
+body.role-portal-layout main .text-gray-600 {
+  color: #64748b !important;
+}
+
+.dark body.role-portal-layout main .text-gray-400,
+.dark body.role-portal-layout main .text-gray-500,
+.dark body.role-portal-layout main .text-gray-600 {
+  color: #94a3b8 !important;
+}
+
+/* Sticky footer: bottom of viewport when content is short; follows content when long */
+body.app-shell > main.portal-document-main {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--app-header-offset));
+}
+
+body.app-shell > main.portal-document-main > .portal-document-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: calc(100dvh - var(--app-header-offset));
+}
+
+body.app-shell .portal-page-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+body.app-shell main .portal-scroll-footer {
+  margin-top: auto;
+  flex-shrink: 0;
+}

@@ -2,22 +2,30 @@
 
 {% block title %}Assign Roles & Approve - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'staff' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% else %}
 <!-- Staff Management Links -->
-<a href="{{ employee_dash_url('staff-management') }}" 
+<a href="{{ employee_dash_url('staff-management') }}"
    class="sidebar-item">
     <i class="fas fa-user-tie w-5"></i>
     <span>Staff Management</span>
 </a>
 
-<a href="{{ employee_dash_url('assign-roles-approve') }}" 
+<a href="{{ employee_dash_url('assign-roles-approve') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-user-check w-5"></i>
     <span>Assign Roles & Approve</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
 
-<a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true" 
+<a @click.prevent="comingSoonTitle = 'Leave Management'; comingSoonModalOpen = true"
    class="sidebar-item">
     <i class="fas fa-calendar-times w-5"></i>
     <span>Leave Management</span>
@@ -34,15 +42,17 @@
     <i class="fas fa-clock w-5"></i>
     <span>Job Attendance</span>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-3 sm:p-4 md:p-5 lg:p-6" x-data="assignRolesApprove()">
-    <!-- Header -->
-    <div class="mb-4 sm:mb-6">
-        <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-1 sm:mb-2">Assign Roles & Approve Employees</h1>
-        <p class="text-xs sm:text-sm text-gray-600 dark:text-gray-400">Pending Approval: {{ employees|length }} employees</p>
-    </div>
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="assignRolesApprove()">
+    {% set role_theme = portal_page_variant|default('leadership') %}
+    {% set role_hero_eyebrow = 'Staff' %}
+    {% set role_hero_title = 'Assign roles & approve' %}
+    {% set role_hero_subtitle = 'Pending approval: ' ~ (employees|length) ~ ' employee' ~ ('s' if employees|length != 1 else '') ~ '. Assign one or more roles before activating each account.' %}
+    {% set role_hero_icon_class = 'fa-user-check' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
     <!-- Success/Error Messages -->
     <div x-show="message.show" 
@@ -67,7 +77,7 @@
     <div class="space-y-3 sm:space-y-4">
         {% if employees %}
             {% for employee in employees %}
-            <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-3 sm:p-4 md:p-5 transition-all hover:shadow-md"
+            <div class="role-panel bg-white dark:bg-gray-800 p-3 sm:p-4 md:p-5 transition-all hover:shadow-md"
                  :id="'employee-' + {{ employee.id }}">
                 <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 sm:gap-5">
                     <!-- Employee Info -->

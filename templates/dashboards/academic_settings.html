@@ -3,6 +3,14 @@
 {% block title %}Academic Settings - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'school' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'settings' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 <div class="space-y-2">
     <a href="{{ employee_dash_url('academic-settings') }}"
        class="w-full sidebar-item {% if request.endpoint == 'academic_settings' %}sidebar-item-active{% endif %}">
@@ -18,10 +26,18 @@
         <span class="font-medium">Academic schedule management</span>
     </a>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6" x-data="{ activeSubSection: '{{ request.args.get('tab', 'academic-level') }}', showAcademicLevelForm: false }">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Academic Settings' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-chalkboard' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 lg:p-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{ activeSubSection: '{{ request.args.get('tab', 'academic-level') }}', showAcademicLevelForm: false }">
     <!-- Header -->
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">

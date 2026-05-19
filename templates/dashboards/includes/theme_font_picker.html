@@ -1,0 +1,75 @@
+{# Typography — single dropdown + live preview #}
+{% set _theme_font = theme_settings.font_family|default('Inter') %}
+<div class="theme-font-picker" id="theme-font-picker">
+    <div class="theme-font-picker__head">
+        <p class="theme-font-picker__title">
+            <i class="fas fa-font" aria-hidden="true"></i>
+            Typography
+        </p>
+        <p class="theme-font-picker__sub">
+            Choose one font for the whole portal. Preview updates as you select; save theme to apply site-wide.
+        </p>
+    </div>
+    <div class="theme-font-picker__body">
+        <label for="font_family" class="theme-font-picker__label">Font family</label>
+        <div class="theme-font-picker__select-wrap">
+            <select id="font_family"
+                    name="font_family"
+                    class="theme-font-picker__select"
+                    style="font-family: {{ portal_font_stack(_theme_font) }};"
+                    onchange="window.portalThemePreviewFont && window.portalThemePreviewFont(this.value)"
+                    aria-describedby="portal-font-preview">
+                {% for group_name, fonts in portal_fonts_grouped %}
+                <optgroup label="{{ group_name }}">
+                    {% for font in fonts %}
+                    <option value="{{ font.value }}"
+                            {% if _theme_font == font.value %}selected{% endif %}
+                            data-stack="{{ portal_font_stack(font.value) }}">{{ font.value }} — {{ font.hint }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endfor %}
+            </select>
+            <i class="fas fa-chevron-down theme-font-picker__select-icon" aria-hidden="true"></i>
+        </div>
+
+        <div id="portal-font-preview"
+             class="theme-font-picker__preview"
+             style="font-family: {{ portal_font_stack(_theme_font) }};"
+             role="region"
+             aria-live="polite"
+             aria-label="Font preview">
+            <p class="theme-font-picker__preview-kicker">Preview</p>
+            <p class="theme-font-picker__preview-title">Learning starts with clarity</p>
+            <p class="theme-font-picker__preview-body">
+                The quick brown fox · School portal · Fees · Attendance · 0123456789
+            </p>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var select = document.getElementById('font_family');
+    var preview = document.getElementById('portal-font-preview');
+    if (!select) return;
+
+    var SYSTEM_STACK = {{ portal_font_stack('System UI')|tojson }};
+
+    function stackFor(name) {
+        var i, opt;
+        for (i = 0; i < select.options.length; i++) {
+            opt = select.options[i];
+            if (opt.value === name) {
+                return opt.getAttribute('data-stack') || (name === 'System UI' ? SYSTEM_STACK : null);
+            }
+        }
+        if (name === 'System UI') return SYSTEM_STACK;
+        return "'" + String(name).replace(/'/g, "\\'") + "', system-ui, sans-serif";
+    }
+
+    window.portalThemePreviewFont = function (name) {
+        var stack = stackFor(name);
+        select.style.fontFamily = stack;
+        if (preview) preview.style.fontFamily = stack;
+    };
+})();
+</script>

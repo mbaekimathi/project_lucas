@@ -12,7 +12,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Attendance' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-check-circle' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 lg:p-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
             <i class="fas fa-check-circle text-green-600 mr-2 sm:mr-3"></i>

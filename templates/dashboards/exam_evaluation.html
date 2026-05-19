@@ -3,26 +3,8 @@
 {% block title %}Exam & Evaluation - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-    <a href="{{ employee_dash_url() }}"
-       class="w-full sidebar-item"
-       aria-label="Back to staff dashboard">
-        <i class="fas fa-arrow-left w-5" aria-hidden="true"></i>
-        <span>Back to dashboard</span>
-    </a>
-    <a href="{{ employee_dash_url('timetable-sessions') }}"
-       class="w-full sidebar-item"
-       aria-label="Open exam timetable settings">
-        <i class="fas fa-sliders-h w-5" aria-hidden="true"></i>
-        <span>Timetable sessions</span>
-    </a>
-    <a href="{{ employee_dash_url('exam-subject-settings') }}"
-       class="w-full sidebar-item"
-       aria-label="Exam subject total marks settings">
-        <i class="fas fa-book-open w-5" aria-hidden="true"></i>
-        <span>Exam subject settings</span>
-    </a>
-</div>
+{% set cc_nav_scope = 'exams' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% endblock %}
 
 {% block extra_head %}
@@ -110,7 +92,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="exam-eval-page p-3 sm:p-5 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden" x-data="examEvaluation()" x-init="init()">
+<div class="exam-eval-page p-3 sm:p-5 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
     <div class="mb-5 sm:mb-8 scroll-reveal">
         <div class="flex flex-col gap-4">
             <div class="min-w-0">

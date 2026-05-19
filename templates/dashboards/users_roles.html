@@ -4,48 +4,21 @@
 
 {% block sidebar_content %}
 {% if session.get('role', '').lower() == 'technician' %}
-<a href="{{ employee_dash_url('system-settings') }}" 
-   class="sidebar-item">
-    <i class="fas fa-cog w-5"></i>
-    <span>System Settings</span>
-</a>
-<a href="{{ employee_dash_url('users-roles') }}" 
-   class="sidebar-item sidebar-item-active">
-    <i class="fas fa-users-cog w-5"></i>
-    <span>Users & Roles</span>
-</a>
-<a href="{{ employee_dash_url('database') }}" 
-   class="sidebar-item">
-    <i class="fas fa-database w-5"></i>
-    <span>Database</span>
-</a>
+{% set technician_nav_scope = 'admin' %}
+{% include 'dashboards/includes/technician_page_sidebar.html' %}
 {% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-6 sm:mb-8">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                    <i class="fas fa-users-cog text-blue-600 dark:text-blue-400 mr-2"></i>
-                    Users & Roles
-                </h1>
-                <p class="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-                    View and manage all employees categorized by their roles
-                </p>
-            </div>
-            <div class="flex space-x-2">
-                <button onclick="location.reload()" 
-                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-all flex items-center space-x-2">
-                    <i class="fas fa-sync-alt"></i>
-                    <span>Refresh</span>
-                </button>
-            </div>
-        </div>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Users & Roles' %}
+{% set role_hero_subtitle = 'View and manage all employees categorized by their roles' %}
+{% set role_hero_actions %}<button type="button" onclick="location.reload()" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/15 hover:bg-white/25 text-white border border-white/25 backdrop-blur-sm transition-all"><i class="fas fa-sync-alt"></i><span>Refresh</span></button>{% endset %}
+{% set role_hero_icon_class = 'fa-user-shield' %}
+{% include 'dashboards/includes/role_hero.html' %}
 
+
+<div class="max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <!-- Summary Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 border border-gray-200 dark:border-gray-700">

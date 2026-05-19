@@ -1,7 +1,7 @@
 {% set public_site_topnav = request.endpoint in ['home', 'login', 'login_select_role', 'register_employee', 'admission'] %}
 {% set marketing_premium_shell = request.endpoint in ['home', 'login', 'login_select_role', 'admission'] %}
 <!DOCTYPE html>
-<html lang="en" x-data="{ 
+<html lang="en" class="{% if not public_site_topnav and session.get('user_id') %}role-portal-scroll{% endif %}" x-data="{ 
     darkMode: localStorage.getItem('darkMode') === 'true',
     sidebarOpen: window.innerWidth >= 1024,
     isDesktop: window.innerWidth >= 1024,
@@ -22,13 +22,11 @@
       :class="{ 'dark': darkMode }"
       x-init="
         if (publicTopNav) { sidebarOpen = false; }
-        // Initialize dark mode
-        if (darkMode) {
-            document.documentElement.classList.add('dark');
-            document.body.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-            document.body.classList.remove('dark');
+        // Sync dark mode (class applied early in head via theme_mode_boot.html)
+        document.documentElement.classList.toggle('dark', darkMode);
+        document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light';
+        if (document.body) {
+            document.body.classList.toggle('dark', darkMode);
         }
         
         // Handle window resize
@@ -52,7 +50,10 @@
         $watch('darkMode', value => {
             localStorage.setItem('darkMode', value ? 'true' : 'false');
             document.documentElement.classList.toggle('dark', value);
-            document.body.classList.toggle('dark', value);
+            document.documentElement.style.colorScheme = value ? 'dark' : 'light';
+            if (document.body) {
+                document.body.classList.toggle('dark', value);
+            }
         });
         
         // Store initial scroll position
@@ -180,6 +181,7 @@
         });
       ">
 <head>
+    {% include 'includes/theme_mode_boot.html' %}
     {# Root-relative resolution for /<role>/… URLs (path-relative links resolve from site root, not from /role/segment) #}
     <base href="{{ request.url_root }}">
     <meta charset="UTF-8">
@@ -225,8 +227,8 @@
                         'brand-maroon-light': '{{ school_settings.secondary_color|default("#A00030") }}',
                     },
                     fontFamily: {
-                        'sans': ['{{ school_settings.font_family|default("Inter") }}', 'system-ui', 'sans-serif'],
-                        'heading': ['{{ school_settings.font_family|default("Inter") }}', 'Poppins', 'system-ui', 'sans-serif'],
+                        'sans': {{ portal_tailwind_font_family|tojson }},
+                        'heading': {{ portal_tailwind_font_family|tojson }},
                     }
                 }
             }
@@ -247,8 +249,9 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- Theme fonts (400–700 only; matches system-settings font dropdown) -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    {% if portal_google_fonts_href %}
+    <link href="{{ portal_google_fonts_href }}" rel="stylesheet">
+    {% endif %}
     
     <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
@@ -272,14 +275,17 @@
             --brand-primary: {{ school_settings.primary_color|default('#800020') }};
             --brand-secondary: {{ school_settings.secondary_color|default('#A00030') }};
             --brand-accent: {{ school_settings.accent_color|default('#5C0014') }};
-            --app-header-offset: 4.5rem;
+            --app-header-offset: 3.5rem;
             --app-sidebar-w: 16rem;
-            --font-sans: '{{ school_settings.font_family|default("Inter") }}', system-ui, sans-serif;
+            --font-sans: {{ portal_font_css_stack }};
             --role-primary: {% block role_primary %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
             --role-secondary: {% block role_secondary %}{{ school_settings.secondary_color|default('#A00030') }}{% endblock %};
             --role-accent: {% block role_accent %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
             --role-gradient-start: {% block role_gradient_start %}{{ school_settings.primary_color|default('#800020') }}{% endblock %};
             --role-gradient-end: {% block role_gradient_end %}{{ school_settings.accent_color|default('#5C0014') }}{% endblock %};
+        }
+        @media (min-width: 640px) {
+            :root { --app-header-offset: 4rem; }
         }
         @media (min-width: 1024px) {
             :root { --app-header-offset: 4.75rem; }
@@ -500,11 +506,213 @@
             background: linear-gradient(to bottom, #0f172a, #111827, #020617) !important;
             border-bottom-color: rgba(51, 65, 85, 0.9) !important;
             box-shadow: 0 8px 28px -12px rgba(0, 0, 0, 0.55) !important;
+            padding-top: env(safe-area-inset-top, 0px);
         }
 
-        .app-chrome-header .site-header__title,
+        .app-chrome-header > div {
+            max-width: 100%;
+        }
+
+        .app-chrome-header .site-header__row--portal {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.35rem;
+            width: 100%;
+            min-height: var(--app-header-offset);
+            padding: 0.25rem 0;
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__row--portal {
+                gap: 0.5rem;
+                padding: 0.35rem 0;
+            }
+        }
+
+        .app-chrome-header .site-header__start {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+        }
+        @media (min-width: 380px) {
+            .app-chrome-header .site-header__start { gap: 0.5rem; }
+        }
+
+        .app-chrome-header .site-header__nav-btns {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            flex-shrink: 0;
+        }
+
+        .app-chrome-header .site-header__brand--portal {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            align-items: center !important;
+            gap: 0.5rem !important;
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+            max-width: 100%;
+        }
+
+        .app-chrome-header .site-header__brand--portal .site-header__titles {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 0.1rem;
+        }
+
+        .app-chrome-header .site-header__brand-mark {
+            width: 2.25rem;
+            height: 2.25rem;
+            flex-shrink: 0;
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__brand-mark {
+                width: 2.5rem;
+                height: 2.5rem;
+            }
+        }
+        @media (min-width: 1024px) {
+            .app-chrome-header .site-header__brand-mark {
+                width: 2.75rem;
+                height: 2.75rem;
+            }
+        }
+
+        .app-chrome-header .site-header__titles {
+            min-width: 0;
+            flex: 1 1 auto;
+            overflow: hidden;
+        }
+
+        .app-chrome-header .site-header__title {
+            color: #f1f5f9 !important;
+            font-size: 0.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+        @media (min-width: 380px) {
+            .app-chrome-header .site-header__title { font-size: 0.8125rem; }
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__title { font-size: 0.9375rem; }
+        }
+        @media (min-width: 1024px) {
+            .app-chrome-header .site-header__title { font-size: 1.0625rem; }
+        }
+
         .app-chrome-header .site-header__subtitle {
+            color: #94a3b8 !important;
+            font-size: 0.625rem;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+            display: none;
+        }
+        .app-chrome-header .site-header__subtitle:empty {
+            display: none !important;
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__titles .site-header__subtitle:not(:empty) {
+                display: block;
+            }
+            .app-chrome-header .site-header__subtitle:not(:empty) { font-size: 0.6875rem; }
+        }
+
+        .app-chrome-header .app-chrome-btn--user,
+        .app-chrome-header .app-chrome-btn--employee {
             color: #e2e8f0 !important;
+            background: rgba(15, 23, 42, 0.4) !important;
+            border: 1px solid rgba(148, 163, 184, 0.22) !important;
+        }
+        .app-chrome-header .app-chrome-btn--user:hover,
+        .app-chrome-header .app-chrome-btn--employee:hover {
+            color: #fff !important;
+            background: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        .app-chrome-header .site-header__actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.25rem;
+            flex-shrink: 0;
+            margin-left: 0.15rem;
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__actions { gap: 0.4rem; }
+        }
+
+        .app-chrome-header .site-header__icon-btn.app-chrome-btn,
+        .app-chrome-header .app-chrome-btn--user {
+            min-width: 2.25rem;
+            min-height: 2.25rem;
+            padding: 0.4rem !important;
+        }
+        @media (min-width: 640px) {
+            .app-chrome-header .site-header__icon-btn.app-chrome-btn,
+            .app-chrome-header .app-chrome-btn--user {
+                min-width: 2.5rem;
+                min-height: 2.5rem;
+                padding: 0.5rem !important;
+            }
+        }
+
+        .app-chrome-header .site-header__icon-btn.app-chrome-btn i {
+            font-size: 1rem !important;
+        }
+
+        .app-chrome-header .app-chrome-btn--employee {
+            padding: 0.35rem 0.5rem !important;
+            min-height: 2.25rem;
+        }
+        .app-chrome-header .app-chrome-btn--employee span {
+            max-width: 5.5rem;
+        }
+        @media (max-width: 639px) {
+            .app-chrome-header .app-chrome-btn--employee span { display: none !important; }
+            .app-chrome-header .app-chrome-btn--employee .fa-chevron-down { display: none; }
+        }
+
+        @media (max-width: 379px) {
+            .app-header-back,
+            .app-sidebar-toggle--header {
+                width: 2.125rem !important;
+                height: 2.125rem !important;
+                min-width: 2.125rem !important;
+                min-height: 2.125rem !important;
+            }
+            .app-sidebar-toggle--header i { font-size: 1rem !important; }
+            .app-header-back i { font-size: 0.9375rem !important; }
+        }
+
+        .app-chrome-header .site-header__datetime {
+            display: none;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.5rem;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.45);
+            color: #e2e8f0;
+            font-size: 0.6875rem;
+            white-space: nowrap;
+        }
+        @media (min-width: 768px) {
+            .app-chrome-header .site-header__datetime { display: flex; }
         }
 
         .app-chrome-header .site-header__icon-btn.app-chrome-btn {
@@ -516,6 +724,136 @@
         .app-chrome-header .site-header__icon-btn.app-chrome-btn:hover {
             color: #ffffff !important;
             background: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* Mobile sidebar menu — high contrast in app header */
+        .app-sidebar-toggle--header {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.375rem;
+            min-height: 2.375rem;
+            width: 2.375rem;
+            height: 2.375rem;
+            padding: 0;
+            border-radius: 0.75rem;
+            color: #ffffff !important;
+            background: linear-gradient(145deg, var(--brand-primary, #800020) 0%, var(--brand-secondary, #a30028) 100%) !important;
+            border: 2px solid rgba(255, 255, 255, 0.35) !important;
+            box-shadow:
+                0 4px 14px rgba(128, 0, 32, 0.45),
+                0 0 0 1px rgba(0, 0, 0, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+        .app-sidebar-toggle--header:hover,
+        .app-sidebar-toggle--header:focus-visible {
+            color: #ffffff !important;
+            filter: brightness(1.08);
+            box-shadow:
+                0 6px 20px rgba(128, 0, 32, 0.55),
+                0 0 0 2px rgba(255, 255, 255, 0.25);
+        }
+        .app-sidebar-toggle--header:active {
+            transform: scale(0.96);
+        }
+        .app-sidebar-toggle--header i {
+            font-size: 1.25rem !important;
+            line-height: 1;
+            filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
+        }
+        @media (min-width: 1024px) {
+            .app-sidebar-toggle--header { display: none !important; }
+        }
+
+        /* Mobile header back — left of menu toggle */
+        .app-header-back {
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.375rem;
+            min-height: 2.375rem;
+            width: 2.375rem;
+            height: 2.375rem;
+            padding: 0;
+            border-radius: 0.75rem;
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.12) !important;
+            border: 2px solid rgba(255, 255, 255, 0.35) !important;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+        .app-header-back:hover,
+        .app-header-back:focus-visible {
+            color: #ffffff !important;
+            background: rgba(255, 255, 255, 0.2) !important;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+        }
+        .app-header-back:active {
+            transform: scale(0.96);
+        }
+        .app-header-back i {
+            font-size: 1.125rem !important;
+        }
+        @media (min-width: 1024px) {
+            .app-header-back { display: none !important; }
+        }
+
+        /* Desktop sidebar back */
+        .app-sidebar-back {
+            display: none;
+        }
+        @media (min-width: 1024px) {
+            .app-sidebar-back {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                width: 100%;
+                margin: 0 0.5rem 0.25rem;
+                padding: 0.5rem 0.65rem;
+                border-radius: 0.65rem;
+                text-align: left;
+                color: #f1f5f9;
+                border: 1px solid transparent;
+                transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+            }
+            .app-sidebar-back:hover {
+                color: #fff;
+                background: rgba(255, 255, 255, 0.1);
+                border-color: rgba(255, 255, 255, 0.12);
+            }
+            .app-sidebar-back__icon {
+                flex-shrink: 0;
+                width: 2rem;
+                height: 2rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 0.5rem;
+                background: linear-gradient(145deg, var(--brand-primary, #800020) 0%, var(--brand-secondary, #a30028) 100%);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            }
+            .app-sidebar-back__icon i {
+                font-size: 0.8125rem;
+            }
+            .app-sidebar-back__label {
+                font-size: 0.8125rem;
+                font-weight: 600;
+                line-height: 1.2;
+            }
+        }
+
+        /* Floating sidebar toggle (desktop when drawer collapsed) */
+        .app-sidebar-toggle--float {
+            color: #ffffff !important;
+            background: linear-gradient(145deg, var(--brand-primary, #800020) 0%, var(--brand-secondary, #a30028) 100%) !important;
+            border: 2px solid rgba(255, 255, 255, 0.9) !important;
+            box-shadow:
+                0 4px 16px rgba(15, 23, 42, 0.2),
+                0 2px 8px rgba(128, 0, 32, 0.35);
+        }
+        .app-sidebar-toggle--float i {
+            font-size: 1.25rem !important;
         }
         
         /* Sidebar improvements */
@@ -597,39 +935,60 @@
         }
     </style>
     
+    {% if not public_site_topnav and session.get('user_id') %}
+    {% include 'dashboards/includes/role_portal_detect.html' %}
+    {% include 'dashboards/includes/role_portal_theme.html' %}
+    {% include 'dashboards/includes/payroll_accounts_styles.html' %}
+    {% include 'dashboards/includes/portal_unified_accounts_look.html' %}
+    {% endif %}
     {% block extra_head %}{% endblock %}
 </head>
-<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav public-site public-site-body{% else %}app-shell{% endif %} {% block body_class %}{% endblock %}"
+<body class="text-gray-900 dark:text-gray-100 min-h-screen font-sans transition-colors duration-300 {% if public_site_topnav %}public-site-topnav public-site public-site-body{% else %}app-shell{% endif %}{% if portal_layout_enabled|default(false) %} role-portal-layout {{ portal_theme_class|default('role-theme-default') }}{% endif %} {% block body_class %}{% endblock %}"
       @scroll.window="publicHeaderScrolled = (window.pageYOffset || document.documentElement.scrollTop) > 56">
     
     <!-- Header: app shell (portal) vs marketing site glass/solid -->
     <header id="site-header"
             class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 border-b{% if public_site_topnav %} site-header--marketing{% else %} app-chrome-header{% endif %}"
             :class="!publicTopNav ? '' : (publicHeaderGlass && !publicHeaderScrolled ? 'site-header--glass bg-transparent border-transparent shadow-none' : 'site-header--solid bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-gray-200 dark:border-gray-700 shadow-sm')">
-        <div class="{% if public_site_topnav %}container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8{% else %}w-full px-3 sm:px-4 lg:px-5{% endif %}">
-            <div class="flex items-center gap-2 sm:gap-3 md:gap-4 h-[4.5rem] md:h-[4.75rem] site-header__row">
-                <!-- Left: Back + sidebar (not on public marketing pages with top nav) -->
-                <div class="flex items-center gap-2 shrink-0 min-w-0 lg:min-w-[12rem] lg:max-w-[min(100%,20rem)]">
-                    <a href="/" class="site-header__brand {% if public_site_topnav %}flex items-center space-x-2.5 sm:space-x-3{% else %}flex flex-col items-start gap-1.5 ml-1{% endif %} min-w-0 max-w-[min(100%,var(--app-sidebar-w))] sm:max-w-none group">
-                        <div class="site-header__brand-mark w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
+        <div class="{% if public_site_topnav %}container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8{% else %}w-full max-w-[100vw] px-2 sm:px-4 lg:px-5{% endif %}">
+            <div class="site-header__row {% if not public_site_topnav %}site-header__row--portal{% else %}flex items-center gap-2 sm:gap-3 md:gap-4 h-[4.5rem] md:h-[4.75rem]{% endif %}">
+                <!-- Left: nav + brand -->
+                <div class="{% if public_site_topnav %}flex items-center gap-2 shrink-0 min-w-0{% else %}site-header__start lg:min-w-[12rem] lg:max-w-[min(100%,20rem)]{% endif %}">
+                    {% if not public_site_topnav %}
+                    <div class="site-header__nav-btns lg:hidden" role="group" aria-label="Navigation controls">
+                    <button type="button"
+                            class="app-header-back touch-manipulation"
+                            title="Go to previous page"
+                            aria-label="Go back"
+                            @click="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '{{ dashboard_home_url() }}'; }">
+                        <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                    </button>
+                    <button type="button"
+                            @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen"
+                            class="app-sidebar-toggle app-sidebar-toggle--header"
+                            aria-controls="app-sidebar-nav"
+                            :aria-expanded="sidebarOpen"
+                            :aria-label="sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'">
+                        <i class="fas fa-bars" x-show="!sidebarOpen" aria-hidden="true"></i>
+                        <i class="fas fa-times" x-show="sidebarOpen" x-cloak aria-hidden="true"></i>
+                    </button>
+                    </div>
+                    {% endif %}
+                    <a href="/" class="site-header__brand {% if public_site_topnav %}flex items-center space-x-2.5 sm:space-x-3 min-w-0{% else %}site-header__brand--portal group flex flex-row items-center gap-2 min-w-0 flex-1{% endif %} sm:max-w-none">
+                        <div class="site-header__brand-mark {% if public_site_topnav %}w-10 h-10 sm:w-11 sm:h-11{% endif %} bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm overflow-hidden flex-shrink-0">
                             {% if school_settings.school_logo %}
                             <img src="{{ url_for('static', filename=school_settings.school_logo) }}"
-                                 alt="{{ school_settings.school_name or 'School Logo' }}"
+                                 alt=""
                                  class="site-header__logo-img w-full h-full object-cover">
                             {% else %}
                             <i class="fas fa-graduation-cap text-white text-lg sm:text-xl"></i>
                             {% endif %}
                         </div>
-                        {# When logo is a full wordmark, do not repeat the school name beside it (avoids double “PROJECT LUCAS”). #}
-                        <div class="{% if public_site_topnav %}{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %}{% else %}flex{% endif %} flex-col min-w-0 justify-center site-header__titles{% if school_settings.school_logo %} site-header__titles--logo-only{% endif %}">
-                            {% if not school_settings.school_logo %}
-                            <div class="font-heading font-bold text-base sm:text-lg text-gray-900 dark:text-white truncate site-header__title leading-tight">
+                        <div class="{% if public_site_topnav %}{% if school_settings.school_logo %}hidden md:flex{% else %}hidden sm:flex{% endif %}{% else %}site-header__titles{% endif %} flex flex-col min-w-0 justify-center">
+                            <div class="font-heading font-bold {% if public_site_topnav %}text-base sm:text-lg text-gray-900 dark:text-white{% endif %} truncate site-header__title leading-tight">
                                 {{ school_settings.school_name or 'Modern School' }}
                             </div>
-                            {% else %}
-                            <span class="sr-only">{{ school_settings.school_name or 'Home' }}</span>
-                            {% endif %}
-                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if school_settings.school_logo %} mt-0.5{% elif public_site_topnav %} hidden md:block{% endif %}">
+                            <div class="text-xs text-gray-500 dark:text-gray-400 site-header__subtitle leading-snug max-w-[14rem]{% if public_site_topnav %} hidden md:block{% endif %}">
                                 {% block header_subtitle %}{% if public_site_topnav or not session.get('user_id') %}{% if school_settings.school_location %}{{ school_settings.school_location }}{% else %}A caring learning community{% endif %}{% endif %}{% endblock %}
                             </div>
                         </div>
@@ -640,14 +999,14 @@
                 </div>
 
                 <!-- Right: User Menu / Login -->
-                <div class="site-header__actions flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto">
+                <div class="site-header__actions{% if public_site_topnav %} flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0 ml-auto{% endif %}">
                     {% if not public_site_topnav %}
-                    <div class="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700/70 bg-slate-900/40 text-slate-200">
-                        <i class="fas fa-calendar-alt text-xs text-slate-300"></i>
-                        <span id="header-live-date" class="text-xs font-medium whitespace-nowrap"></span>
-                        <span class="text-slate-500">|</span>
-                        <i class="fas fa-clock text-xs text-slate-300"></i>
-                        <span id="header-live-time" class="text-xs font-semibold whitespace-nowrap"></span>
+                    <div class="site-header__datetime">
+                        <i class="fas fa-calendar-alt text-[10px] opacity-80" aria-hidden="true"></i>
+                        <span id="header-live-date" class="font-medium"></span>
+                        <span class="opacity-50" aria-hidden="true">|</span>
+                        <i class="fas fa-clock text-[10px] opacity-80" aria-hidden="true"></i>
+                        <span id="header-live-time" class="font-semibold"></span>
                     </div>
                     {% endif %}
                     <!-- Dark Mode Toggle -->
@@ -662,9 +1021,9 @@
                     {% if session.get('role', '').lower() == 'technician' and session.get('viewing_as_employee_role') and employees_list %}
                     <div class="relative" x-data="{ open: false }">
                         <button @click.stop="open = !open" 
-                                class="app-chrome-btn flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors touch-manipulation">
-                            <i class="fas fa-chalkboard-teacher text-slate-600 dark:text-slate-300"></i>
-                            <span class="hidden sm:inline text-sm font-medium text-slate-700 dark:text-slate-200">
+                                class="app-chrome-btn app-chrome-btn--employee flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-sm rounded-lg transition-colors touch-manipulation">
+                            <i class="fas fa-chalkboard-teacher text-slate-300" aria-hidden="true"></i>
+                            <span class="hidden sm:inline text-sm font-medium text-slate-200 truncate">
                                 {% if viewing_as_employee_info %}
                                     {{ viewing_as_employee_info.full_name }}
                                 {% else %}
@@ -712,7 +1071,7 @@
                     <div class="relative" x-data="{ open: false }">
                         <button @click.stop="open = !open" 
                                 type="button"
-                                class="app-chrome-btn app-chrome-btn--user flex items-center gap-1 sm:gap-2 pl-0.5 pr-1 py-0.5 sm:pl-1 sm:pr-2.5 sm:py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-md sm:rounded-lg transition-colors touch-manipulation min-h-[40px] min-w-[40px] sm:min-h-0 sm:min-w-0 justify-center sm:justify-start">
+                                class="app-chrome-btn app-chrome-btn--user flex items-center gap-1 sm:gap-2 pl-0.5 pr-1 py-0.5 sm:pl-1.5 sm:pr-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors touch-manipulation justify-center sm:justify-start">
                             {% if session.get('profile_picture') %}
                             <img src="{{ url_for('static', filename=session.profile_picture) }}" 
                                  alt="Profile" 
@@ -795,47 +1154,24 @@
            @touchmove.stop.prevent
            @wheel.stop.prevent>
         
-        <!-- Mobile drawer header: back (previous page) + close -->
-        <div class="app-sidebar__mobile-head lg:hidden flex items-center justify-between gap-2 px-3 py-2.5 border-b border-slate-700/70 shrink-0 bg-slate-900/90 backdrop-blur-sm">
+        <!-- Mobile drawer header (close via app header menu or overlay) -->
+        <div class="app-sidebar__mobile-head lg:hidden flex items-center px-3 py-2.5 border-b border-slate-700/70 shrink-0 bg-slate-900/90 backdrop-blur-sm">
+            <p class="text-sm font-semibold text-slate-200 tracking-wide">Menu</p>
+        </div>
+
+        <!-- Desktop: back + section label -->
+        <div class="hidden lg:block shrink-0 px-2 pt-3 pb-1">
             <button type="button"
-                    @click="sidebarOpen = false; if (window.history.length > 1) { window.history.back(); } else { window.location.href = '{{ dashboard_home_url() }}'; }"
-                    class="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pl-1 pr-2 text-left text-slate-100 hover:bg-white/10 hover:text-white border border-transparent hover:border-white/10 transition-colors touch-manipulation"
-                    title="Go to previous page">
-                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-1 ring-white/15">
-                    <i class="fas fa-arrow-left text-sm" aria-hidden="true"></i>
+                    class="app-sidebar-back touch-manipulation"
+                    title="Go to previous page"
+                    @click="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '{{ dashboard_home_url() }}'; }">
+                <span class="app-sidebar-back__icon" aria-hidden="true">
+                    <i class="fas fa-arrow-left text-white"></i>
                 </span>
-                <span class="min-w-0 truncate text-sm font-semibold leading-tight">Back</span>
+                <span class="app-sidebar-back__label">Back</span>
             </button>
-            <button type="button"
-                    @click="sidebarOpen = false"
-                    class="shrink-0 p-2 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 border border-transparent hover:border-white/15 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
-                    aria-label="Close menu">
-                <i class="fas fa-times text-base" aria-hidden="true"></i>
-            </button>
+            <p class="px-2 pt-2.5 pb-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Navigate</p>
         </div>
-
-        <!-- Desktop: compact section label -->
-        <div class="hidden lg:block px-4 pt-3.5 pb-1.5 shrink-0">
-            <p class="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">Navigate</p>
-        </div>
-
-        {% if not public_site_topnav %}
-        <!-- Desktop only (mobile drawer already has × in .app-sidebar__mobile-head) -->
-        <div x-show="sidebarOpen && isDesktop"
-             x-transition:enter="transition-opacity duration-150"
-             x-transition:enter-start="opacity-0"
-             x-transition:enter-end="opacity-100"
-             class="px-2 sm:px-3 pb-1.5 flex items-center justify-end">
-            <button type="button"
-                    @click="sidebarOpen = false; if (isDesktop) userClosedSidebar = true"
-                    class="app-sidebar-toggle app-chrome-btn p-2 text-slate-100 hover:bg-white/10 rounded-lg transition-colors touch-manipulation min-w-[40px] min-h-[40px] sm:min-w-[44px] sm:min-h-[44px] flex items-center justify-center"
-                    aria-controls="app-sidebar-nav"
-                    :aria-expanded="sidebarOpen"
-                    title="Close sidebar">
-                <i class="fas fa-times text-base sm:text-lg"></i>
-            </button>
-        </div>
-        {% endif %}
 
         <nav id="app-sidebar-nav"
              class="sidebar-nav app-sidebar-nav custom-scrollbar flex-1 min-h-0 px-2 py-2 sm:px-3 sm:py-2.5 lg:px-3 lg:py-2 space-y-0.5 sm:space-y-1 overflow-y-auto overflow-x-hidden"
@@ -914,40 +1250,53 @@
     <main class="pt-[4.5rem] md:pt-[4.75rem] transition-all duration-300 flex flex-col relative z-10 w-full min-w-0
             {% if public_site_topnav %}
             public-site-main public-site-main--document flex flex-col flex-1 pb-6 sm:pb-10
+            {% elif not public_site_topnav %}
+            portal-document-main flex flex-col flex-1 pb-0 min-h-[calc(100dvh-var(--app-header-offset))]
             {% else %}
-            flex flex-col overflow-hidden pb-20 min-h-0 flex-1
+            flex flex-col overflow-hidden pb-0 min-h-0 flex-1
             {% endif %}"
-          :style="publicTopNav ? '' : ((isDesktop && sidebarOpen ? 'margin-left: var(--app-sidebar-w); width: calc(100% - var(--app-sidebar-w));' : 'margin-left: 0; width: 100%;') + ' height: calc(100vh - var(--app-header-offset));')">
+          {% if not public_site_topnav %}
+          :style="(isDesktop && sidebarOpen ? 'margin-left: var(--app-sidebar-w); width: calc(100% - var(--app-sidebar-w));' : 'margin-left: 0; width: 100%;')"
+          {% else %}
+          :style="publicTopNav ? '' : ((isDesktop && sidebarOpen ? 'margin-left: var(--app-sidebar-w); width: calc(100% - var(--app-sidebar-w));' : 'margin-left: 0; width: 100%;') + ' height: calc(100vh - var(--app-header-offset));')"
+          {% endif %}>
         <div class="w-full min-w-0
              {% if public_site_topnav %}
              public-site-scroll public-site-scroll--document
+             {% elif not public_site_topnav %}
+             portal-document-scroll flex flex-col flex-1 min-h-full w-full min-w-0
              {% else %}
              flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar
              {% endif %}">
             {% if not public_site_topnav %}
-            <div x-show="!sidebarOpen" x-cloak class="px-4 sm:px-6 lg:px-8 pt-2 fixed z-40" style="top: var(--app-header-offset); left: 0;">
+            <div x-show="!sidebarOpen" x-cloak class="hidden lg:block px-4 sm:px-6 lg:px-8 pt-2 fixed z-40" style="top: var(--app-header-offset); left: 0;">
                 <div class="flex items-center">
                     <button type="button"
                             @click="sidebarOpen = !sidebarOpen; if (isDesktop) userClosedSidebar = !sidebarOpen"
-                            class="app-sidebar-toggle app-chrome-btn p-2.5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            class="app-sidebar-toggle app-sidebar-toggle--float touch-manipulation min-w-[48px] min-h-[48px] flex items-center justify-center rounded-xl transition-all"
                             aria-controls="app-sidebar-nav"
-                            :aria-expanded="sidebarOpen">
-                        <i class="fas fa-bars text-lg" x-show="!sidebarOpen"></i>
-                        <i class="fas fa-times text-lg" x-show="sidebarOpen" x-cloak></i>
+                            :aria-expanded="sidebarOpen"
+                            aria-label="Open navigation menu">
+                        <i class="fas fa-bars" x-show="!sidebarOpen" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
             {% endif %}
+            {% if not public_site_topnav %}<div class="portal-page-content flex flex-col flex-1 w-full min-w-0">{% endif %}
             {% block content_full_bleed %}{% endblock %}
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-full{% if public_site_topnav %} public-site-page py-8 sm:py-10 lg:py-12{% else %} py-6 sm:py-8{% endif %}">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 w-full max-w-full{% if not public_site_topnav %} flex-1{% endif %}{% if public_site_topnav %} public-site-page py-8 sm:py-10 lg:py-12{% else %} py-6 sm:py-8{% endif %}">
                 {% block content %}{% endblock %}
-                                    </div>
-                                </div>
+            </div>
+            {% if not public_site_topnav %}
+            {% include 'dashboards/includes/app_chrome_footer.html' %}
+            </div>
+            {% endif %}
+        </div>
         </main>
 
-    <!-- Footer -->
-    <footer class="mt-auto{% if public_site_topnav %} public-site-footer public-site-footer--marketing{% else %} app-chrome-footer{% endif %}">
-        {% if public_site_topnav %}
+    {% if public_site_topnav %}
+    <!-- Footer (marketing site) -->
+    <footer class="public-site-footer public-site-footer--marketing">
         {% set brand_title = (school_settings.project_name or school_settings.school_name or 'School')|trim %}
         {% set brand_words = brand_title.split() %}
         <div class="public-site-footer__bar">
@@ -1029,30 +1378,8 @@
                 </div>
             </div>
         </div>
-        {% else %}
-        <div class="app-chrome-footer__bar border-t border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 shadow-[0_-8px_32px_-12px_rgba(0,0,0,0.45)]">
-            <div class="app-chrome-footer__accent h-1 w-full bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-maroon-dark opacity-90" aria-hidden="true"></div>
-            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
-                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-                    <div class="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
-                        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-2 ring-black/5 dark:ring-white/10">
-                            {% if school_settings.school_logo %}
-                            <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="h-8 w-8 object-contain rounded-md" width="32" height="32" loading="lazy">
-                            {% else %}
-                            <i class="fas fa-graduation-cap text-lg" aria-hidden="true"></i>
-                            {% endif %}
-                        </span>
-                        <div>
-                            <p class="font-heading font-semibold text-slate-100 text-sm sm:text-base">{{ school_settings.school_name or 'School' }}</p>
-                            <p class="text-xs sm:text-sm text-slate-400 mt-0.5">education management made easy</p>
-                        </div>
-                    </div>
-                    <p class="text-[11px] sm:text-xs text-slate-400 uppercase tracking-wider">powered by educentric</p>
-                </div>
-            </div>
-        </div>
-        {% endif %}
     </footer>
+    {% endif %}
 
     <!-- Coming Soon Modal -->
     <div x-show="comingSoonModalOpen" 

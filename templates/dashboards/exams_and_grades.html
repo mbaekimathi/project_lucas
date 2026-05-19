@@ -176,7 +176,7 @@
 {%- endmacro %}
 {% macro exam_eg_matrix(mtx, show_supervisor, empty_msg) -%}
 {% if mtx.cols and mtx.days %}
-<div class="exam-eg-mtx-scroll rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+<div class="exam-eg-mtx-scroll rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
 <table class="exam-eg-mtx-table">
 <thead>
 <tr>

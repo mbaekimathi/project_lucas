@@ -1,0 +1,24 @@
+{% set role_theme = 'librarian' %}
+{% set role_hero_eyebrow = 'Librarian' %}
+{% set role_hero_title = 'Library overview' %}
+{% set role_hero_subtitle = 'Books inventory, stock, and issue or return records.' %}
+{% set role_hero_icon_class = 'fa-book' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <a href="{{ employee_dash_url('books-inventory') }}" class="role-quick-card">
+        <i class="fas fa-book text-teal-600 dark:text-teal-400"></i>
+        <span>Books inventory</span>
+        <small>Catalog of titles and copies</small>
+    </a>
+    <a href="{{ employee_dash_url('books-inventory/stock') }}" class="role-quick-card">
+        <i class="fas fa-warehouse text-cyan-600 dark:text-cyan-400"></i>
+        <span>Book stock</span>
+        <small>Stock levels and adjustments</small>
+    </a>
+    <a href="{{ employee_dash_url('issue-return-records') }}" class="role-quick-card">
+        <i class="fas fa-exchange-alt text-indigo-600 dark:text-indigo-400"></i>
+        <span>Issue / return</span>
+        <small>Lending records by class level</small>
+    </a>
+</div>

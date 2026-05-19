@@ -2,8 +2,12 @@
 
 {% block title %}Class books — {{ level.level_name if level else 'Class' }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+
+{% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
+
 {% block sidebar_content %}
-{% include "partials/teacher_sidebar_nav.html" %}
+{% set teacher_nav_scope = 'classes' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
@@ -286,8 +290,7 @@ document.addEventListener('alpine:init', function () {
   });
 });
 </script>
-
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/20 py-6 sm:py-8 page-content"
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-indigo-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
      x-data="teacherClassBooksLevel"
      @click.outside="searchOpen = false">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

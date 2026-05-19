@@ -1,0 +1,11 @@
+{% set analytics_tab = analytics_tab|default('summary') %}
+<nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-black/20 mt-4" aria-label="Accountant analytics views">
+    <a href="{{ employee_dash_url() }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if analytics_tab == 'summary' %}is-active{% endif %}">
+        <i class="fas fa-table-columns"></i> Summary
+    </a>
+    <a href="{{ employee_dash_url('visual-analytics') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if analytics_tab == 'visual' %}is-active{% endif %}">
+        <i class="fas fa-chart-pie"></i> Visual analytics
+    </a>
+</nav>

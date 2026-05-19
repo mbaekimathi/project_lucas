@@ -1,0 +1,23 @@
+<footer class="app-chrome-footer portal-scroll-footer w-full shrink-0 mt-auto" role="contentinfo">
+    <div class="app-chrome-footer__bar border-t border-slate-700/90 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950">
+        <div class="app-chrome-footer__accent h-1 w-full bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-maroon-dark opacity-90" aria-hidden="true"></div>
+        <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-5">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                <div class="flex flex-col sm:flex-row items-center gap-3 sm:gap-4">
+                    <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-2 ring-black/5 dark:ring-white/10">
+                        {% if school_settings.school_logo %}
+                        <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="h-8 w-8 object-contain rounded-md" width="32" height="32" loading="lazy">
+                        {% else %}
+                        <i class="fas fa-graduation-cap text-lg" aria-hidden="true"></i>
+                        {% endif %}
+                    </span>
+                    <div>
+                        <p class="font-heading font-semibold text-slate-100 text-sm sm:text-base">{{ school_settings.school_name or 'School' }}</p>
+                        <p class="text-xs sm:text-sm text-slate-400 mt-0.5">education management made easy</p>
+                    </div>
+                </div>
+                <p class="text-[11px] sm:text-xs text-slate-400 uppercase tracking-wider">powered by educentric</p>
+            </div>
+        </div>
+    </div>
+</footer>

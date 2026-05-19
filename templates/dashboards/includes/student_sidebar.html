@@ -1,0 +1,49 @@
+{% set _stu_nav = student_nav_scope|default('all') %}
+
+{% if _stu_nav == 'all' %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Schedule</p>
+<a @click.prevent="comingSoonTitle = 'My Timetable / Classes'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>My timetable</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Attendance'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-tasks w-5"></i>
+    <span>Assignments</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Exam Results / Grades'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam results</span>
+</a>
+{% endif %}
+
+{% if _stu_nav in ('all', 'fees') %}
+<p class="px-3 {% if _stu_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees</p>
+<a href="{{ student_dash_url('fees') }}"
+   class="sidebar-item {% if request.path.endswith('/fees') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / payment</span>
+    {% if request.path.endswith('/fees') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _stu_nav == 'all' %}
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
+<a @click.prevent="comingSoonTitle = 'Library'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-book w-5"></i>
+    <span>Library</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+</a>
+{% endif %}

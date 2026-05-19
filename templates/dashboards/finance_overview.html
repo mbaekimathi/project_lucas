@@ -2,9 +2,17 @@
 
 {% block title %}Finance Overview - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
-{% if is_secretary_finance %}
-{% include "dashboards/_secretary_academic_nav_sidebar.html" %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'finance' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif is_secretary_finance %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
 {% else %}
 <div class="space-y-2">
     <a href="{{ employee_dash_url('finance-overview') }}" 
@@ -32,16 +40,13 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6 max-w-[1600px] mx-auto">
-    <div class="mb-6">
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-            <i class="fas fa-money-bill-wave text-green-600 mr-3"></i>
-            Finance Overview
-        </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
-            Choose an <strong>account view</strong> below (same idea as Academic reports). Data uses the <strong>current academic year and term</strong> and the same rules as <a href="{{ employee_dash_url('student-fees') }}" class="text-brand-primary font-medium hover:underline">Student fees</a>. Payroll is under <a href="{{ employee_dash_url('staff-and-salaries') }}" class="text-brand-primary font-medium hover:underline">Staff and Salaries</a>.
-        </p>
-    </div>
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-[1600px] mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Finance' %}
+    {% set role_hero_title = 'Finance overview' %}
+    {% set role_hero_subtitle = 'Choose an account view below. Data uses the current academic year and term, aligned with Student fees and Staff & salaries.' %}
+    {% set role_hero_icon_class = 'fa-chart-pie' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
     {% set fa = student_fee_analytics|default({}) %}
     {% set rows = fa.student_rows|default([]) %}

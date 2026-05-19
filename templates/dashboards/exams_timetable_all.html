@@ -104,34 +104,19 @@
 {% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('exam-evaluation') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-check w-5"></i>
-    <span>Exam Registration</span>
-    {% if request.endpoint == 'exam_evaluation' or request.path.endswith('/exam-evaluation') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('exams-assessments') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-list w-5"></i>
-    <span>Exams & Assessments</span>
-    {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('exam-analytics') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-chart-line w-5"></i>
-    <span>Exam Analytics</span>
-    {% if request.endpoint == 'exam_analytics' or request.path.endswith('/exam-analytics') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
-<a href="{{ employee_dash_url('exam-timetable') }}"
-   class="sidebar-item mb-2 {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>Exams Timetable</span>
-    {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
-</a>
+{% set cc_nav_scope = 'exams' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'All Exams Timetable' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-clipboard-check' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="mb-6 sm:mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>

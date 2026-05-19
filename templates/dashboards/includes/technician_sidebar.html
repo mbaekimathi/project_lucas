@@ -1,0 +1,45 @@
+{% set _tech_nav = technician_nav_scope|default('all') %}
+
+{% if _tech_nav in ('all', 'admin') %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Administration</p>
+<a href="{{ employee_dash_url('system-settings') }}"
+   class="sidebar-item {% if request.endpoint == 'system_settings' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-cog w-5"></i>
+    <span>System settings</span>
+    {% if request.endpoint == 'system_settings' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('users-roles') }}"
+   class="sidebar-item {% if request.endpoint == 'users_roles' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-users-cog w-5"></i>
+    <span>Users &amp; roles</span>
+    {% if request.endpoint == 'users_roles' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _tech_nav in ('all', 'database') %}
+<p class="px-3 {% if _tech_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Database</p>
+<a href="{{ employee_dash_url('database') }}"
+   class="sidebar-item {% if request.endpoint == 'database_management' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-database w-5"></i>
+    <span>Database</span>
+    {% if request.endpoint == 'database_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('database/backup-restore') }}"
+   class="sidebar-item {% if request.endpoint == 'database_backup_restore' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-download w-5"></i>
+    <span>Google Drive backup</span>
+    {% if request.endpoint == 'database_backup_restore' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('database/health-status') }}"
+   class="sidebar-item {% if request.endpoint == 'database_health_status' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-heartbeat w-5"></i>
+    <span>Health &amp; status</span>
+    {% if request.endpoint == 'database_health_status' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('database/logs-audit-trails') }}"
+   class="sidebar-item {% if request.endpoint == 'logs_audit_trails' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-history w-5"></i>
+    <span>Logs &amp; audit</span>
+    {% if request.endpoint == 'logs_audit_trails' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}

@@ -1,0 +1,71 @@
+{# Technician / accountant system-settings navigation (app sidebar drawer) #}
+<div class="sys-settings-sidebar space-y-0.5" role="navigation" aria-label="System settings sections"
+     x-data="{ currentHash: window.location.hash || '' }"
+     @hashchange.window="currentHash = window.location.hash || ''">
+    {% if is_technician or is_accountant %}
+    <a href="{{ dashboard_home_url() }}"
+       class="sidebar-item dashboard-utility-link {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
+        <i class="fas fa-home w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Dashboard</span>
+    </a>
+
+    {% if is_accountant %}
+    <a href="{{ employee_dash_url('student-fees') }}"
+       class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-money-check-alt w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Student Fees</span>
+        <i class="fas fa-chevron-right sys-settings-sidebar__chevron" aria-hidden="true"></i>
+    </a>
+    {% endif %}
+
+    <p class="sys-settings-sidebar__section{% if is_accountant %} sys-settings-sidebar__section--border{% endif %}">System configuration</p>
+
+    <a href="{{ employee_dash_url('system-settings') }}#school-profile"
+       @click.prevent="currentHash = '#school-profile'; window.location.hash = 'school-profile'; window.dispatchEvent(new HashChangeEvent('hashchange')); if (typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
+       class="sidebar-item"
+       :class="currentHash === '#school-profile' ? 'sidebar-item-active' : ''">
+        <i class="fas fa-school w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">School Profile</span>
+    </a>
+
+    <a href="{{ employee_dash_url('system-settings') }}#general-settings"
+       @click.prevent="currentHash = '#general-settings'; window.location.hash = 'general-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if (typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
+       class="sidebar-item"
+       :class="currentHash === '#general-settings' ? 'sidebar-item-active' : ''">
+        <i class="fas fa-sliders-h w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">General Settings</span>
+    </a>
+
+    <a href="{{ employee_dash_url('system-settings') }}#theme-colors"
+       @click.prevent="currentHash = '#theme-colors'; window.location.hash = 'theme-colors'; window.dispatchEvent(new HashChangeEvent('hashchange')); if (typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
+       class="sidebar-item"
+       :class="currentHash === '#theme-colors' ? 'sidebar-item-active' : ''">
+        <i class="fas fa-palette w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Theme &amp; Colors</span>
+    </a>
+
+    <a href="{{ employee_dash_url('system-settings') }}#login-settings"
+       @click.prevent="currentHash = '#login-settings'; window.location.hash = 'login-settings'; window.dispatchEvent(new HashChangeEvent('hashchange')); if (typeof isDesktop !== 'undefined' && !isDesktop) { sidebarOpen = false; }"
+       class="sidebar-item"
+       :class="currentHash === '#login-settings' ? 'sidebar-item-active' : ''">
+        <i class="fas fa-sign-in-alt w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Login Page</span>
+    </a>
+
+    <p class="sys-settings-sidebar__section sys-settings-sidebar__section--border">Advanced</p>
+
+    <a href="{{ employee_dash_url('integration-settings') }}"
+       class="sidebar-item {% if request.endpoint == 'integration_settings' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-plug w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Integrations</span>
+    </a>
+
+    <a href="{{ employee_dash_url('database') }}"
+       class="sidebar-item {% if request.endpoint == 'database_management' %}sidebar-item-active{% endif %}">
+        <i class="fas fa-database w-5 text-center" aria-hidden="true"></i>
+        <span class="sys-settings-sidebar__label">Database</span>
+    </a>
+    {% else %}
+    <p class="sys-settings-sidebar__empty">Sidebar links are available for users with system settings access.</p>
+    {% endif %}
+</div>

@@ -1,0 +1,14 @@
+<nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-black/20" aria-label="Payroll sections">
+    <a href="{{ employee_dash_url('staff-and-salaries') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if active_page == 'staff' %}is-active{% endif %}">
+        <i class="fas fa-users"></i> Staff &amp; salaries
+    </a>
+    <a href="{{ employee_dash_url('staff-and-salaries/salary-records') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if active_page == 'records' %}is-active{% endif %}">
+        <i class="fas fa-file-invoice-dollar"></i> Salary records
+    </a>
+    <a href="{{ employee_dash_url('staff-and-salaries/salary-audits') }}"
+       class="accounts-tab-link rounded-md px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition inline-flex items-center gap-1.5 {% if active_page == 'audits' %}is-active{% endif %}">
+        <i class="fas fa-history"></i> Salary audits
+    </a>
+</nav>

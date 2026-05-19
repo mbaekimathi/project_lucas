@@ -1,0 +1,59 @@
+{% set _par_nav = parent_nav_scope|default('all') %}
+
+{% if _par_nav == 'all' %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Overview</p>
+<a @click.prevent="comingSoonTitle = &quot;My Child's Academic Records&quot;; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Child's records</span>
+</a>
+{% endif %}
+
+{% if _par_nav in ('all', 'attendance') %}
+<p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Attendance</p>
+<a href="{{ parent_dash_url('attendance') }}"
+   class="sidebar-item {% if request.endpoint in ('parent_attendance_list', 'parent_student_attendance_analytics') or '/attendance' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Attendance</span>
+    {% if request.endpoint in ('parent_attendance_list', 'parent_student_attendance_analytics') or '/attendance' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _par_nav in ('all', 'fees') %}
+<p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Fees</p>
+<a href="{{ parent_dash_url('student-fees') }}"
+   class="sidebar-item {% if request.endpoint == 'parent_student_fees' or request.path.endswith('/student-fees') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Fees / payments</span>
+    {% if request.endpoint == 'parent_student_fees' or request.path.endswith('/student-fees') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _par_nav in ('all', 'exams') %}
+<p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Academics</p>
+<a href="{{ parent_dash_url('exam-progress') }}"
+   class="sidebar-item {% if request.endpoint in ('parent_exam_progress_list', 'parent_student_exam_progress') or '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exam results</span>
+    {% if request.endpoint in ('parent_exam_progress_list', 'parent_student_exam_progress') or '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _par_nav in ('all', 'library') %}
+<p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Library</p>
+<a href="{% if library_student_id %}{{ parent_dash_url('library/' ~ library_student_id) }}{% if selected_student_id %}?student_id={{ selected_student_id }}{% endif %}{% else %}{{ parent_dash_url('library') }}{% endif %}"
+   class="sidebar-item {% if request.endpoint in ('parent_library', 'parent_library_detail', 'parent_library_list') or '/library' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-book w-5"></i>
+    <span>Library</span>
+    {% if request.endpoint in ('parent_library', 'parent_library_detail', 'parent_library_list') or '/library' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _par_nav == 'all' %}
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
+<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+</a>
+{% endif %}

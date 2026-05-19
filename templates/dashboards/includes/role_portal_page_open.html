@@ -1,0 +1,6 @@
+{# Opens portal page shell. Set before include: role_hero_title (required), role_hero_subtitle, role_hero_eyebrow, role_hero_icon_class, role_page_extra_classes #}
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }} {{ role_page_extra_classes|default('') }}">
+{% set role_theme = portal_page_variant|default('default') %}
+{% if role_hero_title|default('') %}
+{% include 'dashboards/includes/role_hero.html' %}
+{% endif %}

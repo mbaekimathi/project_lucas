@@ -85,424 +85,27 @@
         <span>Logs / Audit Trail</span>
     </a>
 
-{% elif current_role == 'head of institution' %}
-    <!-- Head of Institution Links -->
-    <a href="{{ employee_dash_url('staff-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-tie w-5"></i>
-        <span>Staff Management</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-graduate w-5"></i>
-        <span>Student Management</span>
-    </a>
-    <a href="{{ employee_dash_url('classes-subjects') }}"
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chalkboard-teacher w-5"></i>
-        <span>Classes & Subjects</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Academic Calendar</span>
-    </a>
-    <a href="{{ employee_dash_url('timetable-management') }}" 
-       class="sidebar-item {% if 'timetable' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-table w-5"></i>
-        <span>Timetable Management</span>
-    </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}"
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-check w-5"></i>
-        <span>Exams & Results</span>
-    </a>
-    <a href="{{ employee_dash_url('finance-overview') }}" 
-       class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-money-bill-wave w-5"></i>
-        <span>Finance Overview</span>
-    </a>
-    <a href="{{ employee_dash_url('communication') }}"
-       class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-broadcast-tower w-5"></i>
-        <span>Communication</span>
-    </a>
-    <a href="{{ employee_dash_url('tpad') }}"
-       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-tasks w-5"></i>
-        <span>TPAD</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bed w-5"></i>
-        <span>Hostel Overview</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Transport Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bus w-5"></i>
-        <span>Transport Overview</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Reports</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>{% elif current_role == 'deputy head of institution' %}
-    <!-- Deputy Head of Institution Links (same as Head of Institution) -->
-    <a href="{{ employee_dash_url('tpad') }}"
-       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-tasks w-5"></i>
-        <span>TPAD</span>
-    </a>
-    <a href="{{ employee_dash_url('staff-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-tie w-5"></i>
-        <span>Staff Management</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-graduate w-5"></i>
-        <span>Student Management</span>
-    </a>
-    <a href="{{ employee_dash_url('classes-subjects') }}"
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chalkboard-teacher w-5"></i>
-        <span>Classes & Subjects</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Academic Calendar</span>
-    </a>
-    <a href="{{ employee_dash_url('timetable-management') }}" 
-       class="sidebar-item {% if 'timetable' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-table w-5"></i>
-        <span>Timetable Management</span>
-    </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}"
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-check w-5"></i>
-        <span>Exams & Results</span>
-    </a>
-    <a href="{{ employee_dash_url('finance-overview') }}" 
-       class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-money-bill-wave w-5"></i>
-        <span>Finance Overview</span>
-    </a>
-    <a href="{{ employee_dash_url('communication') }}"
-       class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-broadcast-tower w-5"></i>
-        <span>Communication</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bed w-5"></i>
-        <span>Hostel Overview</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Transport Overview'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bus w-5"></i>
-        <span>Transport Overview</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Reports</span>
-    </a>
-    <a href="/technician/system-settings#academic-year"
-       class="sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Academic Year Settings</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>{% elif current_role == 'curriculum coordinator' %}
-    <!-- Curriculum Coordinator Links -->
-    <a href="{{ employee_dash_url('classes-subjects') }}" 
-       class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-book w-5"></i>
-        <span>Classes & Subjects</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-graduate w-5"></i>
-        <span>Student Academic</span>
-    </a>
-    <a href="{{ employee_dash_url('timetable-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'timetable_management' or request.path.endswith('/timetable-management') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Timetable Management</span>
-    </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}" 
-       class="sidebar-item {% if request.endpoint == 'exams_assessments' or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-list w-5"></i>
-        <span>Exams & Assessments</span>
-    </a>
-    <a href="{{ employee_dash_url('reports') }}"
-       class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') or request.path.endswith('/reports') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Reports</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Attendance</span>
-    </a>
-    <a href="{{ employee_dash_url('notifications') }}" 
-       class="sidebar-item {% if request.endpoint == 'notifications' or request.path.endswith('/notifications') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
-    <a href="{{ employee_staff_settings_url('curriculum coordinator') }}"
-       class="sidebar-item {% if request.endpoint == 'curriculum_timetable_settings' or '/curriculum-timetable-settings' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-sliders-h w-5"></i>
-        <span>{% if request.endpoint == 'dashboard_employee' %}Curriculum settings{% else %}Timetable settings{% endif %}</span>
-    </a>{% elif current_role in ('teachers', 'teacher') %}
-    <!-- Teacher Links -->
-    <a href="{{ employee_dash_url('my-classes') }}" 
-       class="sidebar-item {% if request.endpoint == 'teacher_my_classes' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>My Classes</span>
-    </a>
-    <a href="{{ employee_dash_url('class-books') }}"
-       class="sidebar-item {% if request.endpoint in ('teacher_class_books', 'teacher_class_books_level') or '/class-books' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-book-open w-5"></i>
-        <span>Class books</span>
-    </a>
-    <a href="{{ employee_dash_url('tpad') }}"
-       class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-check w-5"></i>
-        <span>TPAD</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management/student-attendance') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Attendance</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Assignments / Homework'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-tasks w-5"></i>
-        <span>Assignments</span>
-    </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}" 
-       class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-list w-5"></i>
-        <span>Exams &amp; Assessments</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management/students-progress') }}"
-       class="sidebar-item {% if request.endpoint in ('students_progress', 'student_progress_detail') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-chart-line w-5"></i>
-        <span>Students Progress</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
+{% elif current_role in ('head of institution', 'deputy head of institution') %}
+    {% include 'dashboards/includes/institution_leadership_sidebar.html' %}
+{% elif current_role == 'curriculum coordinator' %}
+    {% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
+{% elif current_role in ('teachers', 'teacher') %}
+    {% include 'dashboards/includes/teacher_sidebar.html' %}
 
 {% elif current_role == 'accountant' %}
-    <!-- Accountant Links -->
-    <a href="{{ employee_dash_url('student-fees') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-money-bill-wave w-5"></i>
-        <span>Student Fees</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Payments / Invoices'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-invoice-dollar w-5"></i>
-        <span>Payments / Invoices</span>
-    </a>
-    <a href="{{ employee_dash_url('staff-and-salaries') }}" 
-       class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}"
-       {% if request.endpoint == 'staff_and_salaries' %}active{% endif %}">
-        <i class="fas fa-wallet w-5"></i>
-        <span>Staff and Salaries</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Budget & Expenses'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-calculator w-5"></i>
-        <span>Budget & Expenses</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Reports</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
+    {% include 'dashboards/includes/accountant_sidebar.html' %}
+
+{% elif current_role == 'store manager' %}
+    {% include 'dashboards/includes/store_manager_sidebar.html' %}
+
+{% elif current_role == 'librarian' %}
+    {% include 'dashboards/includes/librarian_sidebar.html' %}
 
 {% elif current_role == 'secretary' %}
-    <!-- Secretary — front office & records (no finance module by default) -->
-    <a href="{{ employee_dash_url('staff-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'staff_management' or request.path == '/staff-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-tie w-5"></i>
-        <span>Staff Management</span>
-    </a>
-    <a href="{{ employee_dash_url('student-management') }}" 
-       class="sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-graduate w-5"></i>
-        <span>Student Management</span>
-    </a>
-    <a href="{{ employee_dash_url('exams-assessments') }}"
-       class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or '/exams-assessments' in request.path %}sidebar-item-active{% endif %}">
-        <i class="fas fa-clipboard-list w-5"></i>
-        <span>Exams &amp; Assessments</span>
-    </a>
-    <a href="{{ employee_dash_url('communication') }}" 
-       class="sidebar-item {% if request.endpoint == 'communication' or request.path.endswith('/communication') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-comments w-5"></i>
-        <span>Communication</span>
-    </a>
-    <a href="{{ employee_dash_url('reports') }}"
-       class="sidebar-item {% if request.endpoint in ('reports', 'reports_class_detail') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Reports</span>
-    </a>
-    <a href="{{ employee_dash_url('system-settings') }}#academic-year"
-       class="sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Academic Year Settings</span>
-    </a>
-{% elif current_role == 'librarian' %}
-    <!-- Librarian Links -->
-    <a href="{{ employee_dash_url('books-inventory') }}"
-       class="sidebar-item {% if request.endpoint == 'books_inventory' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-book w-5"></i>
-        <span>Books Inventory</span>
-    </a>
-    <a href="{{ employee_dash_url('books-inventory/stock') }}"
-       class="sidebar-item {% if request.endpoint == 'books_inventory_stock' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-boxes-stacked w-5"></i>
-        <span>Book Inventory Stock</span>
-    </a>
-    <a href="{{ employee_dash_url('issue-return-records') }}"
-       class="sidebar-item {% if request.endpoint in ('librarian_issue_return_records', 'librarian_issue_return_records_level') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-exchange-alt w-5"></i>
-        <span>Issue / Return</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Overdue Items'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-exclamation-triangle w-5"></i>
-        <span>Overdue Items</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Library Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Library Reports</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
-
-{% elif current_role == 'warden' %}
-    <!-- Warden Links -->
-    <a @click.prevent="comingSoonTitle = 'Hostel Rooms & Students'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bed w-5"></i>
-        <span>Rooms & Students</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Attendance & Roll Call'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Attendance & Roll Call</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Maintenance Requests'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-tools w-5"></i>
-        <span>Maintenance</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Hostel Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Hostel Reports</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
-
-{% elif current_role == 'transport manager' %}
-    <!-- Transport Manager Links -->
-    <a @click.prevent="comingSoonTitle = 'Vehicles & Routes'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bus w-5"></i>
-        <span>Vehicles & Routes</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Student Transport Assignments'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-user-friends w-5"></i>
-        <span>Transport Assignments</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Transport Attendance'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-check-circle w-5"></i>
-        <span>Transport Attendance</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Transport Reports'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-file-alt w-5"></i>
-        <span>Transport Reports</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-bell w-5"></i>
-        <span>Notifications</span>
-    </a>
+    {% include 'dashboards/includes/secretary_sidebar.html' %}
 
 {% elif current_role == 'technician' %}
-    <!-- Technician Links -->
-    <a href="{{ employee_dash_url('users-roles') }}" 
-       class="sidebar-item {% if request.endpoint == 'users_roles' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
-        <i class="fas fa-users-cog w-5"></i>
-        <span>Users & Roles</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Security'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-shield-alt w-5"></i>
-        <span>Security</span>
-    </a>
-    <a href="{{ employee_dash_url('integration-settings') }}" 
-       class="sidebar-item {% if request.endpoint == 'integration_settings' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
-        <i class="fas fa-plug w-5"></i>
-        <span>Integration Settings</span>
-    </a>
-    <a href="{{ employee_dash_url('database') }}" 
-       class="sidebar-item {% if request.endpoint == 'database_management' %}bg-gray-100 dark:bg-gray-700 font-semibold{% endif %}">
-        <i class="fas fa-database w-5"></i>
-        <span>Database</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Audit Logs'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-history w-5"></i>
-        <span>Audit Logs</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'System Modules'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-puzzle-piece w-5"></i>
-        <span>System Modules</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Diagnostics'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-stethoscope w-5"></i>
-        <span>Diagnostics</span>
-    </a>
-    <a @click.prevent="comingSoonTitle = 'Support'; comingSoonModalOpen = true" 
-       class="sidebar-item">
-        <i class="fas fa-life-ring w-5"></i>
-        <span>Support</span>
-    </a>
+    {% include 'dashboards/includes/technician_sidebar.html' %}
 
 {% else %}
     <p class="text-gray-400 text-sm px-4 py-2">Menu items will be added here</p>
@@ -510,10 +113,17 @@
 {% endblock %}
 
 {% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Employee Dashboard' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-users' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
 {% set current_role = dashboard_content_role %}
 {% if current_role in ['teacher', 'teachers'] %}
 {% set ta = teacher_dashboard_analytics|default({}) %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-emerald-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-emerald-950/20">
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--teacher">
     <div class="max-w-7xl mx-auto space-y-6">
         <div class="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white p-5 sm:p-6 shadow-lg">
             <p class="text-xs font-bold uppercase tracking-widest text-emerald-200/90">Teacher dashboard</p>
@@ -671,7 +281,7 @@
 </div>
 {% elif current_role == 'curriculum coordinator' %}
 {% set cd = coordinator_dashboard|default({}) %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 dark:from-gray-900 dark:via-gray-900 dark:to-indigo-950/25">
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--coordinator">
     <div class="max-w-7xl mx-auto space-y-6">
         <div class="rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-5 sm:p-6 shadow-lg">
             <p class="text-xs font-bold uppercase tracking-widest text-indigo-200/90">Curriculum coordinator</p>
@@ -782,8 +392,51 @@
     </div>
 </div>
 <script type="application/json" id="cc-coordinator-chart-data">{{ {'level': cd.level_chart|default({}), 'subject': cd.subject_chart|default({}), 'attendance': cd.attendance_by_level_chart|default({})}|tojson }}</script>
+{% elif current_role == 'accountant' %}
+<div class="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen max-w-[100vw]">
+{% include 'dashboards/includes/payroll_accounts_styles.html' %}
+{% include 'dashboards/includes/accountant_dashboard_analytics.html' %}
+</div>
+{% elif current_role in ('head of institution', 'deputy head of institution') %}
+{% set _lead_page = 'deputy' if current_role == 'deputy head of institution' else 'leadership' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--{{ _lead_page }}">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% include 'dashboards/includes/institution_leadership_home.html' %}
+    </div>
+</div>
+{% elif current_role == 'secretary' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--secretary">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% include 'dashboards/includes/secretary_role_home.html' %}
+    </div>
+</div>
+{% elif current_role == 'store manager' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--store">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% include 'dashboards/includes/store_role_home.html' %}
+    </div>
+</div>
+{% elif current_role == 'librarian' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--librarian">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% include 'dashboards/includes/librarian_role_home.html' %}
+    </div>
+</div>
+{% elif current_role == 'technician' %}
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--technician">
+    <div class="max-w-7xl mx-auto space-y-6">
+        {% include 'dashboards/includes/technician_role_home.html' %}
+    </div>
+</div>
 {% else %}
-<div class="w-full min-h-[8rem]" aria-label="Dashboard"></div>
+<div class="p-4 sm:p-6 lg:p-8 role-page role-page--default">
+    <div class="max-w-7xl mx-auto">
+        <div class="role-panel p-8 text-center text-slate-500 dark:text-slate-400" aria-label="Dashboard">
+            <i class="fas fa-gauge-high text-3xl mb-3 opacity-40" aria-hidden="true"></i>
+            <p class="text-sm">Use the sidebar to open your modules.</p>
+        </div>
+    </div>
+</div>
 {% endif %}
 {% endblock %}
 

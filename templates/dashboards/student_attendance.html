@@ -2,6 +2,9 @@
 
 {% block title %}{% if is_parent_view|default(false) %}Attendance (read-only){% else %}Student Attendance{% endif %} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
 {% if is_parent_view|default(false) %}
 {% if session.get('role', '').lower() == 'technician' %}
@@ -32,11 +35,26 @@
     <span>Attendance</span>
 </a>
 {% elif not is_teacher_view|default(false) %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'students' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'students' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'teaching' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'students' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 <a href="{{ employee_dash_url('student-management') }}"
    class="sidebar-item">
     <i class="fas fa-user-graduate w-5"></i>
     <span>Student Management</span>
 </a>
+{% endif %}
 {% endif %}
 {% if not is_parent_view|default(false) %}
 {% set user_role = session.get('role', '')|lower %}
@@ -52,7 +70,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
     {% if is_parent_view|default(false) and is_technician|default(false) and current_view_role|default('') == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">

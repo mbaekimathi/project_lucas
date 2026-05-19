@@ -16,6 +16,26 @@ from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
 from env_loader import load_project_env
+from portal_font_families import (
+    PORTAL_FONT_FAMILIES,
+    normalize_portal_font_family,
+    portal_font_css_stack,
+    portal_fonts_grouped,
+    portal_google_fonts_stylesheet_href,
+    portal_tailwind_font_family,
+)
+from school_data_backup import (
+    BACKUP_CATEGORIES,
+    DRIVE_BACKUP_SLICES,
+    build_organized_workbook,
+    build_slice_workbooks,
+    ensure_backup_drive_schema,
+    fetch_backup_history,
+    get_academic_calendar_for_backup,
+    get_current_year_term_for_backup,
+    record_backup_history,
+)
+import google_drive_backup as gdrive_backup
 try:
     from dateutil.relativedelta import relativedelta
 except ImportError:
@@ -44,11 +64,18 @@ except ImportError:
 
 # Load .env (hosted) then .env.local (local dev overrides) — see env.local.example
 load_project_env()
+gdrive_backup.configure_oauth_transport()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 # Used when the user checks "Remember me" on login (browser session cookie otherwise).
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+
+@app.template_global()
+def portal_font_stack(font_name):
+    """CSS font-family stack for templates (theme preview, etc.)."""
+    return portal_font_css_stack(font_name)
 
 
 @app.template_global()
@@ -72,7 +99,7 @@ def student_dash_url(subpath=''):
 # Employee sub-roles stored in employees.role — must match MySQL ENUM, role switch, and UI
 EMPLOYEE_SUB_ROLES = (
     'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-    'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician',
+    'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician',
 )
 EMPLOYEE_SUB_ROLES_SET = frozenset(EMPLOYEE_SUB_ROLES)
 
@@ -98,6 +125,8 @@ def normalize_allocated_role(role: str) -> str:
         r = 'deputy head of institution'
     if r == 'academic coordinator':
         r = 'curriculum coordinator'
+    if r in ('store keeper', 'stores manager'):
+        r = 'store manager'
     return r if r in EMPLOYEE_SUB_ROLES_SET else ''
 
 
@@ -263,6 +292,32 @@ def role_to_slug(role: str) -> str:
     if not role:
         return 'employee'
     return role.strip().lower().replace(' ', '-')
+
+
+def slug_to_role(slug: str) -> str:
+    """Map URL role slug (e.g. head-of-institution) back to canonical role name."""
+    if not slug:
+        return ''
+    s = slug.strip().lower()
+    for r in EMPLOYEE_SUB_ROLES:
+        if role_to_slug(r) == s:
+            return r
+    if s == 'parent':
+        return 'parent'
+    if s == 'student':
+        return 'student'
+    return ''
+
+
+@app.template_global()
+def portal_role_from_request_path() -> str:
+    """Role for portal theme from /<role-slug>/… URL when session role differs."""
+    if not has_request_context():
+        return ''
+    parts = (request.path or '').strip('/').split('/')
+    if not parts:
+        return ''
+    return slug_to_role(parts[0])
 
 
 # Slugs allowed in /dashboard/<slug>/... before /dashboard/employee/... rewrite
@@ -485,8 +540,11 @@ mail = Mail(app)
 # File upload configuration
 UPLOAD_FOLDER = 'static/uploads/profiles'
 PAYMENT_PROOF_FOLDER = 'static/uploads/payment_proofs'
+COMMUNICATION_ATTACHMENT_FOLDER = 'static/uploads/communication'
+STORE_INVENTORY_FOLDER = 'static/uploads/store_inventory'
 BACKUP_FOLDER = 'static/uploads/backups'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_COMMUNICATION_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'}
 
 # Create backup folder if it doesn't exist
 os.makedirs(BACKUP_FOLDER, exist_ok=True)
@@ -498,6 +556,14 @@ app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max file size
 # Create upload directories if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(PAYMENT_PROOF_FOLDER, exist_ok=True)
+os.makedirs(COMMUNICATION_ATTACHMENT_FOLDER, exist_ok=True)
+os.makedirs(STORE_INVENTORY_FOLDER, exist_ok=True)
+
+def allowed_communication_attachment(filename):
+    """Attachments for communication centre broadcasts."""
+    if not filename or '.' not in filename:
+        return False
+    return filename.rsplit('.', 1)[1].lower() in ALLOWED_COMMUNICATION_EXTENSIONS
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -591,7 +657,7 @@ def get_school_settings():
                             'primary_color': (result.get('primary_color') or '#800020').strip(),
                             'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
                             'accent_color': (result.get('accent_color') or '#5C0014').strip(),
-                            'font_family': (result.get('font_family') or 'Inter').strip(),
+                            'font_family': normalize_portal_font_family(result.get('font_family')),
                             'maintenance_mode': bool(result.get('maintenance_mode')),
                             'allow_registration': bool(result.get('allow_registration'))
                             if result.get('allow_registration') is not None
@@ -717,12 +783,32 @@ def inject_school_settings():
         finally:
             if connection:
                 connection.close()
+
+    user_role = (session.get('role') or '').lower().strip()
+    viewing_as_employee = (session.get('viewing_as_employee_role') or '').lower().strip()
+    is_technician = user_role == 'technician'
+    dashboard_content_role = normalize_employee_dashboard_content_role(
+        user_role, is_technician, viewing_as_employee
+    )
+    if has_request_context():
+        path_role = portal_role_from_request_path()
+        if path_role:
+            dashboard_content_role = path_role
     
+    settings = get_school_settings()
+    active_font = settings.get('font_family', 'Inter')
     return {
-        'school_settings': get_school_settings(),
+        'school_settings': settings,
         'academic_levels': academic_levels,
         'employees_list': employees_list,
-        'viewing_as_employee_info': viewing_as_employee_info
+        'viewing_as_employee_info': viewing_as_employee_info,
+        'dashboard_content_role': dashboard_content_role,
+        'portal_font_families': PORTAL_FONT_FAMILIES,
+        'portal_fonts_grouped': portal_fonts_grouped(),
+        'portal_font_css_stack': portal_font_css_stack(active_font),
+        'portal_tailwind_font_family': portal_tailwind_font_family(active_font),
+        'portal_google_fonts_href': portal_google_fonts_stylesheet_href([active_font]),
+        'portal_google_fonts_all_href': portal_google_fonts_stylesheet_href(),
     }
 
 # Function to detect if running on hosted server
@@ -4751,7 +4837,7 @@ def init_db():
                     id_number VARCHAR(50) NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     profile_picture VARCHAR(500),
-                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician') DEFAULT 'employee',
+                    role ENUM('employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician') DEFAULT 'employee',
                     status ENUM('pending approval', 'active', 'suspended', 'fired', 'retired') DEFAULT 'pending approval',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -4765,7 +4851,7 @@ def init_db():
                 cursor.execute("""
                     ALTER TABLE employees MODIFY COLUMN role ENUM(
                         'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -4779,7 +4865,7 @@ def init_db():
                         'principal', 'head of institution',
                         'deputy principal', 'deputy head of institution',
                         'academic coordinator', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -4794,7 +4880,7 @@ def init_db():
                 cursor.execute("""
                     ALTER TABLE employees MODIFY COLUMN role ENUM(
                         'employee', 'super admin', 'head of institution', 'deputy head of institution', 'curriculum coordinator',
-                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'technician'
+                        'teachers', 'accountant', 'secretary', 'librarian', 'warden', 'transport manager', 'store manager', 'technician'
                     ) DEFAULT 'employee'
                 """)
             except Exception:
@@ -8131,7 +8217,7 @@ def check_staff_number():
         allowed_roles=[
             'employee', 'super admin', 'head of institution', 'deputy head of institution',
             'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-            'warden', 'transport manager', 'technician',
+            'warden', 'transport manager', 'store manager', 'technician',
         ],
     )
     if not has_access:
@@ -11015,6 +11101,19 @@ def dashboard_employee():
                     print(traceback.format_exc())
                 finally:
                     teacher_conn.close()
+
+    accountant_dashboard = _accountant_dashboard_analytics_empty()
+    if dashboard_content_role == 'accountant':
+        acc_conn = get_db_connection()
+        if acc_conn:
+            try:
+                with acc_conn.cursor() as cursor:
+                    accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
+            except Exception as acc_err:
+                print(f"Accountant dashboard analytics load: {acc_err}")
+                accountant_dashboard = _accountant_dashboard_analytics_empty()
+            finally:
+                acc_conn.close()
     
     return render_template('dashboards/dashboard_employee.html', 
                          role=session.get('role', 'employee'),
@@ -11033,7 +11132,8 @@ def dashboard_employee():
                          teacher_exam_timetable=teacher_exam_timetable,
                          teacher_dashboard_analytics=teacher_dashboard_analytics,
                          coordinator_dashboard=coordinator_dashboard,
-                         coordinator_dashboard_name=coordinator_dashboard_name)
+                         coordinator_dashboard_name=coordinator_dashboard_name,
+                         accountant_dashboard=accountant_dashboard)
 
 
 @app.route('/dashboard/employee/tpad')
@@ -16138,12 +16238,10 @@ def staff_and_salaries():
     # Fetch all data types
     connection = get_db_connection()
     employees = []
+    active_employees_for_register = []
     salary_records_list = []
     audits = []
-    active_count = 0
-    pending_count = 0
-    suspended_count = 0
-    roles_count = 0
+    payment_analytics = _fetch_payroll_payment_analytics([])
     roles_set = set()
     filter_info = {'type': filter_type, 'month': filter_month, 'year': filter_year}
     
@@ -16186,20 +16284,20 @@ def staff_and_salaries():
                     emp_dict = dict(emp)
                     emp_dict['salary_edited'] = salary_edited
                     employees.append(emp_dict)
-                    
-                    # Count by status
-                    status = emp.get('status', '')
-                    if status == 'active':
-                        active_count += 1
-                    elif status == 'pending approval':
-                        pending_count += 1
-                    elif status == 'suspended':
-                        suspended_count += 1
-                    
-                    # Collect unique roles
                     roles_set.add(emp.get('role', ''))
-                
-                roles_count = len(roles_set)
+
+                # Active employees eligible for new salary registration (no active salary yet)
+                cursor.execute("""
+                    SELECT e.id, e.employee_id, e.full_name, e.role
+                    FROM employees e
+                    WHERE e.status = 'active'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM employee_salaries es
+                        WHERE es.employee_id = e.id AND es.is_active = TRUE
+                    )
+                    ORDER BY e.full_name ASC
+                """)
+                active_employees_for_register = cursor.fetchall() or []
                 
                 # 2. Fetch salary records with payment information
                 from datetime import datetime, timedelta
@@ -16333,6 +16431,8 @@ def staff_and_salaries():
                     # Table might not exist yet
                     audits = []
                     print(f"Salary audits table might not exist: {e}")
+
+                payment_analytics = _fetch_payroll_payment_analytics(salary_records_list, cursor)
                     
         except Exception as e:
             print(f"Error fetching data: {e}")
@@ -16348,12 +16448,10 @@ def staff_and_salaries():
     
     return render_template('dashboards/staff_and_salaries.html', 
                          employees=employees,
+                         active_employees_for_register=active_employees_for_register,
                          salary_records=salary_records_list,
                          audits=audits,
-                         active_count=active_count,
-                         pending_count=pending_count,
-                         suspended_count=suspended_count,
-                         roles_count=roles_count,
+                         payment_analytics=payment_analytics,
                          filter_info=filter_info)
 
 def calculate_period_dates(effective_date, payment_period, reference_date):
@@ -16432,6 +16530,199 @@ def calculate_period_dates(effective_date, payment_period, reference_date):
     
     return period_start, period_end, period_num
 
+
+def _accountant_dashboard_analytics_empty():
+    rev = {
+        'total_count': 0, 'total_amount': 0.0, 'total_display': '0.00',
+        'fees_count': 0, 'fees_amount': 0.0, 'fees_display': '0.00',
+        'government_count': 0, 'government_amount': 0.0, 'government_display': '0.00',
+        'private_count': 0, 'private_amount': 0.0, 'private_display': '0.00',
+        'manual_count': 0, 'manual_amount': 0.0, 'manual_display': '0.00',
+    }
+    payroll = {
+        'payroll_due_display': '0.00', 'paid_current_period_display': '0.00',
+        'outstanding_display': '0.00', 'paid_this_month_display': '0.00',
+        'pending_staff_count': 0, 'total_disbursed_display': '0.00',
+        'active_payroll_count': 0,
+    }
+    payments = {
+        'stock_in_outstanding_display': '0.00', 'stock_in_paid_display': '0.00',
+        'misc_total_display': '0.00', 'stock_in_invoiced_display': '0.00',
+        'paid_this_month_display': '0.00', 'total_disbursed_display': '0.00',
+        'outstanding_count': 0, 'stock_in_count': 0,
+    }
+    return {
+        'revenue': rev,
+        'payroll': payroll,
+        'payments': payments,
+        'total_income': 0.0,
+        'total_income_display': '0.00',
+        'total_outflow': 0.0,
+        'total_outflow_display': '0.00',
+        'net_position': 0.0,
+        'net_position_display': '0.00',
+        'payroll_outflow_display': '0.00',
+        'payables_outflow_display': '0.00',
+    }
+
+
+def _fetch_active_salary_records_with_balances(cursor):
+    """Active salary rows with period balances (for dashboard payroll analytics)."""
+    from datetime import datetime, timedelta
+
+    salary_records_list = []
+    try:
+        cursor.execute("""
+            SELECT es.id AS salary_id, es.employee_id, es.net_salary, es.effective_date,
+                   es.payment_period, e.full_name, e.phone, e.employee_id AS emp_code
+            FROM employee_salaries es
+            INNER JOIN employees e ON es.employee_id = e.id
+            WHERE es.is_active = TRUE
+            ORDER BY e.full_name ASC
+        """)
+        records = cursor.fetchall() or []
+        current_date = datetime.now().date()
+        for record in records:
+            if isinstance(record, dict):
+                salary_id = record.get('salary_id')
+                employee_id = record.get('employee_id')
+                net_salary = float(record.get('net_salary') or 0)
+                effective_date = record.get('effective_date')
+                payment_period = record.get('payment_period') or 'Monthly'
+            else:
+                salary_id = record[0]
+                employee_id = record[1]
+                net_salary = float(record[2] or 0)
+                effective_date = record[3]
+                payment_period = record[4] or 'Monthly'
+            if isinstance(effective_date, str):
+                effective_date = datetime.strptime(effective_date, '%Y-%m-%d').date()
+            elif hasattr(effective_date, 'date'):
+                effective_date = effective_date.date()
+            period_start, period_end, current_period_num = calculate_period_dates(
+                effective_date, payment_period, current_date,
+            )
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                FROM employee_salary_payments
+                WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                """,
+                (salary_id, period_start, period_end),
+            )
+            current_period_paid = cursor.fetchone()
+            total_paid_current = float(
+                (current_period_paid.get('total_paid') if isinstance(current_period_paid, dict)
+                 else current_period_paid[0]) or 0
+            )
+            carry_forward = 0.0
+            if current_period_num > 1:
+                prev_period_start, prev_period_end, _ = calculate_period_dates(
+                    effective_date, payment_period, period_start - timedelta(days=1),
+                )
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                    FROM employee_salary_payments
+                    WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                    """,
+                    (salary_id, prev_period_start, prev_period_end),
+                )
+                prev_period_paid = cursor.fetchone()
+                total_paid_prev = float(
+                    (prev_period_paid.get('total_paid') if isinstance(prev_period_paid, dict)
+                     else prev_period_paid[0]) or 0
+                )
+                carry_forward = max(0.0, net_salary - total_paid_prev)
+            amount_to_be_paid = net_salary + carry_forward
+            balance = amount_to_be_paid - total_paid_current
+            salary_records_list.append({
+                'salary_id': salary_id,
+                'employee_id': employee_id,
+                'amount_to_be_paid': amount_to_be_paid,
+                'total_paid': total_paid_current,
+                'balance': balance,
+            })
+    except Exception as e:
+        print(f"_fetch_active_salary_records_with_balances: {e}")
+    return salary_records_list
+
+
+def _fetch_accountant_dashboard_analytics(cursor):
+    """Combined analytics for accountant home dashboard."""
+    revenue = _fetch_accountant_revenue_summary(cursor)
+    payments = _fetch_accountant_payment_analytics(cursor)
+    salary_records = _fetch_active_salary_records_with_balances(cursor)
+    payroll = _fetch_payroll_payment_analytics(salary_records, cursor)
+
+    total_income = float(revenue.get('total_amount') or 0)
+    payroll_out = float(payroll.get('total_disbursed') or 0)
+    payables_out = float(payments.get('total_disbursed') or 0)
+    total_outflow = payroll_out + payables_out
+    net_position = total_income - total_outflow
+
+    return {
+        'revenue': revenue,
+        'payroll': payroll,
+        'payments': payments,
+        'total_income': total_income,
+        'total_income_display': revenue.get('total_display', '0.00'),
+        'total_outflow': total_outflow,
+        'total_outflow_display': _format_kes_amount(total_outflow),
+        'net_position': net_position,
+        'net_position_display': _format_kes_amount(net_position),
+        'payroll_outflow_display': payroll.get('total_disbursed_display', '0.00'),
+        'payables_outflow_display': payments.get('total_disbursed_display', '0.00'),
+    }
+
+
+def _accountant_visual_chart_payload(analytics):
+    """Chart.js-ready series from combined accountant dashboard analytics."""
+    rev = analytics.get('revenue') or {}
+    pr = analytics.get('payroll') or {}
+    inv = analytics.get('payments') or {}
+    fees = float(rev.get('fees_amount') or 0)
+    gov = float(rev.get('government_amount') or 0)
+    priv = float(rev.get('private_amount') or 0)
+    total_income = float(analytics.get('total_income') or 0)
+    total_outflow = float(analytics.get('total_outflow') or 0)
+    payroll_out = float(pr.get('total_disbursed') or 0)
+    payables_out = float(inv.get('total_disbursed') or 0)
+    return {
+        'revenue_breakdown': {
+            'labels': ['Student fees', 'Government', 'Private'],
+            'amounts': [fees, gov, priv],
+        },
+        'income_vs_outflow': {
+            'labels': ['Total income', 'Total disbursed'],
+            'amounts': [total_income, total_outflow],
+        },
+        'outflow_split': {
+            'labels': ['Payroll disbursed', 'Payables disbursed'],
+            'amounts': [payroll_out, payables_out],
+        },
+        'payroll': {
+            'labels': ['Payroll due', 'Paid (period)', 'Outstanding', 'Paid this month'],
+            'amounts': [
+                float(pr.get('payroll_due') or 0),
+                float(pr.get('paid_current_period') or 0),
+                float(pr.get('outstanding') or 0),
+                float(pr.get('paid_this_month') or 0),
+            ],
+        },
+        'payables': {
+            'labels': ['Outstanding', 'Stock paid', 'Other', 'Invoiced'],
+            'amounts': [
+                float(inv.get('stock_in_outstanding') or 0),
+                float(inv.get('stock_in_paid') or 0),
+                float(inv.get('misc_total') or 0),
+                float(inv.get('stock_in_invoiced') or 0),
+            ],
+        },
+        'net_position': float(analytics.get('net_position') or 0),
+    }
+
+
 @app.route('/dashboard/employee/staff-and-salaries/salary-records')
 @login_required
 def salary_records():
@@ -16457,6 +16748,7 @@ def salary_records():
     # Fetch salary records with employee information
     connection = get_db_connection()
     salary_records_list = []
+    payment_analytics = _fetch_payroll_payment_analytics([])
     filter_info = {'type': filter_type, 'month': filter_month, 'year': filter_year}
     
     if connection:
@@ -16602,6 +16894,8 @@ def salary_records():
                         'current_period_start': period_start,
                         'current_period_end': period_end
                     })
+
+                payment_analytics = _fetch_payroll_payment_analytics(salary_records_list, cursor)
         
         except Exception as e:
             print(f"Error fetching salary records: {e}")
@@ -16617,6 +16911,7 @@ def salary_records():
     
     return render_template('dashboards/salary_records.html', 
                          salary_records=salary_records_list,
+                         payment_analytics=payment_analytics,
                          filter_info=filter_info)
 
 @app.route('/dashboard/employee/staff-and-salaries/register-salary', methods=['POST'])
@@ -16632,7 +16927,10 @@ def register_salary():
     is_super_admin = user_role == 'super admin' or viewing_as_role == 'super admin'
     is_technician = user_role == 'technician'
     
-    if not (is_accountant or is_principal or is_super_admin or is_technician):
+    has_salary_permission = check_permission_or_role(
+        'manage_salaries', ['accountant', 'head of institution', 'super admin']
+    )
+    if not (is_technician or has_salary_permission):
         return jsonify({'success': False, 'message': 'You do not have permission to perform this action.'}), 403
     
     try:
@@ -16644,6 +16942,9 @@ def register_salary():
         
         if not data.get('effective_date'):
             return jsonify({'success': False, 'message': 'Effective date is required.'}), 400
+
+        if not data.get('payment_period'):
+            return jsonify({'success': False, 'message': 'Payment period is required.'}), 400
         
         if not data.get('basic_salary') or float(data.get('basic_salary', 0)) <= 0:
             return jsonify({'success': False, 'message': 'Basic salary is required and must be greater than 0.'}), 400
@@ -16655,12 +16956,21 @@ def register_salary():
         
         try:
             with connection.cursor() as cursor:
-                # Check if employee exists
-                cursor.execute("SELECT id, employee_id, full_name FROM employees WHERE id = %s", (data.get('employee_id'),))
+                # Check if employee exists and is active
+                cursor.execute(
+                    "SELECT id, employee_id, full_name, status FROM employees WHERE id = %s",
+                    (data.get('employee_id'),)
+                )
                 employee = cursor.fetchone()
                 
                 if not employee:
                     return jsonify({'success': False, 'message': 'Employee not found.'}), 404
+
+                if (employee.get('status') or '').lower() != 'active':
+                    return jsonify({
+                        'success': False,
+                        'message': 'Salary can only be registered for active employees.'
+                    }), 400
                 
                 # Create salaries table if it doesn't exist
                 cursor.execute("""
@@ -16701,20 +17011,17 @@ def register_salary():
                     # Column might already exist, ignore the error
                     pass
                 
-                # Check if there's an active salary for this employee
+                # Block duplicate registration — use update-salary to revise existing payroll
                 cursor.execute("""
                     SELECT id FROM employee_salaries 
                     WHERE employee_id = %s AND is_active = TRUE
                 """, (data.get('employee_id'),))
                 existing_salary = cursor.fetchone()
-                
-                # If there's an existing active salary, deactivate it
                 if existing_salary:
-                    cursor.execute("""
-                        UPDATE employee_salaries 
-                        SET is_active = FALSE 
-                        WHERE employee_id = %s AND is_active = TRUE
-                    """, (data.get('employee_id'),))
+                    return jsonify({
+                        'success': False,
+                        'message': 'This employee already has an active salary. Use Edit Salary to update it.'
+                    }), 400
                 
                 # Insert new salary record
                 cursor.execute("""
@@ -17050,6 +17357,152 @@ def update_salary():
         traceback.print_exc()
         return jsonify({'success': False, 'message': 'An error occurred. Please try again.'}), 500
 
+@app.route('/dashboard/employee/staff-and-salaries/payment-analytics', methods=['GET'])
+@login_required
+def staff_salaries_payment_analytics():
+    """JSON payroll payment analytics for live dashboard refresh."""
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    has_salary_permission = check_permission_or_role(
+        'manage_salaries', ['accountant', 'head of institution', 'super admin']
+    )
+    if not (is_technician or has_salary_permission):
+        return jsonify({'ok': False, 'message': 'Permission denied'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection failed'}), 500
+
+    salary_records_list = []
+    try:
+        with connection.cursor() as cursor:
+            from datetime import datetime, timedelta
+
+            cursor.execute(
+                """
+                SELECT es.id AS salary_id, es.employee_id, es.net_salary, es.effective_date,
+                       es.payment_period, e.full_name, e.phone, e.employee_id AS emp_code
+                FROM employee_salaries es
+                INNER JOIN employees e ON es.employee_id = e.id
+                WHERE es.is_active = TRUE
+                ORDER BY e.full_name ASC
+                """
+            )
+            records = cursor.fetchall() or []
+            current_date = datetime.now().date()
+
+            for record in records:
+                salary_id = record.get('salary_id')
+                net_salary = float(record.get('net_salary', 0))
+                effective_date = record.get('effective_date')
+                payment_period = record.get('payment_period', 'Monthly')
+                if isinstance(effective_date, str):
+                    effective_date = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                elif hasattr(effective_date, 'date'):
+                    effective_date = effective_date.date()
+
+                period_start, period_end, current_period_num = calculate_period_dates(
+                    effective_date, payment_period, current_date
+                )
+
+                cursor.execute(
+                    """
+                    SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                    FROM employee_salary_payments
+                    WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                    """,
+                    (salary_id, period_start, period_end),
+                )
+                current_period_paid = cursor.fetchone()
+                total_paid_current = float(
+                    current_period_paid.get('total_paid', 0) if current_period_paid else 0
+                )
+
+                carry_forward = 0.0
+                if current_period_num > 1:
+                    prev_period_start, prev_period_end, _ = calculate_period_dates(
+                        effective_date, payment_period, period_start - timedelta(days=1)
+                    )
+                    cursor.execute(
+                        """
+                        SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                        FROM employee_salary_payments
+                        WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                        """,
+                        (salary_id, prev_period_start, prev_period_end),
+                    )
+                    prev_period_paid = cursor.fetchone()
+                    total_paid_prev = float(
+                        prev_period_paid.get('total_paid', 0) if prev_period_paid else 0
+                    )
+                    carry_forward = max(0, net_salary - total_paid_prev)
+
+                amount_to_be_paid = net_salary + carry_forward
+                salary_records_list.append({
+                    'amount_to_be_paid': amount_to_be_paid,
+                    'total_paid': total_paid_current,
+                    'balance': amount_to_be_paid - total_paid_current,
+                })
+
+            analytics = _fetch_payroll_payment_analytics(salary_records_list, cursor)
+            return jsonify({'ok': True, 'analytics': analytics})
+    except Exception as e:
+        print(f"staff_salaries_payment_analytics: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'message': 'Error loading analytics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/staff-and-salaries/get-active-employees-for-register')
+@login_required
+def get_active_employees_for_register():
+    """Active employees without an active salary record — for Register Salary modal."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    has_salary_permission = check_permission_or_role(
+        'manage_salaries', ['accountant', 'head of institution', 'super admin']
+    )
+    if not (is_technician or has_salary_permission):
+        return jsonify({'success': False, 'message': 'Permission denied'}), 403
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database connection failed'}), 500
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT e.id, e.employee_id, e.full_name, e.role
+                FROM employees e
+                WHERE e.status = 'active'
+                AND NOT EXISTS (
+                    SELECT 1 FROM employee_salaries es
+                    WHERE es.employee_id = e.id AND es.is_active = TRUE
+                )
+                ORDER BY e.full_name ASC
+            """)
+            rows = cursor.fetchall() or []
+            return jsonify({
+                'success': True,
+                'employees': [{
+                    'id': emp.get('id'),
+                    'employee_id': emp.get('employee_id'),
+                    'full_name': emp.get('full_name'),
+                    'role': emp.get('role', ''),
+                } for emp in rows]
+            })
+    except Exception as e:
+        print(f"Error fetching active employees for register: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Error fetching employees'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/staff-and-salaries/get-employees-with-salaries')
 @login_required
 def get_employees_with_salaries():
@@ -17333,18 +17786,77 @@ def record_salary_payment():
                 if amount_paid > balance:
                     return jsonify({'success': False, 'message': 'Payment amount exceeds the remaining balance'}), 400
                 
+                # Ensure payments table exists
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS employee_salary_payments (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        employee_id INT NOT NULL,
+                        salary_id INT NOT NULL,
+                        amount_paid DECIMAL(15, 2) NOT NULL DEFAULT 0.00,
+                        payment_date DATE NOT NULL,
+                        payment_method ENUM('Cash', 'Bank Transfer', 'Cheque', 'Mobile Money', 'Credit/Debit Card') DEFAULT 'Bank Transfer',
+                        reference_number VARCHAR(255),
+                        notes TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                        FOREIGN KEY (salary_id) REFERENCES employee_salaries(id) ON DELETE CASCADE,
+                        INDEX idx_employee_id (employee_id),
+                        INDEX idx_salary_id (salary_id),
+                        INDEX idx_payment_date (payment_date)
+                    )
+                """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS employee_salary_audits (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        salary_id INT NOT NULL,
+                        employee_id INT NOT NULL,
+                        field_name VARCHAR(100) NOT NULL,
+                        old_value TEXT,
+                        new_value TEXT,
+                        edited_by INT NOT NULL,
+                        edited_by_name VARCHAR(255),
+                        edited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (salary_id) REFERENCES employee_salaries(id) ON DELETE CASCADE,
+                        FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+                        FOREIGN KEY (edited_by) REFERENCES employees(id) ON DELETE CASCADE,
+                        INDEX idx_salary_id (salary_id),
+                        INDEX idx_employee_id (employee_id),
+                        INDEX idx_edited_at (edited_at)
+                    )
+                """)
+                _ensure_salary_audit_payment_column(cursor)
+
                 # Record payment
                 cursor.execute("""
                     INSERT INTO employee_salary_payments
                     (employee_id, salary_id, amount_paid, payment_date, payment_method, reference_number, notes)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """, (employee_id, salary_id, amount_paid, payment_date, payment_method, reference_number, notes))
-                
+                payment_id = cursor.lastrowid
+
+                editor_id, editor_name = _resolve_payroll_editor(cursor, session)
+                _log_salary_payment_audit(
+                    cursor,
+                    payment_id,
+                    salary_id,
+                    employee_id,
+                    amount_paid,
+                    payment_date,
+                    payment_method,
+                    reference_number,
+                    notes,
+                    balance,
+                    editor_id,
+                    editor_name,
+                )
+
                 connection.commit()
-                
+
                 return jsonify({
                     'success': True,
-                    'message': 'Payment recorded successfully'
+                    'message': 'Payment recorded successfully',
+                    'payment_id': payment_id,
                 })
         except Exception as e:
             connection.rollback()
@@ -17457,28 +17969,73 @@ def salary_audits():
     
     connection = get_db_connection()
     audits = []
+    payment_analytics = _fetch_payroll_payment_analytics([])
+    audit_summary = _fetch_salary_audit_summary([])
     
     if connection:
         try:
             with connection.cursor() as cursor:
+                _backfill_salary_payment_audits(cursor, session)
+                connection.commit()
+                audits = _fetch_salary_audit_trail(cursor)
+                audit_summary = _fetch_salary_audit_summary(audits)
+
+                # Payment analytics (active payroll totals)
+                salary_records_list = []
+                from datetime import datetime, timedelta
                 cursor.execute("""
-                    SELECT 
-                        esa.id,
-                        esa.salary_id,
-                        esa.employee_id,
-                        esa.field_name,
-                        esa.old_value,
-                        esa.new_value,
-                        esa.edited_by,
-                        esa.edited_by_name,
-                        esa.edited_at,
-                        e.full_name as employee_name,
-                        e.employee_id as employee_code
-                    FROM employee_salary_audits esa
-                    INNER JOIN employees e ON esa.employee_id = e.id
-                    ORDER BY esa.edited_at DESC
+                    SELECT es.id AS salary_id, es.employee_id, es.net_salary, es.effective_date,
+                           es.payment_period, e.full_name, e.phone, e.employee_id AS emp_code
+                    FROM employee_salaries es
+                    INNER JOIN employees e ON es.employee_id = e.id
+                    WHERE es.is_active = TRUE
+                    ORDER BY e.full_name ASC
                 """)
-                audits = cursor.fetchall()
+                records = cursor.fetchall() or []
+                current_date = datetime.now().date()
+                for record in records:
+                    salary_id = record.get('salary_id')
+                    net_salary = float(record.get('net_salary', 0))
+                    effective_date = record.get('effective_date')
+                    payment_period = record.get('payment_period', 'Monthly')
+                    if isinstance(effective_date, str):
+                        effective_date = datetime.strptime(effective_date, '%Y-%m-%d').date()
+                    elif hasattr(effective_date, 'date'):
+                        effective_date = effective_date.date()
+                    period_start, period_end, current_period_num = calculate_period_dates(
+                        effective_date, payment_period, current_date
+                    )
+                    cursor.execute("""
+                        SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                        FROM employee_salary_payments
+                        WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                    """, (salary_id, period_start, period_end))
+                    current_period_paid = cursor.fetchone()
+                    total_paid_current = float(
+                        current_period_paid.get('total_paid', 0) if current_period_paid else 0
+                    )
+                    carry_forward = 0.0
+                    if current_period_num > 1:
+                        prev_period_start, prev_period_end, _ = calculate_period_dates(
+                            effective_date, payment_period, period_start - timedelta(days=1)
+                        )
+                        cursor.execute("""
+                            SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+                            FROM employee_salary_payments
+                            WHERE salary_id = %s AND payment_date >= %s AND payment_date <= %s
+                        """, (salary_id, prev_period_start, prev_period_end))
+                        prev_period_paid = cursor.fetchone()
+                        total_paid_prev = float(
+                            prev_period_paid.get('total_paid', 0) if prev_period_paid else 0
+                        )
+                        carry_forward = max(0, net_salary - total_paid_prev)
+                    amount_to_be_paid = net_salary + carry_forward
+                    salary_records_list.append({
+                        'amount_to_be_paid': amount_to_be_paid,
+                        'total_paid': total_paid_current,
+                        'balance': amount_to_be_paid - total_paid_current,
+                    })
+                payment_analytics = _fetch_payroll_payment_analytics(salary_records_list, cursor)
         except Exception as e:
             print(f"Error fetching salary audits: {e}")
             import traceback
@@ -17491,7 +18048,10 @@ def salary_audits():
                 except:
                     pass
     
-    return render_template('dashboards/salary_audits.html', audits=audits)
+    return render_template('dashboards/salary_audits.html',
+                         audits=audits,
+                         payment_analytics=payment_analytics,
+                         audit_summary=audit_summary)
 
 @app.route('/staff-management')
 @login_required
@@ -17504,7 +18064,7 @@ def staff_management():
     has_access = check_permission_or_role('view_staff', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
@@ -17768,7 +18328,7 @@ def update_employee(employee_id):
     has_access = check_permission_or_role('edit_staff', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update employees.'}), 403
@@ -18023,7 +18583,7 @@ def student_management():
     has_access = check_permission_or_role('view_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
@@ -18098,7 +18658,7 @@ def get_student(student_id):
     has_access = check_permission_or_role('view_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to access this.'}), 403
@@ -18193,7 +18753,7 @@ def update_student(student_id):
     has_access = check_permission_or_role('edit_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to update students.'}), 403
@@ -18319,7 +18879,7 @@ def delete_student(student_id):
     has_access = check_permission_or_role('delete_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         return jsonify({'success': False, 'message': 'You do not have permission to delete students.'}), 403
@@ -18360,7 +18920,7 @@ def approve_student(student_id):
     has_access = check_permission_or_role('edit_students', 
                                          allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
                                                        'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'technician'])
+                                                       'warden', 'transport manager', 'store manager', 'technician'])
     
     if not has_access:
         flash('You do not have permission to approve students.', 'error')
@@ -19311,7 +19871,7 @@ def student_attendance():
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -20766,7 +21326,7 @@ def students_progress():
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -20781,7 +21341,7 @@ def student_progress_detail(student_id):
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
-                      'warden', 'transport manager', 'technician'])
+                      'warden', 'transport manager', 'store manager', 'technician'])
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
@@ -22016,7 +22576,7 @@ def system_settings():
                             'primary_color': (result.get('primary_color') or '#800020').strip(),
                             'secondary_color': (result.get('secondary_color') or '#A00030').strip(),
                             'accent_color': (result.get('accent_color') or '#5C0014').strip(),
-                            'font_family': (result.get('font_family') or 'Inter').strip(),
+                            'font_family': normalize_portal_font_family(result.get('font_family')),
                         }
                         theme_settings = {k: school_data[k] for k in ('primary_color', 'secondary_color', 'accent_color', 'font_family')}
                     else:
@@ -27171,6 +27731,1715 @@ def _library_subjects_by_academic_category(cursor):
     return out
 
 
+STORE_ITEM_MEASURES = (
+    'PIECE', 'PACK', 'BOX', 'BOTTLE', 'BAG', 'ROLL', 'SET', 'DOZEN',
+    'KILOGRAM', 'GRAM', 'LITRE', 'MILLILITRE', 'METRE', 'CENTIMETRE',
+)
+
+STORE_STOCK_OUT_PURPOSES = (
+    'CLASSROOM USE',
+    'DEPARTMENT / OFFICE USE',
+    'KITCHEN / CATERING',
+    'MAINTENANCE / REPAIRS',
+    'SPORTS / EVENTS',
+    'STUDENT ISSUE',
+    'DAMAGED / EXPIRED',
+    'INTERNAL TRANSFER',
+    'OTHER',
+)
+
+_store_inventory_schema_ensuring = False
+
+
+def ensure_store_inventory_items_table(cursor):
+    """School store catalog: categories, items, measures, optional images."""
+    global _store_inventory_schema_ensuring
+    if _store_inventory_schema_ensuring:
+        return
+    _store_inventory_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_inventory_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_code VARCHAR(32) NOT NULL,
+                item_category VARCHAR(120) NOT NULL,
+                item_name VARCHAR(255) NOT NULL,
+                description TEXT,
+                measure VARCHAR(64) NOT NULL,
+                image_path VARCHAR(500),
+                item_status ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_item_reference (reference_code),
+                INDEX idx_store_item_category (item_category(100)),
+                INDEX idx_store_item_status (item_status)
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM store_inventory_items LIKE 'quantity_on_hand'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_inventory_items
+                ADD COLUMN quantity_on_hand INT NOT NULL DEFAULT 0 AFTER item_status
+            """)
+            print("OK: Added store_inventory_items.quantity_on_hand")
+    except Exception as e:
+        print(f"ensure_store_inventory_items_table: {e}")
+    finally:
+        _store_inventory_schema_ensuring = False
+
+
+_store_suppliers_schema_ensuring = False
+_store_stock_schema_ensuring = False
+_store_requisitions_schema_ensuring = False
+
+
+def ensure_store_suppliers_table(cursor):
+    """Store suppliers for stock-in (lookup by normalized phone)."""
+    global _store_suppliers_schema_ensuring
+    if _store_suppliers_schema_ensuring:
+        return
+    _store_suppliers_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_suppliers (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                phone VARCHAR(20) NOT NULL,
+                company_name VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_supplier_phone (phone)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_store_suppliers_table: {e}")
+    finally:
+        _store_suppliers_schema_ensuring = False
+
+
+def ensure_store_stock_movements_table(cursor):
+    """Stock in / stock out movements for school store items."""
+    global _store_stock_schema_ensuring
+    if _store_stock_schema_ensuring:
+        return
+    _store_stock_schema_ensuring = True
+    try:
+        ensure_store_inventory_items_table(cursor)
+        ensure_store_suppliers_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_stock_movements (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_number VARCHAR(32) NOT NULL,
+                store_item_id INT NOT NULL,
+                movement_type ENUM('in', 'out') NOT NULL,
+                quantity INT NOT NULL,
+                buying_price DECIMAL(12,2) NULL,
+                total_amount DECIMAL(14,2) NULL,
+                supplier_id INT NULL,
+                payment_status ENUM('pending', 'partial', 'paid', 'na') NOT NULL DEFAULT 'pending',
+                amount_paid DECIMAL(14,2) NOT NULL DEFAULT 0,
+                paid_to_company_name VARCHAR(255) NULL,
+                paid_to_company_phone VARCHAR(20) NULL,
+                notes VARCHAR(500) NULL,
+                stock_out_purpose VARCHAR(120) NULL,
+                quantity_before INT NOT NULL DEFAULT 0,
+                quantity_after INT NOT NULL DEFAULT 0,
+                performed_by INT NULL,
+                performed_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_stock_reference (reference_number),
+                INDEX idx_store_stock_item (store_item_id),
+                INDEX idx_store_stock_type (movement_type),
+                INDEX idx_store_stock_created (created_at),
+                INDEX idx_store_stock_supplier (supplier_id),
+                FOREIGN KEY (store_item_id) REFERENCES store_inventory_items(id) ON DELETE RESTRICT,
+                FOREIGN KEY (supplier_id) REFERENCES store_suppliers(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'stock_out_purpose'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                ADD COLUMN stock_out_purpose VARCHAR(120) NULL AFTER notes
+            """)
+            print("OK: Added store_stock_movements.stock_out_purpose")
+        cursor.execute("SHOW COLUMNS FROM store_stock_movements LIKE 'amount_paid'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                ADD COLUMN amount_paid DECIMAL(14,2) NOT NULL DEFAULT 0 AFTER payment_status,
+                ADD COLUMN paid_to_company_name VARCHAR(255) NULL AFTER amount_paid,
+                ADD COLUMN paid_to_company_phone VARCHAR(20) NULL AFTER paid_to_company_name
+            """)
+            print("OK: Added store_stock_movements payment tracking columns")
+        try:
+            cursor.execute("""
+                ALTER TABLE store_stock_movements
+                MODIFY COLUMN payment_status ENUM('pending', 'partial', 'paid', 'na') NOT NULL DEFAULT 'pending'
+            """)
+        except Exception as enum_err:
+            print(f"ensure_store_stock_movements_table payment_status enum: {enum_err}")
+    except Exception as e:
+        print(f"ensure_store_stock_movements_table: {e}")
+    finally:
+        _store_stock_schema_ensuring = False
+
+
+_store_stock_in_payments_schema_ensuring = False
+
+
+def ensure_store_stock_in_payment_lines_table(cursor):
+    """Individual payment entries against a stock-in movement."""
+    global _store_stock_in_payments_schema_ensuring
+    if _store_stock_in_payments_schema_ensuring:
+        return
+    _store_stock_in_payments_schema_ensuring = True
+    try:
+        ensure_store_stock_movements_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_stock_in_payment_lines (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                movement_id INT NOT NULL,
+                amount_paid DECIMAL(14,2) NOT NULL,
+                paid_to_company_name VARCHAR(255) NOT NULL,
+                paid_to_company_phone VARCHAR(20) NOT NULL,
+                paid_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_stock_in_pay_movement (movement_id),
+                FOREIGN KEY (movement_id) REFERENCES store_stock_movements(id) ON DELETE CASCADE
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_store_stock_in_payment_lines_table: {e}")
+    finally:
+        _store_stock_in_payments_schema_ensuring = False
+
+
+_accountant_misc_payments_schema_ensuring = False
+
+
+def ensure_accountant_misc_payments_table(cursor):
+    """Standalone payments not linked to stock-in movements."""
+    global _accountant_misc_payments_schema_ensuring
+    if _accountant_misc_payments_schema_ensuring:
+        return
+    _accountant_misc_payments_schema_ensuring = True
+    try:
+        ensure_store_suppliers_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accountant_misc_payments (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_number VARCHAR(32) NOT NULL,
+                amount DECIMAL(14,2) NOT NULL,
+                paid_to_company_name VARCHAR(255) NOT NULL,
+                paid_to_company_phone VARCHAR(20) NOT NULL,
+                description VARCHAR(500) NULL,
+                supplier_id INT NULL,
+                recorded_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_misc_payment_reference (reference_number),
+                INDEX idx_misc_payment_created (created_at),
+                FOREIGN KEY (supplier_id) REFERENCES store_suppliers(id) ON DELETE SET NULL
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_accountant_misc_payments_table: {e}")
+    finally:
+        _accountant_misc_payments_schema_ensuring = False
+
+
+def _generate_accountant_misc_payment_reference(cursor):
+    ensure_accountant_misc_payments_table(cursor)
+    cursor.execute("""
+        SELECT reference_number FROM accountant_misc_payments
+        ORDER BY id DESC LIMIT 1
+    """)
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(r'^MPAY-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'MPAY-{next_num:05d}'
+
+
+def _misc_payment_row_to_dict(row):
+    if isinstance(row, dict):
+        data = dict(row)
+    else:
+        data = {
+            'id': row[0] if len(row) > 0 else None,
+            'reference_number': row[1] if len(row) > 1 else '',
+            'amount': row[2] if len(row) > 2 else 0,
+            'paid_to_company_name': row[3] if len(row) > 3 else '',
+            'paid_to_company_phone': row[4] if len(row) > 4 else '',
+            'description': row[5] if len(row) > 5 else '',
+            'recorded_by_name': row[7] if len(row) > 7 else '',
+            'created_at': row[8] if len(row) > 8 else None,
+        }
+    try:
+        amt = float(data.get('amount') or 0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    data['amount_display'] = f'{amt:.2f}'
+    ca = data.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    data['paid_to_company_name'] = (data.get('paid_to_company_name') or '').strip()
+    data['paid_to_company_phone'] = (data.get('paid_to_company_phone') or '').strip()
+    data['description'] = (data.get('description') or '').strip().upper()
+    data['recorded_by_name'] = (data.get('recorded_by_name') or '').strip() or '—'
+    return data
+
+
+_accountant_payment_descriptions_schema_ensuring = False
+
+
+def ensure_accountant_payment_descriptions_table(cursor):
+    """Catalog of payment descriptions for live search (misc payments)."""
+    global _accountant_payment_descriptions_schema_ensuring
+    if _accountant_payment_descriptions_schema_ensuring:
+        return
+    _accountant_payment_descriptions_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accountant_payment_descriptions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                description_text VARCHAR(500) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_payment_description_text (description_text(191))
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_accountant_payment_descriptions_table: {e}")
+    finally:
+        _accountant_payment_descriptions_schema_ensuring = False
+
+
+def _normalize_payment_description_text(text):
+    return (text or '').strip().upper()
+
+
+def _search_payment_descriptions(cursor, query, limit=10):
+    ensure_accountant_payment_descriptions_table(cursor)
+    q = _normalize_payment_description_text(query)
+    if len(q) < 2:
+        return []
+    results = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, description_text
+            FROM accountant_payment_descriptions
+            WHERE description_text LIKE %s
+            ORDER BY last_used_at DESC, description_text ASC
+            LIMIT %s
+            """,
+            (f'%{q}%', int(limit)),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                results.append({
+                    'id': int(row.get('id') or 0),
+                    'description': (row.get('description_text') or '').strip(),
+                })
+            else:
+                results.append({
+                    'id': int(row[0] or 0),
+                    'description': ((row[1] or '') if len(row) > 1 else '').strip(),
+                })
+    except Exception as e:
+        print(f"_search_payment_descriptions: {e}")
+    return results
+
+
+def _upsert_payment_description(cursor, text):
+    """Save description to catalog (uppercase); returns id or None."""
+    desc = _normalize_payment_description_text(text)
+    if len(desc) < 2:
+        return None
+    if len(desc) > 500:
+        desc = desc[:500]
+    ensure_accountant_payment_descriptions_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT id FROM accountant_payment_descriptions
+            WHERE description_text = %s LIMIT 1
+            """,
+            (desc,),
+        )
+        row = cursor.fetchone()
+        if row:
+            desc_id = row.get('id') if isinstance(row, dict) else row[0]
+            cursor.execute(
+                """
+                UPDATE accountant_payment_descriptions
+                SET last_used_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (desc_id,),
+            )
+            return desc_id
+        cursor.execute(
+            """
+            INSERT INTO accountant_payment_descriptions (description_text)
+            VALUES (%s)
+            """,
+            (desc,),
+        )
+        return cursor.lastrowid
+    except Exception as e:
+        print(f"_upsert_payment_description: {e}")
+        return None
+
+
+def _fetch_accountant_misc_payments(cursor, limit=100):
+    ensure_accountant_misc_payments_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, reference_number, amount, paid_to_company_name,
+                   paid_to_company_phone, description, supplier_id,
+                   recorded_by_name, created_at
+            FROM accountant_misc_payments
+            ORDER BY created_at DESC, id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_misc_payment_row_to_dict(row))
+    except Exception as e:
+        print(f"_fetch_accountant_misc_payments: {e}")
+    return rows
+
+
+_accountant_revenue_schema_ensuring = False
+
+
+def ensure_accountant_revenue_table(cursor):
+    """School revenue from government or private sources."""
+    global _accountant_revenue_schema_ensuring
+    if _accountant_revenue_schema_ensuring:
+        return
+    _accountant_revenue_schema_ensuring = True
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accountant_revenue (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_number VARCHAR(32) NOT NULL,
+                source_type ENUM('government', 'private') NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description VARCHAR(500) NULL,
+                amount DECIMAL(14,2) NOT NULL,
+                recorded_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_revenue_reference (reference_number),
+                INDEX idx_revenue_source (source_type),
+                INDEX idx_revenue_created (created_at)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_accountant_revenue_table: {e}")
+    finally:
+        _accountant_revenue_schema_ensuring = False
+
+
+def _normalize_revenue_source_type(value):
+    v = (value or '').strip().lower()
+    if v in ('government', 'gov', 'public'):
+        return 'government'
+    if v in ('private', 'priv'):
+        return 'private'
+    if v in ('fees', 'fee', 'student_fees', 'student fees'):
+        return 'fees'
+    return None
+
+
+def _generate_accountant_revenue_reference(cursor, source_type):
+    ensure_accountant_revenue_table(cursor)
+    prefix = 'REV-GOV' if source_type == 'government' else 'REV-PVT'
+    cursor.execute(
+        """
+        SELECT reference_number FROM accountant_revenue
+        WHERE source_type = %s
+        ORDER BY id DESC LIMIT 1
+        """,
+        (source_type,),
+    )
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(rf'^{re.escape(prefix)}-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'{prefix}-{next_num:05d}'
+
+
+def _revenue_row_to_dict(row):
+    if isinstance(row, dict):
+        data = dict(row)
+    else:
+        data = {
+            'id': row[0] if len(row) > 0 else None,
+            'reference_number': row[1] if len(row) > 1 else '',
+            'source_type': row[2] if len(row) > 2 else '',
+            'name': row[3] if len(row) > 3 else '',
+            'description': row[4] if len(row) > 4 else '',
+            'amount': row[5] if len(row) > 5 else 0,
+            'recorded_by_name': row[6] if len(row) > 6 else '',
+            'created_at': row[7] if len(row) > 7 else None,
+        }
+    try:
+        amt = float(data.get('amount') or 0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    data['amount_display'] = _format_kes_amount(amt)
+    ca = data.get('created_at')
+    sort_ts = 0.0
+    if ca and hasattr(ca, 'timestamp'):
+        sort_ts = ca.timestamp()
+    elif ca:
+        try:
+            sort_ts = datetime.strptime(str(ca).split('.')[0], '%Y-%m-%d %H:%M:%S').timestamp()
+        except (ValueError, TypeError):
+            try:
+                sort_ts = datetime.strptime(str(ca).split(' ')[0], '%Y-%m-%d').timestamp()
+            except (ValueError, TypeError):
+                sort_ts = 0.0
+    data['sort_ts'] = sort_ts
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    st = (data.get('source_type') or '').strip().lower()
+    data['source_type'] = st
+    if st == 'government':
+        data['source_label'] = 'Government'
+    elif st == 'fees':
+        data['source_label'] = 'Student fees'
+    else:
+        data['source_label'] = 'Private'
+    data['is_fee_payment'] = bool(data.get('is_fee_payment'))
+    data['name'] = (data.get('name') or '').strip()
+    data['description'] = (data.get('description') or '').strip() or '—'
+    data['recorded_by_name'] = (data.get('recorded_by_name') or '').strip() or '—'
+    return data
+
+
+def _fetch_accountant_revenue(cursor, limit=100, source_filter=None):
+    ensure_accountant_revenue_table(cursor)
+    rows = []
+    sf = _normalize_revenue_source_type(source_filter) if source_filter else None
+    try:
+        if sf:
+            cursor.execute(
+                """
+                SELECT id, reference_number, source_type, name, description,
+                       amount, recorded_by_name, created_at
+                FROM accountant_revenue
+                WHERE source_type = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (sf, int(limit)),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, reference_number, source_type, name, description,
+                       amount, recorded_by_name, created_at
+                FROM accountant_revenue
+                ORDER BY created_at DESC, id DESC
+                LIMIT %s
+                """,
+                (int(limit),),
+            )
+        for row in cursor.fetchall() or []:
+            rows.append(_revenue_row_to_dict(row))
+    except Exception as e:
+        print(f"_fetch_accountant_revenue: {e}")
+    return rows
+
+
+def _fetch_student_fee_revenue_totals(cursor):
+    """Aggregate all student fee payments as revenue from fees."""
+    totals = {'count': 0, 'total': 0.0}
+    try:
+        cursor.execute("""
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_paid), 0) AS total
+            FROM student_payments
+        """)
+        row = cursor.fetchone()
+        if row:
+            if isinstance(row, dict):
+                totals['count'] = int(row.get('cnt') or 0)
+                totals['total'] = float(row.get('total') or 0)
+            else:
+                totals['count'] = int(row[0] or 0)
+                totals['total'] = float(row[1] or 0)
+    except Exception as e:
+        print(f"_fetch_student_fee_revenue_totals: {e}")
+    return totals
+
+
+def _student_fee_payment_to_revenue_row(row):
+    if isinstance(row, dict):
+        data = dict(row)
+    else:
+        data = {
+            'id': row[0] if len(row) > 0 else None,
+            'reference_number': row[1] if len(row) > 1 else '',
+            'amount_paid': row[2] if len(row) > 2 else 0,
+            'payment_method': row[3] if len(row) > 3 else '',
+            'payment_date': row[4] if len(row) > 4 else None,
+            'notes': row[5] if len(row) > 5 else '',
+            'student_name': row[6] if len(row) > 6 else '',
+            'student_id': row[7] if len(row) > 7 else '',
+            'fee_name': row[8] if len(row) > 8 else '',
+            'recorded_by_name': row[9] if len(row) > 9 else '',
+            'transaction_id': row[10] if len(row) > 10 else '',
+        }
+    try:
+        amt = float(data.get('amount_paid') or 0)
+    except (TypeError, ValueError):
+        amt = 0.0
+    ref = (data.get('reference_number') or '').strip()
+    txn = (data.get('transaction_id') or '').strip()
+    pay_id = data.get('id')
+    if not ref and txn:
+        ref = txn
+    if not ref and pay_id:
+        ref = f'FEE-{int(pay_id):06d}'
+    student_name = (data.get('student_name') or '').strip()
+    student_id = (data.get('student_id') or '').strip()
+    fee_name = (data.get('fee_name') or '').strip()
+    method = (data.get('payment_method') or '').strip()
+    notes = (data.get('notes') or '').strip()
+    name = student_name or student_id or 'Student payment'
+    desc_parts = [p for p in (fee_name, method, notes) if p]
+    description = ' · '.join(desc_parts) if desc_parts else 'Fee payment'
+    pd = data.get('payment_date')
+    sort_ts = 0.0
+    if pd:
+        if hasattr(pd, 'timestamp'):
+            sort_ts = pd.timestamp()
+        else:
+            try:
+                sort_ts = datetime.strptime(str(pd).split(' ')[0], '%Y-%m-%d').timestamp()
+            except (ValueError, TypeError):
+                sort_ts = 0.0
+    if pd and hasattr(pd, 'strftime'):
+        created_display = pd.strftime('%d %b %Y')
+    elif pd:
+        created_display = str(pd).split(' ')[0]
+    else:
+        created_display = '—'
+    return {
+        'id': pay_id,
+        'reference_number': ref or '—',
+        'source_type': 'fees',
+        'source_label': 'Student fees',
+        'name': name,
+        'description': description,
+        'amount': amt,
+        'amount_display': _format_kes_amount(amt),
+        'created_at_display': created_display,
+        'recorded_by_name': (data.get('recorded_by_name') or '').strip() or '—',
+        'is_fee_payment': True,
+        'student_id': student_id,
+        'payment_id': pay_id,
+        'sort_ts': sort_ts,
+    }
+
+
+def _fetch_student_fee_payments_as_revenue(cursor, limit=100):
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT sp.id, sp.reference_number, sp.amount_paid, sp.payment_method,
+                   sp.payment_date, sp.notes, s.full_name AS student_name,
+                   sp.student_id, fs.fee_name, e.full_name AS recorded_by_name,
+                   sp.transaction_id
+            FROM student_payments sp
+            LEFT JOIN students s ON sp.student_id = s.student_id
+            LEFT JOIN fee_structures fs ON sp.fee_structure_id = fs.id
+            LEFT JOIN employees e ON sp.received_by = e.id
+            ORDER BY sp.payment_date DESC, sp.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_student_fee_payment_to_revenue_row(row))
+    except Exception as e:
+        print(f"_fetch_student_fee_payments_as_revenue: {e}")
+    return rows
+
+
+def _fetch_combined_revenue_list(cursor, limit=100, source_filter=None):
+    sf = (source_filter or 'all').strip().lower()
+    if sf == 'fees':
+        return _fetch_student_fee_payments_as_revenue(cursor, limit=limit)
+    if sf in ('government', 'private'):
+        return _fetch_accountant_revenue(cursor, limit=limit, source_filter=sf)
+    manual = _fetch_accountant_revenue(cursor, limit=limit)
+    fees = _fetch_student_fee_payments_as_revenue(cursor, limit=limit)
+    combined = manual + fees
+    combined.sort(key=lambda x: float(x.get('sort_ts') or 0), reverse=True)
+    return combined[: int(limit)]
+
+
+def _fetch_accountant_revenue_summary(cursor):
+    ensure_accountant_revenue_table(cursor)
+    summary = {
+        'manual_count': 0,
+        'government_count': 0,
+        'private_count': 0,
+        'manual_amount': 0.0,
+        'government_amount': 0.0,
+        'private_amount': 0.0,
+        'fees_count': 0,
+        'fees_amount': 0.0,
+    }
+    try:
+        cursor.execute("""
+            SELECT source_type, COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+            FROM accountant_revenue
+            GROUP BY source_type
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                st = (row.get('source_type') or '').lower()
+                cnt = int(row.get('cnt') or 0)
+                total = float(row.get('total') or 0)
+            else:
+                st = (row[0] or '').lower()
+                cnt = int(row[1] or 0)
+                total = float(row[2] or 0)
+            summary['manual_count'] += cnt
+            summary['manual_amount'] += total
+            if st == 'government':
+                summary['government_count'] = cnt
+                summary['government_amount'] = total
+            elif st == 'private':
+                summary['private_count'] = cnt
+                summary['private_amount'] = total
+    except Exception as e:
+        print(f"_fetch_accountant_revenue_summary manual: {e}")
+    fees = _fetch_student_fee_revenue_totals(cursor)
+    summary['fees_count'] = fees['count']
+    summary['fees_amount'] = fees['total']
+    summary['total_count'] = summary['manual_count'] + summary['fees_count']
+    summary['total_amount'] = summary['manual_amount'] + summary['fees_amount']
+    summary['total_display'] = _format_kes_amount(summary['total_amount'])
+    summary['manual_display'] = _format_kes_amount(summary['manual_amount'])
+    summary['government_display'] = _format_kes_amount(summary['government_amount'])
+    summary['private_display'] = _format_kes_amount(summary['private_amount'])
+    summary['fees_display'] = _format_kes_amount(summary['fees_amount'])
+    return summary
+
+
+def _format_kes_amount(amount):
+    try:
+        return f'{float(amount or 0):,.2f}'
+    except (TypeError, ValueError):
+        return '0.00'
+
+
+def _ensure_salary_audit_payment_column(cursor):
+    """Allow linking audit rows to employee_salary_payments for reference."""
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'employee_salary_audits'
+              AND COLUMN_NAME = 'payment_id'
+            """
+        )
+        row = cursor.fetchone() or {}
+        if int(row.get('cnt', 0) if isinstance(row, dict) else (row[0] if row else 0)) == 0:
+            cursor.execute(
+                "ALTER TABLE employee_salary_audits "
+                "ADD COLUMN payment_id INT NULL AFTER employee_id"
+            )
+            try:
+                cursor.execute(
+                    "ALTER TABLE employee_salary_audits "
+                    "ADD INDEX idx_payment_id (payment_id)"
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"_ensure_salary_audit_payment_column: {e}")
+
+
+def _resolve_payroll_editor(cursor, session):
+    """Resolve logged-in user to employees.id for audit attribution."""
+    editor_identifier = session.get('employee_id') or session.get('user_id')
+    editor_id = None
+    editor_name = session.get('full_name', 'Unknown')
+
+    if editor_identifier:
+        cursor.execute(
+            "SELECT id, full_name FROM employees WHERE id = %s OR employee_id = %s LIMIT 1",
+            (editor_identifier, editor_identifier),
+        )
+        editor_result = cursor.fetchone()
+        if editor_result:
+            editor_id = editor_result.get('id')
+            editor_name = editor_result.get('full_name', editor_name)
+
+    if not editor_id:
+        cursor.execute(
+            """
+            SELECT id, full_name FROM employees
+            WHERE role IN ('super admin', 'accountant', 'head of institution')
+              AND status = 'active'
+            LIMIT 1
+            """
+        )
+        fallback = cursor.fetchone()
+        if fallback:
+            editor_id = fallback.get('id')
+            editor_name = fallback.get('full_name', 'System')
+
+    return editor_id, editor_name
+
+
+def _log_salary_payment_audit(
+    cursor,
+    payment_id,
+    salary_id,
+    employee_id,
+    amount_paid,
+    payment_date,
+    payment_method,
+    reference_number,
+    notes,
+    balance_before,
+    editor_id,
+    editor_name,
+):
+    """Write salary payment to employee_salary_audits for salary-audits reference."""
+    if not editor_id:
+        return False
+
+    _ensure_salary_audit_payment_column(cursor)
+
+    if balance_before is not None:
+        old_value = f"KES {float(balance_before):,.2f} (balance before payment)"
+    else:
+        old_value = "N/A"
+
+    ref = (reference_number or '').strip()
+    note_text = (notes or '').strip()
+    pay_date = payment_date
+    if hasattr(pay_date, 'strftime'):
+        pay_date = pay_date.strftime('%Y-%m-%d')
+    else:
+        pay_date = str(pay_date).split('T')[0].split(' ')[0]
+
+    new_parts = [
+        f"KES {float(amount_paid):,.2f}",
+        str(payment_method or 'Bank Transfer'),
+        f"Date: {pay_date}",
+    ]
+    if ref:
+        new_parts.append(f"Ref: {ref}")
+    if note_text:
+        new_parts.append(note_text)
+    new_parts.append(f"Payment #{payment_id}")
+    new_value = " | ".join(new_parts)
+
+    try:
+        cursor.execute(
+            """
+            INSERT INTO employee_salary_audits
+            (salary_id, employee_id, payment_id, field_name, old_value, new_value, edited_by, edited_by_name)
+            VALUES (%s, %s, %s, 'salary_payment', %s, %s, %s, %s)
+            """,
+            (
+                salary_id,
+                employee_id,
+                payment_id,
+                old_value,
+                new_value,
+                editor_id,
+                editor_name,
+            ),
+        )
+        return True
+    except Exception as e:
+        print(f"_log_salary_payment_audit: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def _backfill_salary_payment_audits(cursor, session):
+    """Create audit rows for payments recorded before audit logging existed."""
+    _ensure_salary_audit_payment_column(cursor)
+    editor_id, editor_name = _resolve_payroll_editor(cursor, session)
+    if not editor_id:
+        return 0
+
+    try:
+        cursor.execute(
+            """
+            SELECT esp.id, esp.salary_id, esp.employee_id, esp.amount_paid,
+                   esp.payment_date, esp.payment_method, esp.reference_number, esp.notes
+            FROM employee_salary_payments esp
+            LEFT JOIN employee_salary_audits esa ON esa.payment_id = esp.id
+            WHERE esa.id IS NULL
+            ORDER BY esp.id ASC
+            """
+        )
+        missing = cursor.fetchall() or []
+    except Exception as e:
+        print(f"_backfill_salary_payment_audits: {e}")
+        return 0
+
+    count = 0
+    for payment in missing:
+        if _log_salary_payment_audit(
+            cursor,
+            payment.get('id'),
+            payment.get('salary_id'),
+            payment.get('employee_id'),
+            payment.get('amount_paid'),
+            payment.get('payment_date'),
+            payment.get('payment_method'),
+            payment.get('reference_number'),
+            payment.get('notes'),
+            None,
+            editor_id,
+            editor_name,
+        ):
+            count += 1
+    return count
+
+
+def _fetch_salary_audit_trail(cursor):
+    """All salary edits and payment records for the audits page."""
+    _ensure_salary_audit_payment_column(cursor)
+    cursor.execute(
+        """
+        SELECT
+            esa.id,
+            esa.salary_id,
+            esa.employee_id,
+            esa.payment_id,
+            esa.field_name,
+            esa.old_value,
+            esa.new_value,
+            esa.edited_by,
+            esa.edited_by_name,
+            esa.edited_at,
+            e.full_name AS employee_name,
+            e.employee_id AS employee_code,
+            esp.reference_number AS payment_reference,
+            esp.payment_method AS payment_method,
+            esp.amount_paid AS payment_amount,
+            esp.payment_date AS payment_date
+        FROM employee_salary_audits esa
+        INNER JOIN employees e ON esa.employee_id = e.id
+        LEFT JOIN employee_salary_payments esp ON esa.payment_id = esp.id
+        ORDER BY esa.edited_at DESC
+        """
+    )
+    return cursor.fetchall() or []
+
+
+def _fetch_salary_audit_summary(audits):
+    """Summary metrics for salary audits dashboard header."""
+    from datetime import datetime
+    employees = set()
+    fields = set()
+    changes_this_month = 0
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    for audit in audits or []:
+        emp_id = audit.get('employee_id')
+        if emp_id is not None:
+            employees.add(emp_id)
+        field = audit.get('field_name')
+        if field:
+            fields.add(field)
+        edited_at = audit.get('edited_at')
+        if edited_at:
+            try:
+                if isinstance(edited_at, str):
+                    dt = datetime.strptime(edited_at[:19], '%Y-%m-%d %H:%M:%S')
+                elif hasattr(edited_at, 'year'):
+                    dt = edited_at
+                else:
+                    dt = None
+                if dt and dt >= month_start:
+                    changes_this_month += 1
+            except (TypeError, ValueError):
+                pass
+
+    payment_entries = sum(
+        1 for a in (audits or []) if (a.get('field_name') or '') == 'salary_payment'
+    )
+    edit_entries = len(audits or []) - payment_entries
+
+    return {
+        'total_changes': len(audits or []),
+        'employees_affected': len(employees),
+        'changes_this_month': changes_this_month,
+        'fields_tracked': len(fields),
+        'payment_entries': payment_entries,
+        'edit_entries': edit_entries,
+    }
+
+
+def _fetch_payroll_payment_analytics(salary_records_list, cursor=None):
+    """Aggregate salary payment metrics for staff-and-salaries dashboard header."""
+    payroll_due = 0.0
+    paid_current_period = 0.0
+    outstanding = 0.0
+    pending_staff_count = 0
+    fully_paid_count = 0
+    active_payroll_count = 0
+
+    for rec in salary_records_list or []:
+        active_payroll_count += 1
+        due = float(rec.get('amount_to_be_paid') or 0)
+        paid = float(rec.get('total_paid') or 0)
+        bal = float(rec.get('balance') or 0)
+        payroll_due += due
+        paid_current_period += paid
+        outstanding += max(0.0, bal)
+        if bal > 0.01:
+            pending_staff_count += 1
+        else:
+            fully_paid_count += 1
+
+    paid_this_month = 0.0
+    payments_this_month_count = 0
+    total_disbursed = 0.0
+    total_payment_count = 0
+
+    if cursor:
+        try:
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_paid), 0) AS month_total,
+                       COUNT(*) AS payment_count
+                FROM employee_salary_payments
+                WHERE payment_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+                """
+            )
+            month_row = cursor.fetchone() or {}
+            paid_this_month = float(month_row.get('month_total') or 0)
+            payments_this_month_count = int(month_row.get('payment_count') or 0)
+
+            cursor.execute(
+                """
+                SELECT COALESCE(SUM(amount_paid), 0) AS total,
+                       COUNT(*) AS payment_count
+                FROM employee_salary_payments
+                """
+            )
+            all_row = cursor.fetchone() or {}
+            total_disbursed = float(all_row.get('total') or 0)
+            total_payment_count = int(all_row.get('payment_count') or 0)
+        except Exception as e:
+            print(f"_fetch_payroll_payment_analytics payments query: {e}")
+
+    return {
+        'payroll_due': payroll_due,
+        'paid_current_period': paid_current_period,
+        'outstanding': outstanding,
+        'paid_this_month': paid_this_month,
+        'pending_staff_count': pending_staff_count,
+        'fully_paid_count': fully_paid_count,
+        'active_payroll_count': active_payroll_count,
+        'payments_this_month_count': payments_this_month_count,
+        'total_disbursed': total_disbursed,
+        'total_payment_count': total_payment_count,
+        'payroll_due_display': _format_kes_amount(payroll_due),
+        'paid_current_period_display': _format_kes_amount(paid_current_period),
+        'outstanding_display': _format_kes_amount(outstanding),
+        'paid_this_month_display': _format_kes_amount(paid_this_month),
+        'total_disbursed_display': _format_kes_amount(total_disbursed),
+    }
+
+
+def _fetch_accountant_payment_analytics(cursor):
+    """Aggregate payment metrics for accountant payments / invoices dashboard."""
+    ensure_store_stock_movements_table(cursor)
+    ensure_accountant_misc_payments_table(cursor)
+    ensure_store_stock_in_payment_lines_table(cursor)
+
+    def _row_val(row, key, default=0):
+        if not row:
+            return default
+        try:
+            if isinstance(row, dict):
+                v = row.get(key)
+            else:
+                v = row[key] if isinstance(key, int) else getattr(row, key, default)
+        except (KeyError, IndexError, TypeError):
+            return default
+        if v is None:
+            return default
+        return v
+
+    stock_in_count = 0
+    stock_in_invoiced = 0.0
+    stock_in_paid = 0.0
+    stock_in_outstanding = 0.0
+    pending_count = 0
+    partial_count = 0
+    paid_count = 0
+    misc_count = 0
+    misc_total = 0.0
+    stock_payments_month = 0.0
+    misc_month = 0.0
+    payment_lines_month_count = 0
+
+    try:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt,
+                   COALESCE(SUM(total_amount), 0) AS invoiced,
+                   COALESCE(SUM(amount_paid), 0) AS paid,
+                   SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+                   SUM(CASE WHEN payment_status = 'partial' THEN 1 ELSE 0 END) AS partial_cnt,
+                   SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) AS paid_cnt
+            FROM store_stock_movements
+            WHERE movement_type = 'in'
+            """
+        )
+        row = cursor.fetchone()
+        stock_in_count = int(_row_val(row, 'cnt', 0))
+        stock_in_invoiced = float(_row_val(row, 'invoiced', 0))
+        stock_in_paid = float(_row_val(row, 'paid', 0))
+        pending_count = int(_row_val(row, 'pending_cnt', 0))
+        partial_count = int(_row_val(row, 'partial_cnt', 0))
+        paid_count = int(_row_val(row, 'paid_cnt', 0))
+
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(
+                GREATEST(COALESCE(total_amount, 0) - COALESCE(amount_paid, 0), 0)
+            ), 0) AS outstanding
+            FROM store_stock_movements
+            WHERE movement_type = 'in'
+              AND payment_status IN ('pending', 'partial')
+            """
+        )
+        ob_row = cursor.fetchone()
+        stock_in_outstanding = float(_row_val(ob_row, 'outstanding', 0))
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(amount), 0) AS total
+            FROM accountant_misc_payments
+            """
+        )
+        misc_row = cursor.fetchone()
+        misc_count = int(_row_val(misc_row, 'cnt', 0))
+        misc_total = float(_row_val(misc_row, 'total', 0))
+
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount_paid), 0) AS month_total,
+                   COUNT(*) AS line_count
+            FROM store_stock_in_payment_lines
+            WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+            """
+        )
+        pl_row = cursor.fetchone()
+        stock_payments_month = float(_row_val(pl_row, 'month_total', 0))
+        payment_lines_month_count = int(_row_val(pl_row, 'line_count', 0))
+
+        cursor.execute(
+            """
+            SELECT COALESCE(SUM(amount), 0) AS month_total
+            FROM accountant_misc_payments
+            WHERE created_at >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+            """
+        )
+        mm_row = cursor.fetchone()
+        misc_month = float(_row_val(mm_row, 'month_total', 0))
+    except Exception as e:
+        print(f"_fetch_accountant_payment_analytics: {e}")
+
+    outstanding_count = pending_count + partial_count
+    paid_this_month = stock_payments_month + misc_month
+    total_disbursed = stock_in_paid + misc_total
+
+    return {
+        'stock_in_count': stock_in_count,
+        'stock_in_invoiced': stock_in_invoiced,
+        'stock_in_paid': stock_in_paid,
+        'stock_in_outstanding': stock_in_outstanding,
+        'pending_count': pending_count,
+        'partial_count': partial_count,
+        'paid_count': paid_count,
+        'outstanding_count': outstanding_count,
+        'misc_count': misc_count,
+        'misc_total': misc_total,
+        'stock_payments_month': stock_payments_month,
+        'misc_month': misc_month,
+        'paid_this_month': paid_this_month,
+        'payment_lines_month_count': payment_lines_month_count,
+        'total_disbursed': total_disbursed,
+        'stock_in_invoiced_display': _format_kes_amount(stock_in_invoiced),
+        'stock_in_paid_display': _format_kes_amount(stock_in_paid),
+        'stock_in_outstanding_display': _format_kes_amount(stock_in_outstanding),
+        'misc_total_display': _format_kes_amount(misc_total),
+        'paid_this_month_display': _format_kes_amount(paid_this_month),
+        'total_disbursed_display': _format_kes_amount(total_disbursed),
+    }
+
+
+def _store_stock_payment_status(amount_paid, total_amount):
+    """Derive pending / partial / paid from cumulative amounts."""
+    try:
+        paid = float(amount_paid or 0)
+    except (TypeError, ValueError):
+        paid = 0.0
+    try:
+        total = float(total_amount or 0)
+    except (TypeError, ValueError):
+        total = 0.0
+    if total <= 0:
+        return 'paid' if paid > 0 else 'pending'
+    if paid >= total - 0.005:
+        return 'paid'
+    if paid > 0:
+        return 'partial'
+    return 'pending'
+
+
+def _normalize_store_supplier_phone(phone):
+    return _normalize_library_supplier_phone(phone)
+
+
+def _store_lookup_supplier_by_phone(cursor, phone):
+    ensure_store_suppliers_table(cursor)
+    norm = _normalize_store_supplier_phone(phone)
+    if not norm:
+        return None
+    cursor.execute(
+        """
+        SELECT id, phone, UPPER(TRIM(company_name)) AS company_name
+        FROM store_suppliers WHERE phone = %s LIMIT 1
+        """,
+        (norm,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'id': row.get('id'),
+            'phone': row.get('phone'),
+            'company_name': (row.get('company_name') or '').strip(),
+        }
+    return {
+        'id': row[0],
+        'phone': row[1] if len(row) > 1 else norm,
+        'company_name': ((row[2] or '') if len(row) > 2 else '').strip(),
+    }
+
+
+def _store_upsert_supplier_for_stock_in(cursor, phone, company_name):
+    ensure_store_suppliers_table(cursor)
+    norm = _normalize_store_supplier_phone(phone)
+    if not norm:
+        return None, 'Enter a valid supplier phone number.'
+    existing = _store_lookup_supplier_by_phone(cursor, norm)
+    if existing:
+        return int(existing['id']), None
+    company_clean = (company_name or '').strip().upper()
+    if not company_clean:
+        return None, 'Enter the supplier name (new supplier).'
+    if len(company_clean) > 255:
+        company_clean = company_clean[:255]
+    cursor.execute(
+        "INSERT INTO store_suppliers (phone, company_name) VALUES (%s, %s)",
+        (norm, company_clean),
+    )
+    return int(cursor.lastrowid), None
+
+
+def _store_search_suppliers_by_name(cursor, name_query, limit=10):
+    """Search registered store suppliers by company name (live autocomplete)."""
+    ensure_store_suppliers_table(cursor)
+    q = (name_query or '').strip().upper()
+    if len(q) < 2:
+        return []
+    results = []
+    try:
+        cursor.execute(
+            """
+            SELECT id, phone, UPPER(TRIM(company_name)) AS company_name
+            FROM store_suppliers
+            WHERE UPPER(company_name) LIKE %s
+            ORDER BY company_name ASC
+            LIMIT %s
+            """,
+            (f'%{q}%', int(limit)),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                results.append({
+                    'id': int(row.get('id') or 0),
+                    'phone': (row.get('phone') or '').strip(),
+                    'company_name': (row.get('company_name') or '').strip(),
+                })
+            else:
+                results.append({
+                    'id': int(row[0] or 0),
+                    'phone': (row[1] or '').strip() if len(row) > 1 else '',
+                    'company_name': ((row[2] or '') if len(row) > 2 else '').strip(),
+                })
+    except Exception as e:
+        print(f"_store_search_suppliers_by_name: {e}")
+    return results
+
+
+def _generate_store_stock_reference_number(cursor, movement_type):
+    ensure_store_stock_movements_table(cursor)
+    prefix = 'SIN' if movement_type == 'in' else 'SOT'
+    cursor.execute(
+        """
+        SELECT reference_number FROM store_stock_movements
+        WHERE movement_type = %s
+        ORDER BY id DESC LIMIT 1
+        """,
+        (movement_type,),
+    )
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(rf'^{prefix}-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'{prefix}-{next_num:06d}'
+
+
+def _fetch_store_items_for_stock(cursor):
+    """Active catalog items with on-hand quantity for stock in/out UI."""
+    ensure_store_inventory_items_table(cursor)
+    items = []
+    try:
+        cursor.execute("""
+            SELECT id, reference_code, item_category, item_name, measure,
+                   COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+            FROM store_inventory_items
+            WHERE item_status = 'active'
+            ORDER BY item_category ASC, item_name ASC
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                items.append({
+                    'id': int(row.get('id') or 0),
+                    'reference_code': (row.get('reference_code') or '').strip(),
+                    'item_category': (row.get('item_category') or '').strip(),
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'measure': (row.get('measure') or '').strip(),
+                    'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+                })
+            else:
+                items.append({
+                    'id': int(row[0] or 0),
+                    'reference_code': (row[1] or '').strip(),
+                    'item_category': (row[2] or '').strip(),
+                    'item_name': (row[3] or '').strip(),
+                    'measure': (row[4] or '').strip(),
+                    'quantity_on_hand': int(row[5] or 0),
+                })
+    except Exception as e:
+        print(f"_fetch_store_items_for_stock: {e}")
+    return items
+
+
+def _fetch_store_stock_movements_recent(cursor, limit=40):
+    ensure_store_stock_movements_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT m.id, m.reference_number, m.movement_type, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status, m.notes,
+                   m.stock_out_purpose,
+                   m.quantity_before, m.quantity_after, m.created_at,
+                   si.reference_code AS item_ref, si.item_name, si.measure,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'id': int(row.get('id') or 0),
+                    'reference_number': (row.get('reference_number') or '').strip(),
+                    'movement_type': (row.get('movement_type') or '').strip(),
+                    'quantity': int(row.get('quantity') or 0),
+                    'buying_price': row.get('buying_price'),
+                    'total_amount': row.get('total_amount'),
+                    'payment_status': (row.get('payment_status') or '').strip(),
+                    'notes': (row.get('notes') or '').strip() or None,
+                    'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+                    'quantity_before': int(row.get('quantity_before') or 0),
+                    'quantity_after': int(row.get('quantity_after') or 0),
+                    'created_at': row.get('created_at'),
+                    'item_ref': (row.get('item_ref') or '').strip(),
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'measure': (row.get('measure') or '').strip(),
+                    'supplier_name': (row.get('supplier_name') or '').strip() or None,
+                    'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+                })
+            else:
+                rows.append({
+                    'id': int(row[0] or 0),
+                    'reference_number': (row[1] or '').strip(),
+                    'movement_type': (row[2] or '').strip(),
+                    'quantity': int(row[3] or 0),
+                    'buying_price': row[4] if len(row) > 4 else None,
+                    'total_amount': row[5] if len(row) > 5 else None,
+                    'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
+                    'notes': (row[7] or '').strip() or None if len(row) > 7 else None,
+                    'stock_out_purpose': (row[8] or '').strip() or None if len(row) > 8 else None,
+                    'quantity_before': int(row[9] or 0) if len(row) > 9 else 0,
+                    'quantity_after': int(row[10] or 0) if len(row) > 10 else 0,
+                    'created_at': row[11] if len(row) > 11 else None,
+                    'item_ref': (row[12] or '').strip() if len(row) > 12 else '',
+                    'item_name': (row[13] or '').strip() if len(row) > 13 else '',
+                    'measure': (row[14] or '').strip() if len(row) > 14 else '',
+                    'supplier_name': (row[15] or '').strip() or None if len(row) > 15 else None,
+                    'supplier_phone': (row[16] or '').strip() or None if len(row) > 16 else None,
+                })
+    except Exception as e:
+        print(f"_fetch_store_stock_movements_recent: {e}")
+    return rows
+
+
+def _stock_in_row_to_dict(row):
+    """Map stock-in movement JOIN row to a UI dict."""
+    if isinstance(row, dict):
+        data = {
+            'id': int(row.get('id') or 0),
+            'reference_number': (row.get('reference_number') or '').strip(),
+            'quantity': int(row.get('quantity') or 0),
+            'buying_price': row.get('buying_price'),
+            'total_amount': row.get('total_amount'),
+            'payment_status': (row.get('payment_status') or '').strip(),
+            'amount_paid': row.get('amount_paid'),
+            'paid_to_company_name': (row.get('paid_to_company_name') or '').strip() or None,
+            'paid_to_company_phone': (row.get('paid_to_company_phone') or '').strip() or None,
+            'notes': (row.get('notes') or '').strip() or None,
+            'created_at': row.get('created_at'),
+            'performed_by_name': (row.get('performed_by_name') or '').strip() or None,
+            'item_ref': (row.get('item_ref') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+            'item_category': (row.get('item_category') or '').strip(),
+            'measure': (row.get('measure') or '').strip(),
+            'supplier_name': (row.get('supplier_name') or '').strip() or None,
+            'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+        }
+    else:
+        data = {
+            'id': int(row[0] or 0),
+            'reference_number': (row[1] or '').strip(),
+            'quantity': int(row[2] or 0),
+            'buying_price': row[3] if len(row) > 3 else None,
+            'total_amount': row[4] if len(row) > 4 else None,
+            'payment_status': (row[5] or '').strip() if len(row) > 5 else '',
+            'amount_paid': row[6] if len(row) > 6 else 0,
+            'paid_to_company_name': (row[7] or '').strip() or None if len(row) > 7 else None,
+            'paid_to_company_phone': (row[8] or '').strip() or None if len(row) > 8 else None,
+            'notes': (row[9] or '').strip() or None if len(row) > 9 else None,
+            'created_at': row[10] if len(row) > 10 else None,
+            'performed_by_name': (row[11] or '').strip() or None if len(row) > 11 else None,
+            'item_ref': (row[12] or '').strip() if len(row) > 12 else '',
+            'item_name': (row[13] or '').strip() if len(row) > 13 else '',
+            'item_category': (row[14] or '').strip() if len(row) > 14 else '',
+            'measure': (row[15] or '').strip() if len(row) > 15 else '',
+            'supplier_name': (row[16] or '').strip() or None if len(row) > 16 else None,
+            'supplier_phone': (row[17] or '').strip() or None if len(row) > 17 else None,
+        }
+    ca = data.get('created_at')
+    if ca and hasattr(ca, 'strftime'):
+        data['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+    elif ca:
+        data['created_at_display'] = str(ca)
+    else:
+        data['created_at_display'] = '—'
+    try:
+        bp = float(data['buying_price']) if data.get('buying_price') is not None else None
+        data['buying_price_display'] = f'{bp:.2f}' if bp is not None else '—'
+    except (TypeError, ValueError):
+        data['buying_price_display'] = '—'
+    try:
+        ta = float(data['total_amount']) if data.get('total_amount') is not None else None
+        data['total_amount_display'] = f'{ta:.2f}' if ta is not None else '—'
+    except (TypeError, ValueError):
+        data['total_amount_display'] = '—'
+        ta = None
+    try:
+        ap = float(data.get('amount_paid') or 0)
+        data['amount_paid_display'] = f'{ap:.2f}'
+    except (TypeError, ValueError):
+        ap = 0.0
+        data['amount_paid_display'] = '0.00'
+    if ta is not None:
+        balance = max(0.0, ta - ap)
+        data['balance_due'] = balance
+        data['balance_due_display'] = f'{balance:.2f}'
+    else:
+        data['balance_due'] = 0.0
+        data['balance_due_display'] = '—'
+    status = _store_stock_payment_status(ap, ta)
+    data['payment_status'] = status
+    if status == 'partial':
+        data['payment_status_label'] = 'Partial payment'
+    elif status == 'paid':
+        data['payment_status_label'] = 'Paid'
+    else:
+        data['payment_status_label'] = 'Pending'
+    data['can_pay'] = status in ('pending', 'partial')
+    return data
+
+
+def _fetch_store_stock_in_list(cursor, payment_filter='all', limit=500):
+    """All stock-in movements for accountant payments view."""
+    ensure_store_stock_movements_table(cursor)
+    payment_filter = (payment_filter or 'all').strip().lower()
+    if payment_filter == 'pending':
+        where_extra = "AND m.payment_status = 'pending'"
+    elif payment_filter == 'partial':
+        where_extra = "AND m.payment_status = 'partial'"
+    elif payment_filter == 'paid':
+        where_extra = "AND m.payment_status = 'paid'"
+    elif payment_filter == 'outstanding':
+        where_extra = "AND m.payment_status IN ('pending', 'partial')"
+    else:
+        where_extra = ''
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT m.id, m.reference_number, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status,
+                   m.amount_paid, m.paid_to_company_name, m.paid_to_company_phone,
+                   m.notes, m.created_at, m.performed_by_name,
+                   si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.movement_type = 'in'
+            {where_extra}
+            ORDER BY m.created_at DESC, m.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_stock_in_row_to_dict(row))
+    except Exception as e:
+        print(f"_fetch_store_stock_in_list: {e}")
+    return rows
+
+
+def _fetch_store_stock_movement_detail(cursor, movement_id):
+    ensure_store_stock_movements_table(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT m.id, m.reference_number, m.movement_type, m.quantity,
+                   m.buying_price, m.total_amount, m.payment_status, m.notes,
+                   m.stock_out_purpose,
+                   m.quantity_before, m.quantity_after, m.created_at,
+                   m.performed_by_name,
+                   si.reference_code AS item_ref, si.item_name, si.item_category, si.measure,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_stock_movements m
+            INNER JOIN store_inventory_items si ON si.id = m.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = m.supplier_id
+            WHERE m.id = %s
+            """,
+            (movement_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return {
+                'id': int(row.get('id') or 0),
+                'reference_number': (row.get('reference_number') or '').strip(),
+                'movement_type': (row.get('movement_type') or '').strip(),
+                'quantity': int(row.get('quantity') or 0),
+                'buying_price': row.get('buying_price'),
+                'total_amount': row.get('total_amount'),
+                'payment_status': (row.get('payment_status') or '').strip(),
+                'notes': (row.get('notes') or '').strip() or None,
+                'stock_out_purpose': (row.get('stock_out_purpose') or '').strip() or None,
+                'quantity_before': int(row.get('quantity_before') or 0),
+                'quantity_after': int(row.get('quantity_after') or 0),
+                'created_at': row.get('created_at'),
+                'performed_by_name': (row.get('performed_by_name') or '').strip() or None,
+                'item_ref': (row.get('item_ref') or '').strip(),
+                'item_name': (row.get('item_name') or '').strip(),
+                'item_category': (row.get('item_category') or '').strip(),
+                'measure': (row.get('measure') or '').strip(),
+                'supplier_name': (row.get('supplier_name') or '').strip() or None,
+                'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+            }
+        return {
+            'id': int(row[0] or 0),
+            'reference_number': (row[1] or '').strip(),
+            'movement_type': (row[2] or '').strip(),
+            'quantity': int(row[3] or 0),
+            'buying_price': row[4] if len(row) > 4 else None,
+            'total_amount': row[5] if len(row) > 5 else None,
+            'payment_status': (row[6] or '').strip() if len(row) > 6 else '',
+            'notes': (row[7] or '').strip() or None if len(row) > 7 else None,
+            'stock_out_purpose': (row[8] or '').strip() or None if len(row) > 8 else None,
+            'quantity_before': int(row[9] or 0) if len(row) > 9 else 0,
+            'quantity_after': int(row[10] or 0) if len(row) > 10 else 0,
+            'created_at': row[11] if len(row) > 11 else None,
+            'performed_by_name': (row[12] or '').strip() or None if len(row) > 12 else None,
+            'item_ref': (row[13] or '').strip() if len(row) > 13 else '',
+            'item_name': (row[14] or '').strip() if len(row) > 14 else '',
+            'item_category': (row[15] or '').strip() if len(row) > 15 else '',
+            'measure': (row[16] or '').strip() if len(row) > 16 else '',
+            'supplier_name': (row[17] or '').strip() or None if len(row) > 17 else None,
+            'supplier_phone': (row[18] or '').strip() or None if len(row) > 18 else None,
+        }
+    except Exception as e:
+        print(f"_fetch_store_stock_movement_detail: {e}")
+        return None
+
+
+def _store_inventory_effective_role():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    return viewing_as_role if is_technician and viewing_as_role else user_role
+
+
+def _store_inventory_guard():
+    """Redirect if current user is not allowed to manage store inventory."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
+def _generate_store_item_reference_code(cursor):
+    """Next simple reference: STI-00001, STI-00002, …"""
+    ensure_store_inventory_items_table(cursor)
+    cursor.execute("""
+        SELECT reference_code FROM store_inventory_items
+        ORDER BY id DESC LIMIT 1
+    """)
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_code') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(r'^STI-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'STI-{next_num:05d}'
+
+
+def _save_store_item_image(file_storage):
+    """Save optional store item image; returns relative static path or None."""
+    if not file_storage or not getattr(file_storage, 'filename', None):
+        return None
+    if file_storage.filename == '' or not allowed_file(file_storage.filename):
+        return None
+    timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+    filename = secure_filename(file_storage.filename)
+    unique_filename = f"store_{timestamp}_{filename}"
+    file_path = os.path.join(STORE_INVENTORY_FOLDER, unique_filename)
+    file_storage.save(file_path)
+    return f"uploads/store_inventory/{unique_filename}"
+
+
+def _delete_store_item_image_file(image_path):
+    if not image_path:
+        return
+    rel = str(image_path).lstrip('/').replace('\\', '/')
+    if rel.startswith('static/'):
+        rel = rel[7:]
+    full = os.path.join('static', rel) if not rel.startswith('static') else rel
+    try:
+        if os.path.isfile(full):
+            os.remove(full)
+    except OSError as e:
+        print(f"_delete_store_item_image_file: {e}")
+
+
+def _fetch_store_inventory_items(cursor):
+    """List all store inventory items for the catalog UI."""
+    ensure_store_inventory_items_table(cursor)
+    items = []
+    try:
+        cursor.execute("""
+            SELECT id, reference_code, item_category, item_name, description, measure,
+                   image_path, item_status, created_at
+            FROM store_inventory_items
+            ORDER BY item_category ASC, item_name ASC, id ASC
+        """)
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                items.append({
+                    'id': int(row.get('id') or 0),
+                    'reference_code': (row.get('reference_code') or '').strip(),
+                    'item_category': (row.get('item_category') or '').strip(),
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'description': (row.get('description') or '').strip() or None,
+                    'measure': (row.get('measure') or '').strip(),
+                    'image_path': (row.get('image_path') or '').strip() or None,
+                    'item_status': (row.get('item_status') or 'active').strip(),
+                    'created_at': row.get('created_at'),
+                })
+            else:
+                items.append({
+                    'id': int(row[0] or 0),
+                    'reference_code': (row[1] or '').strip(),
+                    'item_category': (row[2] or '').strip(),
+                    'item_name': (row[3] or '').strip(),
+                    'description': (row[4] or '').strip() or None,
+                    'measure': (row[5] or '').strip(),
+                    'image_path': (row[6] or '').strip() or None,
+                    'item_status': (row[7] or 'active').strip(),
+                    'created_at': row[8] if len(row) > 8 else None,
+                })
+    except Exception as e:
+        print(f"_fetch_store_inventory_items: {e}")
+    return items
+
+
 def _books_inventory_librarian_guard():
     """Redirect if current user is not allowed to manage library books inventory."""
     user_role = session.get('role', '').lower()
@@ -28334,6 +30603,895 @@ def books_inventory():
         inventory_view=inventory_view,
         last_stock_in_labels=last_stock_in_labels,
         last_stock_out_labels=last_stock_out_labels,
+    )
+
+
+@app.route('/dashboard/employee/store-inventory/<int:item_id>/delete', methods=['POST'])
+@login_required
+def store_inventory_delete(item_id):
+    redir = _store_inventory_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('store-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            cursor.execute(
+                "SELECT image_path FROM store_inventory_items WHERE id = %s",
+                (item_id,),
+            )
+            row = cursor.fetchone()
+            image_path = None
+            if row:
+                image_path = row.get('image_path') if isinstance(row, dict) else row[0]
+            cursor.execute("DELETE FROM store_inventory_items WHERE id = %s", (item_id,))
+            connection.commit()
+            if image_path:
+                _delete_store_item_image_file(image_path)
+            flash('Store item removed from inventory.', 'success')
+    except Exception as e:
+        print(f"store_inventory_delete: {e}")
+        connection.rollback()
+        flash('Could not delete the store item.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('store-inventory'))
+
+
+@app.route('/dashboard/employee/store-inventory/<int:item_id>/toggle-suspend', methods=['POST'])
+@login_required
+def store_inventory_toggle_suspend(item_id):
+    redir = _store_inventory_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('store-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            cursor.execute(
+                """
+                UPDATE store_inventory_items
+                SET item_status = IF(item_status = 'suspended', 'active', 'suspended')
+                WHERE id = %s
+                """,
+                (item_id,),
+            )
+            connection.commit()
+            flash('Store item status updated.', 'success')
+    except Exception as e:
+        print(f"store_inventory_toggle_suspend: {e}")
+        connection.rollback()
+        flash('Could not update suspension status.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('store-inventory'))
+
+
+@app.route('/dashboard/employee/store-inventory', methods=['GET', 'POST'])
+@login_required
+def store_inventory():
+    """Register and manage school store inventory items (store manager)."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    items = []
+    category_suggestions = []
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_inventory.html',
+            role=user_role,
+            is_technician=is_technician,
+            items=items,
+            store_items_client=[],
+            category_suggestions=category_suggestions,
+            measures=list(STORE_ITEM_MEASURES),
+            open_edit_item_id=None,
+            inventory_form_open_default=False,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_inventory_items_table(cursor)
+            connection.commit()
+
+            if request.method == 'POST':
+                item_id_update = request.form.get('item_id', type=int)
+                item_category = (request.form.get('item_category') or '').strip()[:120].upper()
+                item_name = (request.form.get('item_name') or '').strip()[:255].upper()
+                desc_raw = (request.form.get('description') or '').strip()
+                description = desc_raw.upper() if desc_raw else None
+                measure = (request.form.get('measure') or '').strip().upper()
+                if measure not in STORE_ITEM_MEASURES:
+                    measure = ''
+
+                if not item_category or not item_name:
+                    flash('Item category and item name are required.', 'error')
+                    if item_id_update:
+                        return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
+                elif not measure:
+                    flash('Please select a valid measure.', 'error')
+                    if item_id_update:
+                        return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
+                elif item_id_update:
+                    try:
+                        cursor.execute("SELECT id, image_path FROM store_inventory_items WHERE id = %s", (item_id_update,))
+                        existing = cursor.fetchone()
+                        if not existing:
+                            flash('Store item not found.', 'error')
+                            return redirect(employee_dash_url('store-inventory'))
+                        old_image = (
+                            existing.get('image_path') if isinstance(existing, dict) else existing[1]
+                        )
+                        new_image = _save_store_item_image(request.files.get('image'))
+                        image_path = new_image if new_image else old_image
+                        cursor.execute(
+                            """
+                            UPDATE store_inventory_items
+                            SET item_category = %s, item_name = %s, description = %s,
+                                measure = %s, image_path = %s
+                            WHERE id = %s
+                            """,
+                            (item_category, item_name, description, measure, image_path, item_id_update),
+                        )
+                        connection.commit()
+                        if new_image and old_image and old_image != new_image:
+                            _delete_store_item_image_file(old_image)
+                        flash('Store item updated successfully.', 'success')
+                        return redirect(employee_dash_url('store-inventory'))
+                    except Exception as e:
+                        connection.rollback()
+                        print(f"store_inventory update: {e}")
+                        flash('An error occurred while updating the store item.', 'error')
+                        return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
+                else:
+                    try:
+                        reference_code = _generate_store_item_reference_code(cursor)
+                        image_path = _save_store_item_image(request.files.get('image'))
+                        cursor.execute(
+                            """
+                            INSERT INTO store_inventory_items
+                                (reference_code, item_category, item_name, description, measure,
+                                 image_path, item_status)
+                            VALUES (%s, %s, %s, %s, %s, %s, 'active')
+                            """,
+                            (reference_code, item_category, item_name, description, measure, image_path),
+                        )
+                        connection.commit()
+                        flash(f'Store item registered as {reference_code}.', 'success')
+                        return redirect(employee_dash_url('store-inventory'))
+                    except IntegrityError:
+                        connection.rollback()
+                        flash('Could not save the store item (duplicate reference). Try again.', 'error')
+                    except Exception as e:
+                        connection.rollback()
+                        print(f"store_inventory insert: {e}")
+                        flash('An error occurred while registering the store item.', 'error')
+
+            items = _fetch_store_inventory_items(cursor)
+            seen_cats = set()
+            for it in items:
+                cat = (it.get('item_category') or '').strip()
+                if cat and cat not in seen_cats:
+                    seen_cats.add(cat)
+                    category_suggestions.append(cat)
+            category_suggestions.sort(key=lambda x: x.lower())
+    except Exception as e:
+        print(f"store_inventory: {e}")
+        flash('An error occurred loading store inventory.', 'error')
+    finally:
+        connection.close()
+
+    open_edit_item_id = request.args.get('edit', type=int) if request.method == 'GET' else None
+    if open_edit_item_id is not None and open_edit_item_id not in {it['id'] for it in items}:
+        flash('Store item not found.', 'error')
+        open_edit_item_id = None
+
+    store_items_client = [
+        {
+            'id': it['id'],
+            'reference_code': it.get('reference_code') or '',
+            'item_category': it.get('item_category') or '',
+            'item_name': it.get('item_name') or '',
+            'description': it.get('description') or '',
+            'measure': it.get('measure') or '',
+            'image_path': it.get('image_path') or '',
+            'item_status': it.get('item_status') or 'active',
+        }
+        for it in items
+    ]
+    inventory_form_open_default = bool(
+        request.method == 'POST' and not request.form.get('item_id', type=int)
+    )
+
+    return render_template(
+        'dashboards/store_inventory.html',
+        role=user_role,
+        is_technician=is_technician,
+        items=items,
+        store_items_client=store_items_client,
+        category_suggestions=category_suggestions,
+        measures=list(STORE_ITEM_MEASURES),
+        open_edit_item_id=open_edit_item_id,
+        inventory_form_open_default=inventory_form_open_default,
+    )
+
+
+@app.route('/dashboard/employee/store-stock/supplier-lookup', methods=['GET'])
+@login_required
+def store_stock_supplier_lookup():
+    """Live lookup of store supplier by phone (stock in)."""
+    redir = _store_inventory_guard()
+    if redir:
+        return jsonify({'ok': False, 'found': False, 'message': 'Permission denied.'}), 403
+    phone_raw = (request.args.get('phone') or '').strip()
+    norm = _normalize_store_supplier_phone(phone_raw)
+    if not norm:
+        return jsonify({
+            'ok': True,
+            'found': False,
+            'ready': False,
+            'message': 'Enter a valid phone number (at least 9 digits).',
+        })
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'found': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            supplier = _store_lookup_supplier_by_phone(cursor, norm)
+            if supplier:
+                return jsonify({
+                    'ok': True,
+                    'found': True,
+                    'ready': True,
+                    'supplier_id': supplier['id'],
+                    'phone': supplier['phone'],
+                    'company_name': supplier['company_name'],
+                    'message': 'Supplier found — name filled in.',
+                })
+            return jsonify({
+                'ok': True,
+                'found': False,
+                'ready': True,
+                'phone': norm,
+                'message': 'New supplier — enter the supplier name.',
+            })
+    except Exception as e:
+        print(f"store_stock_supplier_lookup: {e}")
+        return jsonify({'ok': False, 'found': False, 'message': 'Could not look up supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/store-stock/print/<int:movement_id>')
+@login_required
+def store_stock_print(movement_id):
+    """Printable stock-in / stock-out receipt."""
+    can_print = (
+        _store_inventory_effective_role() == 'store manager'
+        or _accountant_effective_role() == 'accountant'
+    )
+    if not can_print:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+    connection = get_db_connection()
+    movement = None
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                movement = _fetch_store_stock_movement_detail(cursor, movement_id)
+        finally:
+            connection.close()
+    if not movement:
+        flash('Stock record not found.', 'error')
+        return redirect(employee_dash_url('store-stock'))
+    return render_template(
+        'dashboards/store_stock_print.html',
+        movement=movement,
+        school_settings=get_school_settings(),
+    )
+
+
+@app.route('/dashboard/employee/store-stock', methods=['GET', 'POST'])
+@login_required
+def store_stock():
+    """Stock in / stock out for school store items."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    stock_items = []
+    recent_movements = []
+    default_mode = (request.args.get('mode') or 'in').strip().lower()
+    if default_mode not in ('in', 'out'):
+        default_mode = 'in'
+    last_print_id = request.args.get('print', type=int)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_stock.html',
+            role=user_role,
+            is_technician=is_technician,
+            stock_items=[],
+            stock_items_client=[],
+            recent_movements=[],
+            stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
+            default_mode=default_mode,
+            last_print_id=last_print_id,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_stock_movements_table(cursor)
+            connection.commit()
+
+            if request.method == 'POST':
+                from decimal import Decimal, InvalidOperation
+
+                movement_type = (request.form.get('movement_type') or 'in').strip().lower()
+                if movement_type not in ('in', 'out'):
+                    movement_type = 'in'
+                store_item_id = request.form.get('store_item_id', type=int)
+                qty_raw = (request.form.get('quantity') or '').strip()
+                notes_raw = (request.form.get('notes') or '').strip()
+                notes = notes_raw.upper()[:500] if notes_raw else None
+
+                try:
+                    quantity = int(qty_raw)
+                except (TypeError, ValueError):
+                    quantity = None
+
+                if not store_item_id:
+                    flash('Please select a store item.', 'error')
+                elif quantity is None or quantity < 1:
+                    flash('Quantity must be a whole number of at least 1.', 'error')
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, item_name, item_status,
+                               COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+                        FROM store_inventory_items WHERE id = %s
+                        """,
+                        (store_item_id,),
+                    )
+                    item_row = cursor.fetchone()
+                    if not item_row:
+                        flash('Store item not found.', 'error')
+                    else:
+                        if isinstance(item_row, dict):
+                            item_status = (item_row.get('item_status') or '').strip()
+                            qty_before = int(item_row.get('quantity_on_hand') or 0)
+                        else:
+                            item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+                            qty_before = int(item_row[3] or 0) if len(item_row) > 3 else 0
+                        if item_status != 'active':
+                            flash('This item is suspended. Unsuspend it before stocking.', 'error')
+                        elif movement_type == 'out' and quantity > qty_before:
+                            flash(
+                                f'Cannot stock out {quantity} — only {qty_before} on hand.',
+                                'error',
+                            )
+                        elif movement_type == 'in':
+                            raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
+                            try:
+                                buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
+                            except (InvalidOperation, ValueError):
+                                buying_price = None
+                            supplier_phone = (request.form.get('supplier_phone') or '').strip()
+                            supplier_name = (request.form.get('supplier_name') or '').strip()
+
+                            if buying_price is None or buying_price < 0:
+                                flash('Enter a valid buying price.', 'error')
+                            else:
+                                supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
+                                    cursor, supplier_phone, supplier_name,
+                                )
+                                if sup_err:
+                                    flash(sup_err, 'error')
+                                else:
+                                    total_amount = (buying_price * quantity).quantize(Decimal('0.01'))
+                                    ref_no = _generate_store_stock_reference_number(cursor, 'in')
+                                    qty_after = qty_before + quantity
+                                    performed_by = session.get('employee_id') or session.get('user_id')
+                                    performed_name = (session.get('full_name') or session.get('username') or '').strip()
+                                    cursor.execute(
+                                        """
+                                        INSERT INTO store_stock_movements
+                                            (reference_number, store_item_id, movement_type, quantity,
+                                             buying_price, total_amount, supplier_id, payment_status,
+                                             notes, quantity_before, quantity_after,
+                                             performed_by, performed_by_name)
+                                        VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
+                                                %s, %s, %s, %s, %s)
+                                        """,
+                                        (
+                                            ref_no, store_item_id, quantity, buying_price, total_amount,
+                                            supplier_id, notes, qty_before, qty_after,
+                                            performed_by, performed_name or None,
+                                        ),
+                                    )
+                                    movement_pk = cursor.lastrowid
+                                    cursor.execute(
+                                        """
+                                        UPDATE store_inventory_items
+                                        SET quantity_on_hand = %s WHERE id = %s
+                                        """,
+                                        (qty_after, store_item_id),
+                                    )
+                                    connection.commit()
+                                    flash(f'Stock in recorded as {ref_no}. Payment pending: {total_amount}.', 'success')
+                                    return redirect(
+                                        employee_dash_url('store-stock')
+                                        + f'?print={movement_pk}&mode=in'
+                                    )
+                        elif movement_type == 'out':
+                            purpose_raw = (request.form.get('stock_out_purpose') or '').strip().upper()
+                            if purpose_raw not in STORE_STOCK_OUT_PURPOSES:
+                                flash('Select the purpose of stock out.', 'error')
+                            else:
+                                ref_no = _generate_store_stock_reference_number(cursor, 'out')
+                                qty_after = max(0, qty_before - quantity)
+                                performed_by = session.get('employee_id') or session.get('user_id')
+                                performed_name = (session.get('full_name') or session.get('username') or '').strip()
+                                cursor.execute(
+                                    """
+                                    INSERT INTO store_stock_movements
+                                        (reference_number, store_item_id, movement_type, quantity,
+                                         buying_price, total_amount, supplier_id, payment_status,
+                                         notes, stock_out_purpose, quantity_before, quantity_after,
+                                         performed_by, performed_by_name)
+                                    VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
+                                            %s, %s, %s, %s, %s, %s)
+                                    """,
+                                    (
+                                        ref_no, store_item_id, quantity, notes, purpose_raw,
+                                        qty_before, qty_after,
+                                        performed_by, performed_name or None,
+                                    ),
+                                )
+                                movement_pk = cursor.lastrowid
+                                cursor.execute(
+                                    """
+                                    UPDATE store_inventory_items
+                                    SET quantity_on_hand = %s WHERE id = %s
+                                    """,
+                                    (qty_after, store_item_id),
+                                )
+                                connection.commit()
+                                flash(f'Stock out recorded as {ref_no}.', 'success')
+                                return redirect(
+                                    employee_dash_url('store-stock')
+                                    + f'?print={movement_pk}&mode=out'
+                                )
+
+            stock_items = _fetch_store_items_for_stock(cursor)
+            recent_movements = _fetch_store_stock_movements_recent(cursor)
+    except Exception as e:
+        print(f"store_stock: {e}")
+        connection.rollback()
+        flash('An error occurred processing stock.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_stock.html',
+        role=user_role,
+        is_technician=is_technician,
+        stock_items=stock_items,
+        stock_items_client=stock_items,
+        recent_movements=recent_movements,
+        stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
+        default_mode=default_mode,
+        last_print_id=last_print_id,
+    )
+
+
+def ensure_store_requisitions_table(cursor):
+    """Item requisition requests against the store catalog."""
+    global _store_requisitions_schema_ensuring
+    if _store_requisitions_schema_ensuring:
+        return
+    _store_requisitions_schema_ensuring = True
+    try:
+        ensure_store_inventory_items_table(cursor)
+        ensure_store_suppliers_table(cursor)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS store_requisitions (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                reference_number VARCHAR(32) NOT NULL,
+                store_item_id INT NOT NULL,
+                quantity_requested INT NOT NULL,
+                notes VARCHAR(500) NULL,
+                supplier_id INT NULL,
+                allocated_at TIMESTAMP NULL,
+                allocated_by_name VARCHAR(255) NULL,
+                status ENUM('pending', 'approved', 'rejected', 'fulfilled') NOT NULL DEFAULT 'pending',
+                requested_by INT NULL,
+                requested_by_name VARCHAR(255) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_store_requisition_reference (reference_number),
+                INDEX idx_store_requisition_item (store_item_id),
+                INDEX idx_store_requisition_status (status),
+                INDEX idx_store_requisition_created (created_at),
+                INDEX idx_store_requisition_supplier (supplier_id),
+                FOREIGN KEY (store_item_id) REFERENCES store_inventory_items(id) ON DELETE RESTRICT,
+                FOREIGN KEY (supplier_id) REFERENCES store_suppliers(id) ON DELETE SET NULL
+            )
+        """)
+        ensure_store_suppliers_table(cursor)
+        cursor.execute("SHOW COLUMNS FROM store_requisitions LIKE 'supplier_id'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_requisitions
+                ADD COLUMN supplier_id INT NULL AFTER notes,
+                ADD COLUMN allocated_at TIMESTAMP NULL AFTER supplier_id,
+                ADD COLUMN allocated_by_name VARCHAR(255) NULL AFTER allocated_at,
+                ADD INDEX idx_store_requisition_supplier (supplier_id)
+            """)
+            print("OK: Added store_requisitions supplier allocation columns")
+    except Exception as e:
+        print(f"ensure_store_requisitions_table: {e}")
+    finally:
+        _store_requisitions_schema_ensuring = False
+
+
+def _generate_store_requisition_reference(cursor):
+    ensure_store_requisitions_table(cursor)
+    cursor.execute("""
+        SELECT reference_number FROM store_requisitions
+        ORDER BY id DESC LIMIT 1
+    """)
+    row = cursor.fetchone()
+    next_num = 1
+    if row:
+        code = (row.get('reference_number') if isinstance(row, dict) else row[0]) or ''
+        m = re.match(r'^REQ-(\d+)$', str(code).strip().upper())
+        if m:
+            next_num = int(m.group(1)) + 1
+    return f'REQ-{next_num:05d}'
+
+
+def _fetch_store_requisitions_recent(cursor, limit=50):
+    ensure_store_requisitions_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT r.id, r.reference_number, r.quantity_requested, r.notes,
+                   r.status, r.requested_by_name, r.created_at,
+                   si.reference_code AS item_ref, si.item_name, si.measure,
+                   si.item_category
+            FROM store_requisitions r
+            INNER JOIN store_inventory_items si ON si.id = r.store_item_id
+            ORDER BY r.created_at DESC, r.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'id': int(row.get('id') or 0),
+                    'reference_number': (row.get('reference_number') or '').strip(),
+                    'quantity_requested': int(row.get('quantity_requested') or 0),
+                    'notes': (row.get('notes') or '').strip() or None,
+                    'status': (row.get('status') or 'pending').strip(),
+                    'requested_by_name': (row.get('requested_by_name') or '').strip() or None,
+                    'created_at': row.get('created_at'),
+                    'item_ref': (row.get('item_ref') or '').strip(),
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'item_category': (row.get('item_category') or '').strip(),
+                    'measure': (row.get('measure') or '').strip(),
+                })
+            else:
+                rows.append({
+                    'id': int(row[0] or 0),
+                    'reference_number': (row[1] or '').strip(),
+                    'quantity_requested': int(row[2] or 0),
+                    'notes': (row[3] or '').strip() or None if len(row) > 3 else None,
+                    'status': (row[4] or 'pending').strip() if len(row) > 4 else 'pending',
+                    'requested_by_name': (row[5] or '').strip() or None if len(row) > 5 else None,
+                    'created_at': row[6] if len(row) > 6 else None,
+                    'item_ref': (row[7] or '').strip() if len(row) > 7 else '',
+                    'item_name': (row[8] or '').strip() if len(row) > 8 else '',
+                    'measure': (row[9] or '').strip() if len(row) > 9 else '',
+                    'item_category': (row[10] or '').strip() if len(row) > 10 else '',
+                })
+    except Exception as e:
+        print(f"_fetch_store_requisitions_recent: {e}")
+    return rows
+
+
+def _fetch_store_requisitions_pending(cursor, limit=100):
+    """Pending store requisitions for accountant notifications."""
+    ensure_store_requisitions_table(cursor)
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT r.id, r.reference_number, r.quantity_requested, r.notes,
+                   r.status, r.requested_by_name, r.created_at, r.supplier_id,
+                   si.reference_code AS item_ref, si.item_name, si.measure,
+                   si.item_category,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_requisitions r
+            INNER JOIN store_inventory_items si ON si.id = r.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = r.supplier_id
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at ASC, r.id ASC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                rows.append({
+                    'id': int(row.get('id') or 0),
+                    'reference_number': (row.get('reference_number') or '').strip(),
+                    'quantity_requested': int(row.get('quantity_requested') or 0),
+                    'notes': (row.get('notes') or '').strip() or None,
+                    'status': (row.get('status') or 'pending').strip(),
+                    'requested_by_name': (row.get('requested_by_name') or '').strip() or None,
+                    'created_at': row.get('created_at'),
+                    'supplier_id': int(row.get('supplier_id') or 0) or None,
+                    'item_ref': (row.get('item_ref') or '').strip(),
+                    'item_name': (row.get('item_name') or '').strip(),
+                    'item_category': (row.get('item_category') or '').strip(),
+                    'measure': (row.get('measure') or '').strip(),
+                    'supplier_name': (row.get('supplier_name') or '').strip() or None,
+                    'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+                })
+            else:
+                rows.append({
+                    'id': int(row[0] or 0),
+                    'reference_number': (row[1] or '').strip(),
+                    'quantity_requested': int(row[2] or 0),
+                    'notes': (row[3] or '').strip() or None if len(row) > 3 else None,
+                    'status': (row[4] or 'pending').strip() if len(row) > 4 else 'pending',
+                    'requested_by_name': (row[5] or '').strip() or None if len(row) > 5 else None,
+                    'created_at': row[6] if len(row) > 6 else None,
+                    'supplier_id': int(row[7] or 0) or None if len(row) > 7 else None,
+                    'item_ref': (row[8] or '').strip() if len(row) > 8 else '',
+                    'item_name': (row[9] or '').strip() if len(row) > 9 else '',
+                    'measure': (row[10] or '').strip() if len(row) > 10 else '',
+                    'item_category': (row[11] or '').strip() if len(row) > 11 else '',
+                    'supplier_name': (row[12] or '').strip() or None if len(row) > 12 else None,
+                    'supplier_phone': (row[13] or '').strip() or None if len(row) > 13 else None,
+                })
+    except Exception as e:
+        print(f"_fetch_store_requisitions_pending: {e}")
+    return rows
+
+
+def _requisition_row_to_dict(row):
+    """Map store_requisitions JOIN row (dict or tuple) to a UI dict."""
+    if isinstance(row, dict):
+        return {
+            'id': int(row.get('id') or 0),
+            'reference_number': (row.get('reference_number') or '').strip(),
+            'quantity_requested': int(row.get('quantity_requested') or 0),
+            'notes': (row.get('notes') or '').strip() or None,
+            'status': (row.get('status') or 'pending').strip(),
+            'requested_by_name': (row.get('requested_by_name') or '').strip() or None,
+            'created_at': row.get('created_at'),
+            'supplier_id': int(row.get('supplier_id') or 0) or None,
+            'allocated_at': row.get('allocated_at'),
+            'allocated_by_name': (row.get('allocated_by_name') or '').strip() or None,
+            'item_ref': (row.get('item_ref') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+            'item_category': (row.get('item_category') or '').strip(),
+            'measure': (row.get('measure') or '').strip(),
+            'supplier_name': (row.get('supplier_name') or '').strip() or None,
+            'supplier_phone': (row.get('supplier_phone') or '').strip() or None,
+        }
+    return {
+        'id': int(row[0] or 0),
+        'reference_number': (row[1] or '').strip(),
+        'quantity_requested': int(row[2] or 0),
+        'notes': (row[3] or '').strip() or None if len(row) > 3 else None,
+        'status': (row[4] or 'pending').strip() if len(row) > 4 else 'pending',
+        'requested_by_name': (row[5] or '').strip() or None if len(row) > 5 else None,
+        'created_at': row[6] if len(row) > 6 else None,
+        'supplier_id': int(row[7] or 0) or None if len(row) > 7 else None,
+        'allocated_at': row[8] if len(row) > 8 else None,
+        'allocated_by_name': (row[9] or '').strip() or None if len(row) > 9 else None,
+        'item_ref': (row[10] or '').strip() if len(row) > 10 else '',
+        'item_name': (row[11] or '').strip() if len(row) > 11 else '',
+        'measure': (row[12] or '').strip() if len(row) > 12 else '',
+        'item_category': (row[13] or '').strip() if len(row) > 13 else '',
+        'supplier_name': (row[14] or '').strip() or None if len(row) > 14 else None,
+        'supplier_phone': (row[15] or '').strip() or None if len(row) > 15 else None,
+    }
+
+
+def _format_requisition_datetimes(req):
+    """Add display strings for created_at / allocated_at on a requisition dict."""
+    for key, out_key in (
+        ('created_at', 'created_at_display'),
+        ('allocated_at', 'allocated_at_display'),
+    ):
+        val = req.get(key)
+        if val and hasattr(val, 'strftime'):
+            req[out_key] = val.strftime('%d %b %Y, %H:%M')
+        elif val:
+            req[out_key] = str(val)
+        else:
+            req[out_key] = '—'
+    return req
+
+
+def _fetch_store_requisitions_list(cursor, status_filter='all', limit=200):
+    """List store requisitions for accountant payments view."""
+    ensure_store_requisitions_table(cursor)
+    status_filter = (status_filter or 'all').strip().lower()
+    if status_filter == 'pending':
+        where_sql = "WHERE r.status = 'pending'"
+    elif status_filter == 'approved':
+        where_sql = "WHERE r.status = 'approved'"
+    elif status_filter == 'fulfilled':
+        where_sql = "WHERE r.status = 'fulfilled'"
+    elif status_filter == 'given':
+        where_sql = "WHERE r.status IN ('approved', 'fulfilled') AND r.supplier_id IS NOT NULL"
+    else:
+        where_sql = "WHERE r.status != 'rejected'"
+    rows = []
+    try:
+        cursor.execute(
+            f"""
+            SELECT r.id, r.reference_number, r.quantity_requested, r.notes,
+                   r.status, r.requested_by_name, r.created_at, r.supplier_id,
+                   r.allocated_at, r.allocated_by_name,
+                   si.reference_code AS item_ref, si.item_name, si.measure,
+                   si.item_category,
+                   sup.company_name AS supplier_name, sup.phone AS supplier_phone
+            FROM store_requisitions r
+            INNER JOIN store_inventory_items si ON si.id = r.store_item_id
+            LEFT JOIN store_suppliers sup ON sup.id = r.supplier_id
+            {where_sql}
+            ORDER BY COALESCE(r.allocated_at, r.created_at) DESC, r.id DESC
+            LIMIT %s
+            """,
+            (int(limit),),
+        )
+        for row in cursor.fetchall() or []:
+            rows.append(_format_requisition_datetimes(_requisition_row_to_dict(row)))
+    except Exception as e:
+        print(f"_fetch_store_requisitions_list: {e}")
+    return rows
+
+
+def _accountant_effective_role():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    return viewing_as_role if is_technician and viewing_as_role else user_role
+
+
+def _accountant_guard():
+    if _accountant_effective_role() != 'accountant':
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+    return None
+
+
+@app.route('/dashboard/employee/store-requisitions', methods=['GET', 'POST'])
+@login_required
+def store_requisitions():
+    """Submit and view store item requisitions (store manager)."""
+    if _store_inventory_effective_role() != 'store manager':
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    catalog_items = []
+    recent_requisitions = []
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return render_template(
+            'dashboards/store_requisitions.html',
+            role=user_role,
+            is_technician=is_technician,
+            catalog_items=[],
+            catalog_items_client=[],
+            recent_requisitions=[],
+            requisition_form_open_default=False,
+        )
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_requisitions_table(cursor)
+            connection.commit()
+
+            if request.method == 'POST':
+                store_item_id = request.form.get('store_item_id', type=int)
+                qty_raw = (request.form.get('quantity_requested') or '').strip()
+                notes_raw = (request.form.get('notes') or '').strip()
+                notes = notes_raw.upper()[:500] if notes_raw else None
+
+                try:
+                    quantity_requested = int(qty_raw)
+                except (TypeError, ValueError):
+                    quantity_requested = None
+
+                if not store_item_id:
+                    flash('Please select an item to request.', 'error')
+                elif quantity_requested is None or quantity_requested < 1:
+                    flash('Amount must be a whole number of at least 1.', 'error')
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, item_name, item_status
+                        FROM store_inventory_items WHERE id = %s
+                        """,
+                        (store_item_id,),
+                    )
+                    item_row = cursor.fetchone()
+                    if not item_row:
+                        flash('Store item not found.', 'error')
+                    else:
+                        if isinstance(item_row, dict):
+                            item_status = (item_row.get('item_status') or '').strip()
+                        else:
+                            item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+                        if item_status != 'active':
+                            flash('This item is suspended. Choose another item.', 'error')
+                        else:
+                            ref_no = _generate_store_requisition_reference(cursor)
+                            requested_by = session.get('employee_id') or session.get('user_id')
+                            requested_name = (
+                                session.get('full_name') or session.get('username') or ''
+                            ).strip()
+                            cursor.execute(
+                                """
+                                INSERT INTO store_requisitions
+                                    (reference_number, store_item_id, quantity_requested,
+                                     notes, status, requested_by, requested_by_name)
+                                VALUES (%s, %s, %s, %s, 'pending', %s, %s)
+                                """,
+                                (
+                                    ref_no, store_item_id, quantity_requested, notes,
+                                    requested_by, requested_name or None,
+                                ),
+                            )
+                            connection.commit()
+                            flash(f'Requisition {ref_no} submitted successfully.', 'success')
+                            return redirect(employee_dash_url('store-requisitions'))
+
+            catalog_items = _fetch_store_items_for_stock(cursor)
+            recent_requisitions = _fetch_store_requisitions_recent(cursor)
+    except Exception as e:
+        print(f"store_requisitions: {e}")
+        connection.rollback()
+        flash('An error occurred processing the requisition.', 'error')
+    finally:
+        connection.close()
+
+    return render_template(
+        'dashboards/store_requisitions.html',
+        role=user_role,
+        is_technician=is_technician,
+        catalog_items=catalog_items,
+        catalog_items_client=catalog_items,
+        recent_requisitions=recent_requisitions,
+        requisition_form_open_default=request.method == 'POST',
     )
 
 
@@ -37216,6 +40374,156 @@ def _user_can_access_communication():
     return ur in allowed or vr in allowed
 
 
+def _communication_recipient_rows(cursor, audience, q=None, role_filter=None, level_filter=None):
+    """Load employees or parents for the communication centre (optional search/filters)."""
+    audience = (audience or 'employees').lower().strip()
+    q_norm = (q or '').strip().lower()
+    like = f'%{q_norm}%' if q_norm else None
+    out = []
+
+    if audience == 'employees':
+        sql = """
+            SELECT id, employee_id, full_name, phone, email, role
+            FROM employees
+            WHERE status = 'active'
+        """
+        params = []
+        if role_filter:
+            sql += " AND LOWER(TRIM(role)) = %s"
+            params.append(str(role_filter).strip().lower())
+        if like:
+            sql += (
+                " AND (LOWER(full_name) LIKE %s OR LOWER(COALESCE(phone,'')) LIKE %s"
+                " OR LOWER(COALESCE(email,'')) LIKE %s OR LOWER(COALESCE(employee_id,'')) LIKE %s)"
+            )
+            params.extend([like, like, like, like])
+        sql += " ORDER BY full_name ASC LIMIT 500"
+        cursor.execute(sql, params)
+        for row in cursor.fetchall() or []:
+            rid = row.get('id') if isinstance(row, dict) else row[0]
+            eid = row.get('employee_id') if isinstance(row, dict) else row[1]
+            fn = row.get('full_name') if isinstance(row, dict) else row[2]
+            ph = row.get('phone') if isinstance(row, dict) else row[3]
+            em = row.get('email') if isinstance(row, dict) else row[4]
+            rl = row.get('role') if isinstance(row, dict) else row[5]
+            out.append({
+                'id': rid,
+                'kind': 'employee',
+                'employee_id': eid,
+                'name': fn or '',
+                'phone': ph or '',
+                'email': em or '',
+                'role': (rl or '').lower(),
+                'search': f"{fn} {ph} {em} {eid} {rl}".lower(),
+            })
+    else:
+        sql = """
+            SELECT p.id, p.full_name, p.phone, p.email,
+                   GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
+                   GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
+            FROM parents p
+            INNER JOIN students s ON s.student_id = p.student_id AND s.status = 'in session'
+        """
+        params = []
+        where = []
+        if level_filter:
+            where.append("TRIM(s.current_grade) = %s")
+            params.append(str(level_filter).strip())
+        if like:
+            where.append(
+                "(LOWER(p.full_name) LIKE %s OR LOWER(COALESCE(p.phone,'')) LIKE %s"
+                " OR LOWER(COALESCE(p.email,'')) LIKE %s)"
+            )
+            params.extend([like, like, like])
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " GROUP BY p.id, p.full_name, p.phone, p.email ORDER BY p.full_name ASC LIMIT 500"
+        cursor.execute(sql, params)
+        for row in cursor.fetchall() or []:
+            rid = row.get('id') if isinstance(row, dict) else row[0]
+            fn = row.get('full_name') if isinstance(row, dict) else row[1]
+            ph = row.get('phone') if isinstance(row, dict) else row[2]
+            em = row.get('email') if isinstance(row, dict) else row[3]
+            grades = row.get('grades') if isinstance(row, dict) else row[4]
+            children = row.get('children') if isinstance(row, dict) else row[5]
+            out.append({
+                'id': rid,
+                'kind': 'parent',
+                'name': fn or '',
+                'phone': ph or '',
+                'email': em or '',
+                'grades': grades or '',
+                'children': children or '',
+                'search': f"{fn} {ph} {em} {grades} {children}".lower(),
+            })
+    return out
+
+
+def _communication_resolve_targets(cursor, audience, recipient_ids, send_to_all, role_filter=None, level_filter=None):
+    """Resolve recipient rows for sending (by ids or entire filtered audience)."""
+    audience = (audience or 'employees').lower().strip()
+    if send_to_all:
+        rows = _communication_recipient_rows(cursor, audience, role_filter=role_filter, level_filter=level_filter)
+        return [
+            {'name': r.get('name'), 'phone': r.get('phone'), 'email': r.get('email')}
+            for r in rows
+        ]
+    ids = []
+    for x in recipient_ids or []:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        return None
+    targets = []
+    ph = ','.join(['%s'] * len(ids))
+    if audience == 'employees':
+        cursor.execute(
+            f"SELECT id, full_name, phone, email FROM employees WHERE id IN ({ph}) AND status = 'active'",
+            ids,
+        )
+    else:
+        cursor.execute(
+            f"SELECT id, full_name, phone, email FROM parents WHERE id IN ({ph})",
+            ids,
+        )
+    for row in cursor.fetchall() or []:
+        targets.append({
+            'name': row.get('full_name') if isinstance(row, dict) else row[1],
+            'phone': row.get('phone') if isinstance(row, dict) else row[2],
+            'email': row.get('email') if isinstance(row, dict) else row[3],
+        })
+    return targets
+
+
+def _save_communication_attachment(upload_file):
+    """Persist uploaded broadcast attachment; return (path, original_name, mime) or (None, err)."""
+    if not upload_file or not getattr(upload_file, 'filename', None):
+        return None, None, None
+    fn = secure_filename(upload_file.filename)
+    if not fn or not allowed_communication_attachment(fn):
+        return None, None, 'Invalid attachment type. Use PDF, Word, Excel, image, or text files.'
+    ext = fn.rsplit('.', 1)[1].lower()
+    stored = f"comm_{secrets.token_hex(8)}.{ext}"
+    path = os.path.join(COMMUNICATION_ATTACHMENT_FOLDER, stored)
+    upload_file.save(path)
+    mime_map = {
+        'pdf': 'application/pdf',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'txt': 'text/plain',
+        'csv': 'text/csv',
+    }
+    return path, fn, mime_map.get(ext, 'application/octet-stream')
+
+
 def _load_integration_data_communication():
     """Same shape as integration_settings page — for channel availability hints."""
     data = {
@@ -37332,79 +40640,27 @@ def api_communication_recipients():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     audience = (request.args.get('audience') or 'employees').lower().strip()
+    q = (request.args.get('q') or '').strip()
+    role_filter = (request.args.get('role') or '').strip().lower() or None
+    level_filter = (request.args.get('level') or '').strip() or None
+
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database error'}), 500
 
-    out = []
     try:
         with connection.cursor() as cursor:
-            if audience == 'employees':
-                cursor.execute(
-                    """
-                    SELECT id, employee_id, full_name, phone, email, role
-                    FROM employees
-                    WHERE status = 'active'
-                    ORDER BY full_name ASC
-                    """
-                )
-                for row in cursor.fetchall() or []:
-                    rid = row.get('id') if isinstance(row, dict) else row[0]
-                    eid = row.get('employee_id') if isinstance(row, dict) else row[1]
-                    fn = row.get('full_name') if isinstance(row, dict) else row[2]
-                    ph = row.get('phone') if isinstance(row, dict) else row[3]
-                    em = row.get('email') if isinstance(row, dict) else row[4]
-                    rl = row.get('role') if isinstance(row, dict) else row[5]
-                    out.append(
-                        {
-                            'id': rid,
-                            'kind': 'employee',
-                            'employee_id': eid,
-                            'name': fn or '',
-                            'phone': ph or '',
-                            'email': em or '',
-                            'role': (rl or '').lower(),
-                            'search': f"{fn} {ph} {em} {eid} {rl}".lower(),
-                        }
-                    )
-            else:
-                cursor.execute(
-                    """
-                    SELECT p.id, p.full_name, p.phone, p.email,
-                           GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
-                           GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
-                    FROM parents p
-                    INNER JOIN students s ON s.student_id = p.student_id AND s.status = 'in session'
-                    GROUP BY p.id, p.full_name, p.phone, p.email
-                    ORDER BY p.full_name ASC
-                    """
-                )
-                for row in cursor.fetchall() or []:
-                    rid = row.get('id') if isinstance(row, dict) else row[0]
-                    fn = row.get('full_name') if isinstance(row, dict) else row[1]
-                    ph = row.get('phone') if isinstance(row, dict) else row[2]
-                    em = row.get('email') if isinstance(row, dict) else row[3]
-                    grades = row.get('grades') if isinstance(row, dict) else row[4]
-                    children = row.get('children') if isinstance(row, dict) else row[5]
-                    out.append(
-                        {
-                            'id': rid,
-                            'kind': 'parent',
-                            'name': fn or '',
-                            'phone': ph or '',
-                            'email': em or '',
-                            'grades': grades or '',
-                            'children': children or '',
-                            'search': f"{fn} {ph} {em} {grades} {children}".lower(),
-                        }
-                    )
+            out = _communication_recipient_rows(
+                cursor, audience, q=q or None, role_filter=role_filter, level_filter=level_filter
+            )
+            roles = sorted({r.get('role') for r in out if r.get('role')})
     except Exception as e:
         print(f"api_communication_recipients: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         connection.close()
 
-    return jsonify({'success': True, 'recipients': out})
+    return jsonify({'success': True, 'recipients': out, 'roles': roles if audience == 'employees' else []})
 
 
 @app.route('/api/employee/communication/send', methods=['POST'])
@@ -37413,10 +40669,19 @@ def api_communication_send():
     if not _user_can_access_communication():
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    try:
-        payload = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        payload = {}
+    attachment_file = None
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        raw = request.form.get('payload') or '{}'
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            payload = {}
+        attachment_file = request.files.get('attachment')
+    else:
+        try:
+            payload = request.get_json(force=True, silent=True) or {}
+        except Exception:
+            payload = {}
 
     subject = (payload.get('subject') or '').strip()
     body = (payload.get('message') or '').strip()
@@ -37424,13 +40689,21 @@ def api_communication_send():
     audience = (payload.get('audience') or 'employees').lower().strip()
     recipient_ids = payload.get('recipient_ids') or []
     channels = payload.get('channels') or {}
+    send_to_all = bool(payload.get('send_to_all'))
+    role_filter = (payload.get('role_filter') or '').strip().lower() or None
+    level_filter = (payload.get('level_filter') or '').strip() or None
 
     if not subject or not body:
         return jsonify({'success': False, 'message': 'Subject and message are required.'}), 400
-    if not isinstance(recipient_ids, list) or len(recipient_ids) == 0:
-        return jsonify({'success': False, 'message': 'Select at least one recipient.'}), 400
+    if not send_to_all and (not isinstance(recipient_ids, list) or len(recipient_ids) == 0):
+        return jsonify({'success': False, 'message': 'Select at least one recipient, or choose send to all.'}), 400
     if not any(channels.get(k) for k in ('email', 'sms', 'whatsapp')):
         return jsonify({'success': False, 'message': 'Select at least one channel (email, SMS, or WhatsApp).'}), 400
+
+    attach_path, attach_name, attach_mime_or_err = _save_communication_attachment(attachment_file)
+    if attach_mime_or_err and not attach_path:
+        return jsonify({'success': False, 'message': attach_mime_or_err}), 400
+    attach_mime = attach_mime_or_err if attach_path else None
 
     integ = _load_integration_data_communication()
     flags = _communication_channel_flags(integ)
@@ -37442,61 +40715,56 @@ def api_communication_send():
     targets = []
     try:
         with connection.cursor() as cursor:
-            ids = []
-            for x in recipient_ids:
-                try:
-                    ids.append(int(x))
-                except (TypeError, ValueError):
-                    pass
-            if audience == 'employees':
-                if not ids:
-                    return jsonify({'success': False, 'message': 'Invalid recipient ids.'}), 400
-                ph = ','.join(['%s'] * len(ids))
-                cursor.execute(
-                    f"SELECT id, full_name, phone, email FROM employees WHERE id IN ({ph}) AND status = 'active'",
-                    ids,
-                )
-                for row in cursor.fetchall() or []:
-                    targets.append(
-                        {
-                            'name': row.get('full_name') if isinstance(row, dict) else row[1],
-                            'phone': row.get('phone') if isinstance(row, dict) else row[2],
-                            'email': row.get('email') if isinstance(row, dict) else row[3],
-                        }
-                    )
-            else:
-                if not ids:
-                    return jsonify({'success': False, 'message': 'Invalid recipient ids.'}), 400
-                ph = ','.join(['%s'] * len(ids))
-                cursor.execute(
-                    f"SELECT id, full_name, phone, email FROM parents WHERE id IN ({ph})",
-                    ids,
-                )
-                for row in cursor.fetchall() or []:
-                    targets.append(
-                        {
-                            'name': row.get('full_name') if isinstance(row, dict) else row[1],
-                            'phone': row.get('phone') if isinstance(row, dict) else row[2],
-                            'email': row.get('email') if isinstance(row, dict) else row[3],
-                        }
-                    )
+            targets = _communication_resolve_targets(
+                cursor,
+                audience,
+                recipient_ids,
+                send_to_all,
+                role_filter=role_filter,
+                level_filter=level_filter,
+            )
     except Exception as e:
         print(f"api_communication_send load targets: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         connection.close()
 
+    if targets is None:
+        return jsonify({'success': False, 'message': 'Invalid recipient ids.'}), 400
     if not targets:
         return jsonify({'success': False, 'message': 'No matching recipients found.'}), 400
 
-    results = {'email': {'sent': 0, 'failed': []}, 'sms': {'sent': 0, 'skipped': 0, 'notes': []}, 'whatsapp': {'sent': 0, 'skipped': 0, 'notes': []}}
+    results = {
+        'email': {'sent': 0, 'failed': []},
+        'sms': {'sent': 0, 'skipped': 0, 'notes': []},
+        'whatsapp': {'sent': 0, 'skipped': 0, 'notes': []},
+        'attachment': attach_name or None,
+        'recipient_count': len(targets),
+    }
+
+    if attach_path and (channels.get('sms') or channels.get('whatsapp')):
+        if channels.get('sms'):
+            results['sms']['notes'].append('Attachments are sent via email only.')
+        if channels.get('whatsapp'):
+            results['whatsapp']['notes'].append('Attachments are sent via email only.')
 
     full_text = f"Department: {dept}\n\n{body}" if dept else body
+    if attach_name:
+        full_text += f"\n\n[Attachment: {attach_name}]"
     html_body = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:system-ui,sans-serif;line-height:1.6;color:#333;">
 <p><strong>{subject}</strong></p>
 <p style="white-space:pre-wrap">{body}</p>
 {f'<p style="color:#64748b;font-size:13px;">From: {dept}</p>' if dept else ''}
+{f'<p style="color:#64748b;font-size:13px;">Attachment: {attach_name}</p>' if attach_name else ''}
 </body></html>"""
+
+    attach_bytes = None
+    if attach_path and os.path.isfile(attach_path):
+        try:
+            with open(attach_path, 'rb') as af:
+                attach_bytes = af.read()
+        except Exception as ex:
+            print(f"communication attachment read: {ex}")
 
     if channels.get('email'):
         if not flags.get('email'):
@@ -37521,6 +40789,8 @@ def api_communication_send():
                             html=html_body,
                         )
                         msg.sender = f"{from_name} <{sender_email}>"
+                        if attach_bytes and attach_name and attach_mime:
+                            msg.attach(attach_name, attach_mime, attach_bytes)
                         mail.send(msg)
                         results['email']['sent'] += 1
                     except Exception as ex:
@@ -37638,23 +40908,842 @@ def api_communication_send():
 
     return jsonify({'success': True, 'results': results})
 
-# Notifications Route (for academic coordinators)
+# Notifications Route (academic coordinators, accountant pending requisitions)
 @app.route('/dashboard/employee/notifications')
 @login_required
 def notifications():
-    """Notifications page for academic coordinators"""
+    """Notifications / messages — role-specific content."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    
-    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
+    effective_role = _accountant_effective_role()
+
+    if effective_role == 'accountant':
+        pending_requisitions = []
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    ensure_store_requisitions_table(cursor)
+                    connection.commit()
+                    pending_requisitions = _fetch_store_requisitions_pending(cursor)
+                    for req in pending_requisitions:
+                        ca = req.get('created_at')
+                        if ca and hasattr(ca, 'strftime'):
+                            req['created_at_display'] = ca.strftime('%d %b %Y, %H:%M')
+                        elif ca:
+                            req['created_at_display'] = str(ca)
+                        else:
+                            req['created_at_display'] = '—'
+            except Exception as e:
+                print(f"notifications (accountant): {e}")
+            finally:
+                connection.close()
+        return render_template(
+            'dashboards/accountant_notifications.html',
+            role=user_role,
+            is_technician=is_technician,
+            pending_requisitions=pending_requisitions,
+            pending_count=len(pending_requisitions),
+        )
+
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    
+
     if not (is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
+
     return render_template('dashboards/notifications.html', role=user_role)
+
+
+@app.route('/dashboard/employee/visual-analytics')
+@login_required
+def accountant_visual_analytics():
+    """Chart view of combined accountant dashboard analytics."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    user_role = session.get('role', '').lower()
+    accountant_dashboard = _accountant_dashboard_analytics_empty()
+    chart_data = _accountant_visual_chart_payload(accountant_dashboard)
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                accountant_dashboard = _fetch_accountant_dashboard_analytics(cursor)
+                chart_data = _accountant_visual_chart_payload(accountant_dashboard)
+        except Exception as e:
+            print(f"accountant_visual_analytics: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    return render_template(
+        'dashboards/accountant_visual_analytics.html',
+        role=user_role,
+        accountant_dashboard=accountant_dashboard,
+        chart_data=chart_data,
+        analytics_tab='visual',
+    )
+
+
+@app.route('/dashboard/employee/revenue')
+@login_required
+def accountant_revenue():
+    """Register and view school revenue (government or private)."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    user_role = session.get('role', '').lower()
+    source_filter = (request.args.get('source') or 'all').strip().lower()
+    if source_filter not in ('all', 'government', 'private', 'fees'):
+        source_filter = 'all'
+
+    revenue_rows = []
+    revenue_summary = {}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_accountant_revenue_table(cursor)
+                connection.commit()
+                revenue_rows = _fetch_combined_revenue_list(
+                    cursor, limit=100, source_filter=source_filter,
+                )
+                revenue_summary = _fetch_accountant_revenue_summary(cursor)
+        except Exception as e:
+            print(f"accountant_revenue: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    rs = revenue_summary or {}
+    return render_template(
+        'dashboards/accountant_revenue.html',
+        role=user_role,
+        revenue_rows=revenue_rows,
+        revenue_summary=rs,
+        source_filter=source_filter,
+        record_count=len(revenue_rows),
+    )
+
+
+@app.route('/dashboard/employee/revenue/register', methods=['POST'])
+@login_required
+def register_accountant_revenue():
+    """Save a revenue entry (government or private)."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    from decimal import Decimal, InvalidOperation
+
+    source_filter = (request.args.get('source') or 'all').strip().lower()
+    if source_filter not in ('all', 'government', 'private', 'fees'):
+        source_filter = 'all'
+    def _revenue_register_redirect(open_form=False):
+        url = employee_dash_url('revenue')
+        q = {}
+        if source_filter != 'all':
+            q['source'] = source_filter
+        if open_form:
+            q['register'] = '1'
+        if q:
+            url += '?' + urlencode(q)
+        return url
+
+    redirect_url = _revenue_register_redirect()
+    redirect_url_open_form = _revenue_register_redirect(open_form=True)
+
+    source_type = _normalize_revenue_source_type(request.form.get('source_type'))
+    if source_type == 'fees':
+        flash('Student fee payments are recorded on the Student Fees page.', 'error')
+        return redirect(redirect_url_open_form)
+    name = (request.form.get('name') or '').strip()
+    description = (request.form.get('description') or '').strip()
+    raw_amount = (request.form.get('amount') or '').strip().replace(',', '')
+
+    if not source_type:
+        flash('Select whether revenue is from Government or Private.', 'error')
+        return redirect(redirect_url_open_form)
+    if not name:
+        flash('Enter the revenue name.', 'error')
+        return redirect(redirect_url_open_form)
+    if len(name) > 255:
+        name = name[:255]
+    if len(description) > 500:
+        description = description[:500]
+
+    try:
+        amount = Decimal(raw_amount).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        amount = None
+
+    if amount is None or amount <= 0:
+        flash('Enter a valid amount greater than zero.', 'error')
+        return redirect(redirect_url_open_form)
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url_open_form)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_accountant_revenue_table(cursor)
+            ref_no = _generate_accountant_revenue_reference(cursor, source_type)
+            recorded_by = (
+                session.get('full_name') or session.get('username') or ''
+            ).strip()
+            cursor.execute(
+                """
+                INSERT INTO accountant_revenue
+                    (reference_number, source_type, name, description,
+                     amount, recorded_by_name)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    ref_no, source_type, name,
+                    description or None, amount, recorded_by or None,
+                ),
+            )
+            connection.commit()
+            label = 'Government' if source_type == 'government' else 'Private'
+            flash(
+                f'Revenue {ref_no} ({label}) — {name}: KES {amount:,.2f} recorded.',
+                'success',
+            )
+    except Exception as e:
+        print(f"register_accountant_revenue: {e}")
+        flash('Could not save revenue. Please try again.', 'error')
+        return redirect(redirect_url_open_form)
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/payments-invoices/analytics', methods=['GET'])
+@login_required
+def accountant_payments_analytics_api():
+    """JSON payment analytics for live dashboard updates."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_stock_movements_table(cursor)
+            ensure_store_stock_in_payment_lines_table(cursor)
+            ensure_accountant_misc_payments_table(cursor)
+            analytics = _fetch_accountant_payment_analytics(cursor)
+            return jsonify({'ok': True, 'analytics': analytics})
+    except Exception as e:
+        print(f"accountant_payments_analytics_api: {e}")
+        return jsonify({'ok': False, 'message': 'Could not load analytics.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/payments-invoices')
+@login_required
+def accountant_payments_invoices():
+    """View all stock-in records for payments / invoicing (accountant)."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    user_role = session.get('role', '').lower()
+    is_technician = user_role == 'technician'
+    payment_filter = (request.args.get('payment') or 'outstanding').strip().lower()
+    if payment_filter not in ('all', 'pending', 'partial', 'paid', 'outstanding'):
+        payment_filter = 'outstanding'
+
+    stock_in_records = []
+    misc_payments = []
+    payment_analytics = {}
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_store_stock_movements_table(cursor)
+                ensure_store_stock_in_payment_lines_table(cursor)
+                ensure_accountant_misc_payments_table(cursor)
+                connection.commit()
+                payment_analytics = _fetch_accountant_payment_analytics(cursor)
+                stock_in_records = _fetch_store_stock_in_list(
+                    cursor, payment_filter=payment_filter,
+                )
+                misc_payments = _fetch_accountant_misc_payments(cursor, limit=100)
+        except Exception as e:
+            print(f"accountant_payments_invoices: {e}")
+        finally:
+            connection.close()
+    else:
+        flash('Could not connect to the database.', 'error')
+
+    pa = payment_analytics or {}
+    return render_template(
+        'dashboards/accountant_payments_invoices.html',
+        role=user_role,
+        is_technician=is_technician,
+        stock_in_records=stock_in_records,
+        misc_payments=misc_payments,
+        payment_filter=payment_filter,
+        payment_analytics=pa,
+        record_count=len(stock_in_records),
+        misc_payment_count=len(misc_payments),
+        outstanding_total_display=pa.get('stock_in_outstanding_display', '0.00'),
+        misc_payments_total_display=pa.get('misc_total_display', '0.00'),
+    )
+
+
+@app.route(
+    '/dashboard/employee/payments-invoices/stock-in/<int:movement_id>/pay',
+    methods=['POST'],
+)
+@login_required
+def record_stock_in_payment(movement_id):
+    """Record a full or partial payment against a stock-in movement."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    from decimal import Decimal, InvalidOperation
+
+    payment_filter = (request.args.get('payment') or 'outstanding').strip().lower()
+    if payment_filter not in ('all', 'pending', 'partial', 'paid', 'outstanding'):
+        payment_filter = 'outstanding'
+    redirect_url = employee_dash_url('payments-invoices') + f'?payment={payment_filter}'
+
+    raw_amount = (request.form.get('amount_paid') or '').strip().replace(',', '')
+    company_name = (request.form.get('paid_to_company_name') or '').strip().upper()
+    company_phone_raw = (request.form.get('paid_to_company_phone') or '').strip()
+    company_phone = _normalize_store_supplier_phone(company_phone_raw)
+
+    try:
+        pay_amount = Decimal(raw_amount).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        pay_amount = None
+
+    if pay_amount is None or pay_amount <= 0:
+        flash('Enter a valid payment amount greater than zero.', 'error')
+        return redirect(redirect_url)
+    if not company_name:
+        flash('Enter the company name paid to.', 'error')
+        return redirect(redirect_url)
+    if not company_phone:
+        flash('Enter a valid company contact number (at least 9 digits).', 'error')
+        return redirect(redirect_url)
+    if len(company_name) > 255:
+        company_name = company_name[:255]
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_stock_in_payment_lines_table(cursor)
+            cursor.execute(
+                """
+                SELECT id, reference_number, movement_type, total_amount, amount_paid, payment_status
+                FROM store_stock_movements WHERE id = %s
+                """,
+                (movement_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                flash('Stock in record not found.', 'error')
+            else:
+                if isinstance(row, dict):
+                    movement_type = (row.get('movement_type') or '').strip()
+                    ref_no = (row.get('reference_number') or '').strip()
+                    total_amount = row.get('total_amount')
+                    current_paid = row.get('amount_paid') or 0
+                else:
+                    movement_type = (row[2] or '').strip() if len(row) > 2 else ''
+                    ref_no = (row[1] or '').strip() if len(row) > 1 else ''
+                    total_amount = row[3] if len(row) > 3 else None
+                    current_paid = row[4] if len(row) > 4 else 0
+                if movement_type != 'in':
+                    flash('Only stock in records can be paid from this page.', 'error')
+                else:
+                    try:
+                        total_dec = Decimal(str(total_amount or 0)).quantize(Decimal('0.01'))
+                        paid_dec = Decimal(str(current_paid or 0)).quantize(Decimal('0.01'))
+                    except (InvalidOperation, ValueError):
+                        total_dec = Decimal('0')
+                        paid_dec = Decimal('0')
+                    balance = total_dec - paid_dec
+                    if balance <= 0:
+                        flash(f'{ref_no} is already fully paid.', 'error')
+                    elif pay_amount > balance:
+                        flash(
+                            f'Payment cannot exceed the balance due ({balance.quantize(Decimal("0.01"))}).',
+                            'error',
+                        )
+                    else:
+                        new_paid = (paid_dec + pay_amount).quantize(Decimal('0.01'))
+                        new_status = _store_stock_payment_status(new_paid, total_dec)
+                        paid_by = (
+                            session.get('full_name') or session.get('username') or ''
+                        ).strip()
+                        cursor.execute(
+                            """
+                            INSERT INTO store_stock_in_payment_lines
+                                (movement_id, amount_paid, paid_to_company_name,
+                                 paid_to_company_phone, paid_by_name)
+                            VALUES (%s, %s, %s, %s, %s)
+                            """,
+                            (
+                                movement_id, pay_amount, company_name,
+                                company_phone, paid_by or None,
+                            ),
+                        )
+                        cursor.execute(
+                            """
+                            UPDATE store_stock_movements
+                            SET amount_paid = %s, payment_status = %s,
+                                paid_to_company_name = %s, paid_to_company_phone = %s
+                            WHERE id = %s AND movement_type = 'in'
+                            """,
+                            (
+                                new_paid, new_status, company_name, company_phone,
+                                movement_id,
+                            ),
+                        )
+                        connection.commit()
+                        if new_status == 'paid':
+                            flash(
+                                f'Payment of {pay_amount} recorded for {ref_no}. Fully paid.',
+                                'success',
+                            )
+                        else:
+                            remaining = (total_dec - new_paid).quantize(Decimal('0.01'))
+                            flash(
+                                f'Partial payment of {pay_amount} recorded for {ref_no}. '
+                                f'Balance due: {remaining}.',
+                                'success',
+                            )
+    except Exception as e:
+        print(f"record_stock_in_payment: {e}")
+        connection.rollback()
+        flash('Could not record payment.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route(
+    '/dashboard/employee/payments-invoices/register-payment',
+    methods=['POST'],
+)
+@login_required
+def register_misc_payment():
+    """Register a payment not tied to an existing stock-in record."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    from decimal import Decimal, InvalidOperation
+
+    payment_filter = (request.args.get('payment') or 'outstanding').strip().lower()
+    if payment_filter not in ('all', 'pending', 'partial', 'paid', 'outstanding'):
+        payment_filter = 'outstanding'
+    redirect_url = employee_dash_url('payments-invoices') + f'?payment={payment_filter}'
+
+    raw_amount = (request.form.get('amount_paid') or '').strip().replace(',', '')
+    company_name = (request.form.get('paid_to_company_name') or '').strip().upper()
+    company_phone_raw = (request.form.get('paid_to_company_phone') or '').strip()
+    company_phone = _normalize_store_supplier_phone(company_phone_raw)
+    description = _normalize_payment_description_text(request.form.get('description') or '')
+    if len(description) > 500:
+        description = description[:500]
+
+    try:
+        pay_amount = Decimal(raw_amount).quantize(Decimal('0.01'))
+    except (InvalidOperation, ValueError):
+        pay_amount = None
+
+    if pay_amount is None or pay_amount <= 0:
+        flash('Enter a valid payment amount greater than zero.', 'error')
+        return redirect(redirect_url)
+    if not company_name:
+        flash('Enter the company name paid to.', 'error')
+        return redirect(redirect_url)
+    if not company_phone:
+        flash('Enter a valid company contact number (at least 9 digits).', 'error')
+        return redirect(redirect_url)
+    if len(company_name) > 255:
+        company_name = company_name[:255]
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(redirect_url)
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_accountant_misc_payments_table(cursor)
+            ensure_accountant_payment_descriptions_table(cursor)
+            supplier_id = None
+            sup_id, sup_err = _store_upsert_supplier_for_stock_in(
+                cursor, company_phone, company_name,
+            )
+            if sup_id:
+                supplier_id = sup_id
+            elif sup_err:
+                print(f"register_misc_payment supplier upsert: {sup_err}")
+            if description:
+                _upsert_payment_description(cursor, description)
+            ref_no = _generate_accountant_misc_payment_reference(cursor)
+            recorded_by = (
+                session.get('full_name') or session.get('username') or ''
+            ).strip()
+            cursor.execute(
+                """
+                INSERT INTO accountant_misc_payments
+                    (reference_number, amount, paid_to_company_name,
+                     paid_to_company_phone, description, supplier_id, recorded_by_name)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    ref_no, pay_amount, company_name, company_phone,
+                    description or None, supplier_id, recorded_by or None,
+                ),
+            )
+            connection.commit()
+            flash(
+                f'Payment {ref_no} of KES {pay_amount} recorded for {company_name}.',
+                'success',
+            )
+    except Exception as e:
+        print(f"register_misc_payment: {e}")
+        connection.rollback()
+        flash('Could not register payment.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(redirect_url)
+
+
+@app.route('/dashboard/employee/payments-invoices/supplier-lookup', methods=['GET'])
+@login_required
+def accountant_payments_supplier_lookup():
+    """Live supplier lookup by phone (register misc payment)."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'found': False, 'message': 'Permission denied.'}), 403
+    phone_raw = (request.args.get('phone') or '').strip()
+    norm = _normalize_store_supplier_phone(phone_raw)
+    if not norm:
+        return jsonify({
+            'ok': True,
+            'found': False,
+            'ready': False,
+            'message': 'Enter a valid phone number (at least 9 digits).',
+        })
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'found': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            supplier = _store_lookup_supplier_by_phone(cursor, norm)
+            if supplier:
+                return jsonify({
+                    'ok': True,
+                    'found': True,
+                    'ready': True,
+                    'supplier_id': supplier['id'],
+                    'phone': supplier['phone'],
+                    'company_name': supplier['company_name'],
+                    'message': 'Supplier found — details filled in.',
+                })
+            return jsonify({
+                'ok': True,
+                'found': False,
+                'ready': True,
+                'phone': norm,
+                'message': 'New supplier — enter company name to register.',
+            })
+    except Exception as e:
+        print(f"accountant_payments_supplier_lookup: {e}")
+        return jsonify({'ok': False, 'found': False, 'message': 'Could not look up supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/payments-invoices/supplier-search', methods=['GET'])
+@login_required
+def accountant_payments_supplier_search():
+    """Search suppliers by name (register misc payment autocomplete)."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'results': [], 'message': 'Permission denied.'}), 403
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 2:
+        return jsonify({'ok': True, 'results': [], 'message': 'Type at least 2 characters.'})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'results': [], 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            results = _store_search_suppliers_by_name(cursor, query, limit=10)
+            return jsonify({'ok': True, 'results': results})
+    except Exception as e:
+        print(f"accountant_payments_supplier_search: {e}")
+        return jsonify({'ok': False, 'results': [], 'message': 'Search failed.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/payments-invoices/register-supplier', methods=['POST'])
+@login_required
+def accountant_payments_register_supplier():
+    """Live-register a new supplier when phone and name are entered."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'message': 'Permission denied.'}), 403
+    data = request.get_json(silent=True) or {}
+    phone_raw = (data.get('phone') or request.form.get('phone') or '').strip()
+    company_name = (data.get('company_name') or request.form.get('company_name') or '').strip().upper()
+    phone = _normalize_store_supplier_phone(phone_raw)
+    if not phone:
+        return jsonify({'ok': False, 'message': 'Enter a valid phone number (at least 9 digits).'})
+    if not company_name or len(company_name) < 2:
+        return jsonify({'ok': False, 'message': 'Enter the company name (at least 2 characters).'})
+    if len(company_name) > 255:
+        company_name = company_name[:255]
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            existing = _store_lookup_supplier_by_phone(cursor, phone)
+            supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
+                cursor, phone, company_name,
+            )
+            if not supplier_id:
+                return jsonify({
+                    'ok': False,
+                    'message': sup_err or 'Could not register supplier.',
+                }), 400
+            connection.commit()
+            registered = not existing
+            return jsonify({
+                'ok': True,
+                'supplier_id': supplier_id,
+                'phone': phone,
+                'company_name': company_name,
+                'registered': registered,
+                'message': 'Supplier registered.' if registered else 'Supplier updated.',
+            })
+    except Exception as e:
+        print(f"accountant_payments_register_supplier: {e}")
+        connection.rollback()
+        return jsonify({'ok': False, 'message': 'Could not register supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/payments-invoices/description-search', methods=['GET'])
+@login_required
+def accountant_payments_description_search():
+    """Search saved payment descriptions (live autocomplete)."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'results': [], 'message': 'Permission denied.'}), 403
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 2:
+        return jsonify({'ok': True, 'results': [], 'message': 'Type at least 2 characters.'})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'results': [], 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            results = _search_payment_descriptions(cursor, query, limit=10)
+            q_norm = _normalize_payment_description_text(query)
+            exact = any(
+                (r.get('description') or '').strip() == q_norm for r in results
+            )
+            msg = 'Description found.'
+            if not exact:
+                msg = (
+                    'Select a description or continue — new text will be saved.'
+                    if results else 'New description — will be saved when you register payment.'
+                )
+            return jsonify({
+                'ok': True,
+                'results': results,
+                'exact_match': exact,
+                'message': msg,
+            })
+    except Exception as e:
+        print(f"accountant_payments_description_search: {e}")
+        return jsonify({'ok': False, 'results': [], 'message': 'Search failed.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/notifications/supplier-lookup', methods=['GET'])
+@login_required
+def accountant_supplier_lookup():
+    """Live lookup of store supplier by phone (accountant requisition allocation)."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'found': False, 'message': 'Permission denied.'}), 403
+    phone_raw = (request.args.get('phone') or '').strip()
+    norm = _normalize_store_supplier_phone(phone_raw)
+    if not norm:
+        return jsonify({
+            'ok': True,
+            'found': False,
+            'ready': False,
+            'message': 'Enter a valid phone number (at least 9 digits).',
+        })
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'found': False, 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            supplier = _store_lookup_supplier_by_phone(cursor, norm)
+            if supplier:
+                return jsonify({
+                    'ok': True,
+                    'found': True,
+                    'ready': True,
+                    'supplier_id': supplier['id'],
+                    'phone': supplier['phone'],
+                    'company_name': supplier['company_name'],
+                    'message': 'Supplier found — name filled in.',
+                })
+            return jsonify({
+                'ok': True,
+                'found': False,
+                'ready': True,
+                'phone': norm,
+                'message': 'New supplier — enter the supplier name.',
+            })
+    except Exception as e:
+        print(f"accountant_supplier_lookup: {e}")
+        return jsonify({'ok': False, 'found': False, 'message': 'Could not look up supplier.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/notifications/supplier-search', methods=['GET'])
+@login_required
+def accountant_supplier_search():
+    """Search store suppliers by company name (accountant allocation autocomplete)."""
+    if _accountant_effective_role() != 'accountant':
+        return jsonify({'ok': False, 'results': [], 'message': 'Permission denied.'}), 403
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 2:
+        return jsonify({'ok': True, 'results': [], 'message': 'Type at least 2 characters.'})
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'ok': False, 'results': [], 'message': 'Database connection error.'}), 500
+    try:
+        with connection.cursor() as cursor:
+            results = _store_search_suppliers_by_name(cursor, query, limit=10)
+            return jsonify({'ok': True, 'results': results})
+    except Exception as e:
+        print(f"accountant_supplier_search: {e}")
+        return jsonify({'ok': False, 'results': [], 'message': 'Search failed.'}), 500
+    finally:
+        connection.close()
+
+
+@app.route(
+    '/dashboard/employee/notifications/requisition/<int:requisition_id>/allocate-supplier',
+    methods=['POST'],
+)
+@login_required
+def allocate_requisition_supplier(requisition_id):
+    """Assign supplier to a pending requisition (registers new supplier if needed)."""
+    redir = _accountant_guard()
+    if redir:
+        return redir
+
+    supplier_phone = (request.form.get('supplier_phone') or '').strip()
+    supplier_name = (request.form.get('supplier_name') or '').strip()
+    qty_raw = (request.form.get('quantity_requested') or '').strip()
+    try:
+        quantity_requested = int(qty_raw)
+    except (TypeError, ValueError):
+        quantity_requested = None
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('notifications'))
+
+    try:
+        with connection.cursor() as cursor:
+            ensure_store_requisitions_table(cursor)
+            cursor.execute(
+                """
+                SELECT id, reference_number, status, supplier_id, quantity_requested
+                FROM store_requisitions WHERE id = %s
+                """,
+                (requisition_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                flash('Requisition not found.', 'error')
+            elif quantity_requested is None or quantity_requested < 1:
+                flash('Amount required must be a whole number of at least 1.', 'error')
+            else:
+                if isinstance(row, dict):
+                    status = (row.get('status') or '').strip()
+                    ref_no = (row.get('reference_number') or '').strip()
+                    orig_qty = int(row.get('quantity_requested') or 0)
+                else:
+                    status = (row[2] or '').strip() if len(row) > 2 else ''
+                    ref_no = (row[1] or '').strip() if len(row) > 1 else ''
+                    orig_qty = int(row[4] or 0) if len(row) > 4 else 0
+                if status != 'pending':
+                    flash('This requisition is no longer pending.', 'error')
+                else:
+                    supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
+                        cursor, supplier_phone, supplier_name,
+                    )
+                    if sup_err:
+                        flash(sup_err, 'error')
+                    else:
+                        allocated_by = (
+                            session.get('full_name') or session.get('username') or ''
+                        ).strip()
+                        cursor.execute(
+                            """
+                            UPDATE store_requisitions
+                            SET supplier_id = %s, quantity_requested = %s, status = 'approved',
+                                allocated_at = NOW(), allocated_by_name = %s
+                            WHERE id = %s AND status = 'pending'
+                            """,
+                            (
+                                supplier_id, quantity_requested,
+                                allocated_by or None, requisition_id,
+                            ),
+                        )
+                        connection.commit()
+                        msg = f'Supplier allocated to {ref_no}. Requisition approved.'
+                        if quantity_requested != orig_qty:
+                            msg += f' Amount updated from {orig_qty} to {quantity_requested}.'
+                        flash(msg, 'success')
+    except Exception as e:
+        print(f"allocate_requisition_supplier: {e}")
+        connection.rollback()
+        flash('Could not allocate supplier.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dash_url('notifications'))
+
 
 # Integration Settings Route (for technicians)
 @app.route('/dashboard/employee/integration-settings')
@@ -38028,316 +42117,454 @@ def database_management():
                          db_info=db_info,
                          data_analysis=data_analysis)
 
-# Database Backup & Restore Route
+def _ensure_backup_settings_row(cursor, connection):
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS backup_settings (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            auto_backup_enabled BOOLEAN DEFAULT FALSE,
+            backup_frequency ENUM('daily', 'weekly', 'monthly') DEFAULT 'daily',
+            last_backup DATETIME,
+            next_backup DATETIME,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            updated_by VARCHAR(255)
+        )
+    """)
+    connection.commit()
+    ensure_backup_drive_schema(cursor, connection)
+    cursor.execute('SELECT COUNT(*) as c FROM backup_settings')
+    if cursor.fetchone().get('c', 0) == 0:
+        cursor.execute('INSERT INTO backup_settings (google_drive_enabled) VALUES (1)')
+        connection.commit()
+
+
+def _load_backup_settings_row(cursor):
+    """Latest backup_settings row as dict for Drive + schedule."""
+    conn = getattr(cursor, 'connection', None)
+    if conn:
+        _ensure_backup_settings_row(cursor, conn)
+    cursor.execute('SELECT * FROM backup_settings ORDER BY id DESC LIMIT 1')
+    row = cursor.fetchone()
+    if not row:
+        return {
+            'auto_backup_enabled': False,
+            'backup_frequency': 'daily',
+            'last_backup': None,
+            'next_backup': None,
+            'google_drive_enabled': True,
+            'google_drive_folder_id': '',
+            'google_drive_oauth_token': None,
+            'google_drive_connected_email': '',
+        'google_drive_school_root_id': '',
+        'google_drive_folder_map': None,
+        'google_drive_folders_status': None,
+        'google_drive_folders_error': '',
+        'google_drive_folders_at': None,
+        }
+    folder_map = row.get('google_drive_folder_map')
+    if folder_map and isinstance(folder_map, str):
+        try:
+            folder_map = json.loads(folder_map)
+        except Exception:
+            folder_map = None
+    return {
+        'id': row.get('id'),
+        'auto_backup_enabled': bool(row.get('auto_backup_enabled', 0)),
+        'backup_frequency': row.get('backup_frequency', 'daily'),
+        'last_backup': row.get('last_backup'),
+        'next_backup': row.get('next_backup'),
+        'google_drive_enabled': bool(row.get('google_drive_enabled', 1)),
+        'google_drive_folder_id': row.get('google_drive_folder_id') or '',
+        'google_drive_oauth_token': row.get('google_drive_oauth_token'),
+        'google_drive_connected_email': row.get('google_drive_connected_email') or '',
+        'google_drive_school_root_id': row.get('google_drive_school_root_id') or '',
+        'google_drive_folder_map': folder_map,
+        'google_drive_folders_status': row.get('google_drive_folders_status'),
+        'google_drive_folders_error': row.get('google_drive_folders_error') or '',
+        'google_drive_folders_at': row.get('google_drive_folders_at'),
+    }
+
+
+def _run_drive_folder_setup(cursor, connection, backup_settings, school_name, updated_by):
+    """
+    Create school/year/term folder tree on Google Drive and persist status.
+    Returns dict: ok, message, n_years, n_terms.
+    """
+    result = {'ok': False, 'message': '', 'n_years': 0, 'n_terms': 0}
+
+    if not gdrive_backup.is_user_connected(backup_settings) and not gdrive_backup.service_account_configured():
+        result['message'] = 'Connect Google Drive first.'
+        _save_drive_folders_status(cursor, connection, 'failed', result['message'], None, None, updated_by)
+        return result
+
+    calendar = get_academic_calendar_for_backup(cursor)
+    if not calendar:
+        result['message'] = 'No academic years or terms in the system. Add them under Academic settings, then try again.'
+        _save_drive_folders_status(cursor, connection, 'failed', result['message'], None, None, updated_by)
+        return result
+
+    try:
+        service, creds = gdrive_backup.get_drive_service(backup_settings)
+        if creds and hasattr(creds, 'expired'):
+            token_json = gdrive_backup.refresh_and_serialize_credentials(creds)
+            cursor.execute("""
+                UPDATE backup_settings SET google_drive_oauth_token = %s
+                WHERE id = (SELECT id FROM (
+                    SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+            """, (token_json,))
+            connection.commit()
+            backup_settings = {**backup_settings, 'google_drive_oauth_token': token_json}
+
+        root_parent = (backup_settings.get('google_drive_folder_id') or '').strip() or None
+        folder_map = gdrive_backup.build_folder_map(service, school_name, calendar, root_parent)
+        n_years = len(calendar)
+        n_terms = sum(len(y.get('terms') or []) for y in calendar)
+        _save_drive_folders_status(
+            cursor, connection, 'ok', None, folder_map,
+            folder_map.get('school_folder_id'), updated_by,
+        )
+        result['ok'] = True
+        result['message'] = f'Folder structure created: {n_years} year(s), {n_terms} term(s).'
+        result['n_years'] = n_years
+        result['n_terms'] = n_terms
+    except Exception as e:
+        print(f'Drive folder setup error: {e}')
+        msg = gdrive_backup.friendly_drive_error(e)
+        result['message'] = msg
+        _save_drive_folders_status(cursor, connection, 'failed', msg, None, None, updated_by)
+    return result
+
+
+def _save_drive_folders_status(cursor, connection, status, error_msg, folder_map, school_root_id, updated_by):
+    ensure_backup_drive_schema(cursor, connection)
+    map_json = json.dumps(folder_map) if folder_map else None
+    cursor.execute("""
+        UPDATE backup_settings SET
+            google_drive_folders_status = %s,
+            google_drive_folders_error = %s,
+            google_drive_folders_at = NOW(),
+            google_drive_folder_map = COALESCE(%s, google_drive_folder_map),
+            google_drive_school_root_id = COALESCE(%s, google_drive_school_root_id),
+            updated_by = %s
+        WHERE id = (SELECT id FROM (
+            SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+    """, (status, error_msg, map_json, school_root_id, updated_by))
+    connection.commit()
+
+
+# Google Drive school data backup
 @app.route('/database/backup-restore')
 @login_required
 def database_backup_restore():
-    """Database backup and restore page for technicians and principals"""
+    """Organized school data backup to Google Drive (technicians and principals)."""
     user_role = session.get('role', '').lower()
-    
-    # Only technicians and principals can access this page
+
     if user_role not in ['technician', 'head of institution']:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Get backup settings and history
+
     connection = get_db_connection()
     backup_settings = {
         'auto_backup_enabled': False,
         'backup_frequency': 'daily',
         'last_backup': None,
-        'next_backup': None
+        'next_backup': None,
+        'google_drive_enabled': True,
+        'google_drive_folder_id': '',
+        'google_drive_oauth_token': None,
+        'google_drive_connected_email': '',
+        'google_drive_folder_map': None,
+        'google_drive_folders_status': None,
+        'google_drive_folders_error': '',
+        'google_drive_folders_at': None,
     }
     backup_history = []
-    
+    academic_calendar = []
+    current_period = {'year_name': '—', 'term_name': '—'}
+
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Check if backup_settings table exists
                 cursor.execute("""
-                    SELECT COUNT(*) as count 
-                    FROM information_schema.tables 
-                    WHERE table_schema = DATABASE() 
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables
+                    WHERE table_schema = DATABASE()
                     AND table_name = 'backup_settings'
                 """)
-                table_exists = cursor.fetchone()
-                
-                if table_exists and table_exists.get('count', 0) > 0:
-                    cursor.execute("SELECT * FROM backup_settings ORDER BY id DESC LIMIT 1")
-                    settings_result = cursor.fetchone()
-                    if settings_result:
-                        backup_settings = {
-                            'auto_backup_enabled': bool(settings_result.get('auto_backup_enabled', 0)),
-                            'backup_frequency': settings_result.get('backup_frequency', 'daily'),
-                            'last_backup': settings_result.get('last_backup'),
-                            'next_backup': settings_result.get('next_backup')
-                        }
-                    
-                    # Get backup history
-                    try:
-                        cursor.execute("""
-                            SELECT * FROM backup_history 
-                            ORDER BY created_at DESC 
-                            LIMIT 10
-                        """)
-                        backup_history = cursor.fetchall()
-                    except:
-                        backup_history = []
+                if cursor.fetchone().get('count', 0) > 0:
+                    backup_settings = _load_backup_settings_row(cursor)
+                backup_history = fetch_backup_history(cursor, connection, limit=20)
+                academic_calendar = get_academic_calendar_for_backup(cursor)
+                current_period = get_current_year_term_for_backup(cursor)
         except Exception as e:
-            print(f"Error fetching backup settings: {e}")
+            print(f'Error fetching backup settings: {e}')
         finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass
-    
-    # Check if backup file exists and get its info
-    backup_file_info = None
-    backup_filename = 'database_backup.xlsx' if EXCEL_AVAILABLE else 'database_backup.zip'
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    backup_file_info = {'exists': False}
+    backup_filename = 'school_data_backup_latest.xlsx'
     backup_file_path = os.path.join(BACKUP_FOLDER, backup_filename)
     if os.path.exists(backup_file_path):
         file_stat = os.stat(backup_file_path)
-        # Get absolute file path for direct file link
-        abs_file_path = os.path.abspath(backup_file_path)
-        # Convert to file:// URL format for direct file access
-        file_url = f"file:///{abs_file_path.replace(os.sep, '/')}"
         backup_file_info = {
             'exists': True,
             'size': file_stat.st_size,
             'modified': datetime.fromtimestamp(file_stat.st_mtime),
-            'url': file_url,
-            'file_path': abs_file_path,
-            'filename': backup_filename
+            'url': url_for('static', filename=f'uploads/backups/{backup_filename}'),
+            'filename': backup_filename,
+            'is_up_to_date': False,
         }
-        
-        # Check if file is up to date based on backup settings
         if backup_settings.get('last_backup'):
             last_backup = backup_settings['last_backup']
             if isinstance(last_backup, str):
                 try:
                     last_backup = datetime.strptime(last_backup, '%Y-%m-%d %H:%M:%S')
-                except:
+                except Exception:
                     last_backup = None
-            
             if last_backup:
                 file_modified = datetime.fromtimestamp(file_stat.st_mtime)
-                # Check if file was modified within the last hour of last_backup
-                time_diff = abs((file_modified - last_backup).total_seconds())
-                backup_file_info['is_up_to_date'] = time_diff < 3600  # Within 1 hour
-            else:
-                backup_file_info['is_up_to_date'] = False
-        else:
-            backup_file_info['is_up_to_date'] = False
-    else:
-        backup_file_info = {'exists': False}
-    
-    return render_template('dashboards/database_backup_restore.html', 
-                         backup_settings=backup_settings,
-                         backup_history=backup_history,
-                         excel_available=EXCEL_AVAILABLE,
-                         backup_file_info=backup_file_info)
+                backup_file_info['is_up_to_date'] = abs((file_modified - last_backup).total_seconds()) < 3600
 
-# Database Backup Export Route
+    user_connected = gdrive_backup.is_user_connected(backup_settings)
+    oauth_ready = gdrive_backup.oauth_client_configured()
+    drive_ok, drive_message = (False, 'Sign in with Google to connect your Drive.')
+    if user_connected or gdrive_backup.service_account_configured():
+        try:
+            drive_ok, drive_message = gdrive_backup.test_connection(backup_settings)
+        except Exception as e:
+            drive_message = str(e)
+
+    folder_tree_preview = [
+        {'school': (get_school_settings() or {}).get('school_name') or 'School'},
+    ]
+    for y in academic_calendar[:5]:
+        folder_tree_preview.append({'year': y.get('name')})
+        for t in (y.get('terms') or [])[:4]:
+            folder_tree_preview.append({
+                'term': t.get('name'),
+                'branches': [
+                    f"{gdrive_backup.FOLDER_ACCOUNTS} → fees, payments",
+                    f"{gdrive_backup.FOLDER_CURRICULUM} → exams, timetable, attendance",
+                ],
+            })
+
+    return render_template(
+        'dashboards/database_backup_restore.html',
+        backup_settings=backup_settings,
+        backup_history=backup_history,
+        backup_categories=BACKUP_CATEGORIES,
+        drive_backup_slices=DRIVE_BACKUP_SLICES,
+        academic_calendar=academic_calendar,
+        current_period=current_period,
+        excel_available=EXCEL_AVAILABLE,
+        backup_file_info=backup_file_info,
+        google_oauth_ready=oauth_ready,
+        google_user_connected=user_connected,
+        google_drive_connected=drive_ok,
+        google_drive_message=drive_message,
+        google_connected_email=backup_settings.get('google_drive_connected_email') or '',
+        google_service_account_email=gdrive_backup.get_service_account_email(),
+        folders_initialized=bool(backup_settings.get('google_drive_folder_map')),
+        drive_folders_status=backup_settings.get('google_drive_folders_status'),
+        drive_folders_error=backup_settings.get('google_drive_folders_error') or '',
+        drive_folders_at=backup_settings.get('google_drive_folders_at'),
+        show_create_folders_button=(
+            user_connected
+            and backup_settings.get('google_drive_folders_status') == 'failed'
+        ),
+        folder_tree_preview=folder_tree_preview,
+        service_account_ready=gdrive_backup.service_account_configured(),
+    )
+
+# School data backup export (split files → year/term folder tree on Drive)
 @app.route('/database/backup-export', methods=['POST'])
 @login_required
 def database_backup_export():
-    """Export database to Excel format"""
-    user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('manage_backups', 
-                                         allowed_roles=['technician', 'head of institution'])
-    
+    """Export to categorized Excel files and upload into the Drive folder structure."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
-    
+
+    if not EXCEL_AVAILABLE:
+        flash('Excel export requires openpyxl. Install it and try again.', 'error')
+        return redirect(url_for('database_backup_restore'))
+
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
         return redirect(url_for('database_backup_restore'))
-    
+
+    import shutil
+
+    school = get_school_settings() or {}
+    school_name = school.get('school_name') or 'School'
+    created_by = session.get('full_name', 'Unknown')
+    storage_location = 'local'
+    drive_url = None
+    drive_error = None
+    drive_upload_count = 0
+    total_records = 0
+    total_tables = 0
+    slice_files = {}
+    tmp_dir = None
+    period = {}
+    history_id = None
+
     try:
         with connection.cursor() as cursor:
-            # Get all tables
-            cursor.execute("SHOW TABLES")
-            table_results = cursor.fetchall()
-            total_tables = len(table_results)
-            total_records = 0
-            
-            if EXCEL_AVAILABLE:
-                # Create Excel workbook
-                wb = Workbook()
-                wb.remove(wb.active)  # Remove default sheet
-                
-                # Export each table to a separate sheet
-                for table_result in table_results:
-                    table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
-                    
-                    # Create sheet for this table
-                    ws = wb.create_sheet(title=table_name[:31])  # Excel sheet name limit
-                    
-                    # Get table data
-                    cursor.execute(f"SELECT * FROM `{table_name}`")
-                    columns = [desc[0] for desc in cursor.description]
-                    rows = cursor.fetchall()
-                    total_records += len(rows)
-                    
-                    # Write headers
-                    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                    header_font = Font(bold=True, color="FFFFFF")
-                    
-                    for col_idx, col_name in enumerate(columns, 1):
-                        cell = ws.cell(row=1, column=col_idx, value=col_name)
-                        cell.fill = header_fill
-                        cell.font = header_font
-                        cell.alignment = Alignment(horizontal="center", vertical="center")
-                    
-                    # Write data rows
-                    for row_idx, row_data in enumerate(rows, 2):
-                        for col_idx, value in enumerate(row_data, 1):
-                            if isinstance(value, datetime):
-                                value = value.strftime('%Y-%m-%d %H:%M:%S')
-                            elif value is None:
-                                value = ''
-                            ws.cell(row=row_idx, column=col_idx, value=value)
-                    
-                    # Auto-adjust column widths
-                    for column in ws.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 50)
-                        ws.column_dimensions[column_letter].width = adjusted_width
-                
-                # Save to file on server (fixed filename that gets updated)
-                filename = "database_backup.xlsx"
-                filepath = os.path.join(BACKUP_FOLDER, filename)
-                
-                # Save workbook to file
-                wb.save(filepath)
-                file_size = os.path.getsize(filepath)
-                
-                # Save backup record
+            backup_settings = _load_backup_settings_row(cursor)
+            period = get_current_year_term_for_backup(cursor)
+            year_id = period.get('year_id')
+            term_id = period.get('term_id')
+
+            wb, total_tables, total_records, category_stats = build_organized_workbook(
+                cursor, school_name, created_by,
+            )
+            stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'school_data_backup_{stamp}.xlsx'
+            filepath = os.path.join(BACKUP_FOLDER, filename)
+            latest_path = os.path.join(BACKUP_FOLDER, 'school_data_backup_latest.xlsx')
+            wb.save(filepath)
+            shutil.copy2(filepath, latest_path)
+            file_size = os.path.getsize(filepath)
+
+            slice_files, tmp_dir = build_slice_workbooks(cursor, school_name, created_by)
+            upload_paths = {k: v['filepath'] for k, v in slice_files.items()}
+
+            upload_to_drive = (
+                backup_settings.get('google_drive_enabled', True)
+                and (gdrive_backup.is_user_connected(backup_settings)
+                     or gdrive_backup.service_account_configured())
+            )
+            folder_map = backup_settings.get('google_drive_folder_map')
+            up = {'uploads': [], 'errors': []}
+
+            if upload_to_drive and not folder_map:
+                drive_error = (
+                    'Drive folders not set up. Sign in again or use Retry creating folder structure, '
+                    'then back up.'
+                )
+                upload_to_drive = False
+            elif upload_to_drive and folder_map and not upload_paths:
+                drive_error = 'No data tables found to upload for this backup.'
+                upload_to_drive = False
+
+            if upload_to_drive and folder_map and upload_paths:
                 try:
-                    with connection.cursor() as cursor2:
-                        # Create backup_history table if it doesn't exist
-                        cursor2.execute("""
-                            CREATE TABLE IF NOT EXISTS backup_history (
-                                id INT AUTO_INCREMENT PRIMARY KEY,
-                                filename VARCHAR(255) NOT NULL,
-                                file_path VARCHAR(500),
-                                file_size BIGINT,
-                                table_count INT,
-                                record_count INT,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                created_by VARCHAR(255)
-                            )
-                        """)
+                    service, creds = gdrive_backup.get_drive_service(backup_settings)
+                    if creds and hasattr(creds, 'expired'):
+                        new_token = gdrive_backup.refresh_and_serialize_credentials(creds)
+                        cursor.execute("""
+                            UPDATE backup_settings SET google_drive_oauth_token = %s
+                            WHERE id = (SELECT id FROM (
+                                SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+                        """, (new_token,))
                         connection.commit()
-                        
-                        # Insert backup record
-                        cursor2.execute("""
-                            INSERT INTO backup_history (filename, file_path, file_size, table_count, record_count, created_by)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                        """, (filename, filepath, file_size, total_tables, total_records, session.get('full_name', 'Unknown')))
-                        connection.commit()
-                        
-                        # Update last_backup in settings
-                        cursor2.execute("""
-                            UPDATE backup_settings 
-                            SET last_backup = NOW() 
-                            WHERE id = (SELECT id FROM (SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS tmp)
-                        """)
-                        connection.commit()
+                    up = gdrive_backup.upload_structured_backups(
+                        service, folder_map, year_id, term_id, upload_paths, stamp,
+                    )
+                    drive_upload_count = len(up.get('uploads') or [])
+                    if drive_upload_count:
+                        storage_location = 'google_drive'
+                        drive_url = up['uploads'][0].get('web_view_link')
+                    if up.get('errors'):
+                        drive_error = '; '.join(up['errors'][:3])
                 except Exception as e:
-                    print(f"Error saving backup record: {e}")
-                
-                flash('Database backup updated successfully!', 'success')
-                return redirect(url_for('database_backup_restore'))
-            else:
-                # Fallback to CSV (zip multiple files)
-                import zipfile
-                from io import StringIO
-                
-                zip_buffer = BytesIO()
-                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    for table_result in table_results:
-                        table_name = list(table_result.values())[0] if isinstance(table_result, dict) else table_result[0]
-                        
-                        cursor.execute(f"SELECT * FROM `{table_name}`")
-                        columns = [desc[0] for desc in cursor.description]
-                        rows = cursor.fetchall()
-                        total_records += len(rows)
-                        
-                        # Create CSV in memory
-                        csv_buffer = StringIO()
-                        writer = csv.writer(csv_buffer)
-                        writer.writerow(columns)
-                        for row in rows:
-                            writer.writerow([str(v) if v is not None else '' for v in row])
-                        
-                        zip_file.writestr(f"{table_name}.csv", csv_buffer.getvalue())
-                
-                # Save to file on server (fixed filename that gets updated)
-                filename = "database_backup.zip"
-                filepath = os.path.join(BACKUP_FOLDER, filename)
-                
-                with open(filepath, 'wb') as f:
-                    f.write(zip_buffer.getvalue())
-                
-                file_size = os.path.getsize(filepath)
-                
-                flash('Database backup updated successfully!', 'success')
-                return redirect(url_for('database_backup_restore'))
-                
-    except Exception as e:
-        print(f"Error exporting database: {e}")
-        import traceback
-        traceback.print_exc()
-        flash(f'Error exporting database: {str(e)}', 'error')
-        return redirect(url_for('database_backup_restore'))
-    finally:
-        if connection:
+                    drive_error = gdrive_backup.friendly_drive_error(e)
+
+            history_meta = {
+                'category_stats': category_stats,
+                'slice_paths': list(slice_files.keys()),
+                'drive_uploads': drive_upload_count,
+                'drive_errors': up.get('errors', [])[:5],
+                'period': {
+                    'year': period.get('year_name'),
+                    'term': period.get('term_name'),
+                },
+            }
+            history_id = record_backup_history(
+                cursor, connection, filename, filepath, file_size, total_tables,
+                total_records, created_by, storage_location, None, drive_url, history_meta,
+            )
+
             try:
-                connection.close()
-            except:
+                _ensure_backup_settings_row(cursor, connection)
+                cursor.execute("""
+                    UPDATE backup_settings SET last_backup = NOW(), updated_by = %s
+                    WHERE id = (SELECT id FROM (
+                        SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+                """, (created_by,))
+                connection.commit()
+            except Exception as e:
+                print(f'Update last_backup failed: {e}')
+
+            try:
+                if tmp_dir and os.path.isdir(tmp_dir):
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+            except Exception:
                 pass
 
-# Database Backup Settings Route
+        if not history_id:
+            flash('Backup files were created but could not be saved to history. Check server logs.', 'warning')
+        elif storage_location == 'google_drive' and drive_upload_count:
+            flash(
+                f'Backup complete — {drive_upload_count} file(s) on Google Drive '
+                f'({period.get("year_name")} / {period.get("term_name")}, {total_records:,} records).',
+                'success',
+            )
+        elif drive_error:
+            flash(
+                f'Backup saved locally ({total_records:,} records). Drive: {drive_error}',
+                'warning',
+            )
+        else:
+            flash(
+                f'Backup saved locally ({total_records:,} records, {total_tables} sheets).',
+                'success',
+            )
+    except Exception as e:
+        print(f'Error exporting school backup: {e}')
+        import traceback
+        traceback.print_exc()
+        flash(f'Error creating backup: {e}', 'error')
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    return redirect(employee_dashboard_path('database/backup-restore'))
+
 @app.route('/database/backup-settings', methods=['POST'])
 @login_required
 def database_backup_settings():
-    """Update backup settings"""
-    user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('manage_backups', 
-                                         allowed_roles=['technician', 'head of institution'])
-    
+    """Update backup schedule and Google Drive folder settings."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
     if not has_access:
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
-    
+
     auto_backup = request.form.get('auto_backup') == 'on'
     frequency = request.form.get('frequency', 'daily')
-    
+    google_drive_enabled = request.form.get('google_drive_enabled') == 'on'
+    google_drive_folder_id = (request.form.get('google_drive_folder_id') or '').strip()
+
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
         return redirect(url_for('database_backup_restore'))
-    
+
     try:
         with connection.cursor() as cursor:
-            # Create backup_settings table if it doesn't exist
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS backup_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -38350,8 +42577,8 @@ def database_backup_settings():
                 )
             """)
             connection.commit()
-            
-            # Calculate next backup time
+            ensure_backup_drive_schema(cursor, connection)
+
             next_backup = None
             if auto_backup:
                 if frequency == 'daily':
@@ -38360,40 +42587,248 @@ def database_backup_settings():
                     next_backup = datetime.now() + timedelta(weeks=1)
                 elif frequency == 'monthly':
                     next_backup = datetime.now() + timedelta(days=30)
-            
-            # Check if settings exist
-            cursor.execute("SELECT COUNT(*) as count FROM backup_settings")
+
+            cursor.execute('SELECT COUNT(*) as count FROM backup_settings')
             exists = cursor.fetchone()
-            
+            updated_by = session.get('full_name', 'Unknown')
+
             if exists and exists.get('count', 0) > 0:
-                # Update existing
                 cursor.execute("""
-                    UPDATE backup_settings 
-                    SET auto_backup_enabled = %s, 
-                        backup_frequency = %s, 
+                    UPDATE backup_settings
+                    SET auto_backup_enabled = %s,
+                        backup_frequency = %s,
                         next_backup = %s,
-                        updated_by = %s
+                        updated_by = %s,
+                        google_drive_enabled = %s,
+                        google_drive_folder_id = %s
                     WHERE id = (SELECT id FROM (SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS tmp)
-                """, (auto_backup, frequency, next_backup, session.get('full_name', 'Unknown')))
+                """, (
+                    auto_backup, frequency, next_backup, updated_by,
+                    google_drive_enabled, google_drive_folder_id or None,
+                ))
             else:
-                # Insert new
                 cursor.execute("""
-                    INSERT INTO backup_settings (auto_backup_enabled, backup_frequency, next_backup, updated_by)
-                    VALUES (%s, %s, %s, %s)
-                """, (auto_backup, frequency, next_backup, session.get('full_name', 'Unknown')))
-            
+                    INSERT INTO backup_settings (
+                        auto_backup_enabled, backup_frequency, next_backup, updated_by,
+                        google_drive_enabled, google_drive_folder_id
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    auto_backup, frequency, next_backup, updated_by,
+                    google_drive_enabled, google_drive_folder_id or None,
+                ))
+
             connection.commit()
-            flash('Backup settings updated successfully.', 'success')
+            flash('Backup settings saved.', 'success')
     except Exception as e:
-        print(f"Error updating backup settings: {e}")
+        print(f'Error updating backup settings: {e}')
         flash('Error updating backup settings.', 'error')
     finally:
         if connection:
             try:
                 connection.close()
-            except:
+            except Exception:
                 pass
-    
+
+    return redirect(url_for('database_backup_restore'))
+
+
+@app.route('/database/backup-test-drive', methods=['POST'])
+@login_required
+def database_backup_test_drive():
+    """Test Google Drive connection."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    settings = {}
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                settings = _load_backup_settings_row(cursor)
+        finally:
+            connection.close()
+    ok, msg = gdrive_backup.test_connection(settings)
+    flash(msg, 'success' if ok else 'error')
+    return redirect(url_for('database_backup_restore'))
+
+
+@app.route('/database/google-drive/connect')
+@login_required
+def database_google_drive_connect():
+    """Start Google OAuth to connect the user's Drive."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+    try:
+        flow = gdrive_backup.create_oauth_flow()
+        auth_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent',
+        )
+        session[gdrive_backup.OAUTH_STATE_SESSION_KEY] = state
+        return redirect(auth_url)
+    except Exception as e:
+        flash(f'Cannot start Google sign-in: {e}', 'error')
+        return redirect(url_for('database_backup_restore'))
+
+
+@app.route('/database/google-drive/callback')
+@login_required
+def database_google_drive_callback():
+    """OAuth callback — store tokens in backup_settings."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    if request.args.get('error'):
+        flash(f'Google sign-in cancelled: {request.args.get("error")}', 'error')
+        return redirect(url_for('database_backup_restore'))
+
+    saved_state = session.pop(gdrive_backup.OAUTH_STATE_SESSION_KEY, None)
+    try:
+        gdrive_backup.configure_oauth_transport()
+        flow = gdrive_backup.create_oauth_flow()
+        flow.fetch_token(authorization_response=request.url, state=saved_state)
+        creds = flow.credentials
+        token_json = gdrive_backup.refresh_and_serialize_credentials(creds)
+        email = gdrive_backup.get_connected_user_email({'google_drive_oauth_token': token_json})
+
+        folder_result = {}
+        connection = get_db_connection()
+        if connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS backup_settings (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        auto_backup_enabled BOOLEAN DEFAULT FALSE,
+                        backup_frequency ENUM('daily', 'weekly', 'monthly') DEFAULT 'daily',
+                        last_backup DATETIME,
+                        next_backup DATETIME,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        updated_by VARCHAR(255)
+                    )
+                """)
+                connection.commit()
+                ensure_backup_drive_schema(cursor, connection)
+                cursor.execute('SELECT COUNT(*) as c FROM backup_settings')
+                if cursor.fetchone().get('c', 0) == 0:
+                    cursor.execute(
+                        'INSERT INTO backup_settings (google_drive_enabled) VALUES (1)'
+                    )
+                cursor.execute("""
+                    UPDATE backup_settings SET
+                        google_drive_oauth_token = %s,
+                        google_drive_connected_email = %s,
+                        google_drive_enabled = 1,
+                        updated_by = %s
+                    WHERE id = (SELECT id FROM (
+                        SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+                """, (token_json, email, session.get('full_name', 'Unknown')))
+                connection.commit()
+
+                school = get_school_settings() or {}
+                school_name = school.get('school_name') or 'School'
+                backup_settings = _load_backup_settings_row(cursor)
+                folder_result = _run_drive_folder_setup(
+                    cursor, connection, backup_settings, school_name,
+                    session.get('full_name', 'Unknown'),
+                )
+            connection.close()
+
+        flash(f'Google Drive connected as {email}.', 'success')
+        if folder_result.get('ok'):
+            flash(folder_result['message'], 'success')
+        elif folder_result.get('message'):
+            flash(f'Folders were not created: {folder_result["message"]}', 'warning')
+    except Exception as e:
+        print(f'Google OAuth callback error: {e}')
+        flash(f'Google sign-in failed: {e}', 'error')
+    return redirect(url_for('database_backup_restore'))
+
+
+@app.route('/database/google-drive/disconnect', methods=['POST'])
+@login_required
+def database_google_drive_disconnect():
+    """Remove stored OAuth tokens."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        return redirect(employee_dashboard_path())
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_backup_drive_schema(cursor, connection)
+                cursor.execute("""
+                    UPDATE backup_settings SET
+                        google_drive_oauth_token = NULL,
+                        google_drive_connected_email = NULL,
+                        google_drive_folder_map = NULL,
+                        google_drive_school_root_id = NULL,
+                        google_drive_folders_status = NULL,
+                        google_drive_folders_error = NULL,
+                        google_drive_folders_at = NULL
+                    WHERE id = (SELECT id FROM (
+                        SELECT id FROM backup_settings ORDER BY id DESC LIMIT 1) AS t)
+                """)
+                connection.commit()
+        finally:
+            connection.close()
+    flash('Google Drive disconnected.', 'success')
+    return redirect(url_for('database_backup_restore'))
+
+
+@app.route('/database/google-drive/init-folders', methods=['POST'])
+@login_required
+def database_google_drive_init_folders():
+    """Create school / year / term / accounts / curriculum folder tree on Drive."""
+    has_access = check_permission_or_role(
+        'manage_backups',
+        allowed_roles=['technician', 'head of institution'],
+    )
+    if not has_access:
+        return redirect(employee_dashboard_path())
+
+    school = get_school_settings() or {}
+    school_name = school.get('school_name') or 'School'
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(url_for('database_backup_restore'))
+
+    try:
+        with connection.cursor() as cursor:
+            backup_settings = _load_backup_settings_row(cursor)
+            folder_result = _run_drive_folder_setup(
+                cursor, connection, backup_settings, school_name,
+                session.get('full_name', 'Unknown'),
+            )
+        if folder_result.get('ok'):
+            flash(f'{school_name}: {folder_result["message"]}', 'success')
+        else:
+            flash(folder_result.get('message') or 'Could not create folders.', 'error')
+    except Exception as e:
+        print(f'Init Drive folders error: {e}')
+        flash(f'Could not create folders: {gdrive_backup.friendly_drive_error(e)}', 'error')
+    finally:
+        connection.close()
     return redirect(url_for('database_backup_restore'))
 
 # Database Health & Status Route
@@ -39240,7 +43675,7 @@ def update_theme():
     primary_color = (request.form.get('primary_color') or '#800020').strip()
     secondary_color = (request.form.get('secondary_color') or '#A00030').strip()
     accent_color = (request.form.get('accent_color') or '#5C0014').strip()
-    font_family = (request.form.get('font_family') or 'Inter').strip()
+    font_family = normalize_portal_font_family(request.form.get('font_family'))
 
     # Validate hex colors
     import re
@@ -39248,7 +43683,6 @@ def update_theme():
     if not hex_pattern.match(primary_color): primary_color = '#800020'
     if not hex_pattern.match(secondary_color): secondary_color = '#A00030'
     if not hex_pattern.match(accent_color): accent_color = '#5C0014'
-    if font_family not in ('Inter', 'Poppins', 'Roboto', 'Open Sans'): font_family = 'Inter'
 
     connection = get_db_connection()
     if connection:

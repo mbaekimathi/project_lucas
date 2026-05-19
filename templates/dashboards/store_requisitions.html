@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}REQUISITIONS — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block sidebar_content %}
+<a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
+    <i class="fas fa-gauge w-5"></i><span>Dashboard</span>
+</a>
+{% include 'dashboards/includes/store_manager_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('storeRequisitionsPage', function () {
+    return {
+      catalogItems: [],
+      storeItemId: '',
+      quantityRequested: '1',
+      notes: '',
+      formOpen: false,
+      requisitionPostUrl: {{ employee_dash_url('store-requisitions')|tojson }},
+      init: function () {
+        var el = document.getElementById('store-requisition-items-json');
+        try {
+          this.catalogItems = el && el.textContent ? JSON.parse(el.textContent) : [];
+        } catch (e) {
+          this.catalogItems = [];
+        }
+        if ({{ requisition_form_open_default|default(false)|tojson }}) {
+          this.formOpen = true;
+        }
+      },
+      get selectedItem() {
+        var id = String(this.storeItemId || '');
+        if (!id) return null;
+        return this.catalogItems.find(function (x) { return String(x.id) === id; }) || null;
+      },
+      openForm: function () {
+        this.formOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.requisitionFormPanel;
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }.bind(this));
+      },
+      closeForm: function () {
+        this.formOpen = false;
+      },
+      submitCheck: function ($event) {
+        if (!this.storeItemId) {
+          $event.preventDefault();
+          window.alert('Please select an item to request.');
+          return;
+        }
+        var q = parseInt(this.quantityRequested, 10);
+        if (!Number.isFinite(q) || q < 1) {
+          $event.preventDefault();
+          window.alert('Enter an amount of at least 1.');
+        }
+      },
+    };
+  });
+});
+</script>
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 pb-16"
+         x-data="storeRequisitionsPage">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-3">
+            {% for category, message in messages %}
+            <div class="rounded-2xl border px-4 py-3.5 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800{% endif %}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <header class="mb-8 rounded-2xl border border-gray-200/90 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl">
+            <div class="p-6 sm:p-8">
+                <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">School store</p>
+                <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Requisitions</h1>
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
+                    Request items from the store catalog. Select an item, enter the amount needed, and submit.
+                    Each request receives a reference number and starts as <strong>pending</strong>.
+                </p>
+                {% if not catalog_items %}
+                <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                    No active items in the catalog.
+                    <a href="{{ employee_dash_url('store-inventory') }}" class="font-semibold underline">Register items</a> first.
+                </p>
+                {% endif %}
+            </div>
+        </header>
+
+        <script type="application/json" id="store-requisition-items-json">{{ catalog_items_client|tojson }}</script>
+
+        <div class="space-y-8">
+            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
+                <div class="px-5 py-5 sm:px-7 sm:py-6" x-show="!formOpen" x-cloak>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Create a new item requisition for the store.</p>
+                    <button type="button" @click="openForm()" :disabled="!catalogItems.length"
+                            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-4 text-sm font-semibold text-white shadow-md hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <i class="fas fa-plus text-lg"></i> New requisition
+                    </button>
+                </div>
+
+                <div x-show="formOpen" x-cloak x-ref="requisitionFormPanel"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 -translate-y-1"
+                     x-transition:enter-end="opacity-100 translate-y-0">
+                    <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">New requisition</h2>
+                        <button type="button" @click="closeForm()"
+                                class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 shrink-0">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+
+                    <form method="post" :action="requisitionPostUrl" @submit="submitCheck($event)"
+                          class="p-5 sm:p-7 space-y-5 border-t border-gray-100 dark:border-gray-800">
+                        <div>
+                            <label for="store_item_id" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Item to request</label>
+                            <select name="store_item_id" id="store_item_id" required x-model="storeItemId"
+                                    :disabled="!catalogItems.length"
+                                    class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                <option value="">SELECT ITEM</option>
+                                <template x-for="it in catalogItems" :key="it.id">
+                                    <option :value="String(it.id)"
+                                            x-text="it.reference_code + ' — ' + it.item_name + ' (' + it.measure + ') · on hand: ' + (it.quantity_on_hand || 0)"></option>
+                                </template>
+                            </select>
+                            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400 normal-case" x-show="selectedItem">
+                                Category: <span class="font-medium" x-text="selectedItem.item_category"></span>
+                            </p>
+                        </div>
+
+                        <div>
+                            <label for="quantity_requested" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">
+                                Amount requested
+                                <span x-show="selectedItem && selectedItem.measure" class="text-brand-primary" x-text="'(' + selectedItem.measure + ')'"></span>
+                            </label>
+                            <div class="relative flex items-stretch">
+                                <input type="number" name="quantity_requested" id="quantity_requested" min="1" step="1" required
+                                       x-model="quantityRequested"
+                                       :placeholder="selectedItem && selectedItem.measure ? 'HOW MANY ' + selectedItem.measure : 'QTY'"
+                                       class="w-full min-w-0 flex-1 rounded-l-xl border border-gray-200 bg-white px-4 py-3 text-sm tabular-nums dark:border-gray-600 dark:bg-gray-950 dark:text-white focus:z-10 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20" />
+                                <span x-show="selectedItem && selectedItem.measure"
+                                      class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-100 px-4 text-xs font-bold uppercase tracking-wide text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                                      x-text="selectedItem.measure"></span>
+                                <span x-show="!selectedItem || !selectedItem.measure"
+                                      class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-50 px-4 text-xs font-medium uppercase text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-500">—</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="notes" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Notes <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                            <input type="text" name="notes" id="notes" maxlength="500" x-model="notes"
+                                   @input="notes = ($event.target.value || '').toUpperCase()"
+                                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                                   placeholder="DEPARTMENT, CLASS, URGENCY, ETC." />
+                        </div>
+
+                        <button type="submit" :disabled="!catalogItems.length"
+                                class="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-3.5 text-sm font-semibold text-white shadow-md hover:opacity-95 disabled:opacity-50">
+                            <i class="fas fa-paper-plane"></i> Submit requisition
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
+                <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6">
+                    <h2 class="text-lg font-bold text-gray-900 dark:text-white">Recent requisitions</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Latest item requests submitted to the store.</p>
+                </div>
+                <div class="overflow-x-auto">
+                    {% if recent_requisitions %}
+                    <table class="min-w-[720px] w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Reference</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Item</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Measure</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Requested by</th>
+                                <th class="hidden px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 md:table-cell">Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            {% for r in recent_requisitions %}
+                            <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                                <td class="px-4 py-3 font-mono text-xs font-bold text-brand-primary whitespace-nowrap">{{ r.reference_number }}</td>
+                                <td class="px-4 py-3 max-w-[14rem]">
+                                    <span class="font-semibold uppercase text-gray-900 dark:text-white">{{ r.item_name }}</span>
+                                    <span class="block text-[10px] text-gray-500 dark:text-gray-400">{{ r.item_ref }}</span>
+                                </td>
+                                <td class="px-4 py-3 text-right tabular-nums font-medium text-gray-900 dark:text-white">{{ r.quantity_requested }}</td>
+                                <td class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 whitespace-nowrap">{{ r.measure }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded
+                                        {% if r.status == 'pending' %}bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300
+                                        {% elif r.status == 'approved' %}bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-300
+                                        {% elif r.status == 'fulfilled' %}bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300
+                                        {% else %}bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300{% endif %}">{{ r.status }}</span>
+                                </td>
+                                <td class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300">{{ r.requested_by_name or '—' }}</td>
+                                <td class="hidden px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 max-w-[12rem] truncate md:table-cell" title="{{ r.notes or '' }}">{{ r.notes or '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">No requisitions yet.</p>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

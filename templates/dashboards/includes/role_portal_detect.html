@@ -1,0 +1,48 @@
+{# Resolves active portal role for global theme (visual only). #}
+{% set _path_role = portal_role_from_request_path()|default('') %}
+{% set _portal_raw = (
+    dashboard_content_role|default('')
+    or _path_role
+    or session.get('viewing_as_employee_role')
+    or session.get('role', '')
+    or (current_view_role|default('') if current_view_role is defined else '')
+)|lower %}
+{% if _portal_raw in ('teacher',) %}{% set _portal_raw = 'teachers' %}{% endif %}
+{% if session.get('role', '')|lower == 'parent' or _portal_raw == 'parent' %}{% set _portal_raw = 'parent' %}{% endif %}
+{% if session.get('role', '')|lower == 'student' or _portal_raw == 'student' %}{% set _portal_raw = 'student' %}{% endif %}
+
+{% set portal_role = _portal_raw %}
+{% set portal_theme_class = 'role-theme-default' %}
+{% set portal_page_variant = 'default' %}
+
+{% if _portal_raw == 'head of institution' %}
+{% set portal_theme_class = 'role-theme-leadership' %}{% set portal_page_variant = 'leadership' %}
+{% elif _portal_raw == 'deputy head of institution' %}
+{% set portal_theme_class = 'role-theme-deputy' %}{% set portal_page_variant = 'deputy' %}
+{% elif _portal_raw in ('teachers', 'teacher') %}
+{% set portal_theme_class = 'role-theme-teacher' %}{% set portal_page_variant = 'teacher' %}
+{% elif _portal_raw == 'parent' %}
+{% set portal_theme_class = 'role-theme-parent' %}{% set portal_page_variant = 'parent' %}
+{% elif _portal_raw == 'student' %}
+{% set portal_theme_class = 'role-theme-student' %}{% set portal_page_variant = 'student' %}
+{% elif _portal_raw == 'curriculum coordinator' %}
+{% set portal_theme_class = 'role-theme-coordinator' %}{% set portal_page_variant = 'coordinator' %}
+{% elif _portal_raw == 'secretary' %}
+{% set portal_theme_class = 'role-theme-secretary' %}{% set portal_page_variant = 'secretary' %}
+{% elif _portal_raw == 'accountant' %}
+{% set portal_theme_class = 'role-theme-accountant' %}{% set portal_page_variant = 'accountant' %}
+{% elif _portal_raw == 'store manager' %}
+{% set portal_theme_class = 'role-theme-store' %}{% set portal_page_variant = 'store' %}
+{% elif _portal_raw == 'librarian' %}
+{% set portal_theme_class = 'role-theme-librarian' %}{% set portal_page_variant = 'librarian' %}
+{% elif _portal_raw == 'technician' %}
+{% set portal_theme_class = 'role-theme-technician' %}{% set portal_page_variant = 'technician' %}
+{% elif _portal_raw == 'super admin' %}
+{% set portal_theme_class = 'role-theme-admin' %}{% set portal_page_variant = 'admin' %}
+{% elif _portal_raw == 'warden' %}
+{% set portal_theme_class = 'role-theme-warden' %}{% set portal_page_variant = 'warden' %}
+{% elif _portal_raw in ('transport manager', 'transport') %}
+{% set portal_theme_class = 'role-theme-transport' %}{% set portal_page_variant = 'transport' %}
+{% endif %}
+
+{% set portal_layout_enabled = true %}

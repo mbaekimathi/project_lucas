@@ -1,0 +1,32 @@
+<header class="role-hero role-hero--{{ role_theme|default('leadership') }} mb-5 sm:mb-6 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+    <div class="relative px-5 sm:px-7 py-5 sm:py-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div class="flex items-start gap-4 min-w-0">
+            {% if role_hero_icon|default(true) %}
+            <div class="role-hero-icon-wrap" aria-hidden="true">
+                <i class="fas {{ role_hero_icon_class|default('fa-gauge-high') }} text-white text-xl sm:text-2xl"></i>
+            </div>
+            {% endif %}
+            <div class="min-w-0">
+                {% if role_hero_eyebrow %}
+                <p class="role-hero-eyebrow">{{ role_hero_eyebrow }}</p>
+                {% endif %}
+                <h1 class="role-hero-title">{{ role_hero_title }}</h1>
+                {% if role_hero_subtitle %}
+                <p class="role-hero-sub">{{ role_hero_subtitle }}</p>
+                {% endif %}
+                {% if role_hero_chips %}
+                <div class="mt-3 flex flex-wrap gap-2">
+                    {% for chip in role_hero_chips %}
+                    <span class="role-hero-chip"><i class="fas {{ chip.icon }} text-[10px] opacity-90" aria-hidden="true"></i> {{ chip.text }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% if role_hero_actions %}
+        <div class="flex flex-wrap gap-2 shrink-0">
+            {{ role_hero_actions|safe }}
+        </div>
+        {% endif %}
+    </div>
+</header>

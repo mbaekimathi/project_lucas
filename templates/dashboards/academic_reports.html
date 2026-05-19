@@ -3,7 +3,8 @@
 {% block title %}Academic reports - {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% include "dashboards/_secretary_academic_nav_sidebar.html" %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
@@ -948,7 +949,14 @@
     border-top: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent) !important;
 }
 </style>
-<div class="ar-page ar-page--workspace print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
+
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Academic reports' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-chalkboard' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="ar-page ar-page--workspace portal-page-root role-page role-page--{{ portal_page_variant|default('secretary') }} print:p-2 mx-auto px-3 sm:px-5 lg:px-6 py-3 sm:py-4">
     <!-- Workspace: categories, report tiles, filters -->
     <section class="no-print ar-workspace mb-3 sm:mb-4 rounded-xl border border-slate-200/90 dark:border-slate-700/90 bg-white dark:bg-slate-900 shadow-md shadow-slate-200/25 dark:shadow-none overflow-hidden">
         <header class="relative px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-brand-primary/[0.06] dark:from-slate-900 dark:via-slate-900 dark:to-brand-primary/10">

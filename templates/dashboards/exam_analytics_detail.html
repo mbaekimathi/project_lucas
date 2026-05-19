@@ -2,6 +2,8 @@
 
 {% block title %}{{ exam.exam_name }} - Exam Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
 {% block extra_head %}
 <style>
 /* Sticky columns for Students Marks table (same as exams-assessments level students) */
@@ -22,6 +24,17 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
 {% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'exams' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'exams' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 <a href="{{ url_for('exam_analytics') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-arrow-left w-5"></i>
@@ -32,10 +45,18 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
     <i class="fas fa-clipboard-list w-5"></i>
     <span>Exams & Assessments</span>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900" x-data="{ activeTab: 'students_marks' }">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Dashboard' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-layer-group' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{ activeTab: 'students_marks' }">
     <div class="mb-6">
         <a href="{{ url_for('exam_analytics') }}" class="inline-flex items-center text-sm text-green-600 dark:text-green-400 hover:underline mb-4">
             <i class="fas fa-arrow-left mr-2"></i> Back to Exam Analytics

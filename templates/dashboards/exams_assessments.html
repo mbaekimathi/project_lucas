@@ -2,9 +2,21 @@
 
 {% block title %}Exams & Assessments - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
 {% block sidebar_content %}
-{% set _nav_role = (session.get('role') or '')|lower %}
+{% set _nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role') or '')|lower %}
 {% set _nav_view_as = (session.get('viewing_as_employee_role') or '')|lower %}
+{% if _nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif _nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'exams' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif _nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'exams' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
 {% set hide_exam_registration_nav = (
   request.endpoint == 'teacher_exams_assessments'
   or _nav_role in ('teachers', 'teacher')
@@ -38,6 +50,7 @@
     <span>Exams Timetable</span>
     {% if request.endpoint == 'exam_timetable' or request.path.rstrip('/').endswith('/exam-timetable') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+{% endif %}
 {% endblock %}
 
 {% block extra_head %}
@@ -321,36 +334,17 @@
 </div>
 
 {% else %}
-{# ----- Coordinator / non-teacher view (unchanged structure) ----- #}
-<div class="p-4 sm:p-6 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-    <!-- Page Header -->
-    <div class="mb-6 sm:mb-8 scroll-reveal">
-        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-            <div class="min-w-0 flex-1">
-                <h1 class="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                    <div class="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500 to-emerald-700 rounded-xl flex items-center justify-center mr-3 shadow-lg">
-                        <i class="fas fa-clipboard-list text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    Exams & Assessments
-                </h1>
-                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 ml-0 sm:ml-[4.25rem]">
-                    Manage exams, assessments, and grading for each academic level.
-                </p>
-            </div>
-            {% if academic_levels and academic_levels|length > 0 %}
-            <div class="flex-shrink-0 sm:self-center">
-                <div class="px-4 py-2.5 bg-gradient-to-r from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20 rounded-xl border-2 border-green-500/20 dark:border-green-500/30">
-                    <div class="flex items-center gap-2">
-                        <i class="fas fa-graduation-cap text-green-600 dark:text-green-400"></i>
-                        <span class="text-sm font-bold text-green-700 dark:text-green-300">
-                            {{ academic_levels|length }} Level{{ 's' if academic_levels|length != 1 else '' }}
-                        </span>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-        </div>
-    </div>
+{# ----- Coordinator / leadership / non-teacher view ----- #}
+<div class="p-4 sm:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Academic' %}
+    {% set role_hero_title = 'Exams & assessments' %}
+    {% set role_hero_subtitle = 'Manage exams, assessments, and grading for each academic level.' %}
+    {% set role_hero_icon_class = 'fa-clipboard-list' %}
+    {% if academic_levels and academic_levels|length > 0 %}
+    {% set role_hero_chips = [{'icon': 'fa-graduation-cap', 'text': (academic_levels|length|string) ~ ' level' ~ ('s' if academic_levels|length != 1 else '')}] %}
+    {% endif %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
     <!-- Registered Academic Levels -->
     <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">

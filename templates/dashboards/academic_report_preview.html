@@ -3,11 +3,19 @@
 {% block title %}{{ title }} — {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% include "dashboards/_secretary_academic_nav_sidebar.html" %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="ar-report-preview-page p-4 lg:p-6 print:p-4 max-w-[1600px] mx-auto">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = '—' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-layer-group' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="ar-report-preview-page p-4 lg:p-6 print:p-4 max-w-[1600px] mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="no-print flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 mb-6">
         <div>
             <a href="{{ employee_dash_url('academic-reports') }}" class="inline-flex items-center text-sm font-medium text-brand-primary hover:underline mb-2">

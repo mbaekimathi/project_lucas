@@ -3,320 +3,628 @@
 {% block title %}Communication centre - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'school' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% elif nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'school' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% else %}
 <a href="{{ employee_dash_url('communication') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-broadcast-tower w-5"></i>
     <span>Communication</span>
-    <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-8 max-w-7xl mx-auto space-y-10">
-    <div>
-        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
-            <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg text-white">
-                <i class="fas fa-broadcast-tower text-xl"></i>
+<style>
+.cc-page { --cc-radius: 0.875rem; }
+.cc-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, transparent) 0%, transparent 55%), linear-gradient(180deg, #fff 0%, #f8fafc 100%); }
+.dark .cc-hero { background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 18%, transparent) 0%, transparent 50%), linear-gradient(180deg, rgb(31 41 55) 0%, rgb(17 24 39) 100%); }
+.cc-card { border-radius: 1.25rem; border: 1px solid rgb(226 232 240); background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 20px 50px -24px rgba(15,23,42,.15); overflow: hidden; }
+.dark .cc-card { border-color: rgb(55 65 81); background: rgb(31 41 55); box-shadow: 0 20px 50px -24px rgba(0,0,0,.45); }
+.cc-card-accent { height: 4px; background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary, var(--brand-primary))); }
+.cc-step-head { display: flex; align-items: center; gap: 0.65rem; margin-bottom: 1.1rem; }
+.cc-step-num { flex-shrink: 0; width: 1.65rem; height: 1.65rem; display: flex; align-items: center; justify-content: center; border-radius: 0.5rem; font-size: 0.7rem; font-weight: 700; color: #fff; background: linear-gradient(145deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 70%, #000)); box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-primary) 35%, transparent); }
+.cc-step-title { font-size: 0.9375rem; font-weight: 600; color: rgb(15 23 42); letter-spacing: -0.01em; }
+.dark .cc-step-title { color: #f8fafc; }
+.cc-field { width: 100%; padding: 0.625rem 0.875rem; border-radius: var(--cc-radius); border: 1px solid rgb(203 213 225); background: #fff; font-size: 0.875rem; color: rgb(15 23 42); transition: border-color .15s, box-shadow .15s; }
+.dark .cc-field { border-color: rgb(75 85 99); background: rgb(17 24 39); color: #f1f5f9; }
+.cc-field:focus { outline: none; border-color: var(--brand-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 18%, transparent); }
+.cc-label { display: block; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: rgb(100 116 139); margin-bottom: 0.35rem; }
+.dark .cc-label { color: rgb(148 163 184); }
+.cc-dropzone { border-radius: var(--cc-radius); border: 1.5px dashed rgb(203 213 225); background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); transition: border-color .2s, background .2s; }
+.dark .cc-dropzone { border-color: rgb(75 85 99); background: linear-gradient(180deg, rgb(17 24 39) 0%, rgb(15 23 42) 100%); }
+.cc-dropzone:hover, .cc-dropzone.cc-dragover { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 6%, #f8fafc); }
+.dark .cc-dropzone:hover, .dark .cc-dropzone.cc-dragover { background: color-mix(in srgb, var(--brand-primary) 12%, rgb(17 24 39)); }
+.cc-channel { display: inline-flex; align-items: center; gap: 0.65rem; padding: 0.65rem 1rem 0.65rem 0.65rem; border-radius: var(--cc-radius); border: 1.5px solid rgb(226 232 240); background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
+.dark .cc-channel { border-color: rgb(55 65 81); background: rgb(17 24 39); }
+.cc-channel:has(input:checked) { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 7%, #fff); box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand-primary) 25%, transparent); }
+.dark .cc-channel:has(input:checked) { background: color-mix(in srgb, var(--brand-primary) 14%, rgb(17 24 39)); }
+.cc-channel:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+.cc-channel-icon { width: 2.25rem; height: 2.25rem; display: flex; align-items: center; justify-content: center; border-radius: 0.5rem; font-size: 0.95rem; }
+.cc-channel-icon--email { background: rgb(219 234 254); color: rgb(37 99 235); }
+.cc-channel-icon--sms { background: rgb(254 243 199); color: rgb(217 119 6); }
+.cc-channel-icon--wa { background: rgb(220 252 231); color: rgb(22 163 74); }
+.dark .cc-channel-icon--email { background: rgb(30 58 138 / .4); color: rgb(147 197 253); }
+.dark .cc-channel-icon--sms { background: rgb(120 53 15 / .35); color: rgb(252 211 77); }
+.dark .cc-channel-icon--wa { background: rgb(20 83 45 / .4); color: rgb(134 239 172); }
+.cc-segment { display: inline-flex; padding: 0.2rem; border-radius: 0.75rem; background: rgb(241 245 249); border: 1px solid rgb(226 232 240); }
+.dark .cc-segment { background: rgb(17 24 39); border-color: rgb(55 65 81); }
+.cc-aud-btn { padding: 0.4rem 1.1rem; border-radius: 0.55rem; font-size: 0.8125rem; font-weight: 600; transition: all .15s; }
+.cc-scope-pill { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.9rem; border-radius: 9999px; border: 1px solid rgb(226 232 240); background: #fff; font-size: 0.8125rem; font-weight: 500; color: rgb(51 65 85); cursor: pointer; transition: all .15s; }
+.dark .cc-scope-pill { border-color: rgb(55 65 81); background: rgb(17 24 39); color: rgb(203 213 225); }
+.cc-scope-pill:has(input:checked) { border-color: var(--brand-primary); background: color-mix(in srgb, var(--brand-primary) 10%, #fff); color: var(--brand-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--brand-primary) 20%, transparent); }
+.dark .cc-scope-pill:has(input:checked) { background: color-mix(in srgb, var(--brand-primary) 18%, rgb(17 24 39)); color: color-mix(in srgb, var(--brand-primary) 60%, #fff); }
+.cc-filter-chip { padding: 0.35rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; border: 1px solid rgb(226 232 240); background: #fff; color: rgb(71 85 105); transition: all .15s; }
+.dark .cc-filter-chip { border-color: rgb(55 65 81); background: rgb(17 24 39); color: rgb(148 163 184); }
+.cc-filter-chip:hover { border-color: color-mix(in srgb, var(--brand-primary) 50%, transparent); }
+.cc-filter-chip--active { border-color: var(--brand-primary); background: var(--brand-primary); color: #fff; }
+.cc-list-panel { border-radius: var(--cc-radius); border: 1px solid rgb(226 232 240); background: rgb(248 250 252); max-height: 300px; overflow: hidden; }
+.dark .cc-list-panel { border-color: rgb(55 65 81); background: rgb(15 23 42); }
+.cc-recipient-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0.85rem; cursor: pointer; transition: background .12s; border-bottom: 1px solid rgb(241 245 249); }
+.dark .cc-recipient-row { border-bottom-color: rgb(30 41 59); }
+.cc-recipient-row:last-child { border-bottom: none; }
+.cc-recipient-row:hover:not(.cc-recipient-row--muted) { background: #fff; }
+.dark .cc-recipient-row:hover:not(.cc-recipient-row--muted) { background: rgb(30 41 59); }
+.cc-recipient-row--on { background: color-mix(in srgb, var(--brand-primary) 9%, #fff) !important; }
+.dark .cc-recipient-row--on { background: color-mix(in srgb, var(--brand-primary) 16%, rgb(30 41 59)) !important; }
+.cc-recipient-row--muted { opacity: 0.55; cursor: default; }
+.cc-avatar { flex-shrink: 0; width: 2.25rem; height: 2.25rem; border-radius: 0.6rem; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; background: linear-gradient(145deg, rgb(226 232 240), rgb(203 213 225)); color: rgb(71 85 105); }
+.cc-recipient-row--on .cc-avatar { background: linear-gradient(145deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 75%, #000)); color: #fff; }
+.dark .cc-avatar { background: rgb(51 65 85); color: rgb(203 213 225); }
+.cc-send-bar { background: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 100%); border-top: 1px solid rgb(226 232 240); }
+.dark .cc-send-bar { background: linear-gradient(180deg, rgb(17 24 39) 0%, rgb(15 23 42) 100%); border-top-color: rgb(55 65 81); }
+.cc-send-btn { background: linear-gradient(145deg, var(--brand-primary), color-mix(in srgb, var(--brand-primary) 80%, #000)); box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-primary) 35%, transparent); transition: transform .15s, box-shadow .15s, opacity .15s; }
+.cc-send-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px color-mix(in srgb, var(--brand-primary) 40%, transparent); }
+.cc-send-btn:active:not(:disabled) { transform: translateY(0); }
+.cc-chip { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.5rem 0.2rem 0.65rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; background: color-mix(in srgb, var(--brand-primary) 12%, #fff); color: var(--brand-primary); border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, transparent); }
+.dark .cc-chip { background: color-mix(in srgb, var(--brand-primary) 22%, rgb(17 24 39)); color: color-mix(in srgb, var(--brand-primary) 55%, #fff); }
+.cc-section-muted { background: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249 / 0.6) 100%); }
+.dark .cc-section-muted { background: linear-gradient(180deg, rgb(17 24 39) 0%, rgb(15 23 42 / 0.8) 100%); }
+</style>
+
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Communication centre' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-broadcast-tower' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="cc-page p-4 lg:p-8 max-w-3xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <header class="cc-hero rounded-2xl border border-gray-200/80 dark:border-gray-700/80 px-5 py-5 sm:px-6 sm:py-6 mb-5">
+        <h1 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tracking-tight flex items-center gap-3">
+            <span class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg ring-2 ring-white/20">
+                <i class="fas fa-paper-plane"></i>
             </span>
             Communication centre
         </h1>
-        <p class="text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
-            Compose a message, choose staff or parents, pick recipients, and send via email, SMS, or WhatsApp using credentials from
-            <a href="{{ employee_dash_url('integration-settings') }}" class="text-brand-primary font-medium hover:underline">Integration settings</a> (and school email in <a href="{{ employee_dash_url('system-settings') }}" class="text-brand-primary font-medium hover:underline">School settings</a>).
+        <p class="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed max-w-xl">
+            Reach staff or parents by email, SMS, or WhatsApp. Channels are configured under
+            <a href="{{ employee_dash_url('integration-settings') }}" class="text-brand-primary font-semibold hover:underline">Integration settings</a>.
         </p>
-    </div>
+    </header>
 
-    <!-- Compose: message + channels (side‑by‑side on large screens so nothing feels cramped) -->
-    <div class="grid grid-cols-1 xl:grid-cols-12 gap-8">
-        <div class="xl:col-span-8 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6 sm:p-8">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1">Compose message</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Department, subject, and body for this broadcast.</p>
-            <div class="space-y-5 max-w-3xl">
+    <div class="cc-card">
+        <div class="cc-card-accent" aria-hidden="true"></div>
+        <section class="p-5 sm:p-7 space-y-4 border-b border-gray-100 dark:border-gray-700/80">
+            <div class="cc-step-head">
+                <span class="cc-step-num">1</span>
+                <h2 class="cc-step-title">Write your message</h2>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label for="cc-department" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">From department</label>
-                    <select id="cc-department" class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm">
+                    <label for="cc-department" class="cc-label">Department</label>
+                    <select id="cc-department" class="cc-field">
                         {% for d in departments %}
                         <option value="{{ d|e }}">{{ d }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div>
-                    <label for="cc-subject" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Subject</label>
-                    <input type="text" id="cc-subject" maxlength="200" placeholder="Short title"
-                           class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm" />
-                </div>
-                <div>
-                    <label for="cc-body" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Message</label>
-                    <textarea id="cc-body" rows="10" placeholder="Message body…"
-                              class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm resize-y min-h-[180px]"></textarea>
+                    <label for="cc-subject" class="cc-label">Subject</label>
+                    <input type="text" id="cc-subject" maxlength="200" placeholder="e.g. Fee reminder" class="cc-field" />
                 </div>
             </div>
-        </div>
+            <div>
+                <label for="cc-body" class="cc-label">Message</label>
+                <textarea id="cc-body" rows="5" placeholder="Type your message here…" class="cc-field resize-y min-h-[110px]"></textarea>
+            </div>
+            <div id="cc-dropzone" class="cc-dropzone flex flex-wrap items-center gap-3 px-4 py-3.5 cursor-pointer">
+                <input type="file" id="cc-file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt,.csv,image/*" />
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-400"><i class="fas fa-paperclip text-sm"></i></span>
+                <span class="text-sm text-gray-600 dark:text-gray-300 flex-1 min-w-0">
+                    <span id="cc-file-hint">Attach a file (optional, max 10 MB) — email only</span>
+                    <span id="cc-file-preview" class="hidden font-medium text-gray-800 dark:text-gray-100">
+                        <span id="cc-file-name"></span>
+                        <button type="button" id="cc-file-clear" class="ml-2 text-red-600 text-xs font-semibold hover:underline">Remove</button>
+                    </span>
+                </span>
+                <button type="button" id="cc-browse" class="text-sm font-semibold text-brand-primary hover:underline shrink-0">Browse</button>
+            </div>
+        </section>
 
-        <div class="xl:col-span-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-6 sm:p-8 xl:sticky xl:top-6 xl:self-start">
-            <h2 class="text-base font-semibold text-gray-900 dark:text-white mb-1">Channels</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">Send through one or more channels. Greyed options need setup in Integration settings.</p>
-            <div class="space-y-3">
-                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-brand-primary/50 dark:hover:border-brand-primary/40 transition-colors has-[:disabled]:opacity-45 has-[:disabled]:cursor-not-allowed">
-                    <input type="checkbox" id="cc-ch-email" class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary shrink-0" {% if not channel_flags.email %}disabled{% endif %} />
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-100"><i class="fas fa-envelope text-blue-500 mr-2 w-5 text-center"></i> Email</span>
+        <section class="px-5 sm:px-7 py-5 border-b border-gray-100 dark:border-gray-700/80 cc-section-muted">
+            <div class="cc-step-head mb-0">
+                <span class="cc-step-num">2</span>
+                <h2 class="cc-step-title">How to send</h2>
+            </div>
+            <div class="flex flex-wrap gap-2.5 mt-4">
+                <label class="cc-channel">
+                    <span class="cc-channel-icon cc-channel-icon--email"><i class="fas fa-envelope"></i></span>
+                    <span class="flex flex-col">
+                        <input type="checkbox" id="cc-ch-email" class="sr-only" {% if channel_flags.email %}checked{% endif %} {% if not channel_flags.email %}disabled{% endif %} />
+                        <span class="text-sm font-semibold text-gray-900 dark:text-white">Email</span>
+                        <span class="text-[11px] text-gray-500 dark:text-gray-400">{% if channel_flags.email %}Ready{% else %}Not set up{% endif %}</span>
+                    </span>
                 </label>
-                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-brand-primary/50 dark:hover:border-brand-primary/40 transition-colors has-[:disabled]:opacity-45 has-[:disabled]:cursor-not-allowed">
-                    <input type="checkbox" id="cc-ch-sms" class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary shrink-0" {% if not channel_flags.sms %}disabled{% endif %} />
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-100"><i class="fas fa-sms text-amber-500 mr-2 w-5 text-center"></i> SMS</span>
+                <label class="cc-channel">
+                    <span class="cc-channel-icon cc-channel-icon--sms"><i class="fas fa-sms"></i></span>
+                    <span class="flex flex-col">
+                        <input type="checkbox" id="cc-ch-sms" class="sr-only" {% if not channel_flags.sms %}disabled{% endif %} />
+                        <span class="text-sm font-semibold text-gray-900 dark:text-white">SMS</span>
+                        <span class="text-[11px] text-gray-500 dark:text-gray-400">{% if channel_flags.sms %}Ready{% else %}Not set up{% endif %}</span>
+                    </span>
                 </label>
-                <label class="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 cursor-pointer hover:border-brand-primary/50 dark:hover:border-brand-primary/40 transition-colors has-[:disabled]:opacity-45 has-[:disabled]:cursor-not-allowed">
-                    <input type="checkbox" id="cc-ch-wa" class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary shrink-0" {% if not channel_flags.whatsapp %}disabled{% endif %} />
-                    <span class="text-sm font-medium text-gray-800 dark:text-gray-100"><i class="fab fa-whatsapp text-green-600 mr-2 w-5 text-center"></i> WhatsApp</span>
+                <label class="cc-channel">
+                    <span class="cc-channel-icon cc-channel-icon--wa"><i class="fab fa-whatsapp"></i></span>
+                    <span class="flex flex-col">
+                        <input type="checkbox" id="cc-ch-wa" class="sr-only" {% if not channel_flags.whatsapp %}disabled{% endif %} />
+                        <span class="text-sm font-semibold text-gray-900 dark:text-white">WhatsApp</span>
+                        <span class="text-[11px] text-gray-500 dark:text-gray-400">{% if channel_flags.whatsapp %}Ready{% else %}Not set up{% endif %}</span>
+                    </span>
                 </label>
             </div>
-        </div>
+            {% if not channel_flags.email and not channel_flags.sms and not channel_flags.whatsapp %}
+            <p class="text-xs text-amber-700 dark:text-amber-300 mt-2">No channels configured yet.</p>
+            {% endif %}
+        </section>
+
+        <section class="p-5 sm:p-7 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="cc-step-head mb-0">
+                    <span class="cc-step-num">3</span>
+                    <h2 class="cc-step-title">Who receives it</h2>
+                </div>
+                <div class="cc-segment">
+                    <button type="button" id="cc-aud-emp" class="cc-aud-btn bg-brand-primary text-white shadow-sm">Staff</button>
+                    <button type="button" id="cc-aud-par" class="cc-aud-btn text-gray-600 dark:text-gray-300">Parents</button>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <label class="cc-scope-pill">
+                    <input type="radio" name="cc-scope" id="cc-scope-selected" value="selected" class="sr-only" checked />
+                    <i class="fas fa-user-check text-xs opacity-70"></i>
+                    <span>Pick people</span>
+                </label>
+                <label class="cc-scope-pill">
+                    <input type="radio" name="cc-scope" id="cc-scope-all" value="all" class="sr-only" />
+                    <i class="fas fa-users text-xs opacity-70"></i>
+                    <span>Everyone</span>
+                </label>
+            </div>
+            <div id="cc-broadcast-banner" class="hidden rounded-xl bg-amber-50 dark:bg-amber-900/25 border border-amber-200/80 dark:border-amber-700/50 px-4 py-3 text-sm text-amber-900 dark:text-amber-100 flex items-start gap-2">
+                <i class="fas fa-bullhorn mr-1.5"></i><span id="cc-broadcast-text"></span>
+            </div>
+            <div id="cc-filters-emp"><div id="cc-role-chips" class="flex flex-wrap gap-1.5"></div></div>
+            <div id="cc-filters-par" class="hidden">
+                <select id="cc-level-filter" class="cc-field sm:max-w-xs">
+                    <option value="">All classes / levels</option>
+                    {% for lv in academic_levels %}
+                    <option value="{{ lv.level_name|e }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <div class="relative flex-1">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                    <input type="search" id="cc-search" placeholder="Search name, phone, or email…" autocomplete="off"
+                           class="cc-field pl-9" />
+                </div>
+                <div class="flex gap-2 shrink-0">
+                    <button type="button" id="cc-select-all" class="cc-field !w-auto px-3 py-2 text-sm font-medium !bg-gray-100 dark:!bg-gray-700 hover:!bg-gray-200 dark:hover:!bg-gray-600 border-gray-200 dark:border-gray-600">All in list</button>
+                    <button type="button" id="cc-select-none" class="cc-field !w-auto px-3 py-2 text-sm font-medium !bg-transparent hover:!bg-gray-100 dark:hover:!bg-gray-800 border-transparent text-gray-600 dark:text-gray-300">Clear</button>
+                </div>
+            </div>
+            <div id="cc-selected-wrap" class="hidden">
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-1.5"><span id="cc-count"></span></p>
+                <div id="cc-selected-chips" class="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto"></div>
+            </div>
+            <div class="cc-list-panel flex flex-col">
+                <div id="cc-list-loading" class="hidden py-8 text-center text-sm text-gray-500 dark:text-gray-400"><i class="fas fa-spinner fa-spin mr-1.5 text-brand-primary"></i> Loading recipients…</div>
+                <div id="cc-list" class="overflow-y-auto overscroll-contain"></div>
+                <p id="cc-empty" class="hidden py-10 text-center text-sm text-gray-500 dark:text-gray-400"><i class="fas fa-user-slash block text-2xl mb-2 opacity-40"></i>No one matches your search.</p>
+            </div>
+        </section>
+        <footer class="cc-send-bar px-5 sm:px-7 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+            <p id="cc-status" class="text-sm text-gray-600 dark:text-gray-400 flex-1 min-h-[1.25rem]" role="status"></p>
+            <button type="button" id="cc-send" class="cc-send-btn w-full sm:w-auto sm:min-w-[220px] px-6 py-3 rounded-xl font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                <i class="fas fa-paper-plane mr-2"></i>Send now
+            </button>
+        </footer>
     </div>
-
-    <!-- Recipients: full‑width form + scrollable list -->
-    <section class="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md overflow-hidden" aria-labelledby="cc-recipients-heading">
-        <div class="border-b border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 px-6 sm:px-8 py-5 sm:py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h2 id="cc-recipients-heading" class="text-lg font-semibold text-gray-900 dark:text-white">Recipients</h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Choose who receives this message — filter, search, then tick rows in the list.</p>
-            </div>
-            <p id="cc-count" class="text-sm font-medium text-gray-700 dark:text-gray-200 tabular-nums px-4 py-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 shadow-sm"></p>
-        </div>
-
-        <div class="p-6 sm:p-8 space-y-8">
-            <fieldset class="space-y-4 border-0 p-0 m-0">
-                <legend class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0">Audience</legend>
-                <div class="inline-flex rounded-xl border border-gray-200 dark:border-gray-600 p-1 bg-gray-50 dark:bg-gray-900/50">
-                    <button type="button" id="cc-aud-emp" class="cc-aud-btn px-5 py-2.5 rounded-lg text-sm font-semibold bg-brand-primary text-white shadow-sm">Employees</button>
-                    <button type="button" id="cc-aud-par" class="cc-aud-btn px-5 py-2.5 rounded-lg text-sm font-medium text-gray-800 dark:text-gray-100">Parents</button>
-                </div>
-            </fieldset>
-
-            <div class="max-w-3xl">
-                <div id="cc-filters-emp" class="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/25 p-5 sm:p-6">
-                    <p class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-3">Filter by role</p>
-                    <div id="cc-role-chips" class="flex flex-wrap gap-2"></div>
-                </div>
-                <div id="cc-filters-par" class="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/25 p-5 sm:p-6 hidden">
-                    <label for="cc-level-filter" class="block text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">Filter by class / level</label>
-                    <select id="cc-level-filter" class="w-full max-w-md px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white">
-                        <option value="">All levels</option>
-                        {% for lv in academic_levels %}
-                        <option value="{{ lv.level_name|e }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-
-            <div class="flex flex-col lg:flex-row lg:items-end gap-4">
-                <div class="flex-1 min-w-0">
-                    <label for="cc-search" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Search recipients</label>
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                        <input type="search" id="cc-search" placeholder="Name or phone number…" autocomplete="off"
-                               class="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white" />
-                    </div>
-                </div>
-                <div class="flex flex-wrap gap-2 shrink-0">
-                    <button type="button" id="cc-select-all" class="px-5 py-3 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-200 dark:hover:bg-gray-600">Select all</button>
-                    <button type="button" id="cc-select-none" class="px-5 py-3 rounded-xl text-sm font-medium border-2 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50">Clear selection</button>
-                </div>
-            </div>
-
-            <div>
-                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Recipient list</p>
-                <div class="rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50/30 dark:bg-gray-900/20 overflow-hidden">
-                    <div class="max-h-[min(520px,60vh)] overflow-y-auto overscroll-contain">
-                        <table class="w-full text-sm text-left border-collapse">
-                            <thead class="sticky top-0 z-10 bg-gray-100 dark:bg-gray-800 text-xs uppercase tracking-wide text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600 shadow-sm">
-                                <tr>
-                                    <th scope="col" class="py-3.5 pl-5 pr-2 w-12 font-semibold"></th>
-                                    <th scope="col" class="py-3.5 px-3 font-semibold">Name</th>
-                                    <th scope="col" class="py-3.5 px-3 font-semibold hidden sm:table-cell">Phone</th>
-                                    <th scope="col" class="py-3.5 px-3 font-semibold hidden lg:table-cell">Email</th>
-                                    <th scope="col" class="py-3.5 pr-5 pl-3 font-semibold">Role / level</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cc-tbody" class="divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800"></tbody>
-                        </table>
-                        <p id="cc-empty" class="hidden py-16 text-center text-gray-500 dark:text-gray-400 text-sm">No recipients match your filters.</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <p id="cc-status" class="text-sm text-gray-600 dark:text-gray-400 order-2 sm:order-1 min-h-[1.25rem]" role="status"></p>
-                <button type="button" id="cc-send"
-                        class="order-1 sm:order-2 w-full sm:w-auto px-8 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                    <i class="fas fa-paper-plane mr-2"></i> Send message
-                </button>
-            </div>
-        </div>
-    </section>
 </div>
 
 <script>
 (function () {
   var RECIPIENTS_URL = {{ url_for('api_communication_recipients')|tojson }};
   var SEND_URL = {{ url_for('api_communication_send')|tojson }};
+  var MAX_FILE_BYTES = 10 * 1024 * 1024;
+  var DEBOUNCE_MS = 280;
+
   var audience = 'employees';
+  var sendToAll = false;
   var allRecipients = [];
   var selected = {};
-  var roleFilter = null;
+  var roleFilter = '';
   var searchQ = '';
+  var attachmentFile = null;
+  var searchTimer = null;
+  var loading = false;
 
   function $(id) { return document.getElementById(id); }
 
-  function setAudience(a) {
-    audience = a;
-    $('cc-aud-emp').className = 'cc-aud-btn px-4 py-2 rounded-xl text-sm font-semibold ' + (a === 'employees' ? 'bg-brand-primary text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100');
-    $('cc-aud-par').className = 'cc-aud-btn px-4 py-2 rounded-xl text-sm font-semibold ' + (a === 'parents' ? 'bg-brand-primary text-white shadow-sm' : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100');
-    $('cc-filters-emp').classList.toggle('hidden', a !== 'employees');
-    $('cc-filters-par').classList.toggle('hidden', a !== 'parents');
-    loadRecipients();
+  function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
   }
 
-  function buildRoleChips(rows) {
-    var roles = {};
-    rows.forEach(function (r) {
-      if (r.role) roles[r.role] = true;
-    });
-    var keys = Object.keys(roles).sort();
+  function titleCaseRole(r) {
+    if (!r) return '';
+    return r.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  function initialsFor(name) {
+    var parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+
+  function isSendToAll() {
+    return $('cc-scope-all') && $('cc-scope-all').checked;
+  }
+
+  function updateScopeUi() {
+    sendToAll = isSendToAll();
+    var banner = $('cc-broadcast-banner');
+    var selWrap = $('cc-selected-wrap');
+    var listBtns = $('cc-select-all');
+    if (sendToAll) {
+      banner.classList.remove('hidden');
+      updateBroadcastText();
+      if (selWrap) selWrap.classList.add('hidden');
+      if (listBtns) listBtns.disabled = true;
+      $('cc-select-none').disabled = true;
+    } else {
+      banner.classList.add('hidden');
+      if (listBtns) listBtns.disabled = false;
+      $('cc-select-none').disabled = false;
+      renderSelectedChips();
+    }
+    renderList();
+  }
+
+  function updateBroadcastText() {
+    var n = allRecipients.length;
+    var extra = '';
+    if (audience === 'employees' && roleFilter) extra = ' with role “' + titleCaseRole(roleFilter) + '”';
+    if (audience === 'parents' && $('cc-level-filter').value) extra = ' in “' + $('cc-level-filter').value + '”';
+    if (searchQ.trim()) extra += (extra ? ' and' : '') + ' matching your search';
+    $('cc-broadcast-text').textContent =
+      'Broadcast will reach ' + (n ? n + ' recipient' + (n === 1 ? '' : 's') : 'recipients') + extra + '.';
+  }
+
+  function setAudience(a) {
+    audience = a;
+    var empActive = a === 'employees';
+    $('cc-aud-emp').className = 'cc-aud-btn ' +
+      (empActive ? 'bg-brand-primary text-white shadow-sm' : 'text-gray-600 dark:text-gray-300');
+    $('cc-aud-par').className = 'cc-aud-btn ' +
+      (!empActive ? 'bg-brand-primary text-white shadow-sm' : 'text-gray-600 dark:text-gray-300');
+    $('cc-filters-emp').classList.toggle('hidden', !empActive);
+    $('cc-filters-par').classList.toggle('hidden', empActive);
+    roleFilter = '';
+    selected = {};
+    fetchRecipients();
+  }
+
+  function buildRoleChips(roles) {
     var wrap = $('cc-role-chips');
     wrap.innerHTML = '';
     function addChip(label, val) {
       var b = document.createElement('button');
       b.type = 'button';
-      b.className = 'px-2.5 py-1 rounded-lg text-xs font-medium border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:border-brand-primary';
+      b.className = 'cc-filter-chip';
       b.textContent = label;
       b.dataset.role = val || '';
+      if (!val && !roleFilter) b.classList.add('cc-filter-chip--active');
+      if (val && roleFilter === val) b.classList.add('cc-filter-chip--active');
       b.addEventListener('click', function () {
-        roleFilter = val || null;
+        roleFilter = val || '';
         Array.prototype.forEach.call(wrap.querySelectorAll('button'), function (x) {
-          x.classList.remove('ring-2', 'ring-brand-primary', 'border-brand-primary');
+          x.classList.remove('cc-filter-chip--active');
         });
-        if (val) b.classList.add('ring-2', 'ring-brand-primary', 'border-brand-primary');
-        renderTable();
+        b.classList.add('cc-filter-chip--active');
+        fetchRecipients();
       });
       wrap.appendChild(b);
     }
     addChip('All roles', '');
-    keys.forEach(function (k) {
-      addChip(k.replace(/\b\w/g, function (c) { return c.toUpperCase(); }), k);
+    (roles || []).forEach(function (k) {
+      if (k) addChip(titleCaseRole(k), k);
     });
   }
 
-  function loadRecipients() {
-    roleFilter = null;
-    $('cc-tbody').innerHTML = '';
-    $('cc-status').textContent = 'Loading…';
-    fetch(RECIPIENTS_URL + '?audience=' + encodeURIComponent(audience))
+  function recipientsQuery() {
+    var params = ['audience=' + encodeURIComponent(audience)];
+    var q = (searchQ || '').trim();
+    if (q) params.push('q=' + encodeURIComponent(q));
+    if (audience === 'employees' && roleFilter) params.push('role=' + encodeURIComponent(roleFilter));
+    if (audience === 'parents' && $('cc-level-filter').value) {
+      params.push('level=' + encodeURIComponent($('cc-level-filter').value));
+    }
+    return RECIPIENTS_URL + '?' + params.join('&');
+  }
+
+  function fetchRecipients() {
+    if (loading) return;
+    loading = true;
+    $('cc-list-loading').classList.remove('hidden');
+    $('cc-empty').classList.add('hidden');
+    fetch(recipientsQuery(), { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        $('cc-status').textContent = '';
+        loading = false;
+        $('cc-list-loading').classList.add('hidden');
         if (!data.success) {
-          $('cc-status').textContent = data.message || 'Failed to load.';
+          $('cc-status').textContent = data.message || 'Failed to load recipients.';
+          allRecipients = [];
+          renderList();
           return;
         }
         allRecipients = data.recipients || [];
-        selected = {};
-        if (audience === 'employees') buildRoleChips(allRecipients);
-        renderTable();
+        if (audience === 'employees') buildRoleChips(data.roles || []);
+        if (sendToAll) updateBroadcastText();
+        renderList();
       })
       .catch(function () {
+        loading = false;
+        $('cc-list-loading').classList.add('hidden');
         $('cc-status').textContent = 'Could not load recipients.';
+        allRecipients = [];
+        renderList();
       });
   }
 
-  function filteredRows() {
-    var q = (searchQ || '').trim().toLowerCase();
-    var level = ($('cc-level-filter') && $('cc-level-filter').value) || '';
-    return allRecipients.filter(function (r) {
-      if (audience === 'employees' && roleFilter && (r.role || '').toLowerCase() !== roleFilter) return false;
-      if (audience === 'parents' && level) {
-        var g = (r.grades || '').toLowerCase();
-        if (g.indexOf(level.toLowerCase()) === -1) return false;
-      }
-      if (q && (r.search || '').indexOf(q) === -1) return false;
-      return true;
-    });
+  function scheduleSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(fetchRecipients, DEBOUNCE_MS);
   }
 
-  function renderTable() {
-    var rows = filteredRows();
-    var tb = $('cc-tbody');
+  function recipientMeta(r) {
+    if (audience === 'employees') return r.role ? titleCaseRole(r.role) : 'Staff';
+    var parts = [];
+    if (r.grades) parts.push(r.grades);
+    if (r.children) parts.push(r.children);
+    return parts.join(' · ') || 'Parent';
+  }
+
+  function toggleRecipient(r) {
+    if (sendToAll) return;
+    var id = r.id;
+    if (selected[id]) {
+      delete selected[id];
+    } else {
+      selected[id] = { id: id, name: r.name || 'Unknown' };
+    }
+    renderList();
+    renderSelectedChips();
+  }
+
+  function renderList() {
+    var list = $('cc-list');
     var empty = $('cc-empty');
-    tb.innerHTML = '';
-    if (rows.length === 0) {
+    list.innerHTML = '';
+    if (allRecipients.length === 0) {
       empty.classList.remove('hidden');
-      $('cc-count').textContent = '';
+      if (!sendToAll) $('cc-count').textContent = '';
       return;
     }
     empty.classList.add('hidden');
-    rows.forEach(function (r) {
-      var tr = document.createElement('tr');
-      tr.className = 'hover:bg-gray-50 dark:hover:bg-gray-700/40';
+    allRecipients.forEach(function (r) {
       var id = r.id;
-      var checked = !!selected[id];
-      var group = audience === 'employees' ? (r.role || '') : (r.grades || '');
-      tr.innerHTML =
-        '<td class="py-3.5 pl-5 pr-2 align-middle"><input type="checkbox" class="cc-cb rounded border-gray-300 text-brand-primary" data-id="' + id + '" ' + (checked ? 'checked' : '') + ' /></td>' +
-        '<td class="py-3.5 px-3 font-medium text-gray-900 dark:text-white">' + escapeHtml(r.name) + '</td>' +
-        '<td class="py-3.5 px-3 hidden sm:table-cell text-gray-600 dark:text-gray-300 font-mono text-sm">' + escapeHtml(r.phone || '—') + '</td>' +
-        '<td class="py-3.5 px-3 hidden lg:table-cell text-gray-600 dark:text-gray-300 text-sm">' + escapeHtml(r.email || '—') + '</td>' +
-        '<td class="py-3.5 pr-5 pl-3 text-sm text-gray-500 dark:text-gray-400">' + escapeHtml(group) + '</td>';
-      tb.appendChild(tr);
+      var isOn = !!selected[id];
+      var row = document.createElement('div');
+      row.className = 'cc-recipient-row' +
+        (sendToAll ? ' cc-recipient-row--muted' : '') +
+        (isOn ? ' cc-recipient-row--on' : '');
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', sendToAll ? '-1' : '0');
+      row.dataset.id = String(id);
+      var checkIcon = isOn ? 'fas fa-check-circle text-brand-primary text-sm' : 'far fa-circle text-gray-300 dark:text-gray-500 text-sm';
+      row.innerHTML =
+        '<span class="cc-avatar">' + escapeHtml(initialsFor(r.name)) + '</span>' +
+        '<div class="min-w-0 flex-1">' +
+        '<div class="text-sm font-semibold text-gray-900 dark:text-white truncate">' + escapeHtml(r.name) + '</div>' +
+        '<div class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">' +
+        escapeHtml(r.phone || '—') + (r.email ? ' · ' + escapeHtml(r.email) : '') +
+        '</div>' +
+        '<div class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">' + escapeHtml(recipientMeta(r)) + '</div>' +
+        '</div>' +
+        '<i class="' + checkIcon + ' shrink-0"></i>';
+      if (!sendToAll) {
+        row.addEventListener('click', function () { toggleRecipient(r); });
+        row.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleRecipient(r);
+          }
+        });
+      }
+      list.appendChild(row);
     });
-    Array.prototype.forEach.call(tb.querySelectorAll('.cc-cb'), function (cb) {
-      cb.addEventListener('change', function () {
-        var id = parseInt(cb.getAttribute('data-id'), 10);
-        if (cb.checked) selected[id] = true; else delete selected[id];
-        updateCount();
+    if (!sendToAll) updateCountLabel();
+    else updateBroadcastText();
+  }
+
+  function renderSelectedChips() {
+    var wrap = $('cc-selected-wrap');
+    var chips = $('cc-selected-chips');
+    var ids = Object.keys(selected);
+    if (sendToAll || ids.length === 0) {
+      wrap.classList.add('hidden');
+      chips.innerHTML = '';
+      return;
+    }
+    wrap.classList.remove('hidden');
+    chips.innerHTML = '';
+    ids.forEach(function (k) {
+      var item = selected[k];
+      var chip = document.createElement('div');
+      chip.className = 'cc-chip';
+      chip.innerHTML =
+        '<span class="max-w-[120px] truncate">' + escapeHtml(item.name) + '</span>' +
+        '<button type="button" class="cc-chip-remove w-5 h-5 rounded-full hover:bg-brand-primary/20 flex items-center justify-center" aria-label="Remove">' +
+        '<i class="fas fa-times text-[10px]"></i></button>';
+      chip.querySelector('.cc-chip-remove').addEventListener('click', function (e) {
+        e.stopPropagation();
+        delete selected[k];
+        renderList();
+        renderSelectedChips();
       });
+      chips.appendChild(chip);
     });
-    updateCount();
+    updateCountLabel();
   }
 
-  function escapeHtml(s) {
-    if (!s) return '';
-    var d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  function updateCount() {
+  function updateCountLabel() {
     var n = Object.keys(selected).length;
-    var vis = filteredRows().length;
-    $('cc-count').textContent = n + ' selected · ' + vis + ' shown';
+    $('cc-count').textContent = n + ' selected · ' + allRecipients.length + ' in list';
+  }
+
+  function selectAllInList() {
+    if (sendToAll) return;
+    allRecipients.forEach(function (r) {
+      selected[r.id] = { id: r.id, name: r.name || 'Unknown' };
+    });
+    renderList();
+    renderSelectedChips();
+  }
+
+  function clearSelection() {
+    selected = {};
+    renderList();
+    renderSelectedChips();
+  }
+
+  function setAttachment(file) {
+    attachmentFile = file;
+    var hint = $('cc-file-hint');
+    var preview = $('cc-file-preview');
+    if (!file) {
+      if (hint) hint.classList.remove('hidden');
+      if (preview) preview.classList.add('hidden');
+      $('cc-file').value = '';
+      return;
+    }
+    if (hint) hint.classList.add('hidden');
+    if (preview) preview.classList.remove('hidden');
+    $('cc-file-name').textContent = file.name + ' (' + formatSize(file.size) + ')';
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function validateFile(file) {
+    if (!file) return true;
+    if (file.size > MAX_FILE_BYTES) {
+      $('cc-status').textContent = 'Attachment must be 10MB or smaller.';
+      return false;
+    }
+    var ext = (file.name.split('.').pop() || '').toLowerCase();
+    var allowed = ['png', 'jpg', 'jpeg', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
+    if (allowed.indexOf(ext) === -1) {
+      $('cc-status').textContent = 'File type not allowed.';
+      return false;
+    }
+    return true;
+  }
+
+  function handleFiles(files) {
+    if (!files || !files.length) return;
+    var file = files[0];
+    if (!validateFile(file)) {
+      setAttachment(null);
+      return;
+    }
+    setAttachment(file);
+    $('cc-status').textContent = '';
   }
 
   $('cc-aud-emp').addEventListener('click', function () { setAudience('employees'); });
   $('cc-aud-par').addEventListener('click', function () { setAudience('parents'); });
+  $('cc-scope-selected').addEventListener('change', updateScopeUi);
+  $('cc-scope-all').addEventListener('change', updateScopeUi);
   $('cc-search').addEventListener('input', function () {
     searchQ = $('cc-search').value;
-    renderTable();
+    scheduleSearch();
   });
-  if ($('cc-level-filter')) $('cc-level-filter').addEventListener('change', renderTable);
-
-  $('cc-select-all').addEventListener('click', function () {
-    filteredRows().forEach(function (r) { selected[r.id] = true; });
-    renderTable();
-  });
-  $('cc-select-none').addEventListener('click', function () {
+  $('cc-level-filter').addEventListener('change', function () {
     selected = {};
-    renderTable();
+    fetchRecipients();
+  });
+  $('cc-select-all').addEventListener('click', selectAllInList);
+  $('cc-select-none').addEventListener('click', clearSelection);
+
+  $('cc-browse').addEventListener('click', function () { $('cc-file').click(); });
+  $('cc-file').addEventListener('change', function () {
+    handleFiles(this.files);
+  });
+  $('cc-file-clear').addEventListener('click', function () {
+    setAttachment(null);
+  });
+
+  var dropzone = $('cc-dropzone');
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.add('cc-dragover');
+    });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    dropzone.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('cc-dragover');
+      if (ev === 'drop' && e.dataTransfer && e.dataTransfer.files) {
+        handleFiles(e.dataTransfer.files);
+      }
+    });
   });
 
   $('cc-send').addEventListener('click', function () {
-    var ids = Object.keys(selected).map(function (k) { return parseInt(k, 10); });
-    if (ids.length === 0) {
-      $('cc-status').textContent = 'Select at least one recipient.';
-      return;
-    }
     var subject = ($('cc-subject').value || '').trim();
     var body = ($('cc-body').value || '').trim();
+    var dept = ($('cc-department').value || '').trim();
+    sendToAll = isSendToAll();
+    var ids = Object.keys(selected).map(function (k) { return parseInt(k, 10); });
+
     if (!subject || !body) {
       $('cc-status').textContent = 'Enter subject and message.';
+      return;
+    }
+    if (!sendToAll && ids.length === 0) {
+      $('cc-status').textContent = 'Select at least one recipient, or choose Everyone.';
       return;
     }
     var ch = {
@@ -328,36 +636,53 @@
       $('cc-status').textContent = 'Select at least one channel.';
       return;
     }
+    if (attachmentFile && !validateFile(attachmentFile)) return;
+
+    var payload = {
+      audience: audience,
+      subject: subject,
+      message: body,
+      department: dept,
+      recipient_ids: sendToAll ? [] : ids,
+      send_to_all: sendToAll,
+      role_filter: audience === 'employees' ? (roleFilter || null) : null,
+      level_filter: audience === 'parents' ? (($('cc-level-filter').value || '').trim() || null) : null,
+      channels: ch
+    };
+
+    var fd = new FormData();
+    fd.append('payload', JSON.stringify(payload));
+    if (attachmentFile) fd.append('attachment', attachmentFile, attachmentFile.name);
+
     $('cc-send').disabled = true;
     $('cc-status').textContent = 'Sending…';
-    fetch(SEND_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        audience: audience,
-        subject: subject,
-        message: body,
-        department: ($('cc-department').value || '').trim(),
-        recipient_ids: ids,
-        channels: ch
-      })
-    })
+
+    fetch(SEND_URL, { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
       .then(function (data) {
         $('cc-send').disabled = false;
         if (!data.success) {
-          $('cc-status').textContent = data.message || 'Failed.';
+          $('cc-status').textContent = data.message || 'Failed to send.';
           return;
         }
         var res = data.results || {};
         var parts = [];
-        if (res.email) parts.push('Email sent: ' + (res.email.sent || 0));
-        if (res.email && res.email.failed && res.email.failed.length) parts.push('Email issues: ' + res.email.failed.join('; '));
-        if (res.sms) parts.push('SMS: ' + (res.sms.sent || 0) + ' sent');
+        if (res.recipient_count != null) parts.push(res.recipient_count + ' recipient(s)');
+        if (res.email) parts.push('Email: ' + (res.email.sent || 0));
+        if (res.email && res.email.failed && res.email.failed.length) {
+          parts.push('Email issues: ' + res.email.failed.slice(0, 2).join('; '));
+        }
+        if (res.sms) parts.push('SMS: ' + (res.sms.sent || 0));
         if (res.sms && res.sms.notes && res.sms.notes.length) parts.push(res.sms.notes[0]);
-        if (res.whatsapp) parts.push('WhatsApp: ' + (res.whatsapp.sent || 0) + ' sent');
+        if (res.whatsapp) parts.push('WhatsApp: ' + (res.whatsapp.sent || 0));
         if (res.whatsapp && res.whatsapp.notes && res.whatsapp.notes.length) parts.push(res.whatsapp.notes[0]);
-        $('cc-status').textContent = parts.join(' · ') || 'Done.';
+        if (res.attachment) parts.push('Attachment: ' + res.attachment);
+        $('cc-status').textContent = parts.join(' · ') || 'Message sent.';
+        if (!sendToAll) {
+          selected = {};
+          renderList();
+          renderSelectedChips();
+        }
       })
       .catch(function () {
         $('cc-send').disabled = false;
@@ -366,6 +691,7 @@
   });
 
   setAudience('employees');
+  updateScopeUi();
 })();
 </script>
 {% endblock %}

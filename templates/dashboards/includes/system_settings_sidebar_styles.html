@@ -1,0 +1,86 @@
+<style>
+/* System settings sidebar — mobile drawer + desktop rail */
+aside.app-sidebar .sys-settings-sidebar {
+    width: 100%;
+    min-width: 0;
+    padding-bottom: 0.5rem;
+}
+
+aside.app-sidebar .sys-settings-sidebar__section {
+    margin: 0.65rem 0.5rem 0.2rem;
+    padding: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    line-height: 1.35;
+    color: rgba(148, 163, 184, 0.95);
+    word-break: break-word;
+}
+
+aside.app-sidebar .sys-settings-sidebar__section--border {
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+aside.app-sidebar .sys-settings-sidebar .sidebar-item {
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+aside.app-sidebar .sys-settings-sidebar__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    line-height: 1.35;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+}
+
+aside.app-sidebar .sys-settings-sidebar__chevron {
+    flex-shrink: 0;
+    margin-left: auto;
+    align-self: center;
+    font-size: 0.65rem;
+    opacity: 0.55;
+}
+
+aside.app-sidebar .sys-settings-sidebar__empty {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: rgba(148, 163, 184, 0.9);
+}
+
+@media (max-width: 639px) {
+    aside.app-sidebar .sys-settings-sidebar__section {
+        margin-left: 0.35rem;
+        margin-right: 0.35rem;
+        font-size: 0.5625rem;
+        letter-spacing: 0.1em;
+    }
+
+    aside.app-sidebar .sys-settings-sidebar .sidebar-item {
+        padding-top: 0.35rem !important;
+        padding-bottom: 0.35rem !important;
+        min-height: 2.125rem !important;
+    }
+
+    aside.app-sidebar .sys-settings-sidebar__label {
+        font-size: 0.75rem !important;
+        line-height: 1.3;
+    }
+
+    aside.app-sidebar .sys-settings-sidebar__chevron {
+        font-size: 0.6rem;
+    }
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+    aside.app-sidebar .sys-settings-sidebar__label {
+        font-size: 0.8125rem;
+    }
+}
+</style>

@@ -1,289 +1,118 @@
 {% extends "base.html" %}
 
+{% block body_class %}sf-accounts-layout{% endblock %}
+
 {% block title %}Student Fees - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
 {% block extra_head %}
-<style>
-    /* Custom select styling */
-    select {
-        background-image: none;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-        appearance: none;
-    }
-
-    .student-fees-page {
-        background: linear-gradient(165deg, rgb(236 253 245) 0%, rgb(248 250 252) 42%, rgb(241 245 249) 100%);
-    }
-    .dark .student-fees-page {
-        background: linear-gradient(165deg, rgb(6 78 59 / 0.35) 0%, rgb(15 23 42) 38%, rgb(15 23 42) 100%);
-    }
-
-    .student-fees-table tbody tr.student-row {
-        transition: background-color 0.15s ease, box-shadow 0.15s ease;
-    }
-    .student-fees-table tbody tr.student-row:hover {
-        box-shadow: inset 3px 0 0 0 rgb(16 185 129);
-    }
-
-    .student-list-row {
-        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-    }
-    .student-list-row:active {
-        transform: scale(0.998);
-    }
-    
-    /* Search input clear button */
-    #clearSearch {
-        transition: all 0.2s ease;
-    }
-    
-    #clearSearch:hover {
-        transform: scale(1.1);
-    }
-    
-    /* Active filter badges */
-    #activeFilters span button {
-        transition: all 0.2s ease;
-    }
-    
-    #activeFilters span button:hover {
-        transform: scale(1.2);
-    }
-    
-    /* Filter section improvements */
-    #searchStudents:focus,
-    #filterGrade:focus,
-    #filterCategory:focus {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
-    }
-    
-    /* Responsive improvements */
-    @media (max-width: 640px) {
-        #clearFilters {
-            font-size: 0.7rem;
-            padding: 0.5rem 0.75rem;
-        }
-    }
-</style>
+{% include 'dashboards/includes/student_fees_accounts_styles.html' %}
+<style>select{appearance:none}.sf-table tbody tr.student-row:hover{box-shadow:inset 3px 0 0 0 #0d9488}</style>
 {% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-    <a href="{{ dashboard_home_url() }}"
-       class="w-full sidebar-item mb-1 border-b border-gray-200 dark:border-gray-700 pb-2">
-        <i class="fas fa-gauge w-5"></i>
-        <span class="font-medium">Dashboard</span>
-        <i class="fas fa-chevron-right ml-auto text-gray-400 text-sm"></i>
-    </a>
-
-    {% set _sf_sess = session.get('role', '')|lower %}
-    {% set _sf_view = session.get('viewing_as_employee_role', '')|lower %}
-    {% set _sf_effective = _sf_view if _sf_sess == 'technician' and _sf_view else _sf_sess %}
-    {% if _sf_effective != 'accountant' %}
-    <!-- Student Management Link (hidden for accountant /accountant/student-fees sidebar) -->
-    <a href="{{ employee_dash_url('student-management') }}" 
-       class="w-full sidebar-item {% if request.endpoint == 'student_management' or request.path == '/student-management' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-user-graduate w-5"></i>
-        <span class="font-medium">Student Management</span>
-        <i class="fas fa-chevron-right ml-auto"></i>
-    </a>
-    {% endif %}
-    
-    <!-- Add Fee Structure Link -->
-    {% if can_add_fee_structure %}
-    <button @click="$store.feeStructure.open()" 
-            class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 shadow-sm">
-        <i class="fas fa-plus-circle w-5 text-lg"></i>
-        <span class="font-semibold">Add Fee Structure</span>
-        <i class="fas fa-arrow-right ml-auto"></i>
-    </button>
-    {% endif %}
-    
-    <!-- View Fee Structures Link -->
-    <a href="{{ employee_dash_url('student-fees/fee-structures') }}" 
-       class="w-full sidebar-item {% if request.endpoint == 'fee_structures' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-list-alt w-5"></i>
-        <span class="font-medium">Fee Structures</span>
-        <i class="fas fa-chevron-right ml-auto"></i>
-    </a>
-    
-    <!-- Payments Audits Link -->
-    <a href="{{ employee_dash_url('student-fees/payments-audit') }}" 
-       class="w-full sidebar-item {% if request.endpoint == 'payments_audit' %}sidebar-item-active{% endif %}">
-        <i class="fas fa-history w-5"></i>
-        <span class="font-medium">Payments Audits</span>
-        <i class="fas fa-chevron-right ml-auto"></i>
-    </a>
-    
-    {% if _sf_effective != 'accountant' %}
-    <!-- Academic Settings Link (hidden for accountant on this page sidebar) -->
-    <a href="{{ employee_dash_url('academic-settings') }}" 
-       class="w-full sidebar-item {% if request.endpoint in ('academic_settings', 'academic_schedule_management') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span class="font-medium">Academic Settings</span>
-        <i class="fas fa-chevron-right ml-auto"></i>
-    </a>
-    {% endif %}
-</div>
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'finance' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% else %}
+{% include 'dashboards/includes/student_fees_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="student-fees-page min-h-full p-3 sm:p-4 lg:p-6">
-    <!-- Header -->
-    <div class="mb-5 sm:mb-6">
-        <div class="relative overflow-hidden rounded-2xl border border-emerald-200/80 dark:border-emerald-800/50 bg-white/90 dark:bg-gray-800/90 shadow-md backdrop-blur-sm">
-            <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-teal-500/10 dark:from-emerald-500/15 pointer-events-none"></div>
-            <div class="relative px-4 py-5 sm:px-6 sm:py-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div class="flex items-start gap-4 min-w-0">
-                    <div class="flex-shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                        <i class="fas fa-money-bill-wave text-white text-xl sm:text-2xl"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <h1 class="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                            Student Fees
-                        </h1>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400 max-w-xl">
-                            Track balances, record payments, and generate invoices in one place.
-                        </p>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:text-emerald-200">
-                                <i class="fas fa-table text-[10px] opacity-80"></i>
-                                Desktop: full table
-                            </span>
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-sky-100 dark:bg-sky-900/40 px-2.5 py-1 text-xs font-medium text-sky-800 dark:text-sky-200 lg:hidden">
-                                <i class="fas fa-mobile-alt text-[10px] opacity-80"></i>
-                                Mobile: compact list
-                            </span>
-                        </div>
-                    </div>
+<div class="accounts-page sf-page bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-money-bill-wave opacity-80"></i>
+                    <span>Accounts · Student fees</span>
                 </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Student fees</h1>
+                <p class="mt-1.5 text-sm sf-hero-sub max-w-xl leading-relaxed">Track balances, record payments, and generate invoices.</p>
             </div>
+            {% if can_add_fee_structure %}
+            <button type="button" @click="$store.feeStructure.open()"
+                    class="accounts-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shrink-0">
+                <i class="fas fa-plus-circle"></i> Create fee structure
+            </button>
+            {% endif %}
         </div>
-    </div>
+    </header>
 
     <!-- Search and Filter Bar -->
-    <div class="rounded-2xl shadow-md border border-emerald-100 dark:border-emerald-900/40 bg-gradient-to-br from-white via-emerald-50/30 to-teal-50/40 dark:from-gray-800 dark:via-gray-800 dark:to-emerald-950/20 p-4 sm:p-5 mb-5 sm:mb-6 ring-1 ring-black/5 dark:ring-white/5">
-        <div class="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-emerald-100/80 dark:border-emerald-900/30">
-            <h2 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
-                    <i class="fas fa-filter text-sm"></i>
-                </span>
+    <div class="sf-panel rounded-xl overflow-hidden p-4 sm:p-5 mb-5 sm:mb-6">
+        <div class="sf-panel-head">
+            <h2 class="sf-panel-title">
+                <span class="sf-panel-icon"><i class="fas fa-filter"></i></span>
                 Search &amp; filter
             </h2>
-            <button type="button" 
-                    id="clearFilters"
-                    class="text-xs sm:text-sm font-medium text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 transition-colors flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/80 dark:bg-gray-700/80 border border-emerald-200/60 dark:border-emerald-800/50 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 touch-manipulation shadow-sm">
-                <i class="fas fa-times-circle"></i>
-                <span>Clear all</span>
+            <button type="button" id="clearFilters" class="sf-clear-btn">
+                <i class="fas fa-times-circle mr-1"></i> Clear all
             </button>
         </div>
-        
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <!-- Search Input -->
             <div class="sm:col-span-2 lg:col-span-1">
-                <label for="searchStudents" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <i class="fas fa-search text-emerald-600 mr-1.5"></i>Search students
-                </label>
+                <label for="searchStudents" class="sf-field-label">Search students</label>
                 <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-search text-emerald-500/70"></i>
-                    </div>
-                    <input type="text" 
-                           id="searchStudents" 
-                           placeholder="Search by name or ID..."
-                           class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-emerald-100 dark:border-emerald-900/50 rounded-xl bg-white dark:bg-gray-700/90 text-gray-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all touch-manipulation shadow-sm hover:border-emerald-200 dark:hover:border-emerald-800"
-                           style="font-size: 16px;">
-                    <button type="button" 
-                            id="clearSearch"
+                    <i class="sf-input-icon fas fa-search"></i>
+                    <input type="text" id="searchStudents" placeholder="Search by name or ID..."
+                           class="sf-input sf-input-with-icon" style="font-size: 16px;">
+                    <button type="button" id="clearSearch"
                             class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hidden">
                         <i class="fas fa-times-circle"></i>
                     </button>
                 </div>
             </div>
-            
-            <!-- Grade Filter -->
             <div>
-                <label for="filterGrade" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <i class="fas fa-graduation-cap text-sky-600 dark:text-sky-400 mr-1.5"></i>Grade / level
-                </label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-graduation-cap text-sky-500/70"></i>
-                    </div>
-                    <select id="filterGrade" 
-                            class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-sky-100 dark:border-sky-900/40 rounded-xl bg-white dark:bg-gray-700/90 text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-all touch-manipulation shadow-sm hover:border-sky-200 dark:hover:border-sky-800 appearance-none cursor-pointer"
-                            style="font-size: 16px;">
-                        <option value="">All Grades</option>
-                        {% for level in academic_levels %}
-                        <option value="{{ level.level_name }}">{{ level.level_name }}</option>
-                        {% endfor %}
-                    </select>
-                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <i class="fas fa-chevron-down text-gray-400"></i>
-                    </div>
-                </div>
+                <label for="filterGrade" class="sf-field-label">Grade / level</label>
+                <select id="filterGrade" class="sf-select" style="font-size: 16px;">
+                    <option value="">All grades</option>
+                    {% for level in academic_levels %}
+                    <option value="{{ level.level_name }}">{{ level.level_name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            
-            <!-- Category Filter -->
             <div>
-                <label for="filterCategory" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    <i class="fas fa-tags text-violet-600 dark:text-violet-400 mr-1.5"></i>Category
-                </label>
-                <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-tags text-violet-500/70"></i>
-                    </div>
-                    <select id="filterCategory" 
-                            class="w-full pl-10 pr-4 py-2.5 text-sm border-2 border-violet-100 dark:border-violet-900/40 rounded-xl bg-white dark:bg-gray-700/90 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all touch-manipulation shadow-sm hover:border-violet-200 dark:hover:border-violet-800 appearance-none cursor-pointer"
-                            style="font-size: 16px;">
-                        <option value="">All Categories</option>
-                        <option value="self sponsored">Self Sponsored</option>
-                        <option value="sponsored">Sponsored</option>
-                        <option value="both">Both</option>
-                    </select>
-                    <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                        <i class="fas fa-chevron-down text-gray-400"></i>
-                    </div>
-                </div>
+                <label for="filterCategory" class="sf-field-label">Category</label>
+                <select id="filterCategory" class="sf-select" style="font-size: 16px;">
+                    <option value="">All categories</option>
+                    <option value="self sponsored">Self sponsored</option>
+                    <option value="sponsored">Sponsored</option>
+                    <option value="both">Both</option>
+                </select>
             </div>
         </div>
-        
-        <!-- Active Filters Display -->
-        <div id="activeFilters" class="mt-4 pt-4 border-t border-emerald-100 dark:border-emerald-900/30 hidden">
+        <div id="activeFilters" class="mt-4 pt-4 border-t border-[var(--acc-line)] hidden">
             <div class="flex items-center flex-wrap gap-2">
-                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Active filters:</span>
-                <span id="activeSearchFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 rounded-full text-xs font-medium hidden">
-                    <i class="fas fa-search"></i>
-                    <span id="searchValue"></span>
-                    <button type="button" class="ml-1 hover:text-green-900 dark:hover:text-green-200" onclick="clearSearchFilter()">
-                        <i class="fas fa-times"></i>
-                    </button>
+                <span class="text-xs font-medium text-[var(--acc-muted)]">Active filters:</span>
+                <span id="activeSearchFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium hidden" style="background:rgba(13,148,136,0.12);color:#0f766e">
+                    <i class="fas fa-search"></i><span id="searchValue"></span>
+                    <button type="button" class="ml-1 opacity-70 hover:opacity-100" onclick="clearSearchFilter()"><i class="fas fa-times"></i></button>
                 </span>
-                <span id="activeGradeFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-xs font-medium hidden">
-                    <i class="fas fa-graduation-cap"></i>
-                    <span id="gradeValue"></span>
-                    <button type="button" class="ml-1 hover:text-blue-900 dark:hover:text-blue-200" onclick="clearGradeFilter()">
-                        <i class="fas fa-times"></i>
-                    </button>
+                <span id="activeGradeFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium hidden" style="background:rgba(59,130,246,0.12);color:#1d4ed8">
+                    <i class="fas fa-graduation-cap"></i><span id="gradeValue"></span>
+                    <button type="button" class="ml-1 opacity-70 hover:opacity-100" onclick="clearGradeFilter()"><i class="fas fa-times"></i></button>
                 </span>
-                <span id="activeCategoryFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 rounded-full text-xs font-medium hidden">
-                    <i class="fas fa-tags"></i>
-                    <span id="categoryValue"></span>
-                    <button type="button" class="ml-1 hover:text-purple-900 dark:hover:text-purple-200" onclick="clearCategoryFilter()">
-                        <i class="fas fa-times"></i>
-                    </button>
+                <span id="activeCategoryFilter" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium hidden" style="background:rgba(139,92,246,0.12);color:#6d28d9">
+                    <i class="fas fa-tags"></i><span id="categoryValue"></span>
+                    <button type="button" class="ml-1 opacity-70 hover:opacity-100" onclick="clearCategoryFilter()"><i class="fas fa-times"></i></button>
                 </span>
             </div>
         </div>
     </div>
 
-    <!-- Desktop: full table -->
-    <div class="hidden lg:block rounded-2xl shadow-lg border border-emerald-100 dark:border-emerald-900/40 bg-white dark:bg-gray-800 overflow-hidden w-full min-w-0 ring-1 ring-black/5 dark:ring-white/5">
+    <!-- Desktop: full table -->    <!-- Desktop: full table -->
+    <div class="sf-panel hidden lg:block rounded-xl overflow-hidden dark:border-emerald-900/40 bg-white dark:bg-gray-800 overflow-hidden w-full min-w-0 ring-1 ring-black/5 dark:ring-white/5">
         <div class="overflow-x-auto">
-            <table class="student-fees-table min-w-full w-full divide-y divide-emerald-100/80 dark:divide-emerald-900/30">
-                <thead class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700">
+            <table class="sf-table finance-table min-w-full w-full divide-y divide-emerald-100/80 dark:divide-emerald-900/30">
+                <thead class="sf-table-hero bg-gradient-to-r from-slate-800 via-slate-800 to-teal-900">
                     <tr>
                         <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Student</th>
                         <th class="px-4 sm:px-6 py-3.5 text-left text-xs font-semibold text-white/95 uppercase tracking-wider">Parent / guardian</th>
@@ -1072,7 +901,7 @@ window.feeStructureCreateModal = function() {
      x-transition:leave-start="opacity-100"
      x-transition:leave-end="opacity-0">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity backdrop-blur-sm" 
+    <div class="sf-modal-backdrop fixed inset-0 transition-opacity" 
          @click="$store.feeStructure.close()"
          x-transition:enter="ease-out duration-300"
          x-transition:enter-start="opacity-0"
@@ -1089,30 +918,30 @@ window.feeStructureCreateModal = function() {
          x-transition:leave="ease-in duration-200"
          x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
          x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95">
-        <div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-y-auto pointer-events-auto"
+        <div class="sf-modal-panel relative w-full max-w-2xl max-h-[95vh] flex flex-col pointer-events-auto"
              @click.stop>
             <!-- Header -->
-            <div class="sticky top-0 bg-green-500 px-4 py-3 rounded-t-lg flex items-center justify-between z-10 shadow-md">
+            <div class="sf-modal-head sticky top-0 z-10 shrink-0">
                 <div class="flex items-center gap-2 flex-1 min-w-0">
                     <i class="fas fa-money-bill-wave text-white text-lg flex-shrink-0"></i>
-                    <h2 class="text-base sm:text-lg font-bold text-white truncate">Create Fee Structure</h2>
+                    <h2 class="truncate">Create fee structure</h2>
                 </div>
                 <button @click="$store.feeStructure.close()" 
-                        class="text-white hover:text-gray-200 transition-colors p-1.5 rounded hover:bg-white/20 flex-shrink-0"
+                        class="sf-modal-close flex-shrink-0"
                         aria-label="Close">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             
             <!-- Content -->
-            <form @submit.prevent="submitCreateForm()" class="p-4 sm:p-5 md:p-6 space-y-3 sm:space-y-4">
+            <form @submit.prevent="submitCreateForm()" class="sf-modal-body space-y-3 sm:space-y-4 flex-1 overflow-y-auto">
                 
                 <!-- Error/Success Messages -->
-                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 text-red-700 dark:text-red-400 px-3 py-2 rounded text-sm">
+                <div x-show="error" x-cloak class="sf-alert-error">
                     <i class="fas fa-exclamation-circle mr-2"></i>
                     <span x-text="error"></span>
                 </div>
-                <div x-show="success" x-cloak class="bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500 text-green-700 dark:text-green-400 px-3 py-2 rounded text-sm">
+                <div x-show="success" x-cloak class="sf-alert-success">
                     <i class="fas fa-check-circle mr-2"></i>
                     <span x-text="success"></span>
                 </div>
@@ -1121,12 +950,11 @@ window.feeStructureCreateModal = function() {
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <!-- Academic Year -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label>
                             Academic Year <span class="text-red-500">*</span>
                         </label>
                         <select x-model="academicYearId" required
                                 @change="termId = ''; category = ''; selectedAcademicLevels = []; levelSelectionMode = 'single'; feeNameAutoGenerated = true; updateFeeName(); academicLevelsWithStructure = []; checkFeeStructureExists()"
-                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
                                 style="font-size: 16px;">
                             <option value="">Select Year</option>
                             {% for year in academic_years %}
@@ -1137,13 +965,12 @@ window.feeStructureCreateModal = function() {
                     
                     <!-- Term -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label>
                             Term <span class="text-red-500">*</span>
                         </label>
                         <select x-model="termId" required
                                 :disabled="!academicYearId"
                                 @change="category = ''; selectedAcademicLevels = []; levelSelectionMode = 'single'; feeNameAutoGenerated = true; updateFeeName(); checkFeeStructuresForTerm(); checkFeeStructureExists()"
-                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 style="font-size: 16px;">
                             <option value="">Select Term</option>
                             <template x-for="term in filteredTerms" :key="term.id">
@@ -1154,13 +981,12 @@ window.feeStructureCreateModal = function() {
                     
                     <!-- Category -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label>
                             Category <span class="text-red-500">*</span>
                         </label>
                         <select x-model="category" required
                                 :disabled="!academicYearId || !termId"
                                 @change="selectedAcademicLevels = []; levelSelectionMode = 'single'; feeNameAutoGenerated = true; updateFeeName(); checkFeeStructuresForTerm(); checkFeeStructureExists()"
-                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 style="font-size: 16px;">
                             <option value="">Select Category</option>
                             <option value="both">Both</option>
@@ -1171,13 +997,12 @@ window.feeStructureCreateModal = function() {
                     
                     <!-- Academic Level Selection Mode -->
                     <div>
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        <label>
                             Academic Level Selection <span class="text-red-500">*</span>
                         </label>
                         <select x-model="levelSelectionMode"
                                 :disabled="!academicYearId || !termId || !category"
                                 @change="if (levelSelectionMode === 'all') { selectedAcademicLevels = academicLevels.map(l => String(l.id)); } else if (levelSelectionMode === 'single') { selectedAcademicLevels = selectedAcademicLevels.length ? [selectedAcademicLevels[0]] : []; } academicLevelId = selectedAcademicLevels.length ? selectedAcademicLevels[0] : ''; feeNameAutoGenerated = true; updateFeeName(); checkFeeStructureExists()"
-                                class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 style="font-size: 16px;">
                             <option value="single">One Academic Level</option>
                             <option value="multiple">Multiple Academic Levels</option>
@@ -1189,19 +1014,19 @@ window.feeStructureCreateModal = function() {
                 <!-- Academic Levels Picker -->
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label>
                             Academic Levels <span class="text-red-500">*</span>
                         </label>
                         <button type="button" x-show="levelSelectionMode !== 'single'" @click="toggleAllAcademicLevels()"
-                                class="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                class="sf-btn-outline sf-btn-sm">
                             <span x-text="selectedAcademicLevels.length === academicLevels.length ? 'Unselect all' : 'Select all'"></span>
                         </button>
                     </div>
-                    <div class="max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2 grid grid-cols-1 sm:grid-cols-2 gap-2"
+                    <div class="sf-level-picker"
                          :class="(!academicYearId || !termId || !category) ? 'opacity-50 pointer-events-none' : ''">
                         <template x-for="level in academicLevels" :key="level.id">
-                            <label class="flex items-center gap-2 px-2 py-1.5 rounded border text-xs sm:text-sm"
-                                   :class="hasFeeStructureForTerm(level.id) ? 'border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-700' : 'border-gray-200 dark:border-gray-600'">
+                            <label class="sf-level-option"
+                                   :class="hasFeeStructureForTerm(level.id) ? 'is-conflict' : ''">
                                 <input type="checkbox"
                                        :checked="selectedAcademicLevels.includes(String(level.id))"
                                        @change="
@@ -1214,7 +1039,7 @@ window.feeStructureCreateModal = function() {
                                             academicLevelId = selectedAcademicLevels.length ? selectedAcademicLevels[0] : '';
                                             feeNameAutoGenerated = true; updateFeeName(); checkFeeStructureExists();
                                        "
-                                       class="rounded border-gray-300 text-green-600 focus:ring-green-500">
+                                       >
                                 <span x-text="hasFeeStructureForTerm(level.id) ? level.level_name + ' (exists)' : level.level_name"></span>
                             </label>
                         </template>
@@ -1230,20 +1055,19 @@ window.feeStructureCreateModal = function() {
                 
                 <!-- Fee Name -->
                 <div>
-                    <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    <label>
                         Fee Name <span class="text-red-500">*</span>
                     </label>
                     <input type="text" x-model="feeName" required
                            placeholder="Auto-generated"
                            @input="feeNameAutoGenerated = false"
-                           class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all uppercase"
                            style="text-transform: uppercase; font-size: 16px;">
                 </div>
                 
                 <!-- Fee Items -->
                 <div>
                     <div class="flex items-center justify-between mb-2">
-                        <label class="block text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                        <label>
                             Fee Items <span class="text-red-500">*</span>
                         </label>
                         <div class="flex gap-2">
@@ -1253,7 +1077,7 @@ window.feeStructureCreateModal = function() {
                                 <span>Existing</span>
                             </button>
                             <button type="button" @click="addNewItem()"
-                                    class="px-3 py-1.5 bg-green-500 text-white rounded text-xs hover:bg-green-600 transition-colors flex items-center gap-1.5">
+                                    class="px-3 py-1.5 sf-btn-teal rounded text-xs flex items-center gap-1.5">
                                 <i class="fas fa-plus text-xs"></i>
                                 <span>New</span>
                             </button>
@@ -1273,8 +1097,7 @@ window.feeStructureCreateModal = function() {
                         <div class="space-y-1">
                             <template x-for="(item, index) in existingFeeItems" :key="index">
                                 <button type="button" 
-                                        @click="addExistingItem(item)"
-                                        class="w-full text-left p-2 bg-gray-50 dark:bg-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded border border-gray-200 dark:border-gray-500 transition-colors text-xs">
+                                        @click="addExistingItem(item)">
                                     <div class="flex items-center justify-between">
                                         <span class="font-medium text-gray-900 dark:text-white" x-text="item.item_name"></span>
                                         <span class="text-green-600 dark:text-green-400 font-semibold" x-text="'KES ' + parseFloat(item.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
@@ -1294,18 +1117,16 @@ window.feeStructureCreateModal = function() {
                         </p>
                         <div x-show="feeItems.length > 0" class="space-y-2">
                             <template x-for="(item, index) in feeItems" :key="index">
-                                <div class="flex items-start gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded border border-gray-200 dark:border-gray-600">
+                                <div class="sf-fee-item-row flex items-start gap-2">
                                     <span class="text-xs text-gray-500 dark:text-gray-400 pt-2" x-text="(index + 1) + '.'"></span>
                                     <div class="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                                         <input type="text" x-model="item.itemName" 
                                                @input="item.itemName = item.itemName.toUpperCase()"
                                                placeholder="Item Name"
                                                required
-                                               class="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-green-500 uppercase"
                                                style="text-transform: uppercase;">
                                         <input type="text" x-model="item.itemDescription"
-                                               placeholder="Description"
-                                               class="w-full px-2 py-1.5 text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-1 focus:ring-green-500">
+                                               placeholder="Description">
                                         <div class="flex items-center gap-1">
                                             <input type="number" x-model="item.amount" 
                                                    @input="calculateTotal()"
@@ -1326,21 +1147,21 @@ window.feeStructureCreateModal = function() {
                 </div>
                 
                 <!-- Total Amount -->
-                <div class="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg border border-green-200 dark:border-green-700">
+                <div class="sf-total-box">
                     <div class="flex items-center justify-between">
                         <span class="text-sm font-semibold text-gray-900 dark:text-white">Total:</span>
-                        <span class="text-lg font-bold text-green-600 dark:text-green-400" x-text="'KES ' + (totalAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
+                        <span class="sf-total-value" x-text="'KES ' + (totalAmount || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})"></span>
                     </div>
                 </div>
                 
                 <!-- Actions -->
-                <div class="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
+                <div class="sf-modal-footer">
                     <button type="button" @click="$store.feeStructure.close()"
-                            class="w-full sm:w-auto px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            class="w-full sm:w-auto px-4 py-2 text-sm sf-btn-ghost rounded-lg transition-colors">
                         Cancel
                     </button>
                     <button type="submit" :disabled="loading"
-                            class="w-full sm:w-auto px-4 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                            class="w-full sm:w-auto px-4 py-2 text-sm sf-btn-teal rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                         <i class="fas fa-spinner fa-spin" x-show="loading"></i>
                         <span x-text="loading ? 'Creating...' : 'Create'"></span>
                     </button>

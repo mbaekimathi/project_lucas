@@ -2,8 +2,14 @@
 
 {% block title %}Logs & Audit Trails - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+
 {% block sidebar_content %}
-{% if session.get('role', '').lower() in ['technician', 'head of institution'] %}
+{% if session.get('role', '').lower() == 'technician' %}
+{% set technician_nav_scope = 'database' %}
+{% include 'dashboards/includes/technician_page_sidebar.html' %}
+{% elif session.get('role', '').lower() == 'head of institution' %}
 <a href="{{ employee_dash_url('database') }}"
     class="sidebar-item mb-2">
     <i class="fas fa-database w-5"></i>
@@ -12,7 +18,7 @@
 <a href="{{ employee_dash_url('database/backup-restore') }}"
     class="sidebar-item mb-2">
     <i class="fas fa-download w-5"></i>
-    <span>Backup & Restore</span>
+    <span>Google Drive backup</span>
 </a>
 <a href="{{ employee_dash_url('database/health-status') }}"
     class="sidebar-item mb-2">
@@ -28,7 +34,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Logs & Audit Trails' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-layer-group' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="max-w-7xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <!-- Page Header -->
     <div class="mb-6 sm:mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

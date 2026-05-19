@@ -1,0 +1,203 @@
+<style>
+/* Portal-wide light/dark — matches student fees, payroll, and accountant pages */
+body.role-portal-layout {
+    --acc-ink: #0f172a;
+    --acc-muted: #64748b;
+    --acc-line: #e2e8f0;
+    --acc-surface: #ffffff;
+    --acc-teal: #0d9488;
+    --acc-teal-dark: #0f766e;
+    --rp-ink: var(--acc-ink);
+    --rp-muted: var(--acc-muted);
+    --rp-line: var(--acc-line);
+    --rp-surface: var(--acc-surface);
+    --rp-page-bg: linear-gradient(180deg, #ecfdf5 0%, #eef2f6 45%, #f8fafc 100%);
+    color: var(--acc-ink);
+}
+.dark body.role-portal-layout {
+    --acc-ink: #f1f5f9;
+    --acc-muted: #94a3b8;
+    --acc-line: #1e293b;
+    --acc-surface: #0f172a;
+    --rp-page-bg: linear-gradient(180deg, #0b1120 0%, #0f172a 50%, #020617 100%);
+}
+
+html.role-portal-scroll {
+    background-color: #eef2f6;
+}
+.dark html.role-portal-scroll {
+    background-color: #0b1120;
+}
+
+body.role-portal-layout .role-page,
+body.role-portal-layout .portal-page-root,
+body.role-portal-layout .accounts-page,
+body.role-portal-layout .sf-page {
+    color: var(--acc-ink);
+}
+
+/* Unified accounts hero on all portal pages */
+body.role-portal-layout .role-hero,
+body.role-portal-layout .page-hero,
+body.role-portal-layout .accounts-hero,
+body.role-portal-layout [class*="role-hero--"],
+body.role-theme-leadership .page-hero,
+body.role-theme-deputy .page-hero,
+body.role-theme-teacher .page-hero,
+body.role-theme-parent .page-hero,
+body.role-theme-student .page-hero,
+body.role-theme-coordinator .page-hero,
+body.role-theme-secretary .page-hero,
+body.role-theme-accountant .page-hero,
+body.role-theme-store .page-hero,
+body.role-theme-librarian .page-hero,
+body.role-theme-technician .page-hero,
+body.role-theme-admin .page-hero,
+body.role-theme-default .page-hero {
+    background: linear-gradient(125deg, #0f172a 0%, #1e3a5f 38%, #134e4a 100%) !important;
+}
+
+/* Legacy Tailwind cards → accounts surfaces */
+body.role-portal-layout main .bg-white:not(.role-hero):not(.accounts-hero):not(.page-hero),
+body.role-portal-layout main section.bg-white {
+    background-color: var(--acc-surface) !important;
+    border-color: var(--acc-line) !important;
+    color: var(--acc-ink);
+}
+.dark body.role-portal-layout main .dark\:bg-gray-800,
+.dark body.role-portal-layout main .bg-white.dark\:bg-gray-800,
+.dark body.role-portal-layout main section.bg-white {
+    background-color: var(--acc-surface) !important;
+    border-color: var(--acc-line) !important;
+}
+
+body.role-portal-layout main .bg-gray-50 {
+    background-color: #f8fafc !important;
+    border-color: var(--acc-line);
+}
+.dark body.role-portal-layout main .bg-gray-50,
+.dark body.role-portal-layout main .dark\:bg-gray-700,
+.dark body.role-portal-layout main .dark\:bg-gray-900 {
+    background-color: #1e293b !important;
+    border-color: var(--acc-line);
+}
+.dark body.role-portal-layout main .dark\:bg-gray-900\/50,
+.dark body.role-portal-layout main .dark\:bg-gray-900\/80 {
+    background-color: rgba(15, 23, 42, 0.85) !important;
+}
+
+body.role-portal-layout main .text-gray-900,
+body.role-portal-layout main .text-slate-900 {
+    color: var(--acc-ink) !important;
+}
+body.role-portal-layout main .text-gray-800,
+body.role-portal-layout main .text-gray-700 {
+    color: var(--acc-ink) !important;
+}
+body.role-portal-layout main .text-gray-600,
+body.role-portal-layout main .text-gray-500,
+body.role-portal-layout main .text-slate-600,
+body.role-portal-layout main .text-slate-500 {
+    color: var(--acc-muted) !important;
+}
+.dark body.role-portal-layout main .text-gray-300,
+.dark body.role-portal-layout main .text-gray-400,
+.dark body.role-portal-layout main .text-slate-400 {
+    color: var(--acc-muted) !important;
+}
+.dark body.role-portal-layout main .text-gray-100 {
+    color: var(--acc-ink) !important;
+}
+body.role-portal-layout main .role-hero .text-gray-100,
+body.role-portal-layout main .page-hero .text-gray-100,
+body.role-portal-layout main .accounts-hero .text-gray-100 {
+    color: rgba(255, 255, 255, 0.92) !important;
+}
+
+body.role-portal-layout main .border-gray-200,
+body.role-portal-layout main .border-gray-300,
+body.role-portal-layout main .divide-gray-200 > * + * {
+    border-color: var(--acc-line) !important;
+}
+.dark body.role-portal-layout main .border-gray-600,
+.dark body.role-portal-layout main .border-gray-700,
+.dark body.role-portal-layout main .divide-gray-700 > * + * {
+    border-color: var(--acc-line) !important;
+}
+
+/* Forms */
+body.role-portal-layout main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="color"]):not([type="file"]),
+body.role-portal-layout main select,
+body.role-portal-layout main textarea {
+    border-color: var(--acc-line);
+    background: #fafbfc;
+    color: var(--acc-ink);
+}
+.dark body.role-portal-layout main input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="color"]):not([type="file"]),
+.dark body.role-portal-layout main select,
+.dark body.role-portal-layout main textarea {
+    background: #0f172a;
+    color: var(--acc-ink);
+    border-color: var(--acc-line);
+}
+body.role-portal-layout main input:focus,
+body.role-portal-layout main select:focus,
+body.role-portal-layout main textarea:focus {
+    border-color: #14b8a6;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.2);
+    outline: none;
+}
+
+/* Tables — finance-table styling for generic tables in main */
+body.role-portal-layout main table thead th {
+    background: #f1f5f9 !important;
+    color: #475569 !important;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+.dark body.role-portal-layout main table thead th {
+    background: #1e293b !important;
+    color: #94a3b8 !important;
+}
+body.role-portal-layout main table tbody tr {
+    transition: background 0.15s ease;
+}
+body.role-portal-layout main table tbody tr:hover {
+    background: #f0fdfa;
+}
+.dark body.role-portal-layout main table tbody tr:hover {
+    background: rgba(13, 148, 136, 0.08);
+}
+
+/* Panels without accounts-page wrapper */
+body.role-portal-layout main .dashboard-card,
+body.role-portal-layout main .modern-card:not([class*="bg-gradient"]),
+body.role-portal-layout main .cc-card:not([class*="bg-gradient"]),
+body.role-portal-layout main .filter-bar {
+    background: var(--acc-surface) !important;
+    border-color: var(--acc-line) !important;
+    color: var(--acc-ink);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -8px rgba(15, 23, 42, 0.08);
+}
+
+body.role-portal-layout main .accounts-panel {
+    background: var(--acc-surface);
+    border: 1px solid var(--acc-line);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 32px -8px rgba(15, 23, 42, 0.08);
+}
+body.role-portal-layout main .accounts-panel-head {
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+    border-bottom: 1px solid var(--acc-line);
+}
+.dark body.role-portal-layout main .accounts-panel-head {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+/* Primary actions — teal like accounts */
+body.role-portal-layout main .bg-brand,
+body.role-portal-layout main .btn-primary:not(.accounts-btn-ghost) {
+    background: linear-gradient(135deg, #0d9488, #0f766e) !important;
+    border-color: transparent;
+    color: #fff !important;
+}
+</style>

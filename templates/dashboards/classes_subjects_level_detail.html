@@ -3,54 +3,37 @@
 {% block title %}{{ level.level_name if level else 'Academic Level' }} - Classes & Subjects{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('classes-subjects') }}"
-   class="sidebar-item {% if request.endpoint == 'classes_subjects' or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-book w-5"></i>
-    <span>Classes & Subjects</span>
-</a>
-
-<a href="{{ employee_dash_url('subject-class-allocation') }}"
-   class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-tasks w-5"></i>
-    <span>Subject & Class Allocation Panel</span>
-</a>
-
-<a href="{{ employee_dash_url('academic-subject-registration') }}"
-   class="sidebar-item {% if request.endpoint == 'academic_subject_registration' or request.path.endswith('/academic-subject-registration') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-clipboard-list w-5"></i>
-    <span>Register Subjects</span>
-</a>
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% else %}
+{% set cc_nav_scope = 'classes' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-        <a href="{{ employee_dash_url('classes-subjects') }}" class="inline-flex items-center text-sm font-medium text-brand-primary hover:underline mb-4">
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
+        <a href="{{ employee_dash_url('classes-subjects') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4 touch-btn py-2">
             <i class="fas fa-arrow-left mr-2"></i>Back to Classes &amp; Subjects
         </a>
 
         {% if level %}
-        <header class="mb-6 pb-5 border-b border-gray-200 dark:border-gray-700">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight">
-                {{ level.level_name }}
-            </h1>
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {{ level.level_category }}
-            </p>
-            {% if level.level_description %}
-            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                {{ level.level_description }}
-            </p>
-            {% endif %}
-            <div class="mt-4 flex flex-wrap gap-3 text-sm">
-                <span class="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-3 py-1 text-blue-700 dark:text-blue-300">
-                    <i class="fas fa-book-open mr-2"></i>{{ level_subjects|length }} subject{% if level_subjects|length != 1 %}s{% endif %}
-                </span>
-                <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1 text-emerald-700 dark:text-emerald-300">
-                    <i class="fas fa-chalkboard-teacher mr-2"></i>{{ total_allocated_teachers }} teacher allocation{% if total_allocated_teachers != 1 %}s{% endif %}
-                </span>
-            </div>
-        </header>
+        {% set role_theme = portal_page_variant|default('default') %}
+        {% set role_hero_eyebrow = level.level_category %}
+        {% set role_hero_title = level.level_name %}
+        {% set role_hero_subtitle = level.level_description if level.level_description else 'Subjects and teacher allocations for this level.' %}
+        {% set role_hero_icon_class = 'fa-chalkboard' %}
+        {% include 'dashboards/includes/role_hero.html' %}
+        <div class="mb-6 flex flex-wrap gap-3 text-sm">
+            <span class="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-3 py-1 text-blue-700 dark:text-blue-300">
+                <i class="fas fa-book-open mr-2"></i>{{ level_subjects|length }} subject{% if level_subjects|length != 1 %}s{% endif %}
+            </span>
+            <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1 text-emerald-700 dark:text-emerald-300">
+                <i class="fas fa-chalkboard-teacher mr-2"></i>{{ total_allocated_teachers }} teacher allocation{% if total_allocated_teachers != 1 %}s{% endif %}
+            </span>
+        </div>
 
         {% if level_subjects %}
         <div class="mb-4">
@@ -123,7 +106,6 @@
             Academic level not found.
         </div>
         {% endif %}
-    </div>
 </div>
 <script>
 (function() {

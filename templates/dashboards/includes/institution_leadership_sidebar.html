@@ -1,0 +1,149 @@
+{% set _lead_nav = leadership_nav_scope|default('all') %}
+{% set _lead_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% set _is_deputy = _lead_role == 'deputy head of institution' %}
+
+{% if _lead_nav in ('all', 'staff') %}
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Staff</p>
+<a href="{{ employee_dash_url('staff-management') }}"
+   class="sidebar-item {% if request.endpoint == 'staff_management' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-tie w-5"></i>
+    <span>Staff management</span>
+    {% if request.endpoint == 'staff_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('assign-roles-approve') }}"
+   class="sidebar-item {% if request.endpoint == 'assign_roles_approve' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-check w-5"></i>
+    <span>Assign roles &amp; approve</span>
+    {% if request.endpoint == 'assign_roles_approve' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('staff-and-salaries') }}"
+   class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-check-alt w-5"></i>
+    <span>Payroll management</span>
+    {% if request.endpoint == 'staff_and_salaries' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _lead_nav in ('all', 'students') %}
+<p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Students</p>
+<a href="{{ employee_dash_url('student-management') }}"
+   class="sidebar-item {% if request.endpoint == 'student_management' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-graduate w-5"></i>
+    <span>Student management</span>
+    {% if request.endpoint == 'student_management' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-management/student-attendance') }}"
+   class="sidebar-item {% if request.endpoint == 'student_attendance' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-check-circle w-5"></i>
+    <span>Student attendance</span>
+    {% if request.endpoint == 'student_attendance' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-management/students-progress') }}"
+   class="sidebar-item {% if request.endpoint in ('students_progress', 'student_progress_detail') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Students progress</span>
+    {% if request.endpoint in ('students_progress', 'student_progress_detail') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-fees') }}"
+   class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Student fees</span>
+    {% if request.endpoint == 'student_fees' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _lead_nav in ('all', 'academic') %}
+<p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Academic</p>
+<a href="{{ employee_dash_url('classes-subjects') }}"
+   class="sidebar-item {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chalkboard-teacher w-5"></i>
+    <span>Classes &amp; subjects</span>
+    {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('timetable-management') }}"
+   class="sidebar-item {% if request.endpoint == 'timetable_management' or 'timetable-management' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-table w-5"></i>
+    <span>Timetable management</span>
+    {% if request.endpoint == 'timetable_management' or 'timetable-management' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('exams-assessments') }}"
+   class="sidebar-item {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or request.path.endswith('/exams-assessments') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-check w-5"></i>
+    <span>Exams &amp; results</span>
+    {% if request.endpoint in ('exams_assessments', 'teacher_exams_assessments', 'students_by_academic_level') or request.path.endswith('/exams-assessments') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _lead_nav in ('all', 'finance') %}
+<p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Finance</p>
+<a href="{{ employee_dash_url('finance-overview') }}"
+   class="sidebar-item {% if request.endpoint == 'finance_overview' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-money-bill-wave w-5"></i>
+    <span>Finance overview</span>
+    {% if request.endpoint == 'finance_overview' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('student-fees') }}"
+   class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-file-invoice-dollar w-5"></i>
+    <span>Student fees</span>
+    {% if request.endpoint == 'student_fees' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('staff-and-salaries') }}"
+   class="sidebar-item {% if request.endpoint in ('staff_and_salaries', 'salary_records', 'salary_audits') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-wallet w-5"></i>
+    <span>Staff &amp; salaries</span>
+    {% if request.endpoint in ('staff_and_salaries', 'salary_records', 'salary_audits') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _lead_nav in ('all', 'school') %}
+<p class="px-3 {% if _lead_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">School</p>
+<a href="{{ employee_dash_url('communication') }}"
+   class="sidebar-item {% if request.endpoint == 'communication' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-broadcast-tower w-5"></i>
+    <span>Communication</span>
+    {% if request.endpoint == 'communication' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('tpad') }}"
+   class="sidebar-item {% if request.endpoint == 'employee_tpad' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-tasks w-5"></i>
+    <span>TPAD</span>
+    {% if request.endpoint == 'employee_tpad' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+{% endif %}
+
+{% if _lead_nav == 'all' %}
+<p class="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">More</p>
+<a @click.prevent="comingSoonTitle = 'Academic Calendar'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Academic calendar</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Hostel Overview'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-bed w-5"></i>
+    <span>Hostel overview</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Transport Overview'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-bus w-5"></i>
+    <span>Transport overview</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Reports'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-file-alt w-5"></i>
+    <span>Reports</span>
+</a>
+<a @click.prevent="comingSoonTitle = 'Notifications / Messages'; comingSoonModalOpen = true"
+   class="sidebar-item">
+    <i class="fas fa-bell w-5"></i>
+    <span>Notifications</span>
+</a>
+{% if _is_deputy %}
+<a href="/technician/system-settings#academic-year"
+   class="sidebar-item">
+    <i class="fas fa-calendar-alt w-5"></i>
+    <span>Academic year settings</span>
+</a>
+{% endif %}
+{% endif %}

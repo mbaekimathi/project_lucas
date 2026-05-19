@@ -31,7 +31,7 @@
 <a href="{{ employee_dash_url('database/backup-restore') }}" 
    class="sidebar-item {% if request.endpoint == 'database_backup_restore' %}sidebar-item-active{% endif %}">
     <i class="fas fa-download w-5"></i>
-    <span>Backup & Restore</span>
+    <span>Google Drive backup</span>
 </a>
 <a href="{{ employee_dash_url('database/health-status') }}" 
    class="sidebar-item {% if request.endpoint == 'database_health_status' %}sidebar-item-active{% endif %}">
@@ -46,13 +46,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">Settings</h1>
-        <p class="text-gray-600 dark:text-gray-400">Manage your account settings and preferences</p>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Settings' %}
+{% set role_hero_subtitle = 'Manage your account settings and preferences' %}
+{% set role_hero_icon_class = 'fa-cog' %}
+{% include 'dashboards/includes/role_hero.html' %}
 
+
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <!-- Notification Preferences -->
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 md:p-8 mb-6 border border-gray-200 dark:border-gray-700">
         <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-6">Notification Preferences</h3>

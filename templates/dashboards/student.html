@@ -3,27 +3,27 @@
 {% block title %}Student Dashboard - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 lg:px-8 py-8">
-    <!-- Welcome Section -->
-    <div class="mb-8 fade-in-section">
-        <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
-            <div>
-                <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">Welcome back, {{ session.full_name }}!</h1>
-                <p class="text-gray-600 dark:text-gray-400">Here's your academic overview</p>
-            </div>
-            {% if student_data %}
-            <div class="mt-4 md:mt-0 px-6 py-3 rounded-xl font-semibold shadow-lg
-                {% if student_data.status == 'Active' %}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
-                {% elif student_data.status == 'Pending Approval' %}bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200
-                {% elif student_data.status == 'Suspended' %}bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200
-                {% elif student_data.status == 'Completed' %}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
-                {% elif student_data.status == 'Expelled' %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200
-                {% endif %}">
-                Status: {{ student_data.status }}
-            </div>
-            {% endif %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Welcome back, ' ~ (session.full_name or 'Student') ~ '!' %}
+{% set role_hero_subtitle = "Here's your academic overview" %}
+{% set role_hero_icon_class = 'fa-user-graduate' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="container mx-auto px-4 lg:px-8 py-6 sm:py-8 portal-page-root role-page role-page--{{ portal_page_variant|default('student') }}">
+    {% if student_data %}
+    <div class="mb-6 fade-in-section flex justify-end">
+        <div class="px-6 py-3 rounded-xl font-semibold shadow-lg
+            {% if student_data.status == 'Active' %}bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200
+            {% elif student_data.status == 'Pending Approval' %}bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-200
+            {% elif student_data.status == 'Suspended' %}bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200
+            {% elif student_data.status == 'Completed' %}bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200
+            {% elif student_data.status == 'Expelled' %}bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200
+            {% endif %}">
+            Status: {{ student_data.status }}
         </div>
     </div>
+    {% endif %}
     
     <!-- Student Profile Information -->
     {% if student_data %}

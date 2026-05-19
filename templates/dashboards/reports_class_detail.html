@@ -3,8 +3,13 @@
 {% block title %}{{ level.level_name }} — Class analytics - {{ school_settings.school_name or 'School' }}{% endblock %}
 
 {% block sidebar_content %}
-{% if is_secretary_finance %}
-{% include "dashboards/_secretary_academic_nav_sidebar.html" %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if is_secretary_finance or nav_role == 'secretary' %}
+{% set secretary_nav_scope = 'reports' %}
+{% include 'dashboards/includes/secretary_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'reports' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% else %}
 <div class="space-y-2">
     <a href="{{ url_for('reports') }}" class="w-full sidebar-item sidebar-item-active">
@@ -25,7 +30,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6 max-w-6xl mx-auto">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = '— Class analytics' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-chalkboard' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 lg:p-6 max-w-6xl mx-auto portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 sm:p-5 mb-5 print:shadow-none print:border-gray-300">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>

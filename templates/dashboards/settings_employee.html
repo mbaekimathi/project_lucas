@@ -8,13 +8,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
-    <!-- Page Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-gray-900 dark:text-white">Settings</h1>
-        <p class="text-gray-600 dark:text-gray-400">Manage your account settings and preferences</p>
-    </div>
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Settings' %}
+{% set role_hero_subtitle = 'Manage your account settings and preferences' %}
+{% set role_hero_icon_class = 'fa-cog' %}
+{% include 'dashboards/includes/role_hero.html' %}
 
+
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-4 sm:py-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             <div class="mb-6 space-y-3">

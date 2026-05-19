@@ -1,0 +1,24 @@
+{% set role_theme = 'technician' %}
+{% set role_hero_eyebrow = 'Technician' %}
+{% set role_hero_title = 'System & role testing' %}
+{% set role_hero_subtitle = 'Switch roles, test dashboards, and access system tools.' %}
+{% set role_hero_icon_class = 'fa-screwdriver-wrench' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    <a href="{{ employee_dash_url('role-switch') }}" class="role-quick-card">
+        <i class="fas fa-exchange-alt text-cyan-600 dark:text-cyan-400"></i>
+        <span>Role switch</span>
+        <small>View the app as any employee role</small>
+    </a>
+    <a href="/technician/system-settings" class="role-quick-card">
+        <i class="fas fa-cog text-slate-600 dark:text-slate-400"></i>
+        <span>System settings</span>
+        <small>School configuration and academic year</small>
+    </a>
+    <a href="{{ employee_dash_url('database-management') }}" class="role-quick-card">
+        <i class="fas fa-database text-violet-600 dark:text-violet-400"></i>
+        <span>Database tools</span>
+        <small>Backups, health, and maintenance</small>
+    </a>
+</div>

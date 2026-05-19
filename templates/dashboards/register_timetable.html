@@ -3,22 +3,8 @@
 {% block title %}Register Timetable{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ dashboard_home_url() }}" class="sidebar-item {% if request.endpoint in ('dashboard_employee', 'dashboard_parent', 'dashboard_student') %}sidebar-item-active{% endif %}">
-    <i class="fas fa-home w-5"></i>
-    <span>Dashboard</span>
-</a>
-<a href="{{ employee_dash_url('timetable-management') }}" class="sidebar-item">
-    <i class="fas fa-calendar-alt w-5"></i>
-    <span>Timetable Home</span>
-</a>
-<a href="{{ employee_dash_url('timetable-management/register-timetable') }}" class="sidebar-item sidebar-item-active">
-    <i class="fas fa-plus-circle w-5"></i>
-    <span>Manual Timetable Allocation</span>
-</a>
-<a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" class="sidebar-item">
-    <i class="fas fa-edit w-5"></i>
-    <span>Manage Timetable</span>
-</a>
+{% set cc_nav_scope = 'timetable' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% endblock %}
 
 {% block extra_head %}
@@ -111,7 +97,14 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="timetableApp()" x-init="init()" class="min-h-screen bg-gray-50 dark:bg-gray-900">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Register Timetable' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-table' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div x-data="timetableApp()" x-init="init()" class="min-h-screen bg-gray-50 dark:bg-gray-900 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     
     <!-- Header -->
     <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">

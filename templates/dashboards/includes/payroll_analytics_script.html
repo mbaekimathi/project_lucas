@@ -1,0 +1,38 @@
+function payrollAnalyticsHeader() {
+    return {
+        analytics: {},
+        loading: false,
+        analyticsUrl: {{ employee_dash_url('staff-and-salaries/payment-analytics')|tojson }},
+        init() {
+            const el = document.getElementById('payroll-analytics-json');
+            try {
+                this.analytics = el && el.textContent ? JSON.parse(el.textContent) : {};
+            } catch (e) {
+                this.analytics = {};
+            }
+            this.refresh();
+        },
+        kes(key) {
+            return 'KES ' + (this.analytics[key] || '0.00');
+        },
+        analyticNum(key) {
+            return this.analytics[key] != null ? this.analytics[key] : 0;
+        },
+        refresh() {
+            if (!this.analyticsUrl) return;
+            this.loading = true;
+            fetch(this.analyticsUrl, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin'
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.ok && data.analytics) {
+                        this.analytics = data.analytics;
+                    }
+                })
+                .catch(() => {})
+                .finally(() => { this.loading = false; });
+        }
+    };
+}

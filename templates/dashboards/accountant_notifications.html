@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}NOTIFICATIONS — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'insights' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('accountantNotificationsPage', function () {
+    return {
+      pendingRequisitions: [],
+      allocateModalOpen: false,
+      selectedRequisition: null,
+      quantityRequested: '1',
+      supplierPhone: '',
+      supplierName: '',
+      supplierFound: false,
+      supplierId: null,
+      supplierLookupStatus: '',
+      supplierLookupMessage: '',
+      supplierLookupTimer: null,
+      nameSearchResults: [],
+      nameSearchStatus: '',
+      nameSearchMessage: '',
+      nameSearchTimer: null,
+      showNameDropdown: false,
+      supplierLookupUrl: {{ employee_dash_url('notifications/supplier-lookup')|tojson }},
+      supplierSearchUrl: {{ employee_dash_url('notifications/supplier-search')|tojson }},
+      allocatePostBase: {{ employee_dash_url('notifications/requisition/0/allocate-supplier')|tojson }},
+      init: function () {
+        var el = document.getElementById('pending-requisitions-json');
+        try {
+          this.pendingRequisitions = el && el.textContent ? JSON.parse(el.textContent) : [];
+        } catch (e) {
+          this.pendingRequisitions = [];
+        }
+        var self = this;
+        this.$watch('allocateModalOpen', function (open) {
+          document.body.classList.toggle('overflow-hidden', !!open);
+          if (!open) self.resetSupplierFields();
+        });
+      },
+      get allocatePostUrl() {
+        if (!this.selectedRequisition || !this.selectedRequisition.id) return '';
+        return this.allocatePostBase.replace('/0/', '/' + this.selectedRequisition.id + '/');
+      },
+      openAllocate: function (req) {
+        this.selectedRequisition = req;
+        this.resetSupplierFields();
+        this.quantityRequested = String((req && req.quantity_requested) ? req.quantity_requested : 1);
+        if (req && req.supplier_name) {
+          this.supplierName = req.supplier_name;
+          this.supplierPhone = req.supplier_phone || '';
+          this.supplierFound = !!req.supplier_id;
+          this.supplierId = req.supplier_id || null;
+        }
+        this.allocateModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.allocateModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      closeAllocate: function () {
+        this.allocateModalOpen = false;
+        this.selectedRequisition = null;
+      },
+      resetSupplierFields: function () {
+        if (this.supplierLookupTimer) {
+          clearTimeout(this.supplierLookupTimer);
+          this.supplierLookupTimer = null;
+        }
+        if (this.nameSearchTimer) {
+          clearTimeout(this.nameSearchTimer);
+          this.nameSearchTimer = null;
+        }
+        this.supplierPhone = '';
+        this.supplierName = '';
+        this.supplierFound = false;
+        this.supplierId = null;
+        this.supplierLookupStatus = '';
+        this.supplierLookupMessage = '';
+        this.nameSearchResults = [];
+        this.nameSearchStatus = '';
+        this.nameSearchMessage = '';
+        this.showNameDropdown = false;
+      },
+      onSupplierPhoneInput: function () {
+        this.supplierFound = false;
+        this.supplierId = null;
+        this.showNameDropdown = false;
+        var phone = (this.supplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          this.supplierLookupStatus = digits ? 'typing' : '';
+          this.supplierLookupMessage = digits ? 'Keep typing phone number…' : '';
+          if (!digits) this.supplierName = '';
+          return;
+        }
+        var self = this;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        this.supplierLookupStatus = 'checking';
+        this.supplierLookupMessage = 'Checking supplier…';
+        this.supplierLookupTimer = setTimeout(function () { self.lookupSupplierByPhone(); }, 450);
+      },
+      lookupSupplierByPhone: function () {
+        var phone = (this.supplierPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) return;
+        var self = this;
+        fetch(this.supplierLookupUrl + '?phone=' + encodeURIComponent(phone), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.supplierLookupStatus = 'error';
+              self.supplierLookupMessage = (data && data.message) || 'Could not check supplier.';
+              return;
+            }
+            if (data.found) {
+              self.supplierFound = true;
+              self.supplierId = data.supplier_id || null;
+              self.supplierName = data.company_name || '';
+              if (data.phone) self.supplierPhone = data.phone;
+              self.supplierLookupStatus = 'found';
+              self.supplierLookupMessage = data.message || 'Supplier found.';
+              self.showNameDropdown = false;
+            } else if (data.ready) {
+              self.supplierFound = false;
+              self.supplierId = null;
+              self.supplierLookupStatus = 'new';
+              self.supplierLookupMessage = data.message || 'New supplier — enter name.';
+            }
+          })
+          .catch(function () {
+            self.supplierLookupStatus = 'error';
+            self.supplierLookupMessage = 'Could not check supplier. Try again.';
+          });
+      },
+      onSupplierNameInput: function () {
+        this.supplierName = (this.supplierName || '').toUpperCase();
+        if (this.supplierFound) return;
+        this.supplierFound = false;
+        this.supplierId = null;
+        var q = (this.supplierName || '').trim();
+        if (q.length < 2) {
+          this.nameSearchResults = [];
+          this.showNameDropdown = false;
+          this.nameSearchMessage = q.length ? 'Keep typing…' : '';
+          return;
+        }
+        var self = this;
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        this.nameSearchStatus = 'searching';
+        this.nameSearchMessage = 'Searching suppliers…';
+        this.nameSearchTimer = setTimeout(function () { self.searchSuppliersByName(); }, 350);
+      },
+      searchSuppliersByName: function () {
+        var q = (this.supplierName || '').trim();
+        if (q.length < 2) return;
+        var self = this;
+        fetch(this.supplierSearchUrl + '?q=' + encodeURIComponent(q), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.nameSearchStatus = 'error';
+              self.nameSearchMessage = (data && data.message) || 'Search failed.';
+              self.nameSearchResults = [];
+              self.showNameDropdown = false;
+              return;
+            }
+            self.nameSearchResults = data.results || [];
+            self.nameSearchStatus = self.nameSearchResults.length ? 'results' : 'empty';
+            self.nameSearchMessage = self.nameSearchResults.length
+              ? 'Select a supplier or continue typing for a new one.'
+              : 'No match — enter phone to register a new supplier.';
+            self.showNameDropdown = self.nameSearchResults.length > 0;
+          })
+          .catch(function () {
+            self.nameSearchStatus = 'error';
+            self.nameSearchMessage = 'Could not search suppliers.';
+            self.showNameDropdown = false;
+          });
+      },
+      pickSupplier: function (s) {
+        this.supplierFound = true;
+        this.supplierId = s.id;
+        this.supplierName = s.company_name || '';
+        this.supplierPhone = s.phone || '';
+        this.supplierLookupStatus = 'found';
+        this.supplierLookupMessage = 'Supplier selected.';
+        this.showNameDropdown = false;
+        this.nameSearchResults = [];
+      },
+      submitAllocate: function ($event) {
+        var q = parseInt(this.quantityRequested, 10);
+        if (!Number.isFinite(q) || q < 1) {
+          $event.preventDefault();
+          window.alert('Enter an amount of at least 1.');
+          return;
+        }
+        var digits = (this.supplierPhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          $event.preventDefault();
+          window.alert('Enter the supplier contact (at least 9 digits).');
+          return;
+        }
+        if (this.supplierLookupStatus === 'checking' || this.nameSearchStatus === 'searching') {
+          $event.preventDefault();
+          window.alert('Please wait while the supplier is verified.');
+          return;
+        }
+        if (!this.supplierFound && !(this.supplierName || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the supplier name, or pick one from the search results.');
+        }
+      },
+    };
+  });
+});
+</script>
+
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'NOTIFICATIONS —' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-broadcast-tower' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="min-h-screen bg-gradient-to-b from-slate-100 via-gray-50 to-white dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 pb-16"
+         x-data="accountantNotificationsPage">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-6 space-y-3">
+            {% for category, message in messages %}
+            <div class="rounded-2xl border px-4 py-3.5 text-sm {% if category == 'success' %}border-green-200 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-950/40 dark:text-green-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-100{% else %}border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800{% endif %}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <header class="mb-8 rounded-2xl border border-gray-200/90 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl">
+            <div class="p-6 sm:p-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">Finance office</p>
+                    <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Notifications &amp; messages</h1>
+                    <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
+                        Pending store requisitions awaiting supplier allocation. Select a requisition to assign a registered or new supplier.
+                    </p>
+                </div>
+                {% if pending_count > 0 %}
+                <div class="shrink-0 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-800 dark:bg-amber-950/40">
+                    <p class="text-[11px] font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">Pending</p>
+                    <p class="mt-1 text-3xl font-bold tabular-nums text-amber-900 dark:text-amber-100">{{ pending_count }}</p>
+                    <p class="text-xs text-amber-700 dark:text-amber-400">requisition{{ 's' if pending_count != 1 else '' }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </header>
+
+        <script type="application/json" id="pending-requisitions-json">{{ pending_requisitions|tojson }}</script>
+
+        <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
+            <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6">
+                <h2 class="text-lg font-bold text-gray-900 dark:text-white">Pending store requisitions</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Click a row or use <strong>Allocate supplier</strong> to assign a supplier.</p>
+            </div>
+            <div class="overflow-x-auto">
+                <template x-if="pendingRequisitions.length">
+                    <table class="min-w-[880px] w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Reference</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Submitted</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Item</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Requested by</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Supplier</th>
+                                <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                            <template x-for="r in pendingRequisitions" :key="r.id">
+                                <tr class="hover:bg-amber-50/40 dark:hover:bg-amber-950/20 cursor-pointer"
+                                    @click="openAllocate(r)">
+                                    <td class="px-4 py-3 font-mono text-xs font-bold text-brand-primary whitespace-nowrap" x-text="r.reference_number"></td>
+                                    <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap" x-text="r.created_at_display || '—'"></td>
+                                    <td class="px-4 py-3 max-w-[12rem]">
+                                        <span class="font-semibold uppercase text-gray-900 dark:text-white" x-text="r.item_name"></span>
+                                        <span class="block text-[10px] text-gray-500 dark:text-gray-400" x-text="r.item_ref"></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right tabular-nums font-semibold text-gray-900 dark:text-white">
+                                        <span x-text="r.quantity_requested"></span>
+                                        <span class="text-[10px] font-normal text-gray-500" x-text="r.measure"></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300" x-text="r.requested_by_name || '—'"></td>
+                                    <td class="px-4 py-3 text-xs uppercase text-gray-600 dark:text-gray-300 max-w-[10rem] truncate"
+                                        :title="r.supplier_name || ''"
+                                        x-text="r.supplier_name || 'Not assigned'"></td>
+                                    <td class="px-4 py-3 text-center" @click.stop>
+                                        <button type="button" @click="openAllocate(r)"
+                                                class="inline-flex items-center gap-1.5 rounded-lg bg-brand-primary px-3 py-1.5 text-[11px] font-semibold uppercase text-white hover:opacity-95">
+                                            <i class="fas fa-truck"></i> Allocate
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+                <p x-show="!pendingRequisitions.length" class="px-4 py-16 text-center text-sm text-gray-500 dark:text-gray-400">
+                    <span class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50">
+                        <i class="fas fa-check text-2xl text-emerald-600 dark:text-emerald-400"></i>
+                    </span>
+                    No pending requisitions — all store item requests have been handled.
+                </p>
+            </div>
+        </section>
+
+        <!-- Allocate supplier modal -->
+        <div x-show="allocateModalOpen" x-cloak
+             class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+             @keydown.escape.window="closeAllocate()">
+            <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" @click="closeAllocate()"></div>
+            <div x-ref="allocateModalPanel" tabindex="-1" role="dialog" aria-modal="true"
+                 class="relative z-10 w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900 max-h-[90vh] overflow-y-auto"
+                 @click.stop>
+                <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800 sm:px-6 flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-brand-primary">Allocate supplier</p>
+                        <h3 class="mt-1 text-lg font-bold text-gray-900 dark:text-white" x-text="selectedRequisition ? selectedRequisition.reference_number : ''"></h3>
+                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-400 normal-case" x-show="selectedRequisition">
+                            <span x-text="selectedRequisition.item_name"></span>
+                            · <span x-text="selectedRequisition.quantity_requested + ' ' + (selectedRequisition.measure || '')"></span>
+                        </p>
+                    </div>
+                    <button type="button" @click="closeAllocate()"
+                            class="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <form method="post" :action="allocatePostUrl" @submit="submitAllocate($event)" class="p-5 sm:p-6 space-y-4">
+                    <div>
+                        <label for="alloc_quantity_requested" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">
+                            Amount required
+                            <span x-show="selectedRequisition && selectedRequisition.measure" class="text-brand-primary normal-case"
+                                  x-text="'(' + selectedRequisition.measure + ')'"></span>
+                        </label>
+                        <div class="relative flex items-stretch">
+                            <input type="number" name="quantity_requested" id="alloc_quantity_requested" min="1" step="1" required
+                                   x-model="quantityRequested"
+                                   :placeholder="selectedRequisition && selectedRequisition.measure ? 'HOW MANY ' + selectedRequisition.measure : 'QTY'"
+                                   class="w-full min-w-0 flex-1 rounded-l-xl border border-gray-200 bg-white px-4 py-3 text-sm tabular-nums dark:border-gray-600 dark:bg-gray-950 dark:text-white focus:z-10 focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20" />
+                            <span x-show="selectedRequisition && selectedRequisition.measure"
+                                  class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-100 px-4 text-xs font-bold uppercase tracking-wide text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                                  x-text="selectedRequisition.measure"></span>
+                            <span x-show="!selectedRequisition || !selectedRequisition.measure"
+                                  class="inline-flex shrink-0 items-center rounded-r-xl border border-l-0 border-gray-200 bg-gray-50 px-4 text-xs font-medium uppercase text-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-500">—</span>
+                        </div>
+                        <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400 normal-case" x-show="selectedRequisition">
+                            Originally requested: <span class="font-semibold tabular-nums" x-text="selectedRequisition.quantity_requested"></span>
+                            <span class="uppercase" x-text="selectedRequisition.measure"></span>
+                        </p>
+                    </div>
+
+                    <div class="relative">
+                        <label for="alloc_supplier_name" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Supplier name</label>
+                        <input type="text" name="supplier_name" id="alloc_supplier_name" maxlength="255" required
+                               x-model="supplierName"
+                               @input="onSupplierNameInput()"
+                               @focus="if (nameSearchResults.length) showNameDropdown = true"
+                               :readonly="supplierFound"
+                               autocomplete="off"
+                               placeholder="SEARCH OR ENTER SUPPLIER NAME"
+                               class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white disabled:bg-gray-100 dark:disabled:bg-gray-800" />
+                        <p class="mt-1 text-xs normal-case text-gray-500 dark:text-gray-400" x-show="nameSearchMessage" x-text="nameSearchMessage"></p>
+                        <div x-show="showNameDropdown && nameSearchResults.length" x-cloak
+                             class="absolute left-0 right-0 z-20 mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-950">
+                            <template x-for="s in nameSearchResults" :key="s.id">
+                                <button type="button" @click="pickSupplier(s)"
+                                        class="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                                    <span class="font-semibold uppercase text-gray-900 dark:text-white" x-text="s.company_name"></span>
+                                    <span class="block text-xs text-gray-500 tabular-nums" x-text="s.phone"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="alloc_supplier_phone" class="mb-1.5 block text-xs font-semibold uppercase text-gray-700 dark:text-gray-300">Supplier contact</label>
+                        <input type="tel" name="supplier_phone" id="alloc_supplier_phone" required
+                               x-model="supplierPhone" @input="onSupplierPhoneInput()"
+                               placeholder="e.g. 0712 345 678"
+                               class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        <p class="mt-1.5 text-xs normal-case"
+                           :class="supplierLookupStatus === 'found' ? 'text-emerald-700 dark:text-emerald-400' : (supplierLookupStatus === 'new' ? 'text-amber-700 dark:text-amber-400' : 'text-gray-500')"
+                           x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
+                    </div>
+
+                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                        <button type="button" @click="closeAllocate()"
+                                class="inline-flex justify-center rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="inline-flex justify-center items-center gap-2 rounded-xl bg-brand-primary px-5 py-2.5 text-sm font-semibold text-white hover:opacity-95">
+                            <i class="fas fa-check"></i> Save &amp; approve
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

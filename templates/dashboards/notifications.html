@@ -3,16 +3,29 @@
 {% block title %}Notifications - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<a href="{{ employee_dash_url('notifications') }}" 
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+{% if nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'school' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% else %}
+<a href="{{ employee_dash_url('notifications') }}"
    class="sidebar-item sidebar-item-active">
     <i class="fas fa-bell w-5"></i>
     <span>Notifications</span>
     <i class="fas fa-check-circle ml-auto text-green-500"></i>
 </a>
+{% endif %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Notifications' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-broadcast-tower' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 lg:p-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
     <div class="mb-4 sm:mb-6">
         <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
             <i class="fas fa-bell text-green-600 mr-2 sm:mr-3"></i>

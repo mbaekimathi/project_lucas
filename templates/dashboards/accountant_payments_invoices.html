@@ -1,0 +1,869 @@
+{% extends "base.html" %}
+
+{% block body_class %}sf-accounts-layout{% endblock %}
+
+{% block title %}PAYMENTS / INVOICES — {{ (school_settings.school_name or 'Modern School')|upper }}{% endblock %}
+
+{% block sidebar_content %}
+{% set accountant_nav_scope = 'finance' %}
+{% include 'dashboards/includes/accountant_page_sidebar.html' %}
+{% endblock %}
+
+{% block content %}
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('accountantPaymentsPage', function () {
+    return {
+      stockInRecords: [],
+      payModalOpen: false,
+      registerModalOpen: false,
+      selectedRecord: null,
+      amountPaid: '',
+      paidToCompanyName: '',
+      paidToCompanyPhone: '',
+      paymentDescription: '',
+      paymentFilter: {{ payment_filter|tojson }},
+      payPostBase: {{ employee_dash_url('payments-invoices/stock-in/0/pay')|tojson }},
+      registerPostUrl: {{ (employee_dash_url('payments-invoices/register-payment') ~ '?payment=' ~ payment_filter)|tojson }},
+      printUrlBase: {{ url_for('store_stock_print', movement_id=0)|tojson }},
+      supplierLookupUrl: {{ employee_dash_url('payments-invoices/supplier-lookup')|tojson }},
+      supplierSearchUrl: {{ employee_dash_url('payments-invoices/supplier-search')|tojson }},
+      supplierRegisterUrl: {{ employee_dash_url('payments-invoices/register-supplier')|tojson }},
+      descriptionSearchUrl: {{ employee_dash_url('payments-invoices/description-search')|tojson }},
+      supplierLookupTimer: null,
+      nameSearchTimer: null,
+      supplierRegisterTimer: null,
+      descriptionSearchTimer: null,
+      supplierLookupStatus: '',
+      supplierLookupMessage: '',
+      supplierFound: false,
+      supplierId: null,
+      nameSearchStatus: '',
+      nameSearchMessage: '',
+      nameSearchResults: [],
+      showNameDropdown: false,
+      descriptionSearchStatus: '',
+      descriptionSearchMessage: '',
+      descriptionSearchResults: [],
+      showDescriptionDropdown: false,
+      descriptionKnown: false,
+      analytics: {},
+      analyticsLoading: false,
+      analyticsUrl: {{ employee_dash_url('payments-invoices/analytics')|tojson }},
+      init: function () {
+        var el = document.getElementById('stock-in-records-json');
+        try {
+          this.stockInRecords = el && el.textContent ? JSON.parse(el.textContent) : [];
+        } catch (e) {
+          this.stockInRecords = [];
+        }
+        var ael = document.getElementById('payment-analytics-json');
+        try {
+          this.analytics = ael && ael.textContent ? JSON.parse(ael.textContent) : {};
+        } catch (e) {
+          this.analytics = {};
+        }
+        this.refreshAnalytics();
+        var self = this;
+        this.$watch('payModalOpen', function (open) {
+          if (open) self.registerModalOpen = false;
+          document.body.classList.toggle('overflow-hidden', !!(open || self.registerModalOpen));
+          if (!open) self.resetPayForm();
+        });
+        this.$watch('registerModalOpen', function (open) {
+          if (open) self.payModalOpen = false;
+          document.body.classList.toggle('overflow-hidden', !!(open || self.payModalOpen));
+          if (!open) self.resetRegisterForm();
+        });
+      },
+      kes: function (key) {
+        var a = this.analytics || {};
+        return 'KES ' + (a[key] || '0.00');
+      },
+      analyticNum: function (key) {
+        var a = this.analytics || {};
+        return a[key] != null ? a[key] : 0;
+      },
+      refreshAnalytics: function () {
+        var self = this;
+        if (!this.analyticsUrl) return;
+        this.analyticsLoading = true;
+        fetch(this.analyticsUrl, {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.ok && data.analytics) {
+              self.analytics = data.analytics;
+            }
+          })
+          .catch(function () { /* keep server-rendered values */ })
+          .finally(function () { self.analyticsLoading = false; });
+      },
+      get payPostUrl() {
+        if (!this.selectedRecord || !this.selectedRecord.id) return '';
+        return this.payPostBase.replace('/0/', '/' + this.selectedRecord.id + '/')
+          + '?payment=' + encodeURIComponent(this.paymentFilter || 'outstanding');
+      },
+      openPay: function (rec) {
+        this.selectedRecord = rec;
+        this.amountPaid = rec.balance_due_display && rec.balance_due_display !== '—'
+          ? String(rec.balance_due) : '';
+        this.paidToCompanyName = rec.paid_to_company_name || rec.supplier_name || '';
+        this.paidToCompanyPhone = rec.paid_to_company_phone || rec.supplier_phone || '';
+        this.payModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.payModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      closePay: function () {
+        this.payModalOpen = false;
+        this.selectedRecord = null;
+      },
+      resetPayForm: function () {
+        this.amountPaid = '';
+        this.paidToCompanyName = '';
+        this.paidToCompanyPhone = '';
+      },
+      openRegister: function () {
+        this.resetRegisterForm();
+        this.registerModalOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.registerModalPanel;
+          if (panel) panel.focus();
+        }.bind(this));
+      },
+      closeRegister: function () {
+        this.registerModalOpen = false;
+      },
+      resetRegisterForm: function () {
+        this.amountPaid = '';
+        this.paidToCompanyName = '';
+        this.paidToCompanyPhone = '';
+        this.paymentDescription = '';
+        this.supplierLookupStatus = '';
+        this.supplierLookupMessage = '';
+        this.supplierFound = false;
+        this.supplierId = null;
+        this.nameSearchStatus = '';
+        this.nameSearchMessage = '';
+        this.nameSearchResults = [];
+        this.showNameDropdown = false;
+        this.descriptionSearchStatus = '';
+        this.descriptionSearchMessage = '';
+        this.descriptionSearchResults = [];
+        this.showDescriptionDropdown = false;
+        this.descriptionKnown = false;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        if (this.supplierRegisterTimer) clearTimeout(this.supplierRegisterTimer);
+        if (this.descriptionSearchTimer) clearTimeout(this.descriptionSearchTimer);
+      },
+      onRegisterPhoneInput: function () {
+        this.supplierFound = false;
+        this.supplierId = null;
+        var phone = (this.paidToCompanyPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          this.supplierLookupStatus = digits ? 'typing' : '';
+          this.supplierLookupMessage = digits ? 'Keep typing phone number…' : '';
+          if (!digits) this.paidToCompanyName = '';
+          return;
+        }
+        var self = this;
+        if (this.supplierLookupTimer) clearTimeout(this.supplierLookupTimer);
+        this.supplierLookupStatus = 'checking';
+        this.supplierLookupMessage = 'Checking supplier…';
+        this.supplierLookupTimer = setTimeout(function () { self.lookupRegisterSupplierByPhone(); }, 450);
+      },
+      lookupRegisterSupplierByPhone: function () {
+        var phone = (this.paidToCompanyPhone || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9) return;
+        var self = this;
+        fetch(this.supplierLookupUrl + '?phone=' + encodeURIComponent(phone), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.supplierLookupStatus = 'error';
+              self.supplierLookupMessage = (data && data.message) || 'Could not check supplier.';
+              return;
+            }
+            if (data.found) {
+              self.supplierFound = true;
+              self.supplierId = data.supplier_id || null;
+              self.paidToCompanyName = data.company_name || '';
+              if (data.phone) self.paidToCompanyPhone = data.phone;
+              self.supplierLookupStatus = 'found';
+              self.supplierLookupMessage = data.message || 'Supplier found.';
+              self.showNameDropdown = false;
+            } else if (data.ready) {
+              self.supplierFound = false;
+              self.supplierId = null;
+              self.supplierLookupStatus = 'new';
+              self.supplierLookupMessage = data.message || 'New supplier — enter company name to register.';
+              self.tryRegisterSupplierLive();
+            }
+          })
+          .catch(function () {
+            self.supplierLookupStatus = 'error';
+            self.supplierLookupMessage = 'Could not check supplier. Try again.';
+          });
+      },
+      onRegisterNameInput: function () {
+        this.paidToCompanyName = (this.paidToCompanyName || '').toUpperCase();
+        if (this.supplierFound) return;
+        this.supplierFound = false;
+        this.supplierId = null;
+        var q = (this.paidToCompanyName || '').trim();
+        if (q.length < 2) {
+          this.nameSearchResults = [];
+          this.showNameDropdown = false;
+          this.nameSearchMessage = q.length ? 'Keep typing…' : '';
+          return;
+        }
+        var self = this;
+        if (this.nameSearchTimer) clearTimeout(this.nameSearchTimer);
+        this.nameSearchStatus = 'searching';
+        this.nameSearchMessage = 'Searching suppliers…';
+        this.nameSearchTimer = setTimeout(function () { self.searchRegisterSuppliersByName(); }, 350);
+      },
+      searchRegisterSuppliersByName: function () {
+        var q = (this.paidToCompanyName || '').trim();
+        if (q.length < 2) return;
+        var self = this;
+        fetch(this.supplierSearchUrl + '?q=' + encodeURIComponent(q), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.nameSearchResults = [];
+              self.showNameDropdown = false;
+              self.nameSearchStatus = 'error';
+              self.nameSearchMessage = (data && data.message) || 'Search failed.';
+              return;
+            }
+            self.nameSearchResults = data.results || [];
+            self.nameSearchStatus = self.nameSearchResults.length ? 'results' : 'empty';
+            self.nameSearchMessage = self.nameSearchResults.length
+              ? 'Select a supplier or continue typing to register new.'
+              : 'No match — enter phone number, then name to register.';
+            self.showNameDropdown = self.nameSearchResults.length > 0;
+            self.tryRegisterSupplierLive();
+          })
+          .catch(function () {
+            self.nameSearchResults = [];
+            self.showNameDropdown = false;
+            self.nameSearchStatus = 'error';
+            self.nameSearchMessage = 'Could not search suppliers.';
+          });
+      },
+      pickRegisterSupplier: function (sup) {
+        if (!sup) return;
+        this.supplierFound = true;
+        this.supplierId = sup.id;
+        this.paidToCompanyName = (sup.company_name || '').toUpperCase();
+        this.paidToCompanyPhone = sup.phone || '';
+        this.showNameDropdown = false;
+        this.nameSearchResults = [];
+        this.supplierLookupStatus = 'found';
+        this.supplierLookupMessage = 'Supplier selected.';
+        this.nameSearchMessage = '';
+      },
+      tryRegisterSupplierLive: function () {
+        if (this.supplierFound) return;
+        var phone = (this.paidToCompanyPhone || '').trim();
+        var name = (this.paidToCompanyName || '').trim();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9 || name.length < 2) return;
+        if (this.supplierLookupStatus !== 'new' && this.supplierLookupStatus !== 'registered') return;
+        var self = this;
+        if (this.supplierRegisterTimer) clearTimeout(this.supplierRegisterTimer);
+        this.supplierRegisterTimer = setTimeout(function () { self.registerSupplierLive(); }, 600);
+      },
+      registerSupplierLive: function () {
+        if (this.supplierFound) return;
+        var phone = (this.paidToCompanyPhone || '').trim();
+        var name = (this.paidToCompanyName || '').trim().toUpperCase();
+        var digits = phone.replace(/\D/g, '');
+        if (!digits || digits.length < 9 || name.length < 2) return;
+        var self = this;
+        this.supplierLookupStatus = 'registering';
+        this.supplierLookupMessage = 'Registering supplier…';
+        fetch(this.supplierRegisterUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ phone: phone, company_name: name }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.supplierLookupStatus = 'error';
+              self.supplierLookupMessage = (data && data.message) || 'Could not register supplier.';
+              return;
+            }
+            self.supplierFound = true;
+            self.supplierId = data.supplier_id || null;
+            if (data.phone) self.paidToCompanyPhone = data.phone;
+            if (data.company_name) self.paidToCompanyName = data.company_name;
+            self.supplierLookupStatus = 'registered';
+            self.supplierLookupMessage = data.message || 'Supplier registered.';
+            self.showNameDropdown = false;
+          })
+          .catch(function () {
+            self.supplierLookupStatus = 'error';
+            self.supplierLookupMessage = 'Could not register supplier. Try again.';
+          });
+      },
+      onRegisterDescriptionInput: function () {
+        this.paymentDescription = (this.paymentDescription || '').toUpperCase();
+        this.descriptionKnown = false;
+        var q = (this.paymentDescription || '').trim();
+        if (q.length < 2) {
+          this.descriptionSearchResults = [];
+          this.showDescriptionDropdown = false;
+          this.descriptionSearchMessage = q.length ? 'Keep typing…' : '';
+          return;
+        }
+        var self = this;
+        if (this.descriptionSearchTimer) clearTimeout(this.descriptionSearchTimer);
+        this.descriptionSearchStatus = 'searching';
+        this.descriptionSearchMessage = 'Searching descriptions…';
+        this.descriptionSearchTimer = setTimeout(function () { self.searchPaymentDescriptions(); }, 350);
+      },
+      searchPaymentDescriptions: function () {
+        var q = (this.paymentDescription || '').trim();
+        if (q.length < 2) return;
+        var self = this;
+        fetch(this.descriptionSearchUrl + '?q=' + encodeURIComponent(q), {
+          headers: { Accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.ok) {
+              self.descriptionSearchResults = [];
+              self.showDescriptionDropdown = false;
+              self.descriptionSearchStatus = 'error';
+              self.descriptionSearchMessage = (data && data.message) || 'Search failed.';
+              return;
+            }
+            self.descriptionSearchResults = data.results || [];
+            self.descriptionKnown = !!data.exact_match;
+            self.descriptionSearchStatus = data.exact_match ? 'found' : (self.descriptionSearchResults.length ? 'results' : 'new');
+            self.descriptionSearchMessage = data.message || '';
+            self.showDescriptionDropdown = self.descriptionSearchResults.length > 0 && !data.exact_match;
+          })
+          .catch(function () {
+            self.descriptionSearchResults = [];
+            self.showDescriptionDropdown = false;
+            self.descriptionSearchStatus = 'error';
+            self.descriptionSearchMessage = 'Could not search descriptions.';
+          });
+      },
+      pickPaymentDescription: function (item) {
+        if (!item) return;
+        this.paymentDescription = (item.description || '').toUpperCase();
+        this.descriptionKnown = true;
+        this.showDescriptionDropdown = false;
+        this.descriptionSearchResults = [];
+        this.descriptionSearchStatus = 'found';
+        this.descriptionSearchMessage = 'Description selected.';
+      },
+      submitRegister: function ($event) {
+        var amt = parseFloat(this.amountPaid);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          $event.preventDefault();
+          window.alert('Enter a valid payment amount greater than zero.');
+          return;
+        }
+        var digits = (this.paidToCompanyPhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          $event.preventDefault();
+          window.alert('Enter a valid company contact number (at least 9 digits).');
+          return;
+        }
+        if (this.supplierLookupStatus === 'checking' || this.supplierLookupStatus === 'registering' || this.nameSearchStatus === 'searching') {
+          $event.preventDefault();
+          window.alert('Please wait while supplier details are verified.');
+          return;
+        }
+        if (!(this.paidToCompanyName || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the company name paid to, or pick one from search.');
+          return;
+        }
+        this.paymentDescription = (this.paymentDescription || '').trim().toUpperCase();
+      },
+      submitPay: function ($event) {
+        var amt = parseFloat(this.amountPaid);
+        if (!Number.isFinite(amt) || amt <= 0) {
+          $event.preventDefault();
+          window.alert('Enter a valid payment amount greater than zero.');
+          return;
+        }
+        if (this.selectedRecord && this.selectedRecord.balance_due != null) {
+          if (amt > this.selectedRecord.balance_due + 0.005) {
+            $event.preventDefault();
+            window.alert('Payment cannot exceed the balance due (' + this.selectedRecord.balance_due_display + ').');
+            return;
+          }
+        }
+        if (!(this.paidToCompanyName || '').trim()) {
+          $event.preventDefault();
+          window.alert('Enter the company name paid to.');
+          return;
+        }
+        var digits = (this.paidToCompanyPhone || '').replace(/\D/g, '');
+        if (!digits || digits.length < 9) {
+          $event.preventDefault();
+          window.alert('Enter a valid company contact number (at least 9 digits).');
+        }
+      },
+    };
+  });
+});
+</script>
+
+<style>
+.accounts-page { --acc-ink: #0f172a; --acc-muted: #64748b; --acc-line: #e2e8f0; --acc-surface: #ffffff; --acc-teal: #0d9488; --acc-teal-dark: #0f766e; }
+.dark .accounts-page { --acc-ink: #f1f5f9; --acc-muted: #94a3b8; --acc-line: #1e293b; --acc-surface: #0f172a; }
+.accounts-hero { background: linear-gradient(125deg, #0f172a 0%, #134e4a 42%, #115e59 100%); }
+.accounts-stat { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(10px); }
+.accounts-panel { background: var(--acc-surface); border: 1px solid var(--acc-line); box-shadow: 0 1px 2px rgba(15,23,42,0.04), 0 12px 32px -8px rgba(15,23,42,0.08); }
+.accounts-panel-head { background: linear-gradient(180deg, #f8fafc 0%, #fff 100%); border-bottom: 1px solid var(--acc-line); }
+.dark .accounts-panel-head { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); }
+.finance-table thead th { background: #f1f5f9; color: #475569; font-weight: 600; letter-spacing: 0.04em; }
+.dark .finance-table thead th { background: #1e293b; color: #94a3b8; }
+.finance-table tbody tr { transition: background 0.15s ease; }
+.finance-table tbody tr:hover { background: #f0fdfa; }
+.dark .finance-table tbody tr:hover { background: rgba(13,148,136,0.08); }
+.accounts-filter { color: #64748b; background: #f1f5f9; }
+.accounts-filter:hover { background: #e2e8f0; color: #334155; }
+.accounts-filter.is-active { background: var(--acc-teal-dark); color: #fff; box-shadow: 0 2px 8px rgba(15,118,110,0.35); }
+.dark .accounts-filter { background: #1e293b; color: #94a3b8; }
+.dark .accounts-filter.is-active { background: #14b8a6; color: #0f172a; }
+.accounts-btn-primary { background: linear-gradient(135deg, #0d9488, #0f766e); box-shadow: 0 2px 10px rgba(13,148,136,0.35); }
+.accounts-btn-primary:hover { filter: brightness(1.06); }
+.accounts-modal { border: 1px solid var(--acc-line); box-shadow: 0 24px 48px -12px rgba(15,23,42,0.25); }
+.accounts-field { border-color: var(--acc-line); background: #fafbfc; }
+.accounts-field:focus { border-color: #14b8a6; box-shadow: 0 0 0 3px rgba(20,184,166,0.2); outline: none; }
+.dark .accounts-field { background: #0f172a; }
+.accounts-dropdown { border: 1px solid var(--acc-line); box-shadow: 0 12px 32px -8px rgba(15,23,42,0.18); }
+.accounts-flash { border-radius: 0.75rem; border-width: 1px; font-size: 0.875rem; }
+.accounts-empty { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); }
+.dark .accounts-empty { background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%); }
+.accounts-badge-pending { background: #fef3c7; color: #92400e; }
+.accounts-badge-partial { background: #ffedd5; color: #9a3412; }
+.accounts-badge-paid { background: #d1fae5; color: #065f46; }
+.dark .accounts-badge-pending { background: rgba(251,191,36,0.15); color: #fcd34d; }
+.dark .accounts-badge-partial { background: rgba(251,146,60,0.15); color: #fdba74; }
+.dark .accounts-badge-paid { background: rgba(52,211,153,0.15); color: #6ee7b7; }
+</style>
+
+<div class="accounts-page portal-page-root role-page role-page--{{ portal_page_variant|default('accountant') }} min-h-screen bg-[#eef2f6] dark:bg-[#0b1120]">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-14"
+         x-data="accountantPaymentsPage">
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-5 space-y-2">
+            {% for category, message in messages %}
+            <div class="accounts-flash flex items-start gap-3 px-4 py-3 text-sm {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-100{% elif category == 'error' %}border-red-200 bg-red-50 text-red-900 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-100{% else %}border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200{% endif %}">
+                <i class="fas mt-0.5 shrink-0 {% if category == 'success' %}fa-circle-check text-emerald-600{% elif category == 'error' %}fa-circle-exclamation text-red-600{% else %}fa-circle-info text-slate-500{% endif %}"></i>
+                <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <script type="application/json" id="stock-in-records-json">{{ stock_in_records|tojson }}</script>
+        <script type="application/json" id="payment-analytics-json">{{ payment_analytics|default({})|tojson }}</script>
+
+        <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+            <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                        <i class="fas fa-landmark opacity-80"></i>
+                        <span>Accounts · Payables</span>
+                    </div>
+                    <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Payments &amp; invoices</h1>
+                    <p class="mt-1.5 text-sm text-slate-300/90 max-w-xl leading-relaxed">
+                        Supplier invoices, stock-in payables, and off-ledger disbursements.
+                    </p>
+                </div>
+                <button type="button" @click="openRegister()"
+                        class="accounts-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white shrink-0 transition">
+                    <i class="fas fa-file-invoice"></i>
+                    Register payment
+                </button>
+            </div>
+
+            <div class="px-4 sm:px-6 pb-4 sm:pb-5 border-t border-white/10 bg-black/15">
+                <div class="flex items-center justify-between gap-2 mb-2.5">
+                    <span class="text-[10px] font-semibold uppercase tracking-wider text-teal-100/80">Live summary</span>
+                    <button type="button" @click="refreshAnalytics()" :disabled="analyticsLoading"
+                            class="text-[10px] font-medium text-teal-200 hover:text-white disabled:opacity-40 transition"
+                            title="Refresh totals">
+                        <i class="fas fa-sync-alt mr-1" :class="analyticsLoading && 'fa-spin'"></i>Refresh
+                    </button>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-amber-200/90">Outstanding</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('stock_in_outstanding_display')"></p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-emerald-200/90">Stock paid</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('stock_in_paid_display')"></p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-violet-200/90">Other</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('misc_total_display')"></p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-sky-200/90">Invoiced</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('stock_in_invoiced_display')"></p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-teal-200/90">This month</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('paid_this_month_display')"></p>
+                    </div>
+                    <div class="accounts-stat rounded-lg px-2.5 py-2">
+                        <p class="text-[9px] font-medium uppercase tracking-wide text-slate-200/90">Disbursed</p>
+                        <p class="mt-0.5 text-sm font-bold tabular-nums text-white" x-text="kes('total_disbursed_display')"></p>
+                    </div>
+                </div>
+                {% if payment_filter != 'all' %}
+                <p class="mt-2 text-[10px] text-teal-100/70">
+                    Ledger filter: <strong class="text-white uppercase">{{ payment_filter }}</strong> · {{ record_count }} rows
+                </p>
+                {% endif %}
+            </div>
+        </header>
+
+        <section class="accounts-panel mb-5 rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300">
+                        <i class="fas fa-boxes-stacked text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Stock-in payables</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Invoice register · partial &amp; full settlement</p>
+                    </div>
+                </div>
+                <nav class="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-slate-100 dark:bg-slate-800/80" aria-label="Filter payment status">
+                    {% set filters = [
+                        ('outstanding', 'Outstanding'),
+                        ('all', 'All'),
+                        ('pending', 'Pending'),
+                        ('partial', 'Partial'),
+                        ('paid', 'Paid'),
+                    ] %}
+                    {% for key, label in filters %}
+                    <a href="{{ employee_dash_url('payments-invoices') }}?payment={{ key }}"
+                       class="accounts-filter rounded-md px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide transition
+                              {% if payment_filter == key %}is-active{% endif %}">
+                        {{ label }}
+                    </a>
+                    {% endfor %}
+                </nav>
+            </div>
+
+            <div class="overflow-x-auto">
+                <template x-if="stockInRecords.length">
+                    <table class="finance-table min-w-[1100px] w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr class="border-b border-slate-200 dark:border-slate-700">
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Reference</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Date</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Item</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Total</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Paid</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Balance</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Status</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Paid to</th>
+                                <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                            <template x-for="m in stockInRecords" :key="m.id">
+                                <tr>
+                                    <td class="px-4 py-2.5 font-mono text-xs font-semibold text-teal-700 dark:text-teal-400 whitespace-nowrap" x-text="m.reference_number"></td>
+                                    <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap" x-text="m.created_at_display"></td>
+                                    <td class="px-4 py-2.5 max-w-[11rem]">
+                                        <span class="font-medium text-slate-800 dark:text-slate-200 text-xs uppercase" x-text="m.item_name"></span>
+                                        <span class="block text-[10px] text-slate-400 font-mono" x-text="m.item_ref"></span>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100" x-text="m.total_amount_display"></td>
+                                    <td class="px-4 py-2.5 text-right tabular-nums text-sm text-slate-600 dark:text-slate-400" x-text="m.amount_paid_display"></td>
+                                    <td class="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-amber-700 dark:text-amber-400" x-text="m.balance_due_display"></td>
+                                    <td class="px-4 py-2.5 whitespace-nowrap">
+                                        <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full"
+                                              :class="m.payment_status === 'pending' ? 'accounts-badge-pending' : (m.payment_status === 'partial' ? 'accounts-badge-partial' : 'accounts-badge-paid')"
+                                              x-text="m.payment_status_label"></span>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-xs max-w-[10rem]">
+                                        <span class="block truncate font-medium text-slate-700 dark:text-slate-300 uppercase" x-text="m.paid_to_company_name || m.supplier_name || '—'"></span>
+                                        <span class="block text-[10px] tabular-nums text-slate-400" x-text="m.paid_to_company_phone || m.supplier_phone || ''"></span>
+                                    </td>
+                                    <td class="px-4 py-2.5 text-center whitespace-nowrap" @click.stop>
+                                        <button type="button" x-show="m.can_pay" @click="openPay(m)"
+                                                class="accounts-btn-primary inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase text-white">
+                                            <i class="fas fa-money-bill-wave"></i> Pay
+                                        </button>
+                                        <a :href="printUrlBase.replace('/0', '/' + m.id)" target="_blank" rel="noopener"
+                                           class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 ml-1"
+                                           title="Print"><i class="fas fa-print text-xs"></i></a>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </template>
+                <div x-show="!stockInRecords.length" class="accounts-empty px-4 py-14 text-center">
+                    <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300 mb-3">
+                        <i class="fas fa-file-invoice text-lg"></i>
+                    </span>
+                    <p class="text-sm font-medium text-slate-700 dark:text-slate-300">No payables in this view</p>
+                    <p class="mt-1 text-xs text-slate-500">Try another filter or register an off-ledger payment.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="accounts-panel rounded-xl overflow-hidden dark:border-slate-700">
+            <div class="accounts-panel-head px-4 sm:px-5 py-3.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div class="flex items-center gap-3">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
+                        <i class="fas fa-receipt text-sm"></i>
+                    </span>
+                    <div>
+                        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-100">Other disbursements</h2>
+                        <p class="text-[11px] text-slate-500 dark:text-slate-400">Off-ledger · manual entries</p>
+                    </div>
+                </div>
+                {% if misc_payment_count > 0 %}
+                <p class="text-xs text-slate-600 dark:text-slate-400 tabular-nums">
+                    <span class="font-semibold">{{ misc_payment_count }}</span> entries ·
+                    <span class="font-semibold text-teal-700 dark:text-teal-400">KES {{ misc_payments_total_display }}</span>
+                </p>
+                {% endif %}
+            </div>
+            <div class="overflow-x-auto">
+                {% if misc_payments %}
+                <table class="finance-table min-w-[900px] w-full border-collapse text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-slate-200 dark:border-slate-700">
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Reference</th>
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Date</th>
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Description</th>
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase text-right">Amount</th>
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Paid to</th>
+                            <th class="px-4 py-2.5 text-[10px] font-semibold uppercase">Recorded by</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                        {% for mp in misc_payments %}
+                        <tr>
+                            <td class="px-4 py-2.5 font-mono text-xs font-semibold text-violet-700 dark:text-violet-400 whitespace-nowrap">{{ mp.reference_number }}</td>
+                            <td class="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{{ mp.created_at_display }}</td>
+                            <td class="px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 max-w-[14rem] uppercase">{{ mp.description or '—' }}</td>
+                            <td class="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-slate-900 dark:text-slate-100">KES {{ mp.amount_display }}</td>
+                            <td class="px-4 py-2.5 text-xs max-w-[10rem]">
+                                <span class="block truncate font-medium text-slate-700 dark:text-slate-300 uppercase">{{ mp.paid_to_company_name }}</span>
+                                <span class="block text-[10px] tabular-nums text-slate-400">{{ mp.paid_to_company_phone }}</span>
+                            </td>
+                            <td class="px-4 py-2.5 text-xs text-slate-500">{{ mp.recorded_by_name }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="accounts-empty px-4 py-14 text-center">
+                    <span class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300 mb-3">
+                        <i class="fas fa-receipt text-lg"></i>
+                    </span>
+                    <p class="text-sm font-medium text-slate-700 dark:text-slate-300">No manual disbursements yet</p>
+                    <p class="mt-1 text-xs text-slate-500">Use <strong class="text-teal-700 dark:text-teal-400">Register payment</strong> for off-ledger expenses.</p>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Register new payment (not in system) -->
+        <div x-show="registerModalOpen" x-cloak
+             class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+             @keydown.escape.window="closeRegister()">
+            <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closeRegister()"></div>
+            <div x-ref="registerModalPanel" tabindex="-1" role="dialog" aria-modal="true"
+                 class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[90vh] overflow-hidden flex flex-col"
+                 @click.stop>
+                <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-start justify-between gap-3 bg-gradient-to-r from-slate-800 to-violet-900 shrink-0">
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-violet-200">New disbursement</p>
+                        <h3 class="mt-1 text-lg font-bold text-white">Register payment</h3>
+                        <p class="mt-1 text-xs text-slate-300 normal-case">Off-ledger — not linked to stock in</p>
+                    </div>
+                    <button type="button" @click="closeRegister()"
+                            class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <form method="post" :action="registerPostUrl" @submit="submitRegister($event)" class="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                    <div>
+                        <label for="reg_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
+                        <input type="number" name="amount_paid" id="reg_amount" min="0.01" step="0.01" required
+                               x-model="amountPaid"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                    </div>
+
+                    <div>
+                        <label for="reg_company_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
+                        <input type="tel" name="paid_to_company_phone" id="reg_company_phone" required
+                               x-model="paidToCompanyPhone"
+                               @input="onRegisterPhoneInput()"
+                               placeholder="e.g. 0712 345 678"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                        <p class="mt-1 text-xs uppercase"
+                           :class="(supplierLookupStatus === 'found' || supplierLookupStatus === 'registered') ? 'text-emerald-600' : (supplierLookupStatus === 'error' ? 'text-red-600' : 'text-slate-500')"
+                           x-show="supplierLookupMessage" x-text="supplierLookupMessage"></p>
+                    </div>
+
+                    <div class="relative">
+                        <label for="reg_company_name" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name paid to</label>
+                        <input type="text" name="paid_to_company_name" id="reg_company_name" maxlength="255" required
+                               x-model="paidToCompanyName"
+                               @input="onRegisterNameInput()"
+                               @blur="tryRegisterSupplierLive()"
+                               placeholder="SUPPLIER / COMPANY NAME"
+                               autocomplete="off"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
+                        <p class="mt-1 text-xs uppercase text-gray-500 dark:text-gray-400"
+                           x-show="nameSearchMessage" x-text="nameSearchMessage"></p>
+                        <div x-show="showNameDropdown" x-cloak
+                             class="accounts-dropdown absolute z-20 mt-1 w-full rounded-lg bg-white dark:bg-slate-900 max-h-40 overflow-y-auto">
+                            <template x-for="sup in nameSearchResults" :key="sup.id">
+                                <button type="button" @click="pickRegisterSupplier(sup)"
+                                        class="block w-full px-4 py-2.5 text-left text-sm uppercase hover:bg-teal-50 dark:hover:bg-teal-950/30 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                    <span class="font-semibold text-slate-900 dark:text-white" x-text="sup.company_name"></span>
+                                    <span class="block text-[10px] tabular-nums text-slate-500" x-text="sup.phone"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <label for="reg_description" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Description <span class="font-normal text-slate-500">(optional)</span></label>
+                        <input type="text" name="description" id="reg_description" maxlength="500"
+                               x-model="paymentDescription"
+                               @input="onRegisterDescriptionInput()"
+                               placeholder="E.G. TRANSPORT, REPAIRS, UTILITIES"
+                               autocomplete="off"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
+                        <p class="mt-1 text-xs uppercase"
+                           :class="descriptionSearchStatus === 'found' ? 'text-emerald-600' : (descriptionSearchStatus === 'new' ? 'text-violet-600' : 'text-slate-500')"
+                           x-show="descriptionSearchMessage" x-text="descriptionSearchMessage"></p>
+                        <div x-show="showDescriptionDropdown" x-cloak
+                             class="accounts-dropdown absolute z-20 mt-1 w-full rounded-lg bg-white dark:bg-slate-900 max-h-40 overflow-y-auto">
+                            <template x-for="item in descriptionSearchResults" :key="item.id">
+                                <button type="button" @click="pickPaymentDescription(item)"
+                                        class="block w-full px-4 py-2.5 text-left text-sm uppercase hover:bg-teal-50 dark:hover:bg-teal-950/30 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                    <span class="font-semibold text-slate-900 dark:text-white" x-text="item.description"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                        <button type="button" @click="closeRegister()"
+                                class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white">
+                            <i class="fas fa-check"></i> Register payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Record payment modal (stock in) -->
+        <div x-show="payModalOpen" x-cloak
+             class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6"
+             @keydown.escape.window="closePay()">
+            <div class="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" @click="closePay()"></div>
+            <div x-ref="payModalPanel" tabindex="-1" role="dialog" aria-modal="true"
+                 class="accounts-modal relative z-10 w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 max-h-[90vh] overflow-hidden flex flex-col"
+                 @click.stop>
+                <div class="border-b border-slate-700 px-5 py-4 sm:px-6 flex items-start justify-between gap-3 bg-gradient-to-r from-slate-800 to-teal-900 shrink-0">
+                    <div>
+                        <p class="text-[10px] font-semibold uppercase tracking-wider text-teal-200">Settle payable</p>
+                        <h3 class="mt-1 text-lg font-bold text-white font-mono" x-text="selectedRecord ? selectedRecord.reference_number : ''"></h3>
+                        <p class="mt-1 text-xs text-slate-300 normal-case tabular-nums" x-show="selectedRecord">
+                            Total <span class="font-semibold" x-text="selectedRecord.total_amount_display"></span>
+                            · Paid <span x-text="selectedRecord.amount_paid_display"></span>
+                            · Balance <span class="font-semibold text-amber-300" x-text="selectedRecord.balance_due_display"></span>
+                        </p>
+                    </div>
+                    <button type="button" @click="closePay()"
+                            class="shrink-0 rounded-lg p-2 text-slate-300 hover:bg-white/10">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <form method="post" :action="payPostUrl" @submit="submitPay($event)" class="p-5 sm:p-6 space-y-4">
+                    <div>
+                        <label for="pay_amount" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Amount paid (KES)</label>
+                        <input type="number" name="amount_paid" id="pay_amount" min="0.01" step="0.01" required
+                               x-model="amountPaid"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm tabular-nums dark:text-white" />
+                        <p class="mt-1 text-xs text-slate-500 normal-case" x-show="selectedRecord">
+                            Maximum: <span class="font-semibold tabular-nums" x-text="selectedRecord.balance_due_display"></span>
+                        </p>
+                    </div>
+
+                    <div>
+                        <label for="pay_company_name" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company name paid to</label>
+                        <input type="text" name="paid_to_company_name" id="pay_company_name" maxlength="255" required
+                               x-model="paidToCompanyName"
+                               @input="paidToCompanyName = ($event.target.value || '').toUpperCase()"
+                               placeholder="SUPPLIER / COMPANY NAME"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm uppercase dark:text-white" />
+                    </div>
+
+                    <div>
+                        <label for="pay_company_phone" class="mb-1.5 block text-xs font-semibold uppercase text-slate-600 dark:text-slate-400">Company number</label>
+                        <input type="tel" name="paid_to_company_phone" id="pay_company_phone" required
+                               x-model="paidToCompanyPhone"
+                               placeholder="e.g. 0712 345 678"
+                               class="accounts-field w-full rounded-lg border px-3 py-2.5 text-sm dark:text-white" />
+                    </div>
+
+                    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                        <button type="button" @click="closePay()"
+                                class="inline-flex justify-center rounded-lg border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="accounts-btn-primary inline-flex justify-center items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white">
+                            <i class="fas fa-check"></i> Record payment
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

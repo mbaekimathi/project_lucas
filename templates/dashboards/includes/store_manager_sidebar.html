@@ -1,0 +1,19 @@
+<p class="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Store</p>
+<a href="{{ employee_dash_url('store-stock') }}"
+   class="sidebar-item {% if request.endpoint in ('store_stock', 'store_stock_print') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-arrow-right-arrow-left w-5"></i>
+    <span>Stock in &amp; out</span>
+    {% if request.endpoint in ('store_stock', 'store_stock_print') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-inventory') }}"
+   class="sidebar-item {% if request.endpoint == 'store_inventory' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-boxes-stacked w-5"></i>
+    <span>Item catalog</span>
+    {% if request.endpoint == 'store_inventory' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ employee_dash_url('store-requisitions') }}"
+   class="sidebar-item {% if request.endpoint == 'store_requisitions' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-clipboard-list w-5"></i>
+    <span>Requisitions</span>
+    {% if request.endpoint == 'store_requisitions' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>

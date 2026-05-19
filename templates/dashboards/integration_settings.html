@@ -82,7 +82,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-6 lg:p-8" x-data="{ activeSection: null, loadSection(section) { this.activeSection = section } }">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Integration Settings' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-cog' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 sm:p-6 lg:p-8 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{ activeSection: null, loadSection(section) { this.activeSection = section } }">
     <!-- Header -->
     <div class="mb-6 sm:mb-8">
         <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2">Integration Settings</h1>

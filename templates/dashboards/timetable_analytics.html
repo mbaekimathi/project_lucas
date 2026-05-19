@@ -3,38 +3,19 @@
 {% block title %}Timetable Analytics - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-
-    <a href="{{ employee_dash_url('timetable-management') }}" 
-       class="w-full sidebar-item">
-        <i class="fas fa-calendar-alt w-5"></i>
-        <span>Timetable Management</span>
-    </a>
-    
-    <a href="{{ employee_dash_url('timetable-management/register-timetable') }}" 
-       class="w-full sidebar-item {% if request.path.endswith('/timetable-management/register-timetable') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-plus-circle w-5"></i>
-        <span>Manual Timetable Allocation</span>
-    </a>
-    
-    <a href="{{ employee_dash_url('timetable-management/manage-timetable') }}" 
-       class="w-full sidebar-item {% if request.path.endswith('/timetable-management/manage-timetable') %}sidebar-item-active{% endif %}">
-        <i class="fas fa-edit w-5"></i>
-        <span>Manage Timetable</span>
-    </a>
-    
-    <a href="{{ employee_dash_url('timetable-management/timetable-analytics') }}" 
-       class="w-full sidebar-item sidebar-item-active">
-        <i class="fas fa-chart-bar w-5"></i>
-        <span>Timetable Analytics</span>
-        <i class="fas fa-check-circle ml-auto text-green-500"></i>
-    </a>
-    
-</div>
+{% set cc_nav_scope = 'timetable' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
-<div class="p-4 lg:p-6" x-data="{activeTab: 'levels'}">
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Timetable Analytics' %}
+{% set role_hero_subtitle = '' %}
+{% set role_hero_icon_class = 'fa-table' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="p-4 lg:p-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{activeTab: 'levels'}">
     <div class="mb-4 sm:mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
             <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">

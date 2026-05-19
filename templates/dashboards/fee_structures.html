@@ -1,27 +1,15 @@
 {% extends "base.html" %}
 
+{% block body_class %}sf-accounts-layout{% endblock %}
+
 {% block title %}Fee Structures - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
-<div class="space-y-2">
-    <!-- Add Fee Structure Link -->
-    <a href="{{ employee_dash_url('student-fees') }}" 
-       class="w-full sidebar-item">
-        <i class="fas fa-arrow-left w-5"></i>
-        <span class="font-medium">Back to Fees</span>
-    </a>
-    
-    <!-- View Fee Structures Link -->
-    <a href="{{ employee_dash_url('student-fees/fee-structures') }}" 
-       class="w-full sidebar-item active">
-        <i class="fas fa-list-alt w-5"></i>
-        <span class="font-semibold">Fee Structures</span>
-        <i class="fas fa-check-circle ml-auto text-green-500"></i>
-    </a>
-</div>
+{% include 'dashboards/includes/student_fees_sidebar.html' %}
 {% endblock %}
 
 {% block content %}
+{% include 'dashboards/includes/student_fees_accounts_styles.html' %}
 <script>
 // Store structures globally for modal access
 window.feeStructuresData = {{ fee_structures|tojson|safe }};
@@ -38,7 +26,8 @@ document.addEventListener('alpine:init', () => {
 });
 </script>
 
-<div class="p-4 lg:p-6" x-data="{
+<div class="accounts-page sf-page bg-[#eef2f6] dark:bg-[#0b1120] portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8" x-data="{
     searchQuery: '',
     filterStatus: 'all',
     filterCategory: 'all',
@@ -136,95 +125,81 @@ document.addEventListener('alpine:init', () => {
         }
     }
 }">
-    <!-- Header -->
-    <div class="mb-6">
-        <div class="mb-4">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                <i class="fas fa-list-alt text-green-600 mr-3"></i>
-                Fee Structures
-            </h1>
-            <p class="text-sm text-gray-600 dark:text-gray-400">View and manage all fee structures</p>
+    <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
+            <a href="{{ employee_dash_url('student-fees') }}"
+               class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                <i class="fas fa-arrow-left"></i> Student fees
+            </a>
+            <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                <i class="fas fa-list-alt opacity-80"></i>
+                <span>Fee structures</span>
+            </div>
+            <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Fee structures</h1>
+            <p class="mt-1.5 text-sm sf-hero-sub max-w-xl">View and manage fee structures by academic year.</p>
         </div>
-        
-        <!-- Academic Year Filter Section -->
-        <div class="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 border border-green-200 dark:border-green-800">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                    <i class="fas fa-calendar-check text-green-600 mr-2"></i>
-                    Filter by Academic Year
+    </header>
+
+        <div class="sf-panel rounded-xl overflow-hidden p-4 sm:p-6 mb-5">
+            <div class="sf-panel-head">
+                <h3 class="sf-panel-title">
+                    <span class="sf-panel-icon"><i class="fas fa-calendar-check"></i></span>
+                    Filter by academic year
                 </h3>
-                <button x-show="selectedYearId" 
-                        @click="clearYearFilter()"
-                        class="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors flex items-center space-x-1">
-                    <i class="fas fa-times"></i>
-                    <span>Clear Filter</span>
+                <button type="button" x-show="selectedYearId" @click="clearYearFilter()" class="sf-clear-btn">
+                    <i class="fas fa-times mr-1"></i> Clear
                 </button>
             </div>
             <div class="flex flex-wrap gap-2 sm:gap-3">
-                <button @click="selectYear(null)"
-                        :class="selectedYearId === null ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'"
-                        class="px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center space-x-2 border-2"
-                        :style="selectedYearId === null ? 'border-color: transparent;' : 'border-color: #e5e7eb;'">
+                <button type="button" @click="selectYear(null)"
+                        :class="selectedYearId === null ? 'sf-year-chip is-active' : 'sf-year-chip'">
                     <i class="fas fa-list"></i>
-                    <span>All Years</span>
+                    <span>All years</span>
                 </button>
                 <template x-for="year in academicYears" :key="year.id">
-                    <button @click="selectYear(year.id)"
-                            :class="selectedYearId == year.id ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg' : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600'"
-                            class="px-4 py-2.5 rounded-lg font-semibold text-sm transition-all duration-200 flex items-center space-x-2 border-2"
-                            :style="selectedYearId == year.id ? 'border-color: transparent;' : 'border-color: #e5e7eb;'">
+                    <button type="button" @click="selectYear(year.id)"
+                            :class="selectedYearId == year.id ? 'sf-year-chip is-active' : 'sf-year-chip'">
                         <i class="fas fa-calendar-alt"></i>
                         <span x-text="year.year_name"></span>
-                        <span x-show="year.is_current" class="ml-1 px-1.5 py-0.5 bg-blue-500 text-white text-xs rounded-full">Current</span>
+                        <span x-show="year.is_current" class="sf-current-badge">Current</span>
                     </button>
                 </template>
             </div>
         </div>
 
-        <!-- Search and Filters -->
-        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-4 mb-6">
+        <div class="sf-panel rounded-xl overflow-hidden p-4 mb-6">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <!-- Search -->
                 <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-search text-gray-400"></i>
-                    </div>
-                    <input type="text" 
-                           x-model="searchQuery" 
-                           placeholder="Search fee structures..."
-                           class="w-full pl-10 pr-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
+                    <i class="sf-input-icon fas fa-search"></i>
+                    <input type="text" x-model="searchQuery" placeholder="Search fee structures..."
+                           class="sf-input sf-input-with-icon">
                 </div>
-                
-                <!-- Status Filter -->
                 <div>
-                    <select x-model="filterStatus" 
-                            class="w-full px-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
-                        <option value="all">All Status</option>
+                    <label class="sf-field-label">Status</label>
+                    <select x-model="filterStatus" class="sf-select">
+                        <option value="all">All status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
                 </div>
-                
-                <!-- Category Filter -->
                 <div>
-                    <select x-model="filterCategory" 
-                            class="w-full px-4 py-2 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all">
-                        <option value="all">All Categories</option>
+                    <label class="sf-field-label">Category</label>
+                    <select x-model="filterCategory" class="sf-select">
+                        <option value="all">All categories</option>
                         <option value="both">Both</option>
-                        <option value="self sponsored">Self Sponsored</option>
+                        <option value="self sponsored">Self sponsored</option>
                         <option value="sponsored">Sponsored</option>
                     </select>
                 </div>
             </div>
         </div>
-    </div>
 
     <!-- Fee Structures Table -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+    <div class="sf-panel rounded-xl overflow-hidden">
         <!-- Desktop Table View -->
         <div class="hidden md:block overflow-x-auto">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800">
+            <table class="sf-table finance-table min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead>
                     <tr>
                             <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Fee Name</th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Academic Year</th>
@@ -1187,7 +1162,7 @@ function editModalData() {
         </div>
     </div>
 </div>
-
+</div>
 
 {% endblock %}
 
