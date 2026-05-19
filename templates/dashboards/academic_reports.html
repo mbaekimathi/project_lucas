@@ -16,8 +16,8 @@
 }
 @media print {
     @page {
-        /* Explicit A4 so Save-as-PDF and printers match expected sheet size */
-        size: A4 landscape;
+        /* Explicit A4 portrait for print / Save as PDF */
+        size: A4 portrait;
         margin: 10mm 11mm;
     }
     /*
@@ -1280,10 +1280,45 @@
     .ar-filters-grid--compact {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 2fr) minmax(0, 1fr);
     }
+    .ar-filters-grid--compact.ar-filters-grid--dynamic {
+        grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    }
     .ar-filters-grid--compact > #ar-filter-wrap-exam:not(.hidden),
     .ar-filters-grid--compact > #ar-filter-wrap-level:not(.hidden) {
         grid-column: auto;
     }
+}
+.ar-filter-hint {
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: rgb(71 85 105);
+    margin: 0 0 0.35rem;
+}
+.dark .ar-filter-hint {
+    color: rgb(148 163 184);
+}
+.ar-filter-hint strong {
+    font-weight: 600;
+    color: var(--brand-primary, #166534);
+}
+.dark .ar-filter-hint strong {
+    color: var(--brand-secondary, #4ade80);
+}
+#ar-report-desc:not(.hidden) {
+    display: block;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: rgb(71 85 105);
+    margin: 0 0 0.35rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.375rem;
+    background: color-mix(in srgb, var(--brand-primary, #166534) 6%, #f8fafc);
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 15%, #e2e8f0);
+}
+.dark #ar-report-desc:not(.hidden) {
+    color: rgb(203 213 225);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 20%, rgb(15 23 42));
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 25%, #475569);
 }
 .ar-filters-grid > div:not(.hidden) {
     min-width: 0;
@@ -1293,6 +1328,15 @@
     flex-direction: column;
     gap: 0.15rem;
     min-width: 0;
+}
+/* Tailwind .hidden loses to .ar-filter-field { display:flex } without this */
+.ar-filter-field.hidden,
+#ar-wrap-student.hidden,
+#ar-wrap-exam-scope.hidden,
+#ar-filter-main-grid.hidden,
+#ar-extra-filters.hidden,
+#ar-filters-panel.hidden {
+    display: none !important;
 }
 .ar-filter-label {
     display: block;
@@ -1376,14 +1420,6 @@
                     <option value="timetables">Timetables</option>
                 </select>
 
-                <div id="ar-wrap-exam-scope" class="ar-chooser-toolbar hidden">
-                    <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
-                    <select id="ar-exam-scope" class="ar-filter-control">
-                        <option value="class">Class</option>
-                        <option value="individual">Individual student</option>
-                    </select>
-                </div>
-
                 <div class="ar-report-zone">
                     <div id="ar-report-grid" class="ar-report-grid" role="listbox" aria-label="Report type"></div>
                     <select id="ar-report" class="ar-sr-only" aria-hidden="true" tabindex="-1"></select>
@@ -1392,7 +1428,8 @@
 
             <div id="ar-report-desc" class="hidden" aria-hidden="true"></div>
 
-            <div class="ar-filters-panel">
+            <div class="ar-filters-panel" id="ar-filters-panel">
+                <p id="ar-filter-hint" class="ar-filter-hint hidden" aria-live="polite"></p>
                 <div id="ar-wrap-student" class="hidden">
                     <label for="gf-student-search" class="ar-filter-label">Student</label>
                     <div class="relative">
@@ -1404,6 +1441,13 @@
                     <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
                 </div>
                 <div id="ar-filter-main-grid" class="ar-filters-grid ar-filters-grid--compact">
+                    <div id="ar-wrap-exam-scope" class="hidden ar-filter-field">
+                        <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
+                        <select id="ar-exam-scope" class="ar-filter-control">
+                            <option value="class">All students</option>
+                            <option value="individual">Individual students</option>
+                        </select>
+                    </div>
                     <div id="ar-filter-wrap-year" class="hidden ar-filter-field">
                         <label for="gf-year" class="ar-filter-label">Academic year</label>
                         <select id="gf-year" class="ar-filter-control">
@@ -1428,8 +1472,8 @@
                             <option value="">Select exam…</option>
                         </select>
                     </div>
-                    <div id="ar-filter-wrap-level" class="ar-filter-field">
-                        <label for="gf-level" class="ar-filter-label">Class / level</label>
+                    <div id="ar-filter-wrap-level" class="hidden ar-filter-field">
+                        <label for="gf-level" class="ar-filter-label">Class</label>
                         <select id="gf-level" class="ar-filter-control">
                             <option value="">All classes</option>
                             {% for lv in academic_levels %}
@@ -1588,6 +1632,8 @@
   const examScopeWrap = document.getElementById('ar-wrap-exam-scope');
   const examScopeEl = document.getElementById('ar-exam-scope');
   const extraWrap = document.getElementById('ar-extra-filters');
+  const filtersPanelEl = document.getElementById('ar-filters-panel');
+  const mainGridEl = document.getElementById('ar-filter-main-grid');
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
   const studentSearchEl = document.getElementById('gf-student-search');
@@ -1700,22 +1746,22 @@
           id: 'exam_all_students_performance',
           label: 'All students',
           desc: scope === 'class'
-            ? 'Class view: all students with marks scaled to /100 (exam subject settings).'
-            : 'Individual view: report card with scaled marks (/100).'
+            ? 'All students: marks scaled to /100 (exam subject settings).'
+            : 'Individual students: report card with scaled marks (/100).'
         },
         {
           id: 'exam_individual_performance',
           label: 'Individual student',
           desc: scope === 'class'
-            ? 'Class view: report cards per student (marks on 0–100 scale).'
-            : 'Individual view: one student’s scaled marks (/100).'
+            ? 'All students: report cards per student (marks on 0–100 scale).'
+            : 'Individual students: one student’s scaled marks (/100) — select student below.'
         },
         {
           id: 'exam_subject_performance',
           label: 'In subject',
           desc: scope === 'class'
-            ? 'Class view: subject stats on a 0–100 scale.'
-            : 'Individual view: selected student’s scaled marks for the subject.'
+            ? 'All students: subject stats on a 0–100 scale.'
+            : 'Individual students: scaled marks for the subject.'
         },
         {
           id: 'exam_teacher_performance',
@@ -1810,93 +1856,142 @@
   }
 
   function updateReportDescription() {
-    if (descEl) descEl.textContent = '';
+    if (!descEl) return;
+    const rid = currentReportId();
+    const rep = (lastReportOptions || []).find(function(r) { return r.id === rid; });
+    const text = rep && rep.desc ? String(rep.desc).trim() : '';
+    descEl.textContent = text;
+    descEl.classList.toggle('hidden', !text);
+    descEl.setAttribute('aria-hidden', text ? 'false' : 'true');
   }
 
-  function updateMainFiltersVisibility() {
-    const sk = sectionEl.value;
+  /** Filters shown only for the selected report (matches API inputs per report). */
+  function filtersForReport(reportId) {
+    const rid = String(reportId || '').trim();
+    const none = {
+      year: false, term: false, exam: false, level: false,
+      student: false, teacher: false, timetableView: false,
+      registerDate: false, dates: false, examScope: false
+    };
+    if (!rid) return none;
+    switch (rid) {
+      case 'class_list_attendance':
+      case 'class_list_exam':
+        return Object.assign({}, none, { level: true });
+      case 'attendance_class':
+        return Object.assign({}, none, { level: true, dates: true });
+      case 'attendance_individual':
+        return Object.assign({}, none, { level: true, dates: true, student: true });
+      case 'exam_all_students_performance':
+      case 'exam_subject_performance':
+      case 'exam_teacher_performance':
+        return Object.assign({}, none, {
+          examScope: true, level: true, year: true, term: true, exam: true
+        });
+      case 'exam_individual_performance': {
+        const needs = Object.assign({}, none, {
+          examScope: true, level: true, year: true, term: true, exam: true
+        });
+        if (currentExamScope() === 'individual') needs.student = true;
+        return needs;
+      }
+      case 'timetable_subject':
+        return Object.assign({}, none, { level: true, timetableView: true, year: true, term: true });
+      case 'timetable_exam':
+        return Object.assign({}, none, { level: true, year: true, term: true });
+      case 'timetable_teacher':
+        return Object.assign({}, none, { teacher: true, term: true });
+      default:
+        return none;
+    }
+  }
+
+  function setFilterBlockVisible(el, show) {
+    if (!el) return;
+    el.classList.toggle('hidden', !show);
+    el.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+
+  function filterFieldLabels(needs) {
+    const labels = [];
+    if (needs.examScope) labels.push('Generate as');
+    if (needs.year) labels.push('Academic year');
+    if (needs.term) labels.push('Term');
+    if (needs.exam) labels.push('Exam name');
+    if (needs.level) labels.push('Class');
+    if (needs.student) labels.push('Student');
+    if (needs.teacher) labels.push('Teacher');
+    if (needs.timetableView) labels.push('Timetable view');
+    if (needs.registerDate) labels.push('Attendance date');
+    if (needs.dates) labels.push('Date range');
+    return labels;
+  }
+
+  function syncReportFilters() {
     const rid = currentReportId();
+    const needs = filtersForReport(rid);
     const wy = document.getElementById('ar-filter-wrap-year');
     const wt = document.getElementById('ar-filter-wrap-term');
     const we = document.getElementById('ar-filter-wrap-exam');
     const wl = document.getElementById('ar-filter-wrap-level');
-    const grid = document.getElementById('ar-filter-main-grid');
 
-    let showYear = false;
-    let showTerm = false;
-    let showExam = false;
-    let showLevel = false;
+    setFilterBlockVisible(examScopeWrap, needs.examScope);
 
-    if (sk === 'class_list') {
-      showLevel = true;
-    } else if (sk === 'attendance') {
-      showTerm = true;
-      showLevel = true;
-    } else if (sk === 'exams') {
-      showYear = true;
-      showTerm = true;
-      showExam = true;
-      showLevel = true;
-    } else if (sk === 'timetables') {
-      showTerm = true;
-      showExam = false;
-      if (rid === 'timetable_teacher') {
-        showYear = false;
-        showLevel = false;
-      } else {
-        showYear = true;
-        showLevel = true;
-      }
-    }
-
-    if (wy) wy.classList.toggle('hidden', !showYear);
-    if (wt) wt.classList.toggle('hidden', !showTerm);
-    if (we) we.classList.toggle('hidden', !showExam);
-    if (wl) wl.classList.toggle('hidden', !showLevel);
-
-    const anyMain = showYear || showTerm || showExam || showLevel;
-    if (grid) grid.classList.toggle('hidden', !anyMain);
-
-    if (hintEl) {
-      hintEl.textContent = '';
-      hintEl.classList.add('hidden');
-    }
-  }
-
-  function updateExtraFilters() {
-    const rid = currentReportId();
-    const needTeacher = rid === 'timetable_teacher';
-    const needTimetableView = rid === 'timetable_subject';
-    const needStudent = reportUsesFindStudentPicker(rid);
-    const needExamName = rid && rid.indexOf('exam_') === 0;
-    const needRegisterDate = rid === 'class_list_attendance';
-    const needDates = rid === 'attendance_class' || rid === 'attendance_individual';
-
-    if (!needStudent) {
+    if (!needs.student) {
       if (studentHiddenEl) studentHiddenEl.value = '';
       if (studentSearchEl) studentSearchEl.value = '';
       hideStudentSuggestions();
       updateStudentClearVisibility();
     }
 
-    const anyExtra = needTeacher || needTimetableView || needRegisterDate || needDates;
-    extraWrap.classList.toggle('hidden', !anyExtra);
-    wrapTimetableView.classList.toggle('hidden', !needTimetableView);
-    wrapTeacher.classList.toggle('hidden', !needTeacher);
-    wrapStudent.classList.toggle('hidden', !needStudent);
+    setFilterBlockVisible(wy, needs.year);
+    setFilterBlockVisible(wt, needs.term);
+    setFilterBlockVisible(we, needs.exam);
+    setFilterBlockVisible(wl, needs.level);
+
+    const mainCount = [needs.examScope, needs.year, needs.term, needs.exam, needs.level].filter(Boolean).length;
+    if (mainGridEl) {
+      setFilterBlockVisible(mainGridEl, mainCount > 0);
+      mainGridEl.classList.toggle('ar-filters-grid--dynamic', mainCount > 0 && mainCount < 5);
+    }
+
+    setFilterBlockVisible(wrapStudent, needs.student);
+    setFilterBlockVisible(wrapTeacher, needs.teacher);
+    setFilterBlockVisible(wrapTimetableView, needs.timetableView);
+    setFilterBlockVisible(wrapRegisterDate, needs.registerDate);
+    setFilterBlockVisible(wrapDates, needs.dates);
     if (wrapExamName) wrapExamName.classList.add('hidden');
-    wrapRegisterDate.classList.toggle('hidden', !needRegisterDate);
-    wrapDates.classList.toggle('hidden', !needDates);
-    if (needExamName) {
-      syncExamNameOptions();
+
+    const extraCount = [needs.teacher, needs.timetableView, needs.registerDate, needs.dates].filter(Boolean).length;
+    if (extraWrap) {
+      setFilterBlockVisible(extraWrap, extraCount > 0);
+      extraWrap.classList.toggle('ar-filters-grid--dynamic', extraCount > 0 && extraCount < 4);
     }
 
-    // Keep filters live; do not block class selection.
-    if (sectionEl.value === 'exams' && levelEl) {
-      levelEl.disabled = false;
+    const anyFilter = mainCount > 0 || extraCount > 0 || needs.student;
+    if (filtersPanelEl) setFilterBlockVisible(filtersPanelEl, anyFilter);
+
+    if (hintEl) {
+      const rep = (lastReportOptions || []).find(function(r) { return r.id === rid; });
+      const repLabel = rep && rep.label ? rep.label : 'this report';
+      const fields = filterFieldLabels(needs);
+      if (anyFilter && fields.length) {
+        hintEl.innerHTML = '<strong>' + escapeHtml(repLabel) + ':</strong> ' + escapeHtml(fields.join(' · '));
+        hintEl.classList.remove('hidden');
+      } else {
+        hintEl.textContent = '';
+        hintEl.classList.add('hidden');
+      }
     }
 
-    updateMainFiltersVisibility();
+    if (needs.exam) syncExamNameOptions();
+    if (levelEl) levelEl.disabled = false;
+
+    updateReportDescription();
+  }
+
+  function updateExtraFilters() {
+    syncReportFilters();
   }
 
   function syncLevelOptionsForSelectedExam() {
@@ -2031,7 +2126,6 @@
   }
 
   sectionEl.addEventListener('change', function() {
-    if (examScopeWrap) examScopeWrap.classList.toggle('hidden', sectionEl.value !== 'exams');
     syncSectionTabsActive();
     if (sectionEl.value !== 'exams') {
       if (studentHiddenEl) studentHiddenEl.value = '';
@@ -2042,16 +2136,18 @@
     fillReportOptions(sectionEl.value);
   });
 
-    if (examScopeEl) {
+  if (examScopeEl) {
     examScopeEl.addEventListener('change', function() {
-      if (sectionEl.value === 'exams') fillReportOptions('exams');
+      if (sectionEl.value === 'exams') {
+        fillReportOptions('exams');
+        syncReportFilters();
+      }
     });
   }
 
   reportEl.addEventListener('change', function() {
     syncReportGridActive();
-    updateReportDescription();
-    updateExtraFilters();
+    syncReportFilters();
     loadDetails();
   });
 
