@@ -16,9 +16,16 @@
 }
 @media print {
     @page {
-        /* Explicit A4 portrait for print / Save as PDF */
         size: A4 portrait;
         margin: 10mm 11mm;
+    }
+    /* Wide class marks sheets: landscape so all subject columns fit */
+    @page marks-landscape {
+        size: A4 landscape;
+        margin: 6mm 8mm;
+    }
+    html.ar-print-marks-matrix {
+        page: marks-landscape;
     }
     /*
       Dashboard shell uses a fixed-height main + inner overflow-y-auto.
@@ -154,6 +161,77 @@
         box-sizing: border-box !important;
         vertical-align: middle !important;
         border: 1px solid #94a3b8 !important;
+    }
+    /* Class marks matrix — fit full width on landscape A4 */
+    #ar-preview-wrap table.ar-marks-matrix {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+        border: 1px solid #64748b !important;
+        font-size: 6pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th,
+    #ar-preview-wrap table.ar-marks-matrix td {
+        font-size: 6pt !important;
+        line-height: 1.08 !important;
+        padding: 0.5px 1px !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        border: 1px solid #94a3b8 !important;
+        box-sizing: border-box !important;
+        vertical-align: middle !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--dense {
+        font-size: 5.5pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--dense th,
+    #ar-preview-wrap table.ar-marks-matrix--dense td {
+        font-size: 5.5pt !important;
+        padding: 0.5px 0.5px !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xdense,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense {
+        font-size: 5pt !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xdense th,
+    #ar-preview-wrap table.ar-marks-matrix--xdense td,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense th,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense td {
+        font-size: 5pt !important;
+        padding: 0 0.5px !important;
+        letter-spacing: -0.02em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-idx {
+        width: 2.2% !important;
+        text-align: center !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
+        text-align: left !important;
+        white-space: nowrap !important;
+        max-width: 0 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
+        text-align: center !important;
+        font-size: 5pt !important;
+        font-weight: 700 !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        hyphens: auto !important;
+        line-height: 1.05 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-mark,
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
+        text-align: center !important;
+    }
+    #ar-preview-wrap .ar-fit-sheet:has(table.ar-marks-matrix) {
+        overflow: visible !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
     /* Let long tables split across pages (avoiding every-row avoid loses content on some engines). */
     #ar-preview-wrap tbody tr {
@@ -585,6 +663,9 @@
 }
 #ar-details-list .ar-marks-matrix--xdense {
     font-size: clamp(0.45rem, 0.38rem + 0.12vw, 0.625rem);
+}
+#ar-details-list .ar-marks-matrix--xxdense {
+    font-size: clamp(0.4rem, 0.35rem + 0.08vw, 0.5625rem);
 }
 #ar-details-list .ar-marks-matrix th,
 #ar-details-list .ar-marks-matrix td,
@@ -1715,9 +1796,28 @@
     return v === 'individual' ? 'individual' : 'class';
   }
 
-  /** Defensive: for Individual student report, keep only rows matching Find student (if API returns extras). */
+  function isExamIndividualMode() {
+    return sectionEl.value === 'exams' && currentExamScope() === 'individual';
+  }
+
+  /** Exam reports: class filter for all-students mode; student search for individual mode. */
+  function examReportFilterNeeds() {
+    const individual = isExamIndividualMode();
+    return {
+      examScope: true,
+      year: true,
+      term: true,
+      exam: true,
+      level: !individual,
+      student: individual
+    };
+  }
+
+  /** Defensive: keep only rows for the selected student in individual exam mode. */
   function narrowExamRowsToSelectedStudent(rows) {
-    if (currentReportId() !== 'exam_individual_performance') return rows;
+    if (!isExamIndividualMode()) return rows;
+    const rid = currentReportId();
+    if (!rid || rid.indexOf('exam_') !== 0) return rows;
     const sid = val('gf-student');
     if (!sid || !Array.isArray(rows)) return rows;
     const want = String(sid).trim().toLowerCase();
@@ -1729,9 +1829,11 @@
     });
   }
 
-  /** Find student UI applies only to these reports — not to "Generate as" individual. */
+  /** Student live search: attendance individual, or any exam report in Individual students mode. */
   function reportUsesFindStudentPicker(reportType) {
-    return reportType === 'exam_individual_performance' || reportType === 'attendance_individual';
+    if (reportType === 'attendance_individual') return true;
+    if (reportType && reportType.indexOf('exam_') === 0 && isExamIndividualMode()) return true;
+    return false;
   }
 
   function fillReportOptions(sectionKey) {
@@ -1883,18 +1985,10 @@
       case 'attendance_individual':
         return Object.assign({}, none, { level: true, dates: true, student: true });
       case 'exam_all_students_performance':
+      case 'exam_individual_performance':
       case 'exam_subject_performance':
       case 'exam_teacher_performance':
-        return Object.assign({}, none, {
-          examScope: true, level: true, year: true, term: true, exam: true
-        });
-      case 'exam_individual_performance': {
-        const needs = Object.assign({}, none, {
-          examScope: true, level: true, year: true, term: true, exam: true
-        });
-        if (currentExamScope() === 'individual') needs.student = true;
-        return needs;
-      }
+        return Object.assign({}, none, examReportFilterNeeds());
       case 'timetable_subject':
         return Object.assign({}, none, { level: true, timetableView: true, year: true, term: true });
       case 'timetable_exam':
@@ -1956,6 +2050,18 @@
     }
 
     setFilterBlockVisible(wrapStudent, needs.student);
+    if (isExamIndividualMode() && levelEl) levelEl.value = '';
+    const studentLabelEl = wrapStudent && wrapStudent.querySelector('.ar-filter-label');
+    if (studentLabelEl) {
+      studentLabelEl.textContent = isExamIndividualMode()
+        ? 'Student (admission no. or name)'
+        : 'Student';
+    }
+    if (studentSearchEl) {
+      studentSearchEl.placeholder = isExamIndividualMode()
+        ? 'Type admission number or student name…'
+        : 'Name or ID…';
+    }
     setFilterBlockVisible(wrapTeacher, needs.teacher);
     setFilterBlockVisible(wrapTimetableView, needs.timetableView);
     setFilterBlockVisible(wrapRegisterDate, needs.registerDate);
@@ -2164,7 +2270,8 @@
   function getFiltersForReport(reportType) {
     const yi = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const ti = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
-    const li = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
+    const skipClass = reportType && reportType.indexOf('exam_') === 0 && isExamIndividualMode();
+    const li = skipClass ? null : (val('gf-level') ? parseInt(val('gf-level'), 10) : null);
     const out = { academic_year_id: yi, term_id: ti, level_id: li };
     out.teacher_id = reportType === 'timetable_teacher' && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
     out.timetable_view = reportType === 'timetable_subject' ? (val('gf-timetable-view') || 'student') : null;
@@ -2473,25 +2580,30 @@
   function marksMatrixTableClass(subjectCount) {
     var n = subjectCount || 0;
     var cls = 'ar-marks-matrix ar-fit-table';
-    if (n > 10) cls += ' ar-marks-matrix--dense';
-    if (n > 14) cls += ' ar-marks-matrix--xdense';
+    if (n > 6) cls += ' ar-marks-matrix--dense';
+    if (n > 10) cls += ' ar-marks-matrix--xdense';
+    if (n > 14) cls += ' ar-marks-matrix--xxdense';
     return cls;
   }
 
   function buildMarksMatrixColgroup(subjectCount) {
     var n = Math.max(0, subjectCount | 0);
-    var studentPct = Math.min(20, Math.max(11, 24 - n * 0.65));
-    var fixed = 3 + studentPct + 5 + 5 + 5;
-    var subjPct = n > 0 ? Math.max(2.5, (100 - fixed) / n) : 0;
+    var idxPct = 2.2;
+    var totPct = 3.8;
+    var ptsPct = 3.8;
+    var grdPct = 3.6;
+    var studentPct = Math.min(16, Math.max(8, 20 - n * 0.75));
+    var fixed = idxPct + studentPct + totPct + ptsPct + grdPct;
+    var subjPct = n > 0 ? Math.max(2, (100 - fixed) / n) : 0;
     var html = '<colgroup>' +
-      '<col class="ar-col-idx" style="width:3%">' +
+      '<col class="ar-col-idx" style="width:' + idxPct.toFixed(2) + '%">' +
       '<col class="ar-col-student" style="width:' + studentPct.toFixed(2) + '%">';
     for (var i = 0; i < n; i++) {
       html += '<col class="ar-col-subj" style="width:' + subjPct.toFixed(2) + '%">';
     }
-    html += '<col class="ar-col-sum" style="width:5%">' +
-      '<col class="ar-col-sum" style="width:5%">' +
-      '<col class="ar-col-grade" style="width:5%">' +
+    html += '<col class="ar-col-sum" style="width:' + totPct.toFixed(2) + '%">' +
+      '<col class="ar-col-sum" style="width:' + ptsPct.toFixed(2) + '%">' +
+      '<col class="ar-col-grade" style="width:' + grdPct.toFixed(2) + '%">' +
       '</colgroup>';
     return html;
   }
@@ -3820,7 +3932,10 @@
 
     const needsStudentPick = reportUsesFindStudentPicker(reportType);
     if (needsStudentPick && !val('gf-student')) {
-      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a student in <span class="font-medium text-gray-700 dark:text-gray-300">Find student</span>, or choose another report.</p>';
+      const pickMsg = isExamIndividualMode()
+        ? 'Search by <span class="font-medium text-gray-700 dark:text-gray-300">admission number or student name</span> below, then select a learner to generate the report.'
+        : 'Select a student below, or choose another report.';
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">' + pickMsg + '</p>';
       setGeneratedNow();
       return;
     }
@@ -3905,8 +4020,15 @@
       btn.addEventListener('click', function(ev) {
         ev.preventDefault();
         if (studentHiddenEl) studentHiddenEl.value = sid;
-        if (studentSearchEl) studentSearchEl.value = s.full_name ? String(s.full_name) : '';
-        if (s.academic_level_id !== undefined && s.academic_level_id !== null && s.academic_level_id !== '') {
+        var displayName = s.full_name ? String(s.full_name) : '';
+        var adm = s.admission_number != null ? String(s.admission_number).trim() : '';
+        if (studentSearchEl) {
+          studentSearchEl.value = adm && displayName
+            ? (adm + ' — ' + displayName)
+            : (displayName || adm);
+        }
+        if (!isExamIndividualMode()
+            && s.academic_level_id !== undefined && s.academic_level_id !== null && s.academic_level_id !== '') {
           setClassLevelForStudent(s.academic_level_id, s.level_name);
         }
         hideStudentSuggestions();
@@ -3917,6 +4039,13 @@
       t1.className = 'font-medium text-gray-900 dark:text-white block truncate';
       t1.textContent = s.full_name || '—';
       btn.appendChild(t1);
+      var admLine = s.admission_number != null ? String(s.admission_number).trim() : '';
+      if (admLine) {
+        var tAdm = document.createElement('span');
+        tAdm.className = 'text-xs text-slate-600 dark:text-slate-300 block truncate font-mono';
+        tAdm.textContent = 'Adm: ' + admLine;
+        btn.appendChild(tAdm);
+      }
       if (s.level_name && String(s.level_name).trim()) {
         var t2 = document.createElement('span');
         t2.className = 'text-xs text-gray-500 dark:text-gray-400 block truncate';
@@ -3937,8 +4066,10 @@
     }
     try {
       var payload = { q: q };
-      var lidStr = val('gf-level');
-      if (lidStr) payload.level_id = parseInt(lidStr, 10);
+      if (!isExamIndividualMode()) {
+        var lidStr = val('gf-level');
+        if (lidStr) payload.level_id = parseInt(lidStr, 10);
+      }
       var res = await fetch(STUDENT_SEARCH_API, {
         method: 'POST',
         credentials: 'same-origin',
@@ -4017,13 +4148,21 @@
     if (inner) inner.scrollTop = 0;
     window.scrollTo(0, 0);
   }
+  function syncPrintPageMode() {
+    var root = document.documentElement;
+    var hasMarksMatrix = !!document.querySelector('#ar-preview-wrap table.ar-marks-matrix');
+    root.classList.toggle('ar-print-marks-matrix', hasMarksMatrix);
+  }
+
   window.addEventListener('beforeprint', function() {
     if (!document.getElementById('ar-preview-wrap')) return;
     document.documentElement.classList.add('ar-print-academic-report');
+    syncPrintPageMode();
     scrollAcademicReportPaneToTop();
   });
   window.addEventListener('afterprint', function() {
     document.documentElement.classList.remove('ar-print-academic-report');
+    document.documentElement.classList.remove('ar-print-marks-matrix');
   });
   const printSavePdfBtn = document.getElementById('ar-print-save-pdf-btn');
   if (printSavePdfBtn) {
