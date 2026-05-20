@@ -122,7 +122,12 @@ body.role-portal-layout main > div > .container.mx-auto {
 }
 .role-hero,
 [class*="role-hero--"] {
-    background: linear-gradient(125deg, #0f172a 0%, #1e3a5f 38%, #134e4a 100%);
+    background: linear-gradient(
+        125deg,
+        color-mix(in srgb, var(--brand-accent, #5c0014) 88%, #0f172a) 0%,
+        var(--brand-primary, #800020) 48%,
+        var(--brand-secondary, #a00030) 100%
+    );
 }
 
 .role-hero-eyebrow {

@@ -1340,9 +1340,94 @@
         0 12px 40px -12px rgba(15, 23, 42, 0.12);
     -webkit-font-smoothing: antialiased;
 }
+@media not print {
 .dark .ar-rc {
-    background: #fff;
-    color: #1e293b;
+    background: rgb(30 41 59);
+    color: rgb(226 232 240);
+    border-color: rgb(51 65 85);
+    box-shadow:
+        0 1px 2px rgba(0, 0, 0, 0.25),
+        0 12px 40px -12px rgba(0, 0, 0, 0.5);
+}
+.dark .ar-rc-doc-title-row {
+    background: rgb(30 41 59);
+}
+.dark .ar-rc-title {
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-meta-panel {
+    background: linear-gradient(180deg, rgb(51 65 85) 0%, rgb(30 41 59) 100%);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-meta-label {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-meta-value {
+    color: rgb(241 245 249);
+}
+.dark .ar-rc-table tbody td {
+    border-color: rgb(71 85 105);
+    color: rgb(241 245 249);
+}
+.dark .ar-rc-table tbody tr:nth-child(even) td {
+    background: rgb(51 65 85 / 0.55);
+}
+.dark .ar-rc-table tbody tr:nth-child(odd) td {
+    background: rgb(30 41 59);
+}
+.dark .ar-rc-summary-box {
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-summary-box td {
+    border-color: rgb(71 85 105);
+    color: rgb(226 232 240);
+}
+.dark .ar-rc-summary-box td:first-child {
+    background: rgb(51 65 85);
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-stat {
+    background: rgb(51 65 85 / 0.65);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-stat-label {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-stat-value {
+    color: rgb(248 250 252);
+}
+.dark .ar-rc-feedback-title {
+    color: rgb(226 232 240);
+}
+.dark .ar-rc-feedback-lines {
+    background: rgb(30 41 59);
+    border-color: rgb(71 85 105);
+}
+.dark .ar-rc-feedback-line {
+    border-bottom-color: rgb(71 85 105);
+}
+.dark .ar-rc-grade-scale {
+    color: rgb(148 163 184);
+}
+.dark .ar-rc-sig-block {
+    border-top-color: rgb(100 116 139);
+}
+.dark .ar-rc-sig-title {
+    color: rgb(203 213 225);
+}
+.dark .ar-rc-photo {
+    border-color: rgb(100 116 139);
+    background: rgb(51 65 85);
+}
+.dark .ar-chooser-toolbar {
+    border-top-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 18%, transparent);
+}
+.dark .ar-student-roster-table td {
+    color: rgb(226 232 240);
+}
+.dark .ar-student-roster-empty {
+    color: rgb(148 163 184);
+}
 }
 .ar-rc-deco {
     pointer-events: none;
@@ -2318,8 +2403,8 @@
                                 <select id="ar-export-format"
                                         aria-label="Spreadsheet format"
                                         class="pl-3 pr-8 py-2 rounded-lg border-0 bg-transparent text-slate-900 dark:text-white text-sm focus:ring-0 cursor-pointer">
+                                    <option value="excel" selected>Excel (.xlsx)</option>
                                     <option value="csv">CSV</option>
-                                    <option value="excel">Excel (.xls)</option>
                                 </select>
                                 <button type="button"
                                         id="ar-export-btn"
@@ -3172,7 +3257,7 @@
     const f = getFiltersForReport(reportType);
     const q = new URLSearchParams();
     q.set('report_type', reportType);
-    q.set('format', fmt || 'csv');
+    q.set('format', fmt || 'excel');
     Object.keys(f).forEach(function(k) {
       const v = f[k];
       if (v !== null && v !== undefined && String(v).trim() !== '') {
@@ -3885,7 +3970,7 @@
 
     var _rowMetaKeys = {
       position: 1, admission_number: 1, student_id: 1, full_name: 1, level_name: 1,
-      current_grade: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1,
+      current_grade: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1, grade_points: 1,
       subject_marks: 1, class_subject_columns: 1
     };
 
@@ -4012,7 +4097,9 @@
       const photoHtml = row.student_photo && String(row.student_photo).trim()
         ? '<img src="' + escapeHtml(row.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
-      const overallPoints = gradePointsFromMark(row.mean, bands);
+      const overallPoints = (row.grade_points !== undefined && row.grade_points !== null && String(row.grade_points).trim() !== '')
+        ? String(row.grade_points)
+        : gradePointsFromMark(row.mean, bands);
       const subjectRows = cardSubjectColumns.map(function(subjectName) {
         const mark = markValueForSubject(row, subjectName);
         const subGrade = gradeCodeFromMark(mark, bands);
@@ -5579,7 +5666,7 @@
         window.alert('Generate the report first, then download the spreadsheet.');
         return;
       }
-      const fmt = exportFmtEl ? (exportFmtEl.value || 'csv') : 'csv';
+      const fmt = exportFmtEl ? (exportFmtEl.value || 'excel') : 'excel';
       window.location.href = buildExportUrl(reportType, fmt);
     });
   }

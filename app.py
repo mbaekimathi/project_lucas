@@ -20424,6 +20424,10 @@ def _compute_progress_aggregates(progress_data):
                 'subjects': subj_list,
             }
         )
+    by_exam.sort(
+        key=lambda x: (x.get('exam_date_str') or '', x.get('exam_id') or 0),
+        reverse=True,
+    )
 
     all_marks = [p['marks'] for p in progress_data if p.get('marks') is not None]
     total = len(all_marks)
@@ -20445,6 +20449,79 @@ def _compute_progress_aggregates(progress_data):
         'by_exam': by_exam,
         'summary': summary,
     }
+
+
+def _parent_children_exam_summaries(student_ids):
+    """Per-student exam analytics for parent child picker (in-session students only)."""
+    out = {}
+    ids = [str(s).strip() for s in (student_ids or []) if str(s).strip()]
+    if not ids:
+        return out
+    connection = get_db_connection()
+    if not connection:
+        return out
+    try:
+        with connection.cursor() as cursor:
+            ensure_subject_exam_total_marks_column(cursor)
+            placeholders = ','.join(['%s'] * len(ids))
+            cursor.execute(
+                f"""
+                SELECT sm.student_id,
+                       COUNT(DISTINCT COALESCE(e.id, sm.exam_id)) AS exam_count,
+                       COUNT(sm.id) AS mark_rows
+                FROM student_marks sm
+                LEFT JOIN exams e ON sm.exam_id = e.id
+                WHERE TRIM(sm.student_id) IN ({placeholders})
+                  AND sm.exam_id IS NOT NULL
+                GROUP BY sm.student_id
+                """,
+                tuple(ids),
+            )
+            for row in cursor.fetchall() or []:
+                sid = row.get('student_id') if isinstance(row, dict) else row[0]
+                if not sid:
+                    continue
+                out[str(sid).strip()] = {
+                    'exam_count': int(row.get('exam_count') if isinstance(row, dict) else row[1] or 0),
+                    'mark_rows': int(row.get('mark_rows') if isinstance(row, dict) else row[2] or 0),
+                }
+            cursor.execute(
+                f"""
+                SELECT sm.student_id, sub.exam_total_marks, sm.marks
+                FROM student_marks sm
+                LEFT JOIN subjects sub ON sm.subject_id = sub.id
+                WHERE TRIM(sm.student_id) IN ({placeholders})
+                  AND sm.marks IS NOT NULL
+                """,
+                tuple(ids),
+            )
+            pct_by_student = {}
+            for row in cursor.fetchall() or []:
+                sid = row.get('student_id') if isinstance(row, dict) else row[0]
+                if not sid:
+                    continue
+                sid = str(sid).strip()
+                total = row.get('exam_total_marks') if isinstance(row, dict) else row[1]
+                raw = row.get('marks') if isinstance(row, dict) else row[2]
+                try:
+                    m_raw = float(raw) if raw is not None else None
+                except (TypeError, ValueError):
+                    m_raw = None
+                pct = raw_mark_to_percentage(m_raw, total) if m_raw is not None else None
+                if pct is None:
+                    continue
+                pct_by_student.setdefault(sid, []).append(pct)
+            for sid, vals in pct_by_student.items():
+                slot = out.setdefault(sid, {'exam_count': 0, 'mark_rows': 0})
+                slot['overall_mean'] = round(sum(vals) / len(vals), 1) if vals else None
+    except Exception as e:
+        print(f"_parent_children_exam_summaries: {e}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return out
 
 
 def _explicit_exam_progress_query(args):
@@ -21005,6 +21082,11 @@ def parent_exam_progress():
                         'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
                         'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
                     })
+                summaries = _parent_children_exam_summaries([c['student_id'] for c in children])
+                for c in children:
+                    sm = summaries.get(str(c['student_id']).strip(), {})
+                    c['exam_count'] = sm.get('exam_count', 0)
+                    c['overall_mean'] = sm.get('overall_mean')
         except Exception as e:
             print(f"Error listing parent exam progress children: {e}")
             flash('Error loading children.', 'error')
@@ -21078,7 +21160,8 @@ def parent_exam_progress_detail(student_id):
         return redirect(parent_dashboard_path('exam-progress'))
 
     try:
-        payload = _fetch_student_progress_payload(student_id, request.args, use_implicit_school_defaults=True)
+        # Parent view: all recorded exams by default (not only current term/exam).
+        payload = _fetch_student_progress_payload(student_id, request.args, use_implicit_school_defaults=False)
     except Exception:
         flash('Error loading student progress.', 'error')
         return redirect(parent_dashboard_path('exam-progress'))
@@ -21087,14 +21170,16 @@ def parent_exam_progress_detail(student_id):
         flash('Student not found.', 'error')
         return redirect(parent_dashboard_path('exam-progress'))
 
+    summary = payload.get('summary') or {}
+    by_exam = payload.get('by_exam') or []
     return render_template(
         'dashboards/parent_student_exam_progress.html',
         student=payload['student'],
         progress_data=payload['progress_data'],
         by_subject=payload['by_subject'],
         by_period=payload['by_period'],
-        by_exam=payload['by_exam'],
-        summary=payload['summary'],
+        by_exam=by_exam,
+        summary=summary,
         has_exam_marks=payload.get('has_exam_marks', False),
         filter_no_results=payload.get('filter_no_results', False),
         filters_active=payload.get('filters_active', False),
@@ -21107,11 +21192,485 @@ def parent_exam_progress_detail(student_id):
         selected_exam_id=payload.get('selected_exam_id'),
         selected_subject_id=payload.get('selected_subject_id'),
         implicit_exam_default_fallback=payload.get('implicit_exam_default_fallback', False),
+        exams_count=len(by_exam),
+        subjects_count=len(payload.get('by_subject') or []),
         is_technician=ctx['is_technician'],
         current_view_role=ctx['current_view_role'],
         all_students=ctx['all_students'],
         selected_student_id=ctx['selected_student_id'],
         show_sibling_nav=sibling_count > 1,
+    )
+
+
+def _parent_fetch_in_session_children(parent_email):
+    """Linked children rows for parent portal pickers (same shape as attendance list)."""
+    children = []
+    if not parent_email:
+        return children
+    connection = get_db_connection()
+    if not connection:
+        return children
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT DISTINCT s.student_id, s.full_name, s.current_grade
+                FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s AND s.status = 'in session'
+                ORDER BY s.full_name ASC
+                """,
+                (parent_email,),
+            )
+            for row in cursor.fetchall() or []:
+                children.append(
+                    {
+                        'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                        'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                        'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                    }
+                )
+    except Exception as e:
+        print(f"_parent_fetch_in_session_children: {e}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return children
+
+
+def _school_current_term_bundle(cursor):
+    """Current school year + term ids and labels (best-effort, matches other portal defaults)."""
+    year_id = None
+    year_name = None
+    term_id = None
+    term_name = None
+    try:
+        cursor.execute(
+            """
+            SELECT id, year_name FROM academic_years
+            WHERE is_current = TRUE AND status = 'active'
+            ORDER BY id DESC LIMIT 1
+            """
+        )
+        yrow = cursor.fetchone()
+        if yrow:
+            year_id = yrow.get('id') if isinstance(yrow, dict) else yrow[0]
+            year_name = yrow.get('year_name') if isinstance(yrow, dict) else (yrow[1] if len(yrow) > 1 else None)
+        if year_id:
+            cursor.execute(
+                """
+                SELECT id, term_name FROM terms
+                WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+                ORDER BY id DESC LIMIT 1
+                """,
+                (year_id,),
+            )
+            trow = cursor.fetchone()
+            if trow:
+                term_id = trow.get('id') if isinstance(trow, dict) else trow[0]
+                term_name = trow.get('term_name') if isinstance(trow, dict) else (trow[1] if len(trow) > 1 else None)
+        if not term_id and year_id:
+            cursor.execute(
+                """
+                SELECT id, term_name FROM terms
+                WHERE status = 'active' AND academic_year_id = %s
+                ORDER BY is_current DESC, id DESC LIMIT 1
+                """,
+                (year_id,),
+            )
+            trow2 = cursor.fetchone()
+            if trow2:
+                term_id = trow2.get('id') if isinstance(trow2, dict) else trow2[0]
+                term_name = trow2.get('term_name') if isinstance(trow2, dict) else (trow2[1] if len(trow2) > 1 else None)
+        if not year_id:
+            cursor.execute(
+                "SELECT id, year_name FROM academic_years WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+            )
+            y2 = cursor.fetchone()
+            if y2:
+                year_id = y2.get('id') if isinstance(y2, dict) else y2[0]
+                year_name = y2.get('year_name') if isinstance(y2, dict) else (y2[1] if len(y2) > 1 else None)
+    except Exception as e:
+        print(f"_school_current_term_bundle: {e}")
+    return year_id, year_name, term_id, term_name
+
+
+def _parent_term_options_for_timetables(cursor):
+    """Active terms with year label for parent timetable term switcher."""
+    opts = []
+    try:
+        cursor.execute(
+            """
+            SELECT t.id, t.term_name, ay.year_name, t.academic_year_id
+            FROM terms t
+            INNER JOIN academic_years ay ON ay.id = t.academic_year_id
+            WHERE t.status = 'active' AND ay.status = 'active'
+            ORDER BY ay.id DESC, t.is_current DESC, t.id DESC
+            """
+        )
+        for row in cursor.fetchall() or []:
+            tid = row.get('id') if isinstance(row, dict) else row[0]
+            tn = row.get('term_name') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')
+            yn = row.get('year_name') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')
+            opts.append({'id': tid, 'term_name': tn or 'Term', 'year_name': yn or ''})
+    except Exception as e:
+        print(f"_parent_term_options_for_timetables: {e}")
+    return opts
+
+
+def _parent_resolve_student_level_for_timetables(cursor, parent_email, student_id):
+    """Verify parent link and resolve academic_level_id from current_grade."""
+    if not parent_email or not student_id:
+        return None
+    cursor.execute(
+        """
+        SELECT s.student_id, s.full_name, s.current_grade,
+               al.id AS academic_level_id, al.level_name AS resolved_level_name
+        FROM students s
+        INNER JOIN parents p ON s.student_id = p.student_id
+        LEFT JOIN academic_levels al
+            ON TRIM(LOWER(s.current_grade)) = TRIM(LOWER(al.level_name))
+            AND COALESCE(al.level_status, 'active') = 'active'
+        WHERE p.email = %s AND LOWER(TRIM(s.student_id)) = LOWER(TRIM(%s)) AND s.status = 'in session'
+        LIMIT 1
+        """,
+        (parent_email, student_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        return {
+            'student_id': row.get('student_id'),
+            'full_name': row.get('full_name'),
+            'current_grade': row.get('current_grade'),
+            'academic_level_id': row.get('academic_level_id'),
+            'resolved_level_name': row.get('resolved_level_name') or row.get('current_grade'),
+        }
+    return {
+        'student_id': row[0] if len(row) > 0 else None,
+        'full_name': row[1] if len(row) > 1 else None,
+        'current_grade': row[2] if len(row) > 2 else None,
+        'academic_level_id': row[3] if len(row) > 3 else None,
+        'resolved_level_name': (row[4] if len(row) > 4 else None) or (row[2] if len(row) > 2 else None),
+    }
+
+
+def _parent_weekly_timetable_sections(cursor, academic_level_id, term_id):
+    if not academic_level_id or not term_id:
+        return []
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT t.day_of_week, t.time_slot, al.level_name,
+                   e.full_name AS teacher_name, s.subject_name, s.subject_code
+            FROM timetables t
+            LEFT JOIN academic_levels al ON t.academic_level_id = al.id
+            LEFT JOIN employees e ON t.teacher_id = e.id
+            LEFT JOIN subjects s ON s.id = t.subject_id
+            WHERE t.term_id = %s AND t.academic_level_id = %s
+            ORDER BY FIELD(t.day_of_week,
+                'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+                t.time_slot
+            """,
+            (term_id, academic_level_id),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                rows.append(
+                    {
+                        'day_of_week': r.get('day_of_week'),
+                        'time_slot': r.get('time_slot'),
+                        'level_name': r.get('level_name'),
+                        'subject_name': r.get('subject_name'),
+                        'subject_code': r.get('subject_code'),
+                        'teacher_name': r.get('teacher_name'),
+                    }
+                )
+            else:
+                rows.append(
+                    {
+                        'day_of_week': r[0] if len(r) > 0 else None,
+                        'time_slot': r[1] if len(r) > 1 else None,
+                        'level_name': r[2] if len(r) > 2 else None,
+                        'teacher_name': r[3] if len(r) > 3 else None,
+                        'subject_name': r[4] if len(r) > 4 else None,
+                        'subject_code': r[5] if len(r) > 5 else None,
+                    }
+                )
+    except Exception as e:
+        print(f"_parent_weekly_timetable_sections: {e}")
+    return _timetable_sections_from_rows(rows, teacher_mode=False)
+
+
+def _parent_exam_timetable_sections_for_class(cursor, academic_level_id, term_id):
+    if not academic_level_id or not term_id:
+        return []
+    rows = []
+    try:
+        cursor.execute(
+            """
+            SELECT e.exam_date, e.start_time, e.end_time, al.level_name,
+                   e.exam_name, COALESCE(s.subject_name, 'Paper') AS subject_name,
+                   e.venue, e.status
+            FROM exams e
+            LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+            LEFT JOIN subjects s ON e.subject_id = s.id
+            WHERE e.term_id = %s AND e.academic_level_id = %s
+              AND (e.status IS NULL OR e.status != 'cancelled')
+            ORDER BY e.exam_date ASC, e.start_time ASC
+            """,
+            (term_id, academic_level_id),
+        )
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                rows.append(
+                    {
+                        'exam_date': r.get('exam_date'),
+                        'start_time': r.get('start_time'),
+                        'end_time': r.get('end_time'),
+                        'level_name': r.get('level_name'),
+                        'exam_name': r.get('exam_name'),
+                        'subject_name': r.get('subject_name'),
+                        'venue': r.get('venue'),
+                        'status': r.get('status'),
+                    }
+                )
+            else:
+                rows.append(
+                    {
+                        'exam_date': r[0] if len(r) > 0 else None,
+                        'start_time': r[1] if len(r) > 1 else None,
+                        'end_time': r[2] if len(r) > 2 else None,
+                        'level_name': r[3] if len(r) > 3 else None,
+                        'exam_name': r[4] if len(r) > 4 else None,
+                        'subject_name': r[5] if len(r) > 5 else None,
+                        'venue': r[6] if len(r) > 6 else None,
+                        'status': r[7] if len(r) > 7 else None,
+                    }
+                )
+    except Exception as e:
+        print(f"_parent_exam_timetable_sections_for_class: {e}")
+    return _exam_timetable_sections_from_rows(rows)
+
+
+@app.route('/dashboard/parent/class-timetable')
+@login_required
+def parent_portal_class_timetable():
+    """Pick a child or redirect when only one is linked."""
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+    qs_sid = (request.args.get('student_id') or '').strip()
+    if qs_sid:
+        return redirect(parent_dashboard_path(f'class-timetable/{qs_sid}'))
+    children = _parent_fetch_in_session_children(parent_email)
+    if len(children) == 1:
+        return redirect(parent_dashboard_path(f"class-timetable/{children[0]['student_id']}"))
+    return render_template(
+        'dashboards/parent_timetable_child_list.html',
+        children=children,
+        page_title='Class timetable',
+        page_subtitle='Weekly teaching periods for your child’s current class.',
+        detail_url_segment='class-timetable',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/class-timetable/<student_id>')
+@login_required
+def parent_portal_class_timetable_student(student_id):
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+
+    sibling_count = 0
+    stu = None
+    term_options = []
+    year_id = year_name = term_id = term_name = None
+    timetable_sections = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    """,
+                    (parent_email,),
+                )
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+                stu = _parent_resolve_student_level_for_timetables(cursor, parent_email, student_id)
+                term_options = _parent_term_options_for_timetables(cursor)
+                year_id, year_name, term_id, term_name = _school_current_term_bundle(cursor)
+                try:
+                    req_tid = int((request.args.get('term_id') or '').strip() or 0)
+                except (TypeError, ValueError):
+                    req_tid = 0
+                if req_tid > 0 and any(int(o['id']) == req_tid for o in term_options):
+                    term_id = req_tid
+                    for o in term_options:
+                        if int(o['id']) == term_id:
+                            term_name = o.get('term_name')
+                            year_name = o.get('year_name')
+                            break
+                if stu and stu.get('academic_level_id') and term_id:
+                    timetable_sections = _parent_weekly_timetable_sections(
+                        cursor, int(stu['academic_level_id']), int(term_id)
+                    )
+        except Exception as e:
+            print(f"parent_portal_class_timetable_student: {e}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('You cannot view this timetable for that student.', 'error')
+        return redirect(parent_dashboard_path('class-timetable'))
+
+    return render_template(
+        'dashboards/parent_student_class_timetable.html',
+        student=stu,
+        timetable_sections=timetable_sections,
+        term_options=term_options,
+        selected_term_id=term_id,
+        term_label=term_name,
+        year_label=year_name,
+        sibling_count=sibling_count,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/exam-timetable')
+@login_required
+def parent_portal_exam_timetable():
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+    qs_sid = (request.args.get('student_id') or '').strip()
+    if qs_sid:
+        return redirect(parent_dashboard_path(f'exam-timetable/{qs_sid}'))
+    children = _parent_fetch_in_session_children(parent_email)
+    if len(children) == 1:
+        return redirect(parent_dashboard_path(f"exam-timetable/{children[0]['student_id']}"))
+    return render_template(
+        'dashboards/parent_timetable_child_list.html',
+        children=children,
+        page_title='Exam timetable',
+        page_subtitle='Scheduled exam sessions for your child’s class this term.',
+        detail_url_segment='exam-timetable',
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
+    )
+
+
+@app.route('/dashboard/parent/exam-timetable/<student_id>')
+@login_required
+def parent_portal_exam_timetable_student(student_id):
+    ctx = _parent_dashboard_auth()
+    if ctx is None:
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
+    parent_email = ctx['parent_email']
+    if not parent_email:
+        flash('No linked parent account.', 'error')
+        return redirect(parent_dashboard_path())
+
+    sibling_count = 0
+    stu = None
+    term_options = []
+    year_name = term_id = term_name = None
+    exam_timetable_sections = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT COUNT(DISTINCT s.student_id) AS cnt
+                    FROM students s
+                    INNER JOIN parents p ON s.student_id = p.student_id
+                    WHERE p.email = %s AND s.status = 'in session'
+                    """,
+                    (parent_email,),
+                )
+                r = cursor.fetchone()
+                sibling_count = int(r.get('cnt') if isinstance(r, dict) else (r[0] if r else 0))
+                stu = _parent_resolve_student_level_for_timetables(cursor, parent_email, student_id)
+                term_options = _parent_term_options_for_timetables(cursor)
+                _yid, year_name, term_id, term_name = _school_current_term_bundle(cursor)
+                try:
+                    req_tid = int((request.args.get('term_id') or '').strip() or 0)
+                except (TypeError, ValueError):
+                    req_tid = 0
+                if req_tid > 0 and any(int(o['id']) == req_tid for o in term_options):
+                    term_id = req_tid
+                    for o in term_options:
+                        if int(o['id']) == term_id:
+                            term_name = o.get('term_name')
+                            year_name = o.get('year_name')
+                            break
+                if stu and stu.get('academic_level_id') and term_id:
+                    exam_timetable_sections = _parent_exam_timetable_sections_for_class(
+                        cursor, int(stu['academic_level_id']), int(term_id)
+                    )
+        except Exception as e:
+            print(f"parent_portal_exam_timetable_student: {e}")
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+
+    if not stu:
+        flash('You cannot view this exam timetable for that student.', 'error')
+        return redirect(parent_dashboard_path('exam-timetable'))
+
+    return render_template(
+        'dashboards/parent_student_exam_timetable.html',
+        student=stu,
+        exam_timetable_sections=exam_timetable_sections,
+        term_options=term_options,
+        selected_term_id=term_id,
+        term_label=term_name,
+        year_label=year_name,
+        sibling_count=sibling_count,
+        is_technician=ctx['is_technician'],
+        current_view_role=ctx['current_view_role'],
+        all_students=ctx['all_students'],
+        selected_student_id=ctx['selected_student_id'],
     )
 
 
@@ -21297,7 +21856,10 @@ def parent_library_detail(student_id):
         return redirect(url_for('home'))
 
     parent_email = ctx['parent_email']
-    if not parent_email:
+    # Technician "view as parent" uses the same student roster as /parent home; access must not
+    # depend on parents.email matching the signed-in user (real parents still do).
+    is_tech_as_parent = ctx['is_technician'] and (ctx.get('current_view_role') or '').lower().strip() == 'parent'
+    if not parent_email and not is_tech_as_parent:
         flash('No linked parent account.', 'error')
         return redirect(parent_dashboard_path())
 
@@ -21309,8 +21871,9 @@ def parent_library_detail(student_id):
     if connection:
         try:
             with connection.cursor() as cursor:
-                allowed, sibling_count = _parent_may_view_student(cursor, parent_email, student_id)
-                if allowed:
+                if is_tech_as_parent:
+                    all_rows = ctx.get('all_students') or []
+                    sibling_count = len(all_rows) if isinstance(all_rows, list) else 0
                     cursor.execute(
                         """
                         SELECT student_id, full_name, current_grade
@@ -21323,6 +21886,7 @@ def parent_library_detail(student_id):
                     )
                     row = cursor.fetchone()
                     if row:
+                        allowed = True
                         if isinstance(row, dict):
                             student = {
                                 'student_id': (row.get('student_id') or '').strip(),
@@ -21335,7 +21899,35 @@ def parent_library_detail(student_id):
                                 'full_name': (row[1] or '').strip(),
                                 'current_grade': (row[2] or '').strip(),
                             }
-                    books = _parent_student_library_books(cursor, student_id)
+                        books = _parent_student_library_books(cursor, student_id)
+                else:
+                    allowed, sibling_count = _parent_may_view_student(cursor, parent_email, student_id)
+                    if allowed:
+                        cursor.execute(
+                            """
+                            SELECT student_id, full_name, current_grade
+                            FROM students
+                            WHERE LOWER(TRIM(student_id)) = LOWER(TRIM(%s))
+                              AND status = 'in session'
+                            LIMIT 1
+                            """,
+                            (student_id,),
+                        )
+                        row = cursor.fetchone()
+                        if row:
+                            if isinstance(row, dict):
+                                student = {
+                                    'student_id': (row.get('student_id') or '').strip(),
+                                    'full_name': (row.get('full_name') or '').strip(),
+                                    'current_grade': (row.get('current_grade') or '').strip(),
+                                }
+                            else:
+                                student = {
+                                    'student_id': (row[0] or '').strip(),
+                                    'full_name': (row[1] or '').strip(),
+                                    'current_grade': (row[2] or '').strip(),
+                                }
+                        books = _parent_student_library_books(cursor, student_id)
         except Exception as e:
             print(f"parent_library_detail: {e}")
             flash('Error loading library books.', 'error')
@@ -21347,11 +21939,20 @@ def parent_library_detail(student_id):
                     pass
 
     if not allowed:
-        flash('You cannot view library books for this student.', 'error')
+        flash(
+            'Student not found or not in session.'
+            if is_tech_as_parent
+            else 'You cannot view library books for this student.',
+            'error',
+        )
+        # Avoid redirect loop: /parent/library re-sends technicians to detail when
+        # parent_view_student_id (or ?student_id) is still set.
+        session.pop('parent_view_student_id', None)
         return redirect(parent_dashboard_path('library'))
 
     if not student:
         flash('Student not found.', 'error')
+        session.pop('parent_view_student_id', None)
         return redirect(parent_dashboard_path('library'))
 
     active_count = sum(1 for b in books if b.get('status') == 'issued')
@@ -39029,26 +39630,196 @@ def _group_class_list_rows(rows, is_combined_level=False, combined_display_name=
     return sections
 
 
+def _academic_report_export_cell_value(col_key, row):
+    """Scalar value for CSV/Excel cells: skip nested dict/list (e.g. internal row payloads)."""
+    if not isinstance(row, dict):
+        return row
+    ck = str(col_key) if col_key is not None else ''
+    if ck in row:
+        v = row[ck]
+    else:
+        v = None
+        ck_st = ck.strip()
+        for rk in row:
+            if isinstance(rk, str) and rk.strip() == ck_st:
+                v = row[rk]
+                break
+        if v is None:
+            return ''
+    # Single-value list/tuple from DB/ORM (would otherwise export as blank)
+    while isinstance(v, (list, tuple)) and len(v) == 1:
+        v = v[0]
+    if isinstance(v, (dict, list, set)):
+        return ''
+    if isinstance(v, bytes):
+        try:
+            v = v.decode('utf-8', errors='replace')
+        except Exception:
+            return ''
+    return v if v is not None else ''
+
+
+def _academic_report_export_body_sections(bundle, report_type):
+    """
+    Build [{class_name, rows, section_title?}, ...] for spreadsheet section breaks.
+    section_title, when set, is printed as the full banner row (else 'Class: {class_name}').
+    Returns None to use a single flat row list.
+    """
+    from collections import defaultdict
+
+    meta = bundle.get('meta') or {}
+    rows = bundle.get('rows') or []
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    preset = meta.get('class_sections')
+    if preset and report_type in ('class_list_attendance', 'class_list_exam'):
+        return preset
+
+    if report_type == 'exam_all_students_performance':
+        by_label = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            label = (
+                (row.get('current_grade') or row.get('home_class') or row.get('level_name') or '')
+                .strip()
+            ) or '—'
+            by_label[label].append(row)
+        keys = sorted(by_label.keys(), key=lambda x: (x == '—', str(x).lower()))
+        return [
+            {
+                'class_name': k,
+                'section_title': f'Class · {k}' if k != '—' else 'Class · (unassigned)',
+                'rows': by_label[k],
+            }
+            for k in keys
+        ]
+
+    if report_type in ('exam_individual', 'exam_individual_performance'):
+        by_sid = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            sid = (row.get('student_id') or '').strip() or '—'
+            by_sid[sid].append(row)
+        keys = sorted(
+            by_sid.keys(),
+            key=lambda s: (
+                str((by_sid[s][0].get('full_name') or '') if by_sid[s] else '').lower(),
+                str(s).lower(),
+            ),
+        )
+        out = []
+        for sid in keys:
+            block = by_sid[sid]
+            name = (block[0].get('full_name') or '').strip() if block else ''
+            if name and sid != '—':
+                title = f'Student · {name} ({sid})'
+            elif name:
+                title = f'Student · {name}'
+            else:
+                title = f'Student · {sid}'
+            out.append({'class_name': sid, 'section_title': title, 'rows': block})
+        return out or None
+
+    if report_type == 'attendance_individual':
+        by_sid = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            sid = (row.get('student_id') or '').strip() or '—'
+            by_sid[sid].append(row)
+        keys = sorted(
+            by_sid.keys(),
+            key=lambda s: (
+                str((by_sid[s][0].get('full_name') or '') if by_sid[s] else '').lower(),
+                str(s).lower(),
+            ),
+        )
+        out = []
+        for sid in keys:
+            block = by_sid[sid]
+            name = (block[0].get('full_name') or '').strip() if block else ''
+            ln = (block[0].get('level_name') or '').strip() if block else ''
+            if name and sid != '—':
+                title = f'Student · {name} ({sid})'
+            elif name:
+                title = f'Student · {name}'
+            else:
+                title = f'Student · {sid}'
+            if ln:
+                title = f'{title} · {ln}'
+            out.append({'class_name': sid, 'section_title': title, 'rows': block})
+        return out or None
+
+    if report_type == 'exam_class_performance':
+        by_lv = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ln = (row.get('level_name') or '').strip() or '—'
+            by_lv[ln].append(row)
+        keys = sorted(by_lv.keys(), key=lambda x: (x == '—', str(x).lower()))
+        if len(keys) <= 1:
+            k0 = keys[0]
+            return [{'class_name': k0, 'section_title': f'Class · {k0}', 'rows': by_lv[k0]}]
+        return [{'class_name': k, 'section_title': f'Class · {k}', 'rows': by_lv[k]} for k in keys]
+
+    if report_type == 'attendance_class' and len(rows) > 1:
+        by_lv = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ln = (row.get('level_name') or '').strip() or '—'
+            by_lv[ln].append(row)
+        keys = sorted(by_lv.keys(), key=lambda x: (x == '—', str(x).lower()))
+        if len(keys) <= 1:
+            return None
+        return [{'class_name': k, 'section_title': f'Class · {k}', 'rows': by_lv[k]} for k in keys]
+
+    if report_type in ('timetable_subject', 'timetable_teacher'):
+        by_lv = defaultdict(list)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            ln = (row.get('level_name') or '').strip() or '—'
+            by_lv[ln].append(row)
+        keys = sorted(by_lv.keys(), key=lambda x: (x == '—', str(x).lower()))
+        if len(keys) <= 1:
+            return None
+        return [{'class_name': k, 'section_title': f'Class · {k}', 'rows': by_lv[k]} for k in keys]
+
+    return None
+
+
+def _academic_report_export_section_heading_row(sec):
+    """One spreadsheet row label for a section break (CSV list / Excel HTML)."""
+    st = (sec.get('section_title') or '').strip()
+    if st:
+        return st
+    return f"Class: {sec.get('class_name', '')}".strip()
+
+
 def _make_academic_report_csv_response(bundle, report_type):
     """Build CSV download response from a successful report bundle."""
     columns = bundle.get('columns') or []
     rows = bundle.get('rows') or []
-    meta = bundle.get('meta') or {}
-    sections = meta.get('class_sections')
+    sections = _academic_report_export_body_sections(bundle, report_type)
     si = StringIO()
     si.write('\ufeff')
     writer = csv.writer(si)
     writer.writerow([c.replace('_', ' ').title() for c in columns])
-    if sections and report_type in ('class_list_attendance', 'class_list_exam'):
+    if sections:
         for i, sec in enumerate(sections):
             if i > 0:
                 writer.writerow([])
-            writer.writerow([f"Class: {sec.get('class_name', '')}"])
+            writer.writerow([_academic_report_export_section_heading_row(sec)])
             for row in sec.get('rows') or []:
-                writer.writerow([row.get(c, '') for c in columns])
+                writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
     else:
         for row in rows:
-            writer.writerow([row.get(c, '') for c in columns])
+            writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
     output = make_response(si.getvalue())
     safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
     output.headers['Content-Type'] = 'text/csv; charset=utf-8'
@@ -39057,48 +39828,131 @@ def _make_academic_report_csv_response(bundle, report_type):
 
 
 def _make_academic_report_excel_response(bundle, report_type):
-    """Build Excel-compatible HTML table download response."""
-    columns = bundle.get('columns') or []
-    rows = bundle.get('rows') or []
-    meta = bundle.get('meta') or {}
-    sections = meta.get('class_sections')
+    """Build a real .xlsx workbook (openpyxl) so Excel does not warn about format/extension mismatch."""
+    from io import BytesIO
 
-    def esc(v):
-        return (
-            str(v if v is not None else '')
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
-            .replace("'", '&#39;')
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError as ie:
+        return make_response(
+            f'Excel export requires openpyxl: {ie}',
+            500,
+            {'Content-Type': 'text/plain; charset=utf-8'},
         )
 
-    head_html = ''.join(f'<th>{esc(c.replace("_", " ").title())}</th>' for c in columns)
-    body_rows = []
-    if sections and report_type in ('class_list_attendance', 'class_list_exam'):
-        for sec in sections:
-            class_title = esc(sec.get('class_name', ''))
-            body_rows.append(f'<tr><td colspan="{max(1, len(columns))}"><strong>Class: {class_title}</strong></td></tr>')
-            for row in sec.get('rows') or []:
-                tds = ''.join(f'<td>{esc(row.get(c, ""))}</td>' for c in columns)
-                body_rows.append(f'<tr>{tds}</tr>')
+    columns = list(bundle.get('columns') or [])
+    rows = bundle.get('rows') or []
+    sections = _academic_report_export_body_sections(bundle, report_type)
+    ncol = max(1, len(columns))
+
+    wb = Workbook()
+    ws = wb.active
+    raw_title = (bundle.get('title') or report_type or 'Report').strip()
+    sheet_name = re.sub(r'[\[\]:*?/\\]', '_', raw_title)[:31].strip('_') or 'Report'
+    ws.title = sheet_name
+
+    header_font = Font(bold=True)
+    header_fill = PatternFill(start_color='DDEBF7', end_color='DDEBF7', fill_type='solid')
+    banner_font = Font(bold=True)
+    banner_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+
+    nrow = 1
+    xls_string_id_cols = frozenset({
+        'student_id', 'admission_number', 'teacher_id', 'invigilator_employee_id',
+    })
+
+    def write_header():
+        nonlocal nrow
+        for ci, col_key in enumerate(columns, start=1):
+            label = str(col_key).replace('_', ' ').title()
+            cell = ws.cell(row=nrow, column=ci, value=label)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        nrow += 1
+
+    def write_banner(text):
+        nonlocal nrow
+        if ncol > 1:
+            ws.merge_cells(start_row=nrow, start_column=1, end_row=nrow, end_column=ncol)
+        cell = ws.cell(row=nrow, column=1, value=str(text))
+        cell.font = banner_font
+        cell.fill = banner_fill
+        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+        nrow += 1
+
+    def write_data_row(row_dict):
+        nonlocal nrow
+        if not isinstance(row_dict, dict):
+            nrow += 1
+            return
+        from decimal import Decimal
+
+        for ci, col_key in enumerate(columns, start=1):
+            val = _academic_report_export_cell_value(col_key, row_dict)
+            cell = ws.cell(row=nrow, column=ci)
+            if val is None:
+                cell.value = None
+            elif isinstance(val, str) and val.strip() == '':
+                cell.value = None
+            elif isinstance(val, bool):
+                cell.value = val
+            elif isinstance(val, (int, float, Decimal)) and not isinstance(val, bool):
+                if isinstance(val, float) and (val != val):  # NaN
+                    cell.value = None
+                else:
+                    cell.value = val
+            else:
+                st = str(val).strip()
+                if not st:
+                    cell.value = None
+                elif str(col_key) in xls_string_id_cols:
+                    cell.value = st
+                elif re.fullmatch(r'-?\d+(\.\d+)?', st):
+                    try:
+                        f = float(st)
+                        cell.value = int(f) if abs(f - round(f)) < 1e-9 else f
+                    except (TypeError, ValueError, ArithmeticError):
+                        cell.value = st
+                else:
+                    cell.value = st
+        nrow += 1
+
+    if not columns:
+        ws.cell(row=1, column=1, value='No export columns for this report.')
     else:
-        for row in rows:
-            tds = ''.join(f'<td>{esc(row.get(c, ""))}</td>' for c in columns)
-            body_rows.append(f'<tr>{tds}</tr>')
+        write_header()
+        if sections:
+            for si, sec in enumerate(sections):
+                write_banner(_academic_report_export_section_heading_row(sec))
+                for row in sec.get('rows') or []:
+                    write_data_row(row)
+                if si < len(sections) - 1:
+                    nrow += 1
+        else:
+            for row in rows:
+                write_data_row(row)
 
-    html_doc = (
-        '<html><head><meta charset="utf-8"></head><body>'
-        '<table border="1" cellspacing="0" cellpadding="4">'
-        f'<thead><tr>{head_html}</tr></thead>'
-        f'<tbody>{"".join(body_rows)}</tbody>'
-        '</table></body></html>'
-    )
+        ws.freeze_panes = 'A2'
 
-    output = make_response(html_doc)
+        for ci in range(1, ncol + 1):
+            letter = get_column_letter(ci)
+            key = str(columns[ci - 1]) if ci <= len(columns) else ''
+            ws.column_dimensions[letter].width = min(48, max(10, len(key) + 4))
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    data = buf.getvalue()
+
+    output = make_response(data)
     safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
-    output.headers['Content-Type'] = 'application/vnd.ms-excel; charset=utf-8'
-    output.headers['Content-Disposition'] = f'attachment; filename={safe_name}.xls'
+    output.headers['Content-Type'] = (
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    output.headers['Content-Disposition'] = f'attachment; filename={safe_name}.xlsx'
     return output
 
 
@@ -39511,6 +40365,14 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not band:
             return ''
         return (band.get('code') or band.get('label') or '').strip()
+
+    def _grade_points_from_settings(subject_id, marks_value, default_bands, subject_bands):
+        """Allocation / grade points for a percentage (Grades Registration + subject overrides)."""
+        if marks_value is None or marks_value == '':
+            return None
+        bands = subject_bands.get(int(subject_id or 0)) or default_bands
+        _gc, pts = grade_code_and_points_from_pct(marks_value, bands)
+        return pts
 
     def _lookup_name(query, value):
         if value is None or value == '':
@@ -40077,8 +40939,18 @@ def _build_academic_report_payload(cursor, report_type, f):
             subject_columns = list(reg_labels_by_lid.get(lid_int) or [])
         else:
             subject_columns = sorted(subject_names_set, key=_all_students_subj_col_sort)
+        # CSV/Excel: omit registered subject slots with no marks in this report (empty columns).
+        subjects_with_marks = set()
+        for _g in grouped.values():
+            for _slbl, _mlist in (_g.get('subject_marks') or {}).items():
+                if _mlist:
+                    subjects_with_marks.add(_slbl)
+        if subjects_with_marks:
+            subject_columns = [c for c in subject_columns if c in subjects_with_marks]
+        if not subject_columns and subjects_with_marks:
+            subject_columns = sorted(subjects_with_marks, key=_all_students_subj_col_sort)
         cols.extend(subject_columns)
-        cols.extend(['total_marks', 'mean', 'grade'])
+        cols.extend(['total_marks', 'mean', 'grade', 'grade_points'])
 
         combined_display = (level_scope.get('display_name') or '').strip() if is_combined_level else ''
         pre_rows = []
@@ -40109,6 +40981,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             total_marks = round_mark_display(sum(marks)) or 0
             mean_marks = round_mark_display(total_marks / len(marks)) if marks else 0
             grade = _grade_from_settings(None, mean_marks, default_grade_bands, {})
+            grade_points = _grade_points_from_settings(None, mean_marks, default_grade_bands, {})
             raw_pf = str(student.get('profile_raw') or '').strip()
             photo_url = ''
             if raw_pf:
@@ -40130,6 +41003,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'total_marks': total_marks,
                 'mean': mean_marks,
                 'grade': grade or '-',
+                'grade_points': grade_points,
             })
 
         pre_rows.sort(key=lambda x: (-float(x.get('total_marks') or 0), -float(x.get('mean') or 0), str(x.get('full_name') or '').lower()))
@@ -40156,6 +41030,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             flat_row['total_marks'] = item['total_marks']
             flat_row['mean'] = item['mean']
             flat_row['grade'] = item['grade']
+            flat_row['grade_points'] = item.get('grade_points')
             flat_row['subject_marks'] = item.get('subject_marks') or {}
             flat_row['class_subject_columns'] = row_cols
             rows.append({
@@ -40437,18 +41312,18 @@ def _build_academic_report_payload(cursor, report_type, f):
             if not level_ids:
                 return {
                     'title': 'Individual student — exam performance',
-                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks'],
+                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
                     'rows': [],
                     'meta': {**meta, 'hint': 'Select a class/level, then enter the student ID for this report.'},
                 }
             if not student_id:
                 return {
                     'title': 'Individual student — exam performance',
-                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks'],
+                    'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
                     'rows': [],
                     'meta': {**meta, 'hint': 'Enter a student ID to load marks for that learner in the selected class.'},
                 }
-        cols = ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks']
+        cols = ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points']
         default_grade_bands, subject_grade_bands = _load_grade_bands_for_reports()
         if default_grade_bands:
             meta['grade_bands'] = default_grade_bands
@@ -40565,6 +41440,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             if scaled_marks is not None:
                 scaled_marks = round_mark_display(scaled_marks)
             grade_code = _grade_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
+            grade_points = _grade_points_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
             if isinstance(r, dict):
                 exam_nm = r.get('exam_name')
                 student_id_out = r.get('student_id')
@@ -40592,6 +41468,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'exam_name': exam_nm,
                 'exam_date': ed.strftime('%Y-%m-%d') if ed and hasattr(ed, 'strftime') else (str(ed)[:10] if ed else ''),
                 'marks': scaled_marks if scaled_marks is not None else '',
+                'grade': (grade_code or '').strip(),
+                'grade_points': grade_points if grade_points is not None else '',
                 'student_photo': photo_url,
                 'subject_id': subject_id_val,
                 'grade_code': grade_code,
@@ -40913,7 +41791,7 @@ def academic_report_preview():
         return _make_academic_report_excel_response(bundle, report_type)
 
     args_flat = request.args.to_dict(flat=True)
-    args_flat['format'] = 'csv'
+    args_flat['format'] = 'excel'
     download_url = employee_dashboard_path('academic-reports/preview') + '?' + urlencode(args_flat)
 
     display = _preview_display_context(report_type, bundle)

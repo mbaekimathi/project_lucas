@@ -32,7 +32,7 @@
         </div>
         <div class="flex flex-wrap gap-2">
             <a href="{{ download_url }}" class="inline-flex items-center px-4 py-2.5 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold hover:bg-gray-300 dark:hover:bg-gray-500">
-                <i class="fas fa-download mr-2"></i> Download CSV
+                <i class="fas fa-download mr-2"></i> Download Excel
             </a>
             <button type="button" onclick="window.print()" class="inline-flex items-center px-4 py-2.5 rounded-lg border border-brand-primary text-brand-primary text-sm font-semibold hover:bg-brand-primary/10">
                 <i class="fas fa-print mr-2"></i> Print
@@ -650,7 +650,9 @@
                 </div>
                 </div>
                 {% set overall_points = namespace(val='-') %}
-                {% if row.mean is not none and meta and meta.grade_bands %}
+                {% if row.grade_points is defined and row.grade_points is not none and row.grade_points != '' %}
+                    {% set overall_points.val = row.grade_points %}
+                {% elif row.mean is not none and meta and meta.grade_bands %}
                     {% set om = row.mean|float|int %}
                     {% for gb in meta.grade_bands %}
                         {% set gb_start = gb.start|float if gb.start is not none else none %}

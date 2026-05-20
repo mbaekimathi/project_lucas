@@ -220,23 +220,46 @@
         white-space: normal;
         word-break: break-word;
     }
+    .reports-fit-table thead th {
+        background: rgb(249 250 251);
+    }
     .reports-fit-table thead th:first-child {
         background: rgb(249 250 251);
     }
+    .dark .reports-fit-table thead th,
     .dark .reports-fit-table thead th:first-child {
-        background: rgb(17 24 39);
+        background: rgb(31 41 55);
     }
-    .reports-fit-table tbody td:first-child {
+    .reports-fit-table tbody tr:nth-child(odd) td {
         background: #fff;
     }
-    .dark .reports-fit-table tbody td:first-child {
+    .reports-fit-table tbody tr:nth-child(even) td {
+        background: rgb(249 250 251);
+    }
+    .reports-fit-table tbody td:first-child {
+        background: inherit;
+    }
+    .dark .reports-fit-table tbody tr:nth-child(odd) td {
         background: rgb(31 41 55);
+    }
+    .dark .reports-fit-table tbody tr:nth-child(even) td {
+        background: rgb(17 24 39);
+    }
+    .dark .reports-fit-table tbody tr:hover td {
+        background: rgb(55 65 81 / 0.55);
+    }
+    .dark .reports-fit-table tbody td:first-child {
+        background: inherit;
+    }
+    .reports-fit-table tfoot td {
+        background: rgb(249 250 251);
     }
     .reports-fit-table tfoot td:first-child {
         background: rgb(249 250 251);
     }
+    .dark .reports-fit-table tfoot td,
     .dark .reports-fit-table tfoot td:first-child {
-        background: rgb(17 24 39 / 0.6);
+        background: rgb(17 24 39 / 0.85);
     }
     @media (max-width: 639px) {
         .reports-class-title {
@@ -576,7 +599,7 @@
     {% if _combined|length > 0 and (selected_report_view|default('all')) in ('all', 'combined') %}
     
     <div class="mb-3 sm:mb-4">
-        <h2 class="reports-section-heading text-brand-primary flex items-center gap-2">
+        <h2 class="reports-section-heading text-brand-primary dark:text-brand-secondary flex items-center gap-2">
             <i class="fas fa-object-group" aria-hidden="true"></i>
             Combined level reports
         </h2>

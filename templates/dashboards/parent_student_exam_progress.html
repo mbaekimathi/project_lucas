@@ -2,7 +2,6 @@
 
 {% block title %}{{ student.full_name }} — Exam progress - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
-
 {% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
 
 {% block sidebar_content %}
@@ -49,73 +48,103 @@
     </a>
     {% endif %}
 
-    <div class="page-hero mb-6 sm:mb-8">
-        <div class="relative px-4 sm:px-6 lg:px-8 py-5 sm:py-6">
-            <div class="flex items-center gap-4">
-                <div class="page-hero-icon flex-shrink-0">
-                    <i class="fas fa-user-graduate text-white text-xl sm:text-2xl"></i>
-                </div>
-                <div>
-                    <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white">{{ student.full_name }}</h1>
-                    <p class="text-white/90 text-sm sm:text-base mt-1">
-                        <span class="font-mono font-semibold">{{ student.student_id }}</span>
-                        {% if student.current_grade %}
-                        <span class="mx-2">•</span>
-                        <span class="modern-badge bg-white/20 text-white">{{ student.current_grade }}</span>
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
+    {% set role_theme = 'parent' %}
+    {% set role_hero_eyebrow = 'Exam analytics' %}
+    {% set role_hero_title = student.full_name %}
+    {% set role_hero_subtitle = 'Student ID ' ~ student.student_id ~ ((' · ' ~ student.current_grade) if student.current_grade else '') ~ ' — all recorded exams and subject performance.' %}
+    {% set role_hero_icon_class = 'fa-user-graduate' %}
+    {% include 'dashboards/includes/role_hero.html' %}
 
-    {% if summary and summary.total_entries > 0 %}
-    <div class="responsive-grid-1 mb-6">
-        <div class="stat-card modern-card p-4">
-            <div class="flex items-center justify-between">
+    {% if has_exam_marks %}
+    <div class="modern-card p-4 sm:p-5 mb-6 border border-gray-200 dark:border-gray-700">
+        <form method="GET" action="{{ parent_dash_url('exam-progress/' ~ student.student_id) }}" class="space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <h2 class="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <i class="fas fa-filter text-brand-primary"></i> Narrow results
+                </h2>
+                {% if filters_active %}
+                <a href="{{ parent_dash_url('exam-progress/' ~ student.student_id) }}" class="text-xs font-semibold text-brand-primary dark:text-brand-secondary hover:underline">Show all exams</a>
+                {% endif %}
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Overall Mean</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.overall_mean }}</p>
+                    <label for="academic_year_id" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Academic year</label>
+                    <select name="academic_year_id" id="academic_year_id" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white">
+                        <option value="">All years</option>
+                        {% for y in exam_filter_academic_years %}
+                        <option value="{{ y.id }}" {% if selected_academic_year_id == y.id %}selected{% endif %}>{{ y.year_name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
-                <div class="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <i class="fas fa-chart-line text-blue-600 dark:text-blue-400 text-xl"></i>
+                <div>
+                    <label for="term_id" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Term</label>
+                    <select name="term_id" id="term_id" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white">
+                        <option value="">All terms</option>
+                        {% for t in exam_filter_terms %}
+                        <option value="{{ t.id }}" {% if selected_term_id == t.id %}selected{% endif %}>{{ t.year_name }} · {{ t.term_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="exam_id" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Exam</label>
+                    <select name="exam_id" id="exam_id" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white">
+                        <option value="">All exams</option>
+                        {% for ex in exam_filter_exams %}
+                        <option value="{{ ex.id }}" {% if selected_exam_id == ex.id %}selected{% endif %}>{{ ex.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="subject_id" class="block text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Subject</label>
+                    <select name="subject_id" id="subject_id" class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm px-3 py-2 text-gray-900 dark:text-white">
+                        <option value="">All subjects</option>
+                        {% for s in exam_filter_subjects %}
+                        <option value="{{ s.id }}" {% if selected_subject_id == s.id %}selected{% endif %}>{{ s.subject_name }}</option>
+                        {% endfor %}
+                    </select>
                 </div>
             </div>
+            <div class="flex flex-wrap gap-2 justify-end">
+                <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-sm">
+                    <i class="fas fa-search text-xs"></i> Apply filters
+                </button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if filter_no_results %}
+    <div class="modern-card p-6 mb-6 border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/30 text-center">
+        <p class="text-amber-900 dark:text-amber-100 font-medium">No marks match the selected filters.</p>
+        <a href="{{ parent_dash_url('exam-progress/' ~ student.student_id) }}" class="inline-block mt-3 text-sm font-semibold text-brand-primary dark:text-brand-secondary hover:underline">Show all exams</a>
+    </div>
+    {% elif summary and summary.total_entries > 0 %}
+    <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6">
+        <div class="stat-card modern-card p-4">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Overall mean</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.overall_mean }}%</p>
         </div>
         <div class="stat-card modern-card p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pass Rate</p>
-                    <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.pass_rate }}%</p>
-                </div>
-                <div class="w-12 h-12 rounded-xl {% if summary.pass_rate >= 70 %}bg-green-100 dark:bg-green-900/30{% elif summary.pass_rate >= 50 %}bg-amber-100 dark:bg-amber-900/30{% else %}bg-red-100 dark:bg-red-900/30{% endif %} flex items-center justify-center">
-                    <i class="fas fa-percentage {% if summary.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif summary.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} text-xl"></i>
-                </div>
-            </div>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pass rate</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ summary.pass_rate }}%</p>
         </div>
         <div class="stat-card modern-card p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Strongest Subject</p>
-                    <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.best_subject }}">{{ summary.best_subject or '—' }}</p>
-                    <p class="text-xs text-green-600 dark:text-green-400 font-medium">{{ summary.best_mean if summary.best_mean else '' }}</p>
-                </div>
-                <div class="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-trophy text-green-600 dark:text-green-400 text-xl"></i>
-                </div>
-            </div>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Exams</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ exams_count|default(0) }}</p>
         </div>
         <div class="stat-card modern-card p-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs Improvement</p>
-                    <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.weakest_subject }}">{{ summary.weakest_subject or '—' }}</p>
-                    <p class="text-xs text-amber-600 dark:text-amber-400 font-medium">{{ summary.weakest_mean if summary.weakest_mean else '' }}</p>
-                </div>
-                <div class="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
-                    <i class="fas fa-chart-line text-amber-600 dark:text-amber-400 text-xl"></i>
-                </div>
-            </div>
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Subjects</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ subjects_count|default(0) }}</p>
+        </div>
+        <div class="stat-card modern-card p-4 col-span-2 lg:col-span-1">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Strongest</p>
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.best_subject }}">{{ summary.best_subject or '—' }}</p>
+            <p class="text-xs text-green-600 dark:text-green-400">{{ summary.best_mean }}%</p>
+        </div>
+        <div class="stat-card modern-card p-4 col-span-2 lg:col-span-1">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Needs focus</p>
+            <p class="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title="{{ summary.weakest_subject }}">{{ summary.weakest_subject or '—' }}</p>
+            <p class="text-xs text-amber-600 dark:text-amber-400">{{ summary.weakest_mean }}%</p>
         </div>
     </div>
 
@@ -123,12 +152,12 @@
         <div class="modern-card p-4 sm:p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
                 <i class="fas fa-chart-bar text-brand-primary mr-2"></i>
-                Performance by Subject
+                Performance by subject
             </h3>
-            <div class="h-64 sm:h-80">
+            <div class="h-64 sm:h-72">
                 <canvas id="subjectChart"></canvas>
             </div>
-            <div class="mt-4 space-y-3">
+            <div class="mt-4 space-y-3 max-h-48 overflow-y-auto custom-scrollbar">
                 {% for subj in by_subject %}
                 <div>
                     <div class="flex justify-between text-sm mb-1">
@@ -136,7 +165,7 @@
                         <span class="{% if subj.mean >= 70 %}text-green-600 dark:text-green-400{% elif subj.mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-semibold">{{ subj.mean }}%</span>
                     </div>
                     <div class="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                        <div class="h-full rounded-full transition-all {% if subj.mean >= 70 %}bg-green-500{% elif subj.mean >= 50 %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ [subj.mean, 100]|min }}%"></div>
+                        <div class="h-full rounded-full {% if subj.mean >= 70 %}bg-green-500{% elif subj.mean >= 50 %}bg-amber-500{% else %}bg-red-500{% endif %}" style="width: {{ [subj.mean, 100]|min }}%"></div>
                     </div>
                 </div>
                 {% endfor %}
@@ -144,33 +173,49 @@
         </div>
         <div class="modern-card p-4 sm:p-6">
             <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-                <i class="fas fa-chart-area text-brand-primary mr-2"></i>
-                Performance Trend
+                <i class="fas fa-chart-line text-brand-primary mr-2"></i>
+                Mean score by exam
             </h3>
-            <div class="h-64 sm:h-80">
-                <canvas id="trendChart"></canvas>
+            <div class="h-64 sm:h-72">
+                <canvas id="examChart"></canvas>
             </div>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Each bar is the average across subjects for that exam (scaled to 0–100).</p>
         </div>
     </div>
 
-    {% if by_exam and by_exam|length > 0 %}
+    {% if by_period and by_period|length > 0 %}
     <div class="modern-card p-4 sm:p-6 mb-6">
         <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-            <i class="fas fa-clipboard-list text-brand-primary mr-2"></i>
-            Performance by Exam
+            <i class="fas fa-chart-area text-brand-primary mr-2"></i>
+            Performance by term
         </h3>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Expand an exam to see subject marks for that assessment only.</p>
+        <div class="h-56 sm:h-64">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if by_exam and by_exam|length > 0 %}
+    <div class="modern-card p-4 sm:p-6 mb-6">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center">
+            <i class="fas fa-clipboard-list text-brand-primary mr-2"></i>
+            All exams ({{ by_exam|length }})
+        </h3>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Expand an exam to see every subject mark recorded for your child.</p>
         <div class="space-y-3">
             {% for ex in by_exam %}
-            <details class="group border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+            <details class="group border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden" {% if loop.first %}open{% endif %}>
                 <summary class="cursor-pointer px-4 py-3 bg-gray-50 dark:bg-gray-800/50 flex flex-wrap items-center justify-between gap-2 list-none">
                     <span class="font-semibold text-gray-900 dark:text-white pr-2">{{ ex.label }}</span>
-                    <span class="text-sm text-gray-600 dark:text-gray-300">Mean <strong>{{ ex.mean }}%</strong> · Pass {{ ex.pass_rate }}% · {{ ex.count }} paper{% if ex.count != 1 %}s{% endif %}</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-300">
+                        Mean <strong>{{ ex.mean }}%</strong> · Pass {{ ex.pass_rate }}% · {{ ex.count }} subject{% if ex.count != 1 %}s{% endif %}
+                        {% if ex.exam_date_str %} · {{ ex.exam_date_str }}{% endif %}
+                    </span>
                 </summary>
                 <div class="px-4 pb-4 pt-2 border-t border-gray-200 dark:border-gray-700">
-                    <div class="grid sm:grid-cols-2 gap-2">
+                    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {% for s in ex.subjects %}
-                        <div class="flex justify-between text-sm gap-4">
+                        <div class="flex justify-between text-sm gap-4 py-1.5 px-2 rounded-md bg-white dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/80">
                             <span class="text-gray-700 dark:text-gray-300">{{ s.subject_name }}</span>
                             <span class="font-semibold whitespace-nowrap {% if s.marks >= 70 %}text-green-600 dark:text-green-400{% elif s.marks >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ s.marks }}%</span>
                         </div>
@@ -189,26 +234,35 @@
         const isDark = document.documentElement.classList.contains('dark');
         const textColor = isDark ? '#e5e7eb' : '#374151';
         const gridColor = isDark ? 'rgba(75, 85, 99, 0.3)' : 'rgba(209, 213, 219, 0.5)';
-        const primaryColor = getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#800020';
+        const rootStyle = getComputedStyle(document.documentElement);
+        function brandRgba(cssVar, alpha) {
+            var raw = (rootStyle.getPropertyValue(cssVar) || '').trim();
+            if (!raw) return 'rgba(128, 0, 32, ' + alpha + ')';
+            var hex = raw.replace('#', '');
+            if (hex.length === 3) hex = hex.split('').map(function(c) { return c + c; }).join('');
+            if (hex.length !== 6) return 'rgba(128, 0, 32, ' + alpha + ')';
+            return 'rgba(' + parseInt(hex.slice(0, 2), 16) + ',' + parseInt(hex.slice(2, 4), 16) + ',' + parseInt(hex.slice(4, 6), 16) + ',' + alpha + ')';
+        }
+        function barColors(values) {
+            return values.map(function(v) {
+                if (v >= 70) return 'rgba(34, 197, 94, 0.75)';
+                if (v >= 50) return 'rgba(245, 158, 11, 0.75)';
+                return 'rgba(239, 68, 68, 0.75)';
+            });
+        }
 
         const subjectData = {{ by_subject|tojson }};
-        if (subjectData.length > 0) {
+        if (subjectData.length > 0 && document.getElementById('subjectChart')) {
             new Chart(document.getElementById('subjectChart'), {
                 type: 'bar',
                 data: {
-                    labels: subjectData.map(s => s.subject_name),
+                    labels: subjectData.map(function(s) { return s.subject_name; }),
                     datasets: [{
                         label: 'Mean %',
-                        data: subjectData.map(s => s.mean),
-                        backgroundColor: subjectData.map(s => 
-                            s.mean >= 70 ? 'rgba(34, 197, 94, 0.7)' :
-                            s.mean >= 50 ? 'rgba(245, 158, 11, 0.7)' : 'rgba(239, 68, 68, 0.7)'
-                        ),
-                        borderColor: subjectData.map(s => 
-                            s.mean >= 70 ? 'rgb(34, 197, 94)' :
-                            s.mean >= 50 ? 'rgb(245, 158, 11)' : 'rgb(239, 68, 68)'
-                        ),
-                        borderWidth: 1
+                        data: subjectData.map(function(s) { return s.mean; }),
+                        backgroundColor: barColors(subjectData.map(function(s) { return s.mean; })),
+                        borderWidth: 0,
+                        borderRadius: 4
                     }]
                 },
                 options: {
@@ -224,18 +278,47 @@
             });
         }
 
+        const examData = {{ by_exam|tojson }};
+        if (examData.length > 0 && document.getElementById('examChart')) {
+            var examLabels = examData.map(function(e) {
+                var parts = (e.exam_name || e.label || 'Exam').split(' · ');
+                return parts[parts.length - 1] || e.label;
+            });
+            new Chart(document.getElementById('examChart'), {
+                type: 'bar',
+                data: {
+                    labels: examLabels,
+                    datasets: [{
+                        label: 'Exam mean %',
+                        data: examData.map(function(e) { return e.mean; }),
+                        backgroundColor: brandRgba('--brand-primary', 0.72),
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: textColor, maxRotation: 45, minRotation: 0, font: { size: 10 } } },
+                        y: { min: 0, max: 100, grid: { color: gridColor }, ticks: { color: textColor } }
+                    }
+                }
+            });
+        }
+
         const periodData = {{ by_period|tojson }};
-        if (periodData.length > 0) {
+        if (periodData.length > 0 && document.getElementById('trendChart')) {
             new Chart(document.getElementById('trendChart'), {
                 type: 'line',
                 data: {
-                    labels: periodData.map(p => p.label),
+                    labels: periodData.map(function(p) { return p.label; }),
                     datasets: [{
-                        label: 'Term Mean %',
-                        data: periodData.map(p => p.mean),
+                        label: 'Term mean %',
+                        data: periodData.map(function(p) { return p.mean; }),
                         fill: true,
-                        borderColor: primaryColor || '#800020',
-                        backgroundColor: 'rgba(128, 0, 32, 0.15)',
+                        borderColor: brandRgba('--brand-primary', 1),
+                        backgroundColor: brandRgba('--brand-primary', 0.12),
                         tension: 0.3
                     }]
                 },
@@ -252,13 +335,22 @@
         }
     })();
     </script>
+    {% elif has_exam_marks %}
+    <div class="empty-state modern-card">
+        <div class="empty-state-icon">
+            <i class="fas fa-filter text-gray-400 text-3xl"></i>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No results for this filter</h3>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Your child has exam marks on record, but nothing matches the filters you selected.</p>
+        <a href="{{ parent_dash_url('exam-progress/' ~ student.student_id) }}" class="inline-block mt-4 text-brand-primary dark:text-brand-secondary font-semibold hover:underline">Show all exams</a>
+    </div>
     {% else %}
     <div class="empty-state modern-card">
         <div class="empty-state-icon">
             <i class="fas fa-chart-line text-gray-400 text-3xl"></i>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No Exam Data Yet</h3>
-        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Exam marks will appear here once results are entered.</p>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">No exam data yet</h3>
+        <p class="text-gray-600 dark:text-gray-400 max-w-md mx-auto">Exam marks will appear here once the school publishes results for {{ student.full_name }}.</p>
     </div>
     {% endif %}
 </div>

@@ -39,7 +39,6 @@ body.role-portal-layout .sf-page {
 /* Unified accounts hero on all portal pages */
 body.role-portal-layout .role-hero,
 body.role-portal-layout .page-hero,
-body.role-portal-layout .accounts-hero,
 body.role-portal-layout [class*="role-hero--"],
 body.role-theme-leadership .page-hero,
 body.role-theme-deputy .page-hero,
@@ -54,6 +53,14 @@ body.role-theme-librarian .page-hero,
 body.role-theme-technician .page-hero,
 body.role-theme-admin .page-hero,
 body.role-theme-default .page-hero {
+    background: linear-gradient(
+        125deg,
+        color-mix(in srgb, var(--brand-accent, #5c0014) 88%, #0f172a) 0%,
+        var(--brand-primary, #800020) 48%,
+        var(--brand-secondary, #a00030) 100%
+    ) !important;
+}
+body.role-portal-layout .accounts-hero {
     background: linear-gradient(125deg, #0f172a 0%, #1e3a5f 38%, #134e4a 100%) !important;
 }
 

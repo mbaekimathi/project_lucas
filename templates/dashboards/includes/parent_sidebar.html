@@ -32,10 +32,22 @@
 {% if _par_nav in ('all', 'exams') %}
 <p class="px-3 {% if _par_nav == 'all' %}pt-3{% else %}pt-1{% endif %} pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Academics</p>
 <a href="{{ parent_dash_url('exam-progress') }}"
-   class="sidebar-item {% if request.endpoint in ('parent_exam_progress_list', 'parent_student_exam_progress') or '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
+   class="sidebar-item {% if request.endpoint in ('parent_exam_progress', 'parent_exam_progress_detail') or '/exam-progress' in request.path %}sidebar-item-active{% endif %}">
     <i class="fas fa-clipboard-check w-5"></i>
     <span>Exam results</span>
-    {% if request.endpoint in ('parent_exam_progress_list', 'parent_student_exam_progress') or '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+    {% if request.endpoint in ('parent_exam_progress', 'parent_exam_progress_detail') or '/exam-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ parent_dash_url('class-timetable') }}"
+   class="sidebar-item {% if request.endpoint in ('parent_portal_class_timetable', 'parent_portal_class_timetable_student') or '/class-timetable' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-week w-5"></i>
+    <span>Class timetable</span>
+    {% if request.endpoint in ('parent_portal_class_timetable', 'parent_portal_class_timetable_student') or '/class-timetable' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
+<a href="{{ parent_dash_url('exam-timetable') }}"
+   class="sidebar-item {% if request.endpoint in ('parent_portal_exam_timetable', 'parent_portal_exam_timetable_student') or '/exam-timetable' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-calendar-check w-5"></i>
+    <span>Exam timetable</span>
+    {% if request.endpoint in ('parent_portal_exam_timetable', 'parent_portal_exam_timetable_student') or '/exam-timetable' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 {% endif %}
 

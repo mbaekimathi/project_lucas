@@ -89,9 +89,6 @@
     {% include 'dashboards/includes/institution_leadership_sidebar.html' %}
 {% elif current_role == 'curriculum coordinator' %}
     {% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
-{% elif current_role in ('teachers', 'teacher') %}
-    {% include 'dashboards/includes/teacher_sidebar.html' %}
-
 {% elif current_role == 'accountant' %}
     {% include 'dashboards/includes/accountant_sidebar.html' %}
 
@@ -113,14 +110,19 @@
 {% endblock %}
 
 {% block content %}
+{% set current_role = dashboard_content_role %}
+{% set _roles_with_dedicated_home = [
+    'teacher', 'teachers', 'curriculum coordinator', 'accountant',
+    'head of institution', 'deputy head of institution', 'secretary',
+    'store manager', 'librarian', 'technician'
+] %}
+{% if current_role not in _roles_with_dedicated_home %}
 {% set role_theme = portal_page_variant|default('default') %}
 {% set role_hero_title = 'Employee Dashboard' %}
 {% set role_hero_subtitle = '' %}
 {% set role_hero_icon_class = 'fa-users' %}
 {% include 'dashboards/includes/role_hero.html' %}
-
-
-{% set current_role = dashboard_content_role %}
+{% endif %}
 {% if current_role in ['teacher', 'teachers'] %}
 {% set ta = teacher_dashboard_analytics|default({}) %}
 <div class="p-4 sm:p-6 lg:p-8 role-page role-page--teacher">
@@ -280,118 +282,11 @@
     </div>
 </div>
 {% elif current_role == 'curriculum coordinator' %}
-{% set cd = coordinator_dashboard|default({}) %}
-<div class="p-4 sm:p-6 lg:p-8 role-page role-page--coordinator">
+<div class="p-4 sm:p-6 lg:p-8 portal-page-root role-page role-page--coordinator">
     <div class="max-w-7xl mx-auto space-y-6">
-        <div class="rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white p-5 sm:p-6 shadow-lg">
-            <p class="text-xs font-bold uppercase tracking-widest text-indigo-200/90">Curriculum coordinator</p>
-            <h1 class="text-2xl sm:text-3xl font-bold mt-1">Academic overview</h1>
-            {% if coordinator_dashboard_name %}
-            <p class="text-indigo-100 mt-2">Welcome, {{ coordinator_dashboard_name }}</p>
-            {% endif %}
-            <div class="mt-4 flex flex-wrap items-center gap-2">
-                {% if cd.year_name %}
-                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 text-sm font-semibold ring-1 ring-white/15">
-                    <i class="fas fa-calendar-day opacity-90"></i> {{ cd.year_name }}
-                </span>
-                {% endif %}
-                {% if cd.term_name %}
-                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 text-sm font-semibold ring-1 ring-white/15">
-                    <i class="fas fa-bookmark opacity-90"></i> {{ cd.term_name }}
-                </span>
-                {% endif %}
-            </div>
-            <p class="text-sm text-indigo-100/90 mt-3 max-w-3xl">Charts use in-session or active students, marks, and saved attendance for the current term where available. Use the sidebar for classes, timetable, exams, attendance register, and reports.</p>
-        </div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Students in session</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ cd.students_in_session|default(0) }}</p>
-            </div>
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Active class levels</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ cd.active_levels_count|default(0) }}</p>
-            </div>
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Subject–level links</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ cd.registered_subject_links|default(0) }}</p>
-            </div>
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Marks entries (this term)</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ cd.marks_entries_this_term|default(0) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Exam rows: {{ cd.exam_rows_this_term|default(0) }}</p>
-            </div>
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm border-l-4 border-l-teal-500">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Attendance cells saved</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{{ cd.attendance_rows_this_term|default(0) }}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Student–date rows in this term (in-session / active students).</p>
-            </div>
-            <div class="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5 shadow-sm border-l-4 border-l-emerald-500">
-                <p class="text-sm font-semibold text-gray-500 dark:text-gray-400">Attendance present rate</p>
-                <p class="text-3xl font-bold text-gray-900 dark:text-white mt-2">{% if cd.attendance_rows_this_term %}{{ cd.attendance_rate_pct|default(0) }}%{% else %}—{% endif %}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Present {{ cd.attendance_present_this_term|default(0) }} · Absent {{ cd.attendance_absent_this_term|default(0) }}</p>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
-                <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <span class="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center"><i class="fas fa-users"></i></span>
-                    Students by class (level)
-                </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">In-session students matched to an academic level name, or grouped by current grade when names do not match.</p>
-                <div class="mt-4 h-72 relative">
-                    {% if cd.level_chart.labels %}
-                    <canvas id="cc-chart-levels" aria-label="Students by level chart"></canvas>
-                    {% else %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400 absolute inset-0 flex items-center justify-center text-center px-4">No students to chart yet (check status is &ldquo;in session&rdquo; or &ldquo;active&rdquo; and that current grade is set).</p>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
-                <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <span class="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center"><i class="fas fa-chart-bar"></i></span>
-                    Mean scaled marks by subject
-                </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Top subjects by number of mark entries this term; mean as % of each subject&apos;s exam total (0–100 scale).</p>
-                <div class="mt-4 h-72 relative">
-                    {% if cd.subject_chart.labels %}
-                    <canvas id="cc-chart-subjects" aria-label="Subject mean marks chart"></canvas>
-                    {% else %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400 absolute inset-0 flex items-center justify-center text-center px-4">No marks for this term yet, or no matching student rows.</p>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border border-gray-200 dark:border-gray-700 p-5 sm:p-6">
-                <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <span class="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center"><i class="fas fa-user-check"></i></span>
-                    Attendance present rate by class
-                </h2>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Share of saved register cells marked present this term (in-session / active students), grouped by recorded class level.</p>
-                <div class="mt-4 h-72 relative">
-                    {% if cd.attendance_by_level_chart.labels %}
-                    <canvas id="cc-chart-attendance-levels" aria-label="Attendance rate by level chart"></canvas>
-                    {% else %}
-                    <p class="text-sm text-gray-500 dark:text-gray-400 absolute inset-0 flex items-center justify-center text-center px-4">No attendance saved for this term yet, or levels could not be resolved.</p>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <div class="flex flex-wrap gap-3">
-            <a href="{{ employee_dash_url('classes-subjects') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow">Classes &amp; subjects</a>
-            <a href="{{ employee_dash_url('student-management/student-attendance') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow">
-                <i class="fas fa-clipboard-check"></i> Student attendance register
-            </a>
-            <a href="{{ employee_dash_url('timetable-management') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold">Timetable</a>
-            <a href="{{ employee_dash_url('exams-assessments') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold">Exams &amp; assessments</a>
-            <a href="{{ employee_dash_url('exam-subject-settings') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold">Exam subject settings</a>
-            <a href="{{ employee_dash_url('reports') }}" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-sm font-semibold">Reports</a>
-        </div>
+        {% include 'dashboards/includes/curriculum_coordinator_role_home.html' %}
     </div>
 </div>
-<script type="application/json" id="cc-coordinator-chart-data">{{ {'level': cd.level_chart|default({}), 'subject': cd.subject_chart|default({}), 'attendance': cd.attendance_by_level_chart|default({})}|tojson }}</script>
 {% elif current_role == 'accountant' %}
 <div class="relative left-1/2 right-1/2 -ml-[50vw] -mr-[50vw] w-screen max-w-[100vw]">
 {% include 'dashboards/includes/payroll_accounts_styles.html' %}
@@ -455,6 +350,25 @@ document.addEventListener('DOMContentLoaded', function () {
     var isDark = document.documentElement.classList.contains('dark');
     var tick = isDark ? '#94a3b8' : '#64748b';
     var grid = isDark ? 'rgba(148,163,184,0.12)' : 'rgba(100,116,139,0.15)';
+    var rootStyle = getComputedStyle(document.documentElement);
+    function brandRgba(cssVar, alpha) {
+        var raw = (rootStyle.getPropertyValue(cssVar) || '').trim();
+        if (!raw) return 'rgba(128, 0, 32, ' + alpha + ')';
+        if (raw.indexOf('rgb') === 0) {
+            var m = raw.match(/\d+/g);
+            if (m && m.length >= 3) return 'rgba(' + m[0] + ',' + m[1] + ',' + m[2] + ',' + alpha + ')';
+        }
+        var hex = raw.replace('#', '');
+        if (hex.length === 3) hex = hex.split('').map(function (c) { return c + c; }).join('');
+        if (hex.length !== 6) return 'rgba(128, 0, 32, ' + alpha + ')';
+        var r = parseInt(hex.slice(0, 2), 16);
+        var g = parseInt(hex.slice(2, 4), 16);
+        var b = parseInt(hex.slice(4, 6), 16);
+        return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+    }
+    var barPrimary = brandRgba('--brand-primary', 0.72);
+    var barSecondary = brandRgba('--brand-secondary', 0.72);
+    var barAccent = brandRgba('--brand-accent', 0.78);
 
     var ctxL = document.getElementById('cc-chart-levels');
     if (ctxL && lvl.labels && lvl.labels.length) {
@@ -465,7 +379,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 datasets: [{
                     label: 'Students',
                     data: lvl.counts,
-                    backgroundColor: 'rgba(79, 70, 229, 0.65)',
+                    backgroundColor: barPrimary,
                     borderRadius: 6,
                 }]
             },
@@ -490,7 +404,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 datasets: [{
                     label: 'Mean /100',
                     data: sub.means,
-                    backgroundColor: 'rgba(124, 58, 237, 0.65)',
+                    backgroundColor: barSecondary,
                     borderRadius: 6,
                 }]
             },
@@ -515,7 +429,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 datasets: [{
                     label: 'Present %',
                     data: att.rates,
-                    backgroundColor: 'rgba(13, 148, 136, 0.7)',
+                    backgroundColor: barAccent,
                     borderRadius: 6,
                 }]
             },

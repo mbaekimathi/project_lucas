@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Exam Results — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
-
+{% block title %}{{ page_title }} — choose a child - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block extra_head %}{% include 'dashboards/includes/role_portal_theme.html' %}{% endblock %}
 
@@ -18,23 +17,23 @@
             <div class="flex items-center gap-3">
                 <i class="fas fa-user-cog text-blue-600 dark:text-blue-400 text-2xl"></i>
                 <div>
-                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician Test Mode</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent's perspective</p>
+                    <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Technician test mode</h3>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a student to view their parent’s perspective</p>
                 </div>
             </div>
-            <form method="GET" action="{{ parent_dash_url('exam-progress') }}" class="flex items-center gap-3">
+            <form method="GET" action="{{ parent_dash_url(detail_url_segment) }}" class="flex items-center gap-3">
                 <select name="student_id" onchange="this.form.submit()"
                         class="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-w-[250px]">
-                    <option value="">-- Select a Student --</option>
+                    <option value="">-- Select a student --</option>
                     {% for student in all_students %}
-                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}" 
+                    <option value="{{ student.get('student_id', '') or student[1] if student else '' }}"
                             {% if selected_student_id and (student.get('student_id', '') or student[1] if student else '') == selected_student_id %}selected{% endif %}>
                         {{ student.get('full_name', '') or student[2] if student else '' }} — {{ student.get('student_id', '') or student[1] if student else '' }}
                     </option>
                     {% endfor %}
                 </select>
                 {% if selected_student_id %}
-                <a href="{{ parent_dash_url('exam-progress') }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
+                <a href="{{ parent_dash_url(detail_url_segment) }}" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg">Clear</a>
                 {% endif %}
             </form>
         </div>
@@ -43,31 +42,25 @@
 
     {% set role_theme = 'parent' %}
     {% set role_hero_eyebrow = 'Parent portal' %}
-    {% set role_hero_title = 'Exam results & progress' %}
-    {% set role_hero_subtitle = 'Choose a child to see overall analytics and performance by exam.' %}
-    {% set role_hero_icon_class = 'fa-clipboard-check' %}
+    {% set role_hero_title = page_title %}
+    {% set role_hero_subtitle = page_subtitle %}
+    {% if detail_url_segment == 'class-timetable' %}
+    {% set role_hero_icon_class = 'fa-calendar-week' %}
+    {% else %}
+    {% set role_hero_icon_class = 'fa-calendar-check' %}
+    {% endif %}
     {% include 'dashboards/includes/role_hero.html' %}
 
     {% if children %}
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         {% for child in children %}
-        <a href="{{ parent_dash_url('exam-progress/' ~ child.student_id) }}" 
+        <a href="{{ parent_dash_url(detail_url_segment ~ '/' ~ child.student_id) }}"
            class="block bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 shadow hover:shadow-lg transition-all hover:border-brand-primary/50">
             <div class="flex items-start justify-between gap-3">
                 <div>
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white">{{ child.full_name }}</h2>
                     <p class="text-sm text-gray-500 dark:text-gray-400 font-mono mt-1">{{ child.student_id }}</p>
                     <p class="text-sm text-gray-600 dark:text-gray-300 mt-2">Grade: {{ child.current_grade or 'N/A' }}</p>
-                    {% if child.exam_count is defined and child.exam_count > 0 %}
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                        <span><i class="fas fa-clipboard-check text-brand-primary mr-1"></i>{{ child.exam_count }} exam{% if child.exam_count != 1 %}s{% endif %}</span>
-                        {% if child.overall_mean is not none %}
-                        <span><i class="fas fa-chart-line text-brand-primary mr-1"></i>Mean {{ child.overall_mean }}%</span>
-                        {% endif %}
-                    </p>
-                    {% elif child.exam_count is defined %}
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No exam marks recorded yet</p>
-                    {% endif %}
                 </div>
                 <i class="fas fa-chevron-right text-brand-primary mt-1"></i>
             </div>
