@@ -39677,6 +39677,9 @@ def _academic_report_export_body_sections(bundle, report_type):
         return preset
 
     if report_type == 'exam_all_students_performance':
+        # Combined cohort: export one continuous table (preserve row order), no per-class bands.
+        if meta.get('is_combined_level_view') or meta.get('merge_single_cohort'):
+            return None
         by_label = defaultdict(list)
         for row in rows:
             if not isinstance(row, dict):
