@@ -813,9 +813,12 @@
                 <div class="flex items-center gap-4 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/30 {% if loop.index0 % 2 == 0 %}bg-white dark:bg-gray-800{% else %}bg-gray-50/50 dark:bg-gray-800/50{% endif %}">
                     <span class="flex-shrink-0 w-8 h-8 rounded-full bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25 dark:text-brand-secondary text-sm font-bold flex items-center justify-center">{{ loop.index }}</span>
                     {% if report_type in ('class_list_attendance', 'class_list_exam') %}
-                    <div class="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    <div class="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-{% if meta and meta.is_combined_level_view %}3{% else %}2{% endif %} gap-2 text-sm">
                         <span class="font-semibold text-gray-900 dark:text-white">{{ row.full_name }}</span>
                         <span class="text-gray-600 dark:text-gray-400"><span class="text-gray-400">ID</span> {{ row.student_id }}</span>
+                        {% if meta and meta.is_combined_level_view %}
+                        <span class="text-gray-600 dark:text-gray-400"><span class="text-gray-400">Class</span> {{ row.home_class or row.current_grade or '—' }}</span>
+                        {% endif %}
                     </div>
                     {% else %}
                     <div class="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-sm">
@@ -869,7 +872,7 @@
             <thead>
                 <tr class="border-b border-gray-200 dark:border-gray-600">
                     {% for c in columns %}
-                    <th class="text-left py-3 px-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{{ c|replace('_', ' ') }}</th>
+                    <th class="text-left py-3 px-3 font-semibold text-gray-900 dark:text-white whitespace-nowrap">{% if c in ('home_class', 'current_grade') %}Class{% else %}{{ c|replace('_', ' ') }}{% endif %}</th>
                     {% endfor %}
                 </tr>
             </thead>

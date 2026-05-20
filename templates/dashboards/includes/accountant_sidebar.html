@@ -3,11 +3,19 @@
 {% if _acct_nav in ('all', 'fees') %}
 <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Student fees</p>
 {% if can_add_fee_structure|default(false) %}
+{% if request.endpoint == 'fee_structures' %}
 <button type="button" @click="$store.feeStructure.open()"
         class="sidebar-item w-full text-left">
     <i class="fas fa-plus-circle w-5"></i>
     <span>Add fee structure</span>
 </button>
+{% else %}
+<a href="{{ employee_dash_url('student-fees/fee-structures') }}?create=1"
+   class="sidebar-item">
+    <i class="fas fa-plus-circle w-5"></i>
+    <span>Add fee structure</span>
+</a>
+{% endif %}
 {% endif %}
 <a href="{{ employee_dash_url('student-fees') }}"
    class="sidebar-item {% if request.endpoint == 'student_fees' %}sidebar-item-active{% endif %}">

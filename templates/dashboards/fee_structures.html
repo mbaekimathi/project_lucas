@@ -126,17 +126,25 @@ document.addEventListener('alpine:init', () => {
     }
 }">
     <header class="accounts-hero mb-5 rounded-2xl overflow-hidden shadow-xl ring-1 ring-black/5">
-        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4">
-            <a href="{{ employee_dash_url('student-fees') }}"
-               class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
-                <i class="fas fa-arrow-left"></i> Student fees
-            </a>
-            <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                <i class="fas fa-list-alt opacity-80"></i>
-                <span>Fee structures</span>
+        <div class="px-5 sm:px-7 pt-5 sm:pt-6 pb-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+                <a href="{{ employee_dash_url('student-fees') }}"
+                   class="inline-flex items-center gap-2 text-[10px] font-semibold text-teal-200/90 hover:text-white mb-2 transition">
+                    <i class="fas fa-arrow-left"></i> Student fees
+                </a>
+                <div class="flex items-center gap-2 text-teal-200/90 text-[10px] font-semibold uppercase tracking-[0.2em]">
+                    <i class="fas fa-list-alt opacity-80"></i>
+                    <span>Fee structures</span>
+                </div>
+                <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Fee structures</h1>
+                <p class="mt-1.5 text-sm sf-hero-sub max-w-xl">View and manage fee structures by academic year.</p>
             </div>
-            <h1 class="mt-2 text-xl sm:text-2xl font-bold text-white tracking-tight">Fee structures</h1>
-            <p class="mt-1.5 text-sm sf-hero-sub max-w-xl">View and manage fee structures by academic year.</p>
+            {% if can_add_fee_structure %}
+            <button type="button" @click="$store.feeStructure.open()"
+                    class="accounts-btn-primary inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold shrink-0">
+                <i class="fas fa-plus-circle"></i> Create fee structure
+            </button>
+            {% endif %}
         </div>
     </header>
 
@@ -681,7 +689,7 @@ function editModalData() {
             this.loading = true;
             this.error = '';
             this.success = '';
-            fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/update', {
+            fetch({{ employee_dash_url('student-fees/fee-structure')|tojson }} + '/' + this.structureId + '/update', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -960,63 +968,67 @@ function editModalData() {
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div x-data="{ 
-    deleteModalOpen: false,
-    structureId: null,
-    structureName: '',
-    loading: false,
-    error: '',
-    init() {
-        // Wait for store to be available
-        if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
-            Alpine.store('feeModals').deleteModal = this;
-        } else {
-            // Fallback: try again after a short delay
-            setTimeout(() => {
-                if (Alpine.store && Alpine.store('feeModals')) {
-                    Alpine.store('feeModals').deleteModal = this;
-                }
-            }, 100);
-        }
-    },
-    confirmDelete(id, name) {
-        this.structureId = id;
-        this.structureName = name;
-        this.error = '';
-        this.deleteModalOpen = true;
-    },
-    deleteStructure() {
-        this.loading = true;
-        this.error = '';
-        fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(r => r.json())
-        .then(data => {
-            this.loading = false;
-            if (data.success) {
-                this.deleteModalOpen = false;
-                location.reload();
+<script>
+function feeStructureDeleteModal() {
+    const deleteUrlBase = {{ employee_dash_url('student-fees/fee-structure')|tojson }};
+    return {
+        deleteModalOpen: false,
+        structureId: null,
+        structureName: '',
+        loading: false,
+        error: '',
+        init() {
+            if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
+                Alpine.store('feeModals').deleteModal = this;
             } else {
-                this.error = data.message || 'Failed to delete fee structure';
+                setTimeout(() => {
+                    if (Alpine.store && Alpine.store('feeModals')) {
+                        Alpine.store('feeModals').deleteModal = this;
+                    }
+                }, 100);
             }
-        })
-        .catch(err => {
-            this.loading = false;
-            this.error = 'An error occurred. Please try again.';
-        });
-    }
-}"
+        },
+        confirmDelete(id, name) {
+            this.structureId = id;
+            this.structureName = name;
+            this.error = '';
+            this.deleteModalOpen = true;
+        },
+        deleteStructure() {
+            this.loading = true;
+            this.error = '';
+            fetch(deleteUrlBase + '/' + this.structureId + '/delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                this.loading = false;
+                if (data.success) {
+                    this.deleteModalOpen = false;
+                    location.reload();
+                } else {
+                    this.error = data.message || 'Failed to delete fee structure';
+                }
+            })
+            .catch(() => {
+                this.loading = false;
+                this.error = 'An error occurred. Please try again.';
+            });
+        }
+    };
+}
+</script>
+<div x-data="feeStructureDeleteModal()"
      x-show="deleteModalOpen"
      x-cloak
      @keydown.escape.window="deleteModalOpen = false"
      class="fixed inset-0 z-50 overflow-y-auto"
      style="display: none;">
     <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
+    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
          @click="deleteModalOpen = false"></div>
-    
+
     <!-- Modal -->
     <div class="flex min-h-full items-center justify-center p-4">
         <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md"
@@ -1027,24 +1039,24 @@ function editModalData() {
                     <i class="fas fa-exclamation-triangle text-white text-2xl"></i>
                     <h2 class="text-xl font-bold text-white">Delete Fee Structure</h2>
                 </div>
-                <button @click="deleteModalOpen = false" 
+                <button @click="deleteModalOpen = false"
                         class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
-            
+
             <!-- Content -->
             <div class="p-6">
                 <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4">
                     <i class="fas fa-exclamation-circle mr-2"></i>
                     <span x-text="error"></span>
                 </div>
-                
+
                 <p class="text-gray-700 dark:text-gray-300 mb-4">
-                    Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>? 
+                    Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>?
                     This action cannot be undone and will also delete all associated fee items.
                 </p>
-                
+
                 <div class="flex items-center justify-end space-x-3">
                     <button type="button" @click="deleteModalOpen = false"
                             class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
@@ -1059,110 +1071,23 @@ function editModalData() {
             </div>
         </div>
     </div>
+</div>
 </div>
 
-<!-- Delete Confirmation Modal -->
-<div x-data="{ 
-    deleteModalOpen: false,
-    structureId: null,
-    structureName: '',
-    loading: false,
-    error: '',
-    init() {
-        // Wait for store to be available
-        if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('feeModals')) {
-            Alpine.store('feeModals').deleteModal = this;
-        } else {
-            // Fallback: try again after a short delay
-            setTimeout(() => {
-                if (Alpine.store && Alpine.store('feeModals')) {
-                    Alpine.store('feeModals').deleteModal = this;
-                }
-            }, 100);
-        }
-    },
-    confirmDelete(id, name) {
-        this.structureId = id;
-        this.structureName = name;
-        this.error = '';
-        this.deleteModalOpen = true;
-    },
-    deleteStructure() {
-        this.loading = true;
-        this.error = '';
-        fetch('{{ employee_dash_url('student-fees/fee-structure/') }}' + this.structureId + '/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(r => r.json())
-        .then(data => {
-            this.loading = false;
-            if (data.success) {
-                this.deleteModalOpen = false;
-                location.reload();
-            } else {
-                this.error = data.message || 'Failed to delete fee structure';
-            }
-        })
-        .catch(err => {
-            this.loading = false;
-            this.error = 'An error occurred. Please try again.';
-        });
-    }
-}"
-     x-show="deleteModalOpen"
-     x-cloak
-     @keydown.escape.window="deleteModalOpen = false"
-     class="fixed inset-0 z-50 overflow-y-auto"
-     style="display: none;">
-    <!-- Backdrop -->
-    <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" 
-         @click="deleteModalOpen = false"></div>
-    
-    <!-- Modal -->
-    <div class="flex min-h-full items-center justify-center p-4">
-        <div class="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md"
-             @click.stop>
-            <!-- Header -->
-            <div class="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4 rounded-t-2xl flex items-center justify-between">
-                <div class="flex items-center space-x-3">
-                    <i class="fas fa-exclamation-triangle text-white text-2xl"></i>
-                    <h2 class="text-xl font-bold text-white">Delete Fee Structure</h2>
-                </div>
-                <button @click="deleteModalOpen = false" 
-                        class="text-white hover:text-gray-200 transition-colors p-2 rounded-lg hover:bg-white/20">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-            
-            <!-- Content -->
-            <div class="p-6">
-                <div x-show="error" x-cloak class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg mb-4">
-                    <i class="fas fa-exclamation-circle mr-2"></i>
-                    <span x-text="error"></span>
-                </div>
-                
-                <p class="text-gray-700 dark:text-gray-300 mb-4">
-                    Are you sure you want to delete the fee structure <strong x-text="structureName"></strong>? 
-                    This action cannot be undone and will also delete all associated fee items.
-                </p>
-                
-                <div class="flex items-center justify-end space-x-3">
-                    <button type="button" @click="deleteModalOpen = false"
-                            class="px-6 py-2.5 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium">
-                        Cancel
-                    </button>
-                    <button type="button" @click="deleteStructure()" :disabled="loading"
-                            class="px-6 py-2.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg hover:shadow-lg transform hover:scale-105 transition-all duration-300 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2">
-                        <i class="fas fa-spinner fa-spin" x-show="loading"></i>
-                        <span x-text="loading ? 'Deleting...' : 'Delete'"></span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-</div>
+{% if can_add_fee_structure %}
+{% include 'dashboards/includes/fee_structure_create_modal.html' %}
+<script>
+document.addEventListener('alpine:init', () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') !== '1') return;
+    const store = Alpine.store('feeStructure');
+    if (store) store.open();
+    params.delete('create');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? '?' + qs : ''));
+});
+</script>
+{% endif %}
 
 {% endblock %}
 

@@ -16,6 +16,12 @@
     <span>Assign roles &amp; approve</span>
     {% if request.endpoint == 'assign_roles_approve' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('users-roles') }}"
+   class="sidebar-item {% if request.endpoint == 'users_roles' %}sidebar-item-active{% endif %}">
+    <i class="fas fa-user-shield w-5"></i>
+    <span>Permissions</span>
+    {% if request.endpoint == 'users_roles' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('staff-and-salaries') }}"
    class="sidebar-item {% if request.endpoint == 'staff_and_salaries' %}sidebar-item-active{% endif %}">
     <i class="fas fa-money-check-alt w-5"></i>

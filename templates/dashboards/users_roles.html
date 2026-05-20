@@ -3,9 +3,13 @@
 {% block title %}Users & Roles - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
 {% if session.get('role', '').lower() == 'technician' %}
 {% set technician_nav_scope = 'admin' %}
 {% include 'dashboards/includes/technician_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'staff' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
 {% endif %}
 {% endblock %}
 

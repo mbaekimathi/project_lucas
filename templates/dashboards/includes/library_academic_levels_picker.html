@@ -1,0 +1,95 @@
+{# Academic level picker for library book register/edit. Expects library_level_combinations, library_levels_by_category, inventory_academic_levels, lib_picker_mode ('register'|'edit'). #}
+{% if inventory_academic_levels %}
+<div class="max-h-[min(16rem,45vh)] overflow-y-auto rounded-xl border border-gray-200/90 bg-gray-50/50 dark:border-gray-700 dark:bg-gray-950/40">
+    {% if library_level_combinations %}
+    <div class="border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+            <i class="fas fa-object-group mr-1" aria-hidden="true"></i>Combined academic levels
+        </p>
+    </div>
+    {% for combo in library_level_combinations %}
+    <div class="flex flex-wrap items-center gap-3 border-b border-gray-100/80 px-4 py-3 transition hover:bg-white dark:border-gray-800 dark:hover:bg-gray-900/60">
+        <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+            {% if lib_picker_mode == 'edit' %}
+            <input type="checkbox"
+                   @change="toggleEditCombination({{ combo|tojson }})"
+                   :checked="isEditComboSelected({{ combo.member_level_ids|tojson }})"
+                   class="h-4 w-4 shrink-0 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+            {% else %}
+            <input type="checkbox"
+                   @change="toggleRegisterCombination({{ combo|tojson }})"
+                   :checked="isRegisterComboSelected({{ combo.member_level_ids|tojson }})"
+                   class="h-4 w-4 shrink-0 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+            {% endif %}
+            <span class="min-w-0">
+                <span class="block text-sm font-medium uppercase tracking-wide text-gray-800 dark:text-gray-100">{{ combo.label_name }}</span>
+                <span class="block text-[10px] font-normal normal-case text-gray-500 dark:text-gray-400">{{ combo.member_count }} level(s){% if combo.categories %} · {{ combo.categories }}{% endif %}</span>
+            </span>
+        </label>
+        {% if lib_picker_mode == 'edit' %}
+        <div class="flex shrink-0 items-center gap-2">
+            <span class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Copies</span>
+            <input type="number" min="1" step="1"
+                   @input="setEditComboQty({{ combo.member_level_ids|tojson }}, $event.target.value)"
+                   :value="comboQtyForMembers({{ combo.member_level_ids|tojson }}, 'edit')"
+                   :disabled="!isEditComboSelected({{ combo.member_level_ids|tojson }})"
+                   class="w-[4.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-center text-sm tabular-nums text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:cursor-not-allowed disabled:opacity-40 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+        </div>
+        {% endif %}
+        {% for mid in combo.member_level_ids %}
+        {% if lib_picker_mode == 'edit' %}
+        <input type="checkbox" class="sr-only" name="academic_level_id" value="{{ mid }}" x-model="editLevelPicked" tabindex="-1" aria-hidden="true" />
+        <input type="number" class="sr-only" min="1" step="1" name="qty_{{ mid }}" x-model="editLevelQty['{{ mid }}']" tabindex="-1" aria-hidden="true" />
+        {% else %}
+        <input type="checkbox" class="sr-only" name="academic_level_id" value="{{ mid }}" x-model="registerLevelPicked" tabindex="-1" aria-hidden="true" />
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% for section in library_levels_by_category|default([]) %}
+    <div class="border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-brand-primary dark:text-brand-secondary">
+            {{ section.category }}{% if library_level_combinations %} <span class="font-normal normal-case text-gray-500 dark:text-gray-400">(standalone)</span>{% endif %}
+        </p>
+    </div>
+    {% for lvl in section.levels %}
+    <div class="flex flex-wrap items-center gap-3 border-b border-gray-100/80 px-4 py-3 transition hover:bg-white dark:border-gray-800 dark:hover:bg-gray-900/60 last:border-b-0">
+        <label class="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+            {% if lib_picker_mode == 'edit' %}
+            <input type="checkbox"
+                   name="academic_level_id"
+                   value="{{ lvl.id }}"
+                   x-model="editLevelPicked"
+                   @change="editLevelsChanged(); syncEditCopiesTotal()"
+                   class="h-4 w-4 shrink-0 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+            <span class="text-xs font-medium uppercase text-gray-800 dark:text-gray-100">{{ lvl.level_name }}{% if lvl.level_code %} <span class="font-normal text-gray-500">({{ lvl.level_code }})</span>{% endif %}</span>
+            {% else %}
+            <input type="checkbox"
+                   name="academic_level_id"
+                   value="{{ lvl.id }}"
+                   x-model="registerLevelPicked"
+                   @change="registerLevelsChanged()"
+                   class="h-4 w-4 shrink-0 rounded border-gray-300 text-brand-primary focus:ring-brand-primary" />
+            <span class="text-sm font-medium uppercase tracking-wide text-gray-800 dark:text-gray-100">{{ lvl.level_name }}{% if lvl.level_code %} <span class="font-normal text-gray-500">({{ lvl.level_code }})</span>{% endif %}</span>
+            {% endif %}
+        </label>
+        {% if lib_picker_mode == 'edit' %}
+        <div class="flex shrink-0 items-center gap-2">
+            <label class="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400" for="edit_qty_{{ lvl.id }}">Copies</label>
+            <input type="number" min="1" step="1" id="edit_qty_{{ lvl.id }}" name="qty_{{ lvl.id }}"
+                   x-model="editLevelQty['{{ lvl.id }}']"
+                   @input="editLevelsChanged(); syncEditCopiesTotal()"
+                   :disabled="!editLevelPicked.includes('{{ lvl.id }}')"
+                   class="w-16 rounded-lg border border-gray-200 px-2 py-1 text-center text-xs tabular-nums dark:border-gray-600 dark:bg-gray-950 dark:text-white disabled:opacity-40" />
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% endfor %}
+</div>
+{% else %}
+<p class="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm font-normal normal-case text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+    No active academic levels found. Add or activate levels under <strong>Classes &amp; Subjects</strong> first.
+</p>
+{% endif %}
