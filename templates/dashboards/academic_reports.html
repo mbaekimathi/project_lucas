@@ -2391,7 +2391,7 @@
                                     id="ar-print-btn"
                                     title="Print this report on paper"
                                     class="inline-flex items-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md shadow-brand-primary/20 hover:opacity-95 transition-all">
-                                <i class="fas fa-print mr-2"></i>Print
+                                Print
                             </button>
                             <button type="button"
                                     id="ar-download-pdf-btn"
@@ -2481,7 +2481,7 @@
       label: 'Exams',
       hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
       reports: [
-        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: subject marks on a 0–100 scale (raw ÷ exam total × 100 from Exam subject settings); last summary column is grade allocation points from the row mean (Grades Registration).' },
+        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: subject marks on a 0–100 scale (raw ÷ exam total × 100 from Exam subject settings); grade allocation points from the row mean (Grades Registration). Spreadsheet export adds class subject means and class mean total at the bottom (no per-student mean column).' },
         { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s scaled marks (/100) in the selected class — enter Student ID.' },
       ],
     },
@@ -3845,6 +3845,7 @@
 
   function columnHeaderLabel(col) {
     if (col === 'subject_name') return 'Subject code';
+    if (col === 'grade_points') return 'GP';
     return String(col || '').replaceAll('_', ' ');
   }
 
@@ -4128,7 +4129,7 @@
             '<div class="ar-rc-main-body">' +
               '<table class="ar-rc-table ar-rc-table--subjects">' +
                 '<thead><tr>' +
-                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
+                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>GP</th>' +
                 '</tr></thead>' +
                 '<tbody>' + subjectRows + '</tbody>' +
               '</table>' +
@@ -4136,7 +4137,7 @@
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
-                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
                 '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Class rank</p><p class="ar-rc-stat-value">' + escapeHtml(rankVal) + '</p></div>' +
               '</div>' +
             '</div>' +
@@ -4165,7 +4166,7 @@
               return '<th scope="col" class="ar-col-subj" title="' + full + '">' + short + '</th>';
             }).join('') +
             '<th scope="col" class="ar-col-sum">Tot</th>' +
-            '<th scope="col" class="ar-col-sum" title="Grade allocation points from mean % (Grades Registration)">Pts</th>' +
+            '<th scope="col" class="ar-col-sum" title="Grade points (allocation from mean %, Grades Registration)">GP</th>' +
             '<th scope="col" class="ar-col-grade">Grd</th>' +
           '</tr>' +
         '</thead>';
@@ -4176,8 +4177,10 @@
         return isNaN(n) ? null : n;
       }
 
-      /** Numeric grade points for the student row mean (for footer mean). */
+      /** Numeric GP for footer mean: prefer stored grade_points, else from mean % and bands. */
       function rowMeanPointsNum(row) {
+        var gp = numOrNull(row.grade_points);
+        if (gp !== null) return gp;
         var s = String(gradePointsFromMark(row.mean, bands));
         var n = parseFloat(s);
         return isNaN(n) ? null : n;
@@ -4237,7 +4240,11 @@
               '</td>';
             }).join('') +
             '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(formatReportMark(row.total_marks)) + '</td>' +
-            '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(String(gradePointsFromMark(row.mean, bands))) + '</td>' +
+            '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(String(
+              (row.grade_points !== undefined && row.grade_points !== null && String(row.grade_points).trim() !== '')
+                ? row.grade_points
+                : gradePointsFromMark(row.mean, bands)
+            )) + '</td>' +
             '<td class="ar-col-grade"><span class="inline-flex items-center px-1 py-0.5 rounded text-[0.95em] font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></td>' +
           '</tr>';
       }).join('');
@@ -5217,14 +5224,14 @@
           '<div class="ar-rc-main-body">' +
             '<table class="ar-rc-table ar-rc-table--subjects">' +
               '<thead><tr>' +
-                '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
+                '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>GP</th>' +
               '</tr></thead>' +
               '<tbody>' + tableRows + '</tbody>' +
             '</table>' +
             '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
               '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams covered</p><p class="ar-rc-stat-value">' + escapeHtml(examsCount) + '</p></div>' +
             '</div>' +

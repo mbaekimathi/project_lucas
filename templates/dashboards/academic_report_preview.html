@@ -35,7 +35,7 @@
                 <i class="fas fa-download mr-2"></i> Download Excel
             </a>
             <button type="button" onclick="window.print()" class="inline-flex items-center px-4 py-2.5 rounded-lg border border-brand-primary text-brand-primary text-sm font-semibold hover:bg-brand-primary/10">
-                <i class="fas fa-print mr-2"></i> Print
+                Print
             </button>
         </div>
     </div>
@@ -721,7 +721,7 @@
                                 <tr><td>Total marks</td><td>{{ row.total_marks|round|int }}</td></tr>
                                 <tr><td>Mean</td><td>{{ row.mean|round|int }}</td></tr>
                                 <tr><td>Overall grade</td><td>{{ grade }}</td></tr>
-                                <tr><td>Grade points</td><td>{{ overall_points.val }}</td></tr>
+                                <tr><td>GP</td><td>{{ overall_points.val }}</td></tr>
                                 <tr><td>Class rank</td><td>{{ row.position }}</td></tr>
                             </tbody></table>
                         </div>
@@ -731,7 +731,7 @@
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">{{ row.total_marks|round|int }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">{{ row.mean|round|int }}</p></div>
                     <div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">{{ grade }}</p></div>
-                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">{{ overall_points.val }}</p></div>
+                    <div class="ar-rc-stat"><p class="ar-rc-stat-label">GP</p><p class="ar-rc-stat-value">{{ overall_points.val }}</p></div>
                 </div>
                 <p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span>
                     {% if meta and meta.grade_bands and meta.grade_bands|length %}

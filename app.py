@@ -39804,6 +39804,141 @@ def _academic_report_export_section_heading_row(sec):
     return f"Class: {sec.get('class_name', '')}".strip()
 
 
+def _academic_report_export_column_header_label(col_key):
+    """Human-readable spreadsheet column title (CSV / Excel header row)."""
+    ck = str(col_key or '')
+    if ck == 'grade_points':
+        return 'GP'
+    return ck.replace('_', ' ').title()
+
+
+def _academic_report_school_export_banner_lines():
+    """Short school identity lines for CSV / Excel letterhead (no logo in CSV)."""
+    school = get_school_settings() or {}
+    name = (school.get('school_name') or 'School').strip() or 'School'
+    lines = [name]
+    loc = (school.get('school_location') or '').strip()
+    if loc:
+        lines.append(loc)
+    bits = []
+    ph = (school.get('school_phone') or '').strip()
+    if ph:
+        bits.append(f'Tel: {ph}')
+    em = (school.get('school_email') or '').strip()
+    if em:
+        bits.append(f'Email: {em}')
+    if bits:
+        lines.append(' · '.join(bits))
+    return lines
+
+
+def _academic_report_bundle_summary_lines(bundle, report_type):
+    """Report title + applied filter lines for export letterhead."""
+    out = []
+    title = (bundle.get('title') or '').strip() or str(report_type or '').replace('_', ' ').title()
+    out.append(f'Report: {title}')
+    meta = bundle.get('meta') or {}
+    af = meta.get('applied_filters')
+    if not isinstance(af, dict):
+        return out
+    pairs = [
+        ('academic_year', 'Academic year'),
+        ('term', 'Term'),
+        ('class_level', 'Class'),
+        ('level_view', 'Level view'),
+        ('exam_name', 'Exam'),
+        ('exam_type', 'Exam type'),
+        ('teacher', 'Teacher'),
+        ('student_id', 'Student'),
+        ('date_from', 'Date from'),
+        ('date_to', 'Date to'),
+        ('timetable_view', 'Timetable view'),
+        ('generated_at', 'Generated'),
+    ]
+    for key, label in pairs:
+        v = af.get(key)
+        if v is None:
+            continue
+        vs = str(v).strip()
+        if not vs or vs.lower() in ('null', 'none'):
+            continue
+        out.append(f'{label}: {vs}')
+    return out
+
+
+def _exam_all_students_performance_footer_rows(columns, meta, student_rows):
+    """
+    Two summary rows for CSV/Excel after student rows:
+    (1) Class mean per subject, mean GP (grade_points), (2) class mean of total % (total_marks).
+    """
+    if not columns or not isinstance(student_rows, list) or not student_rows:
+        return []
+    colset = set(columns)
+    subject_cols = [c for c in (meta.get('subject_columns') or []) if c in colset]
+    if not subject_cols:
+        fixed = {
+            'position', 'admission_number', 'full_name', 'student_id', 'total_marks',
+            'grade', 'grade_points', 'mean', 'level_name', 'current_grade', 'home_class',
+            'student_photo', 'subject_marks', 'class_subject_columns',
+        }
+        subject_cols = [c for c in columns if c not in fixed]
+
+    def _fnum(row, key):
+        if not isinstance(row, dict):
+            return None
+        v = row.get(key)
+        if v is None or v == '':
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def blank_row():
+        return {c: '' for c in columns}
+
+    row_subj = blank_row()
+    for c in columns:
+        if c == 'full_name':
+            row_subj[c] = 'Subject mean (class)'
+        elif c == 'position':
+            row_subj[c] = ''
+        elif c == 'admission_number':
+            row_subj[c] = ''
+    for sc in subject_cols:
+        vals = [_fnum(r, sc) for r in student_rows]
+        vals = [x for x in vals if x is not None]
+        row_subj[sc] = round_mark_display(sum(vals) / len(vals)) if vals else ''
+
+    if 'grade_points' in colset:
+        gp_vals = [_fnum(r, 'grade_points') for r in student_rows]
+        gp_vals = [x for x in gp_vals if x is not None]
+        row_subj['grade_points'] = round_mark_display(sum(gp_vals) / len(gp_vals)) if gp_vals else ''
+
+    totals = [_fnum(r, 'total_marks') for r in student_rows]
+    totals = [x for x in totals if x is not None]
+    class_avg = round_mark_display(sum(totals) / len(totals)) if totals else None
+
+    row_class = blank_row()
+    for c in columns:
+        if c == 'full_name':
+            row_class[c] = 'Class mean (avg total %)'
+        elif c == 'total_marks':
+            row_class[c] = class_avg if class_avg is not None else ''
+
+    return [row_subj, row_class]
+
+
+def _write_exam_all_students_performance_footers(writer, columns, meta, student_rows):
+    """Append blank line + summary rows to CSV (writer = csv.writer)."""
+    footers = _exam_all_students_performance_footer_rows(columns, meta, student_rows)
+    if not footers:
+        return
+    writer.writerow([])
+    for fr in footers:
+        writer.writerow([_academic_report_export_cell_value(c, fr) for c in columns])
+
+
 def _make_academic_report_csv_response(bundle, report_type):
     """Build CSV download response from a successful report bundle."""
     columns = bundle.get('columns') or []
@@ -39812,17 +39947,29 @@ def _make_academic_report_csv_response(bundle, report_type):
     si = StringIO()
     si.write('\ufeff')
     writer = csv.writer(si)
-    writer.writerow([c.replace('_', ' ').title() for c in columns])
+    for line in _academic_report_school_export_banner_lines():
+        writer.writerow([line])
+    writer.writerow([])
+    for line in _academic_report_bundle_summary_lines(bundle, report_type):
+        writer.writerow([line])
+    writer.writerow([])
+    writer.writerow([_academic_report_export_column_header_label(c) for c in columns])
+    meta = bundle.get('meta') or {}
     if sections:
         for i, sec in enumerate(sections):
             if i > 0:
                 writer.writerow([])
             writer.writerow([_academic_report_export_section_heading_row(sec)])
-            for row in sec.get('rows') or []:
+            sec_rows = sec.get('rows') or []
+            for row in sec_rows:
                 writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
+            if report_type == 'exam_all_students_performance' and sec_rows:
+                _write_exam_all_students_performance_footers(writer, columns, meta, sec_rows)
     else:
         for row in rows:
             writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
+        if report_type == 'exam_all_students_performance' and rows:
+            _write_exam_all_students_performance_footers(writer, columns, meta, rows)
     output = make_response(si.getvalue())
     safe_name = re.sub(r'[^a-zA-Z0-9_-]+', '_', report_type)[:60]
     output.headers['Content-Type'] = 'text/csv; charset=utf-8'
@@ -39848,6 +39995,7 @@ def _make_academic_report_excel_response(bundle, report_type):
     columns = list(bundle.get('columns') or [])
     rows = bundle.get('rows') or []
     sections = _academic_report_export_body_sections(bundle, report_type)
+    meta = bundle.get('meta') or {}
     ncol = max(1, len(columns))
 
     wb = Workbook()
@@ -39860,16 +40008,90 @@ def _make_academic_report_excel_response(bundle, report_type):
     header_fill = PatternFill(start_color='DDEBF7', end_color='DDEBF7', fill_type='solid')
     banner_font = Font(bold=True)
     banner_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC', fill_type='solid')
+    school_head_font = Font(bold=True, size=14)
+    school_meta_font = Font(bold=True, size=11)
+    letterhead_sub_font = Font(size=10)
 
     nrow = 1
     xls_string_id_cols = frozenset({
         'student_id', 'admission_number', 'teacher_id', 'invigilator_employee_id',
     })
 
+    def merge_full_data_width():
+        if ncol > 1:
+            ws.merge_cells(start_row=nrow, start_column=1, end_row=nrow, end_column=ncol)
+
+    def push_letterhead_line(text, font=None, wrap=True):
+        nonlocal nrow
+        merge_full_data_width()
+        cell = ws.cell(row=nrow, column=1, value=text)
+        cell.alignment = Alignment(horizontal='left', vertical='center', wrap_text=wrap)
+        if font:
+            cell.font = font
+        nrow += 1
+
+    def write_excel_letterhead():
+        """School logo (optional), name, contact, report title and filter summary."""
+        nonlocal nrow
+        school = get_school_settings() or {}
+        name = (school.get('school_name') or 'School').strip() or 'School'
+        logo_key = school.get('school_logo')
+        logo_path = None
+        if logo_key:
+            raw = str(logo_key).strip().replace('\\', '/').lstrip('/')
+            if raw and not raw.startswith('..'):
+                cand = os.path.normpath(os.path.join(app.root_path, 'static', raw))
+                root_static = os.path.normpath(os.path.join(app.root_path, 'static'))
+                if cand.startswith(root_static) and os.path.isfile(cand):
+                    logo_path = cand
+        img_ok = False
+        if logo_path and ncol >= 2:
+            try:
+                from openpyxl.drawing.image import Image as XLImage
+                img = XLImage(logo_path)
+                h0 = float(img.height or 1)
+                w0 = float(img.width or 1)
+                max_side = 72.0
+                scale = min(max_side / max(h0, 1e-6), max_side / max(w0, 1e-6), 1.0)
+                img.height = int(h0 * scale)
+                img.width = int(w0 * scale)
+                anchor_row = nrow
+                ws.add_image(img, f'A{anchor_row}')
+                ws.merge_cells(start_row=anchor_row, start_column=2, end_row=anchor_row, end_column=ncol)
+                c = ws.cell(row=anchor_row, column=2, value=name)
+                c.font = school_head_font
+                c.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                try:
+                    ws.row_dimensions[anchor_row].height = min(96, max(48, float(img.height) * 0.75 + 12))
+                except (TypeError, ValueError):
+                    ws.row_dimensions[anchor_row].height = 56
+                nrow = anchor_row + 1
+                img_ok = True
+            except Exception:
+                img_ok = False
+        if not img_ok:
+            push_letterhead_line(name, school_head_font)
+        loc = (school.get('school_location') or '').strip()
+        if loc:
+            push_letterhead_line(loc, letterhead_sub_font)
+        bits = []
+        ph = (school.get('school_phone') or '').strip()
+        if ph:
+            bits.append(f'Tel: {ph}')
+        em = (school.get('school_email') or '').strip()
+        if em:
+            bits.append(f'Email: {em}')
+        if bits:
+            push_letterhead_line(' · '.join(bits), letterhead_sub_font)
+        push_letterhead_line('')
+        for ln in _academic_report_bundle_summary_lines(bundle, report_type):
+            push_letterhead_line(ln, school_meta_font if str(ln).startswith('Report:') else letterhead_sub_font)
+        push_letterhead_line('')
+
     def write_header():
         nonlocal nrow
         for ci, col_key in enumerate(columns, start=1):
-            label = str(col_key).replace('_', ' ').title()
+            label = _academic_report_export_column_header_label(col_key)
             cell = ws.cell(row=nrow, column=ci, value=label)
             cell.font = header_font
             cell.fill = header_fill
@@ -39924,21 +40146,33 @@ def _make_academic_report_excel_response(bundle, report_type):
         nrow += 1
 
     if not columns:
-        ws.cell(row=1, column=1, value='No export columns for this report.')
+        write_excel_letterhead()
+        ws.cell(row=nrow, column=1, value='No export columns for this report.')
     else:
+        write_excel_letterhead()
         write_header()
+        freeze_top = nrow
         if sections:
             for si, sec in enumerate(sections):
                 write_banner(_academic_report_export_section_heading_row(sec))
-                for row in sec.get('rows') or []:
+                sec_rows = sec.get('rows') or []
+                for row in sec_rows:
                     write_data_row(row)
+                if report_type == 'exam_all_students_performance' and sec_rows:
+                    nrow += 1
+                    for fr in _exam_all_students_performance_footer_rows(columns, meta, sec_rows):
+                        write_data_row(fr)
                 if si < len(sections) - 1:
                     nrow += 1
         else:
             for row in rows:
                 write_data_row(row)
+            if report_type == 'exam_all_students_performance' and rows:
+                nrow += 1
+                for fr in _exam_all_students_performance_footer_rows(columns, meta, rows):
+                    write_data_row(fr)
 
-        ws.freeze_panes = 'A2'
+        ws.freeze_panes = f'A{freeze_top}'
 
         for ci in range(1, ncol + 1):
             letter = get_column_letter(ci)
@@ -40953,7 +41187,8 @@ def _build_academic_report_payload(cursor, report_type, f):
         if not subject_columns and subjects_with_marks:
             subject_columns = sorted(subjects_with_marks, key=_all_students_subj_col_sort)
         cols.extend(subject_columns)
-        cols.extend(['total_marks', 'mean', 'grade', 'grade_points'])
+        # mean kept on each row for UI/ranking; omitted from export columns (CSV/Excel).
+        cols.extend(['total_marks', 'grade', 'grade_points'])
 
         combined_display = (level_scope.get('display_name') or '').strip() if is_combined_level else ''
         pre_rows = []
