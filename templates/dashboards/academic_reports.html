@@ -14,18 +14,15 @@
     table-layout: fixed;
     width: 100%;
 }
+
+/* Print letterhead & footer — hidden on screen */
+.ar-print-only-hidden {
+    display: none !important;
+}
 @media print {
     @page {
         size: A4 portrait;
-        margin: 10mm 11mm;
-    }
-    /* Wide class marks sheets: landscape so all subject columns fit */
-    @page marks-landscape {
-        size: A4 landscape;
-        margin: 6mm 8mm;
-    }
-    html.ar-print-marks-matrix {
-        page: marks-landscape;
+        margin: 8mm 10mm 10mm 10mm;
     }
     /*
       Dashboard shell uses a fixed-height main + inner overflow-y-auto.
@@ -57,10 +54,15 @@
         min-height: 0 !important;
     }
     body:has(#ar-preview-wrap) .max-w-7xl.mx-auto,
-    html.ar-print-academic-report body .max-w-7xl.mx-auto {
+    html.ar-print-academic-report body .max-w-7xl.mx-auto,
+    html.ar-print-academic-report .ar-page,
+    html.ar-print-academic-report .ar-preview-panel {
         max-width: none !important;
+        width: 100% !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
     }
     body * {
         visibility: hidden !important;
@@ -69,25 +71,41 @@
     #ar-preview-wrap * {
         visibility: visible !important;
     }
-    /* Normal document flow so all pages paginate (absolute used to clip content). */
+    /*
+      Break out of the dashboard column: fixed full-viewport layer so print/PDF
+      uses the entire A4 sheet, not just the on-screen preview pane width.
+    */
     #ar-preview-wrap {
-        position: relative !important;
-        inset: auto !important;
-        left: auto !important;
-        top: auto !important;
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
-        padding: 0 !important;
+        padding: 0 10mm 8mm 10mm !important;
         overflow: visible !important;
         background: #fff !important;
         color: #111827 !important;
         box-sizing: border-box !important;
+        z-index: 2147483647 !important;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
     }
+    /* Single individual report: full viewport width (static flow stays in narrow dashboard column) */
+    #ar-preview-wrap.ar-print-single-sheet {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        max-width: none !important;
+        z-index: 2147483647 !important;
+    }
     /* Drop on-screen “card” chrome so content uses the full printable A4 width */
     #ar-preview-wrap > div.rounded-xl {
+        width: 100% !important;
+        max-width: none !important;
         border: none !important;
         box-shadow: none !important;
         border-radius: 0 !important;
@@ -95,6 +113,20 @@
         overflow: visible !important;
         --tw-ring-width: 0 !important;
         --tw-ring-offset-width: 0 !important;
+    }
+    #ar-print-letterhead,
+    #ar-preview-wrap #ar-details-list,
+    #ar-preview-wrap #ar-details-list > *,
+    #ar-preview-wrap .space-y-4,
+    #ar-preview-wrap details,
+    #ar-preview-wrap details > div,
+    #ar-preview-wrap .ar-fit-sheet,
+    #ar-preview-wrap .overflow-x-auto,
+    #ar-preview-wrap article.ar-rc,
+    #ar-preview-wrap .ar-rc-inner {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
     }
     #ar-preview-wrap > div.rounded-xl > div.shrink-0 {
         padding: 0 0 2px !important;
@@ -129,6 +161,8 @@
         line-height: 1.1 !important;
     }
     #ar-preview-wrap #ar-details-list.ar-preview-scroll {
+        width: 100% !important;
+        max-width: none !important;
         padding: 0 !important;
         max-height: none !important;
         min-height: 0 !important;
@@ -138,6 +172,92 @@
     }
     .no-print {
         display: none !important;
+    }
+    /* Official print letterhead replaces on-screen preview header */
+    #ar-preview-wrap > div.rounded-xl > div.shrink-0:first-of-type {
+        display: none !important;
+    }
+    /* No global report title / filter / generated block — each sheet uses its own header */
+    #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        visibility: hidden !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-grid {
+        display: flex !important;
+        align-items: center !important;
+        gap: 4mm !important;
+        margin-bottom: 2mm !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-logo {
+        width: 16mm !important;
+        height: 16mm !important;
+        max-width: 16mm !important;
+        max-height: 16mm !important;
+        object-fit: contain !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 2px !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-kicker {
+        font-size: 7.5pt !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+        color: #475569 !important;
+        margin: 0 0 0.5mm !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-school {
+        font-size: 15pt !important;
+        font-weight: 700 !important;
+        color: #0f172a !important;
+        margin: 0 !important;
+        line-height: 1.15 !important;
+    }
+    #ar-print-letterhead .ar-print-letterhead-contact {
+        font-size: 8.5pt !important;
+        color: #475569 !important;
+        margin: 0.5mm 0 0 !important;
+        line-height: 1.25 !important;
+    }
+    #ar-print-letterhead #ar-print-report-title {
+        font-size: 13pt !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.04em !important;
+        color: #0f2744 !important;
+        margin: 0 0 1mm !important;
+        line-height: 1.2 !important;
+    }
+    #ar-print-letterhead .ar-print-report-meta {
+        font-size: 10pt !important;
+        color: #334155 !important;
+        line-height: 1.35 !important;
+        margin: 0 !important;
+    }
+    #ar-print-letterhead .ar-print-generated {
+        font-weight: 600 !important;
+        color: #0f172a !important;
+    }
+    #ar-print-page-footer {
+        display: block !important;
+        visibility: visible !important;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        font-size: 8pt !important;
+        color: #64748b !important;
+        text-align: center !important;
+        padding: 2mm 10mm !important;
+        border-top: 1px solid #cbd5e1 !important;
+        background: #fff !important;
+    }
+    #ar-preview-wrap .ar-rc-doc-title-row {
+        margin-top: 1mm !important;
     }
     #ar-preview-wrap .overflow-x-auto,
     #ar-preview-wrap .overflow-hidden {
@@ -155,14 +275,14 @@
     #ar-preview-wrap td {
         white-space: normal !important;
         word-break: break-word !important;
-        font-size: 7.5pt !important;
-        line-height: 1.15 !important;
-        padding: 1px 3px !important;
+        font-size: 10pt !important;
+        line-height: 1.25 !important;
+        padding: 2px 3px !important;
         box-sizing: border-box !important;
         vertical-align: middle !important;
         border: 1px solid #94a3b8 !important;
     }
-    /* Class marks matrix — fit full width on landscape A4 */
+    /* Class marks matrix — portrait A4: scale to fit printable width */
     #ar-preview-wrap table.ar-marks-matrix {
         width: 100% !important;
         max-width: 100% !important;
@@ -170,63 +290,115 @@
         table-layout: fixed !important;
         border-collapse: collapse !important;
         border: 1px solid #64748b !important;
-        font-size: 6pt !important;
+        font-size: 8.5pt !important;
     }
     #ar-preview-wrap table.ar-marks-matrix th,
     #ar-preview-wrap table.ar-marks-matrix td {
-        font-size: 6pt !important;
-        line-height: 1.08 !important;
-        padding: 0.5px 1px !important;
-        white-space: nowrap !important;
-        word-break: normal !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        font-size: inherit !important;
+        line-height: 1.2 !important;
+        padding: 1px 2px !important;
         border: 1px solid #94a3b8 !important;
         box-sizing: border-box !important;
         vertical-align: middle !important;
     }
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
+        white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
+        white-space: nowrap !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
     #ar-preview-wrap table.ar-marks-matrix--dense {
-        font-size: 5.5pt !important;
+        font-size: 8pt !important;
     }
     #ar-preview-wrap table.ar-marks-matrix--dense th,
     #ar-preview-wrap table.ar-marks-matrix--dense td {
-        font-size: 5.5pt !important;
         padding: 0.5px 0.5px !important;
     }
-    #ar-preview-wrap table.ar-marks-matrix--xdense,
-    #ar-preview-wrap table.ar-marks-matrix--xxdense {
-        font-size: 5pt !important;
+    #ar-preview-wrap table.ar-marks-matrix--xdense {
+        font-size: 7.5pt !important;
     }
-    #ar-preview-wrap table.ar-marks-matrix--xdense th,
-    #ar-preview-wrap table.ar-marks-matrix--xdense td,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense {
+        font-size: 7pt !important;
+    }
     #ar-preview-wrap table.ar-marks-matrix--xxdense th,
     #ar-preview-wrap table.ar-marks-matrix--xxdense td {
-        font-size: 5pt !important;
         padding: 0 0.5px !important;
         letter-spacing: -0.02em;
     }
-    #ar-preview-wrap table.ar-marks-matrix .ar-col-idx {
-        width: 2.2% !important;
-        text-align: center !important;
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-sum {
+        width: 5% !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
+        width: 7% !important;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
         text-align: left !important;
-        white-space: nowrap !important;
-        max-width: 0 !important;
+        white-space: normal !important;
+        word-break: break-word !important;
+        max-width: none !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        padding-left: 3px !important;
+        padding-right: 4px !important;
+        font-weight: 600 !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
+        max-width: 6.5mm !important;
+        padding-left: 1px !important;
+        padding-right: 1px !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
+        max-width: none !important;
+        min-width: 10mm !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+        font-weight: 600 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
+        max-width: none !important;
+        min-width: 14mm !important;
+        width: 7% !important;
+        padding-left: 2px !important;
+        padding-right: 3px !important;
+        font-weight: 600 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix col.ar-col-subj {
+        width: auto !important;
     }
     #ar-preview-wrap table.ar-marks-matrix th.ar-col-subj {
         text-align: center !important;
-        font-size: 5pt !important;
+        font-size: 0.92em !important;
         font-weight: 700 !important;
         white-space: normal !important;
         word-break: break-word !important;
         hyphens: auto !important;
         line-height: 1.05 !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix--xdense th.ar-col-subj,
+    #ar-preview-wrap table.ar-marks-matrix--xxdense th.ar-col-subj {
+        font-size: 0.88em !important;
+        letter-spacing: -0.03em;
     }
     #ar-preview-wrap table.ar-marks-matrix .ar-col-mark,
     #ar-preview-wrap table.ar-marks-matrix .ar-col-sum,
     #ar-preview-wrap table.ar-marks-matrix .ar-col-grade {
         text-align: center !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-sum,
+    #ar-preview-wrap table.ar-marks-matrix th.ar-col-grade {
+        font-size: 0.85em !important;
+        letter-spacing: -0.02em;
     }
     #ar-preview-wrap .ar-fit-sheet:has(table.ar-marks-matrix) {
         overflow: visible !important;
@@ -266,24 +438,24 @@
         padding: 1px 3px !important;
     }
     #ar-preview-wrap table.ar-register-table thead tr:nth-child(1) th .text-base {
-        font-size: 7.5pt !important;
-        line-height: 1.1 !important;
+        font-size: 9pt !important;
+        line-height: 1.15 !important;
     }
     #ar-preview-wrap table.ar-register-table thead tr:nth-child(2) th .flex.flex-wrap {
         gap: 0.35rem !important;
-        font-size: 6.5pt !important;
+        font-size: 8pt !important;
     }
     #ar-preview-wrap table.ar-register-table col.ar-col-num {
-        width: 3.5% !important;
+        width: 2.5% !important;
     }
     #ar-preview-wrap table.ar-register-table col.ar-col-class {
-        width: 9% !important;
+        width: 7% !important;
     }
     #ar-preview-wrap table.ar-register-table col.ar-col-mark {
-        width: 9% !important;
+        width: 7% !important;
     }
     #ar-preview-wrap table.ar-register-table col.ar-col-entry {
-        width: 7.5% !important;
+        width: 6% !important;
     }
     /* Plain handwriting cells — compact row height */
     #ar-preview-wrap table.ar-register-table td.ar-cell-blank {
@@ -295,10 +467,36 @@
         border: 1px solid #64748b !important;
         box-shadow: none !important;
     }
-    /* Separate sheets when printing “All classes” */
+    /* Each report sheet / class / student card starts on its own printed page */
+    #ar-preview-wrap .ar-print-page-follow,
+    #ar-preview-wrap .ar-class-print-follow,
     #ar-preview-wrap .ar-register-class-wrap.ar-register-follow {
         page-break-before: always !important;
         break-before: page !important;
+    }
+    #ar-preview-wrap .ar-print-page-sheet,
+    #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-register-class-wrap {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap article.ar-rc-individual.ar-print-page-sheet {
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    #ar-preview-wrap details.ar-class-print-sheet > div {
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+    }
+    #ar-preview-wrap .ar-class-print-sheet > summary {
+        break-after: avoid !important;
+        page-break-after: avoid !important;
+    }
+    #ar-preview-wrap .space-y-4 > .h-4 {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
     }
     #ar-preview-wrap .shadow-sm,
     #ar-preview-wrap .shadow-md {
@@ -327,7 +525,7 @@
         gap: 0.15rem !important;
         padding: 1px 3px !important;
         min-height: 0 !important;
-        font-size: 6.5pt !important;
+        font-size: 8pt !important;
         font-weight: 600 !important;
         background: #e5e7eb !important;
         color: #111 !important;
@@ -340,7 +538,7 @@
     }
     #ar-preview-wrap details > summary .rounded-full {
         padding: 0 4px !important;
-        font-size: 6pt !important;
+        font-size: 7pt !important;
         line-height: 1.1 !important;
         border-radius: 2px !important;
         gap: 0.15rem !important;
@@ -366,8 +564,8 @@
         padding: 2px !important;
         background: #fff !important;
     }
-    /* All students exam report: one printed page (sheet) per class cohort */
-    #ar-preview-wrap #ar-details-list .space-y-4 > details:not(:first-of-type) {
+    /* Fallback: cohort details after the first (All classes exam report) */
+    #ar-preview-wrap #ar-details-list .space-y-4 > details.ar-class-print-follow {
         page-break-before: always !important;
         break-before: page !important;
     }
@@ -383,6 +581,7 @@
     #ar-preview-wrap article.ar-rc:has(.ar-rc-body-grid--split) {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
+        max-width: 100% !important;
     }
     #ar-preview-wrap .ar-rc-inner {
         padding-left: 0 !important;
@@ -398,20 +597,194 @@
         padding-right: 0 !important;
     }
     #ar-preview-wrap .ar-rc-body-grid--split {
-        grid-template-columns: 1fr 4.5rem !important;
-        gap: 2px !important;
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual {
+        min-height: calc(100vh - 42mm) !important;
+        display: flex !important;
+        flex-direction: column !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual {
+        min-height: calc(100vh - 42mm) !important;
+        page-break-after: avoid !important;
+        break-after: avoid !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-main-body,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-header {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-header-band {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects {
+        table-layout: fixed !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table .ar-rc-td-num,
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table thead th:not(.ar-rc-th-subj) {
+        max-width: none !important;
+        width: 11% !important;
+    }
+    /* Individual report: drop redundant print letterhead (details are on the report card) */
+    #ar-preview-wrap.ar-print-single-sheet #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-header-band {
+        display: block !important;
+        padding: 3mm 4mm !important;
+        background: linear-gradient(128deg, #0f2744 0%, #1e3a5f 55%, #166534 100%) !important;
+        color: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-name {
+        font-size: 13pt !important;
+        color: #fff !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-school-contact,
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-kicker {
+        color: rgba(255, 255, 255, 0.85) !important;
+        font-size: 7pt !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-logo-wrap {
+        width: 14mm !important;
+        height: 14mm !important;
+    }
+    #ar-preview-wrap.ar-print-single-sheet .ar-rc-individual .ar-rc-title {
+        font-size: 14pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-inner {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        padding: 0 1mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-main-body {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-panel--with-photo {
+        display: grid !important;
+        grid-template-columns: 1fr 22mm !important;
+        gap: 3mm !important;
         align-items: start !important;
+        padding: 2mm 3mm !important;
+        margin-bottom: 2mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-grid {
+        gap: 1.5mm 4mm !important;
+        font-size: 10pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-label {
+        font-size: 8pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-value {
+        font-size: 11pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-meta-photo-wrap .ar-rc-photo {
+        width: 20mm !important;
+        height: 25mm !important;
+        margin: 0 auto !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects thead th {
+        font-size: 9.5pt !important;
+        padding: 1.5mm 2mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects tbody td {
+        font-size: 10pt !important;
+        padding: 1.2mm 2mm !important;
+        line-height: 1.25 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-table--subjects .ar-rc-td-subj {
+        width: 46% !important;
+        font-size: 9.5pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-stats-row--5 {
+        grid-template-columns: repeat(5, 1fr) !important;
+        gap: 2mm !important;
+        margin: 2.5mm 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-stat {
+        padding: 2mm 1.5mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-stat-label {
+        font-size: 7.5pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-stat-value {
+        font-size: 12pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-grade-scale {
+        font-size: 8pt !important;
+        margin: 1.5mm 0 !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback {
+        flex: 1 1 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        margin-top: 2mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-title {
+        font-size: 9pt !important;
+        margin-bottom: 1mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-lines {
+        flex: 1 1 auto !important;
+        min-height: 28mm !important;
+        padding: 2mm 3mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-feedback-line {
+        height: 7mm !important;
+        margin-bottom: 1.5mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-signatures {
+        margin-top: auto !important;
+        padding-top: 3mm !important;
+        font-size: 8.5pt !important;
+        gap: 4mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-sig-title {
+        font-size: 8pt !important;
+        margin-bottom: 4mm !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-title {
+        font-size: 12pt !important;
+    }
+    #ar-preview-wrap .ar-rc-individual .ar-rc-summary-box {
+        display: none !important;
     }
     /* Report “cards” → compact bordered sheet (Excel-like) */
     #ar-preview-wrap {
-        font-size: 7.5pt !important;
+        font-size: 10pt !important;
         font-family: 'Segoe UI', Arial, sans-serif !important;
     }
     #ar-preview-wrap .ar-rc {
         border: 1px solid #64748b !important;
         box-shadow: none !important;
-        margin-bottom: 3px !important;
-        padding: 0 0 2px !important;
+        margin-bottom: 2px !important;
+        padding: 0 !important;
+        max-width: 100% !important;
         border-radius: 0 !important;
         overflow: visible !important;
     }
@@ -473,7 +846,7 @@
         color: #111 !important;
     }
     #ar-preview-wrap .ar-rc-title {
-        font-size: 7.5pt !important;
+        font-size: 9pt !important;
         letter-spacing: 0.04em !important;
         color: #111 !important;
     }
@@ -481,39 +854,39 @@
         padding: 1px 0 !important;
     }
     #ar-preview-wrap .ar-rc-meta-panel {
-        padding: 2px 4px !important;
+        padding: 2px 3px !important;
         margin-bottom: 2px !important;
         border-radius: 0 !important;
         background: #f8fafc !important;
         border: 1px solid #94a3b8 !important;
     }
     #ar-preview-wrap .ar-rc-meta-grid {
-        gap: 1px 6px !important;
-        font-size: 7pt !important;
+        gap: 1px 4px !important;
+        font-size: 9pt !important;
     }
     #ar-preview-wrap .ar-rc-meta-label {
-        font-size: 6pt !important;
+        font-size: 8pt !important;
     }
     #ar-preview-wrap .ar-rc-meta-value {
-        font-size: 7.5pt !important;
+        font-size: 9.5pt !important;
         color: #111 !important;
     }
     #ar-preview-wrap .ar-rc-photo {
-        width: 2.25rem !important;
-        height: 2.75rem !important;
+        width: 1.85rem !important;
+        height: 2.25rem !important;
         border-width: 1px !important;
         border-radius: 0 !important;
     }
     #ar-preview-wrap .ar-rc-summary-box {
-        font-size: 6.5pt !important;
+        font-size: 8.5pt !important;
         border-width: 1px !important;
         border-radius: 0 !important;
         margin-top: 2px !important;
     }
     #ar-preview-wrap .ar-rc-summary-box th,
     #ar-preview-wrap .ar-rc-summary-box td {
-        padding: 1px 2px !important;
-        font-size: 6.5pt !important;
+        padding: 2px 3px !important;
+        font-size: 8.5pt !important;
     }
     #ar-preview-wrap .ar-rc-summary-box th {
         background: #e2e8f0 !important;
@@ -525,14 +898,21 @@
         color: #111 !important;
         border: 1px solid #94a3b8 !important;
         border-bottom: 1px solid #64748b !important;
-        font-size: 6.5pt !important;
-        padding: 1px 2px !important;
+        font-size: 8.5pt !important;
+        padding: 2px 3px !important;
         text-transform: none !important;
         letter-spacing: 0 !important;
     }
     #ar-preview-wrap .ar-rc-table tbody td {
-        padding: 1px 2px !important;
-        font-size: 7pt !important;
+        padding: 2px 3px !important;
+        font-size: 9pt !important;
+    }
+    #ar-preview-wrap .ar-rc-table .ar-rc-th-subj {
+        width: 42% !important;
+    }
+    #ar-preview-wrap .ar-rc-table .ar-rc-td-num {
+        width: 12% !important;
+        max-width: 14mm !important;
     }
     #ar-preview-wrap .ar-rc-stats-row {
         gap: 2px !important;
@@ -543,15 +923,15 @@
         border-radius: 0 !important;
     }
     #ar-preview-wrap .ar-rc-stat-label {
-        font-size: 5.5pt !important;
+        font-size: 6.5pt !important;
         margin: 0 !important;
     }
     #ar-preview-wrap .ar-rc-stat-value {
-        font-size: 8pt !important;
+        font-size: 9pt !important;
         color: #111 !important;
     }
     #ar-preview-wrap .ar-rc-grade-scale {
-        font-size: 6pt !important;
+        font-size: 7pt !important;
         margin-top: 2px !important;
         line-height: 1.2 !important;
     }
@@ -559,7 +939,7 @@
         margin-top: 2px !important;
     }
     #ar-preview-wrap .ar-rc-feedback-title {
-        font-size: 6pt !important;
+        font-size: 7pt !important;
         margin: 0 0 1px !important;
     }
     #ar-preview-wrap .ar-rc-feedback-lines {
@@ -574,11 +954,11 @@
     #ar-preview-wrap .ar-rc-signatures {
         gap: 3px !important;
         margin-top: 3px !important;
-        font-size: 6pt !important;
+        font-size: 7pt !important;
     }
     #ar-preview-wrap .ar-rc-sig-title {
         margin: 0 0 0.35rem !important;
-        font-size: 6pt !important;
+        font-size: 7pt !important;
     }
     #ar-preview-wrap .ar-rc-class-banner {
         margin-bottom: 1px !important;
@@ -597,12 +977,12 @@
         padding: 1px 3px !important;
     }
     #ar-preview-wrap .ar-rc-class-banner .text-xs {
-        font-size: 5.5pt !important;
+        font-size: 6.5pt !important;
         line-height: 1.15 !important;
         margin: 0 !important;
     }
     #ar-preview-wrap .ar-rc-class-banner .ar-rc-title {
-        font-size: 6pt !important;
+        font-size: 7.5pt !important;
         letter-spacing: 0.02em !important;
         line-height: 1.1 !important;
         font-weight: 600 !important;
@@ -633,18 +1013,169 @@
         font-weight: 600 !important;
         background: transparent !important;
     }
+    /* ===== Full A4 width — all report types (registers, matrices, tables, timetables) ===== */
+    html.ar-print-academic-report .ar-page,
+    html.ar-print-academic-report .ar-preview-panel,
+    #ar-preview-wrap,
+    #ar-preview-wrap > div.rounded-xl,
+    #ar-preview-wrap #ar-details-list,
+    #ar-preview-wrap #ar-details-list > *,
+    #ar-preview-wrap .space-y-4,
+    #ar-preview-wrap .space-y-8,
+    #ar-preview-wrap .ar-fit-sheet,
+    #ar-preview-wrap .ar-register-sheet,
+    #ar-preview-wrap .ar-register-class-wrap,
+    #ar-preview-wrap .ar-class-print-sheet,
+    #ar-preview-wrap .ar-rc-class-banner,
+    #ar-preview-wrap article.ar-rc {
+        width: 100% !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+    }
+  /* Class marks matrix — full sheet width */
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix {
+        font-size: 9pt !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-student {
+        width: 20% !important;
+        min-width: 0 !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
+        max-width: none !important;
+        width: auto !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-grade,
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
+        max-width: none !important;
+        min-width: 14mm !important;
+        width: 7% !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-sum {
+        max-width: none !important;
+        min-width: 10mm !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner,
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-rc-class-banner + article.ar-rc {
+        width: 100% !important;
+    }
+  /* Attendance / exam entry registers (sheet banner has school name) */
+    #ar-preview-wrap.ar-print-register-batch #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch .ar-register-class-wrap,
+    #ar-preview-wrap.ar-print-register-batch .ar-register-sheet {
+        width: 100% !important;
+        max-width: none !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table {
+        font-size: 9.5pt !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-num {
+        width: 3% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-class {
+        width: 8% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-mark,
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table col.ar-col-entry {
+        width: 6% !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table colgroup > col:not([class]) {
+        width: auto !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table td.ar-cell-blank {
+        min-height: 18px !important;
+    }
+    #ar-preview-wrap.ar-print-register-batch table.ar-register-table thead tr:nth-child(1) th .text-base {
+        font-size: 11pt !important;
+    }
+  /* Timetables & generic data tables */
+    #ar-preview-wrap.ar-print-data-table .ar-fit-sheet,
+    #ar-preview-wrap.ar-print-data-table table.ar-fit-table,
+    #ar-preview-wrap.ar-print-data-table table.ar-simple-table,
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid {
+        width: 100% !important;
+        max-width: none !important;
+        table-layout: fixed !important;
+        font-size: 9pt !important;
+    }
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid th,
+    #ar-preview-wrap.ar-print-data-table table.ar-timetable-grid td {
+        font-size: 8.5pt !important;
+        padding: 1.5mm 1mm !important;
+    }
+  /* Multiple individual report cards — one student per page (ar-print-page-follow on each card after the first) */
+    #ar-preview-wrap.ar-print-individual-batch article.ar-rc-individual {
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        min-height: 0 !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch #ar-print-letterhead {
+        display: none !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-header-band {
+        display: block !important;
+        padding: 3mm 4mm !important;
+        background: linear-gradient(128deg, #0f2744 0%, #1e3a5f 55%, #166534 100%) !important;
+        color: #fff !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    #ar-preview-wrap.ar-print-individual-batch .ar-rc-individual .ar-rc-school-name {
+        font-size: 13pt !important;
+        color: #fff !important;
+    }
+    /* Container queries use preview pane width — disable for print so all reports use full A4 */
+    #ar-preview-wrap {
+        container-type: normal !important;
+    }
 }
-/* Reports fit preview width — no horizontal scroll on screen or print */
+/* Responsive preview: scales with panel width; wide tables scroll on small screens */
+#ar-preview-wrap {
+    container-type: inline-size;
+    container-name: ar-preview;
+}
 #ar-details-list {
-    overflow-x: hidden;
+    overflow-x: auto;
     max-width: 100%;
+    -webkit-overflow-scrolling: touch;
 }
 #ar-details-list .ar-fit-sheet,
 #ar-preview-wrap .ar-fit-sheet {
     width: 100%;
     max-width: 100%;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: visible;
     box-sizing: border-box;
+}
+@container ar-preview (max-width: 480px) {
+    #ar-details-list .ar-marks-matrix { font-size: 0.5625rem; }
+    #ar-details-list .ar-marks-matrix--dense { font-size: 0.5rem; }
+    #ar-details-list .ar-marks-matrix--xdense,
+    #ar-details-list .ar-marks-matrix--xxdense { font-size: 0.46875rem; }
+    #ar-details-list .ar-timetable-grid { font-size: 0.5625rem; }
+    #ar-details-list .ar-simple-table { font-size: 0.6875rem; }
+}
+@container ar-preview (min-width: 481px) and (max-width: 768px) {
+    #ar-details-list .ar-marks-matrix { font-size: clamp(0.5625rem, 1.3cqi, 0.75rem); }
+    #ar-details-list .ar-timetable-grid { font-size: clamp(0.5625rem, 1.1cqi, 0.75rem); }
+}
+@container ar-preview (min-width: 769px) {
+    #ar-details-list .ar-marks-matrix { font-size: clamp(0.6875rem, 0.6rem + 0.4cqi, 0.875rem); }
 }
 #ar-details-list .ar-fit-table,
 #ar-preview-wrap .ar-fit-table {
@@ -656,28 +1187,32 @@
     box-sizing: border-box;
 }
 #ar-details-list .ar-marks-matrix {
-    font-size: clamp(0.58rem, 0.45rem + 0.35vw, 0.8125rem);
+    font-size: clamp(0.6875rem, 0.55rem + 0.35vw, 0.9375rem);
 }
 #ar-details-list .ar-marks-matrix--dense {
-    font-size: clamp(0.5rem, 0.4rem + 0.2vw, 0.6875rem);
+    font-size: clamp(0.625rem, 0.5rem + 0.28vw, 0.8125rem);
 }
 #ar-details-list .ar-marks-matrix--xdense {
-    font-size: clamp(0.45rem, 0.38rem + 0.12vw, 0.625rem);
+    font-size: clamp(0.5625rem, 0.46rem + 0.18vw, 0.75rem);
 }
 #ar-details-list .ar-marks-matrix--xxdense {
-    font-size: clamp(0.4rem, 0.35rem + 0.08vw, 0.5625rem);
+    font-size: clamp(0.5rem, 0.42rem + 0.12vw, 0.6875rem);
 }
+#ar-details-list .ar-marks-matrix col.ar-col-sum { width: 5%; }
+#ar-details-list .ar-marks-matrix col.ar-col-grade { width: 7%; }
 #ar-details-list .ar-marks-matrix th,
 #ar-details-list .ar-marks-matrix td,
 #ar-details-list .ar-fit-table th,
 #ar-details-list .ar-fit-table td {
-    padding: 0.2rem 0.15rem;
-    line-height: 1.15;
+    padding: 0.28rem 0.22rem;
+    line-height: 1.2;
     vertical-align: middle;
-    overflow: hidden;
     box-sizing: border-box;
 }
-#ar-details-list .ar-marks-matrix .ar-col-idx,
+#ar-details-list .ar-marks-matrix tbody td.ar-col-mark {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 #ar-details-list .ar-marks-matrix .ar-col-mark,
 #ar-details-list .ar-marks-matrix .ar-col-sum,
 #ar-details-list .ar-marks-matrix .ar-col-grade {
@@ -687,9 +1222,36 @@
 }
 #ar-details-list .ar-marks-matrix .ar-col-student {
     text-align: left;
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-mark {
+    max-width: 2.1rem;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    max-width: none;
+    min-width: 2.75rem;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-grade {
+    max-width: none;
+    min-width: 3.25rem;
+    width: 7%;
+    overflow: visible;
+    text-overflow: clip;
+    font-weight: 600;
+}
+#ar-details-list .ar-marks-matrix .ar-col-grade .inline-flex {
+    max-width: none;
+    overflow: visible;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+}
+#ar-details-list .ar-marks-matrix .ar-col-sum {
+    overflow: visible;
+    text-overflow: clip;
 }
 #ar-details-list .ar-marks-matrix th.ar-col-subj {
     text-align: center;
@@ -710,7 +1272,7 @@
     font-size: 0.95em;
 }
 #ar-details-list .ar-timetable-grid {
-    font-size: clamp(0.5rem, 0.42rem + 0.25vw, 0.75rem);
+    font-size: clamp(0.5625rem, 0.48rem + 0.25vw, 0.8125rem);
 }
 #ar-details-list .ar-timetable-grid th,
 #ar-details-list .ar-timetable-grid td {
@@ -724,7 +1286,7 @@
     font-weight: 700;
 }
 #ar-details-list .ar-simple-table {
-    font-size: clamp(0.625rem, 0.5rem + 0.3vw, 0.875rem);
+    font-size: clamp(0.6875rem, 0.55rem + 0.3vw, 0.9375rem);
 }
 #ar-details-list .ar-simple-table th,
 #ar-details-list .ar-simple-table td {
@@ -942,6 +1504,28 @@
     line-height: 1;
     font-variant-numeric: tabular-nums;
 }
+.ar-rc-meta-panel--with-photo {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: start;
+}
+.ar-rc-meta-photo-wrap {
+    flex-shrink: 0;
+    text-align: center;
+}
+.ar-rc-individual .ar-rc-main-body {
+    margin-top: 0.25rem;
+}
+.ar-rc-stats-row--5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+@media (min-width: 640px) {
+    .ar-rc-individual .ar-rc-photo {
+        width: 5.5rem;
+        height: 6.75rem;
+    }
+}
 .ar-rc-meta-panel {
     margin-bottom: 1.1rem;
     padding: 0.85rem 1rem;
@@ -984,13 +1568,13 @@
 }
 @media (min-width: 768px) {
     .ar-rc-body-grid--split {
-        grid-template-columns: 1fr min(11rem, 28%);
+        grid-template-columns: 1fr min(7.5rem, 22%);
     }
 }
 .ar-rc-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.78rem;
+    font-size: 0.8125rem;
     table-layout: fixed;
 }
 .ar-rc-table thead th {
@@ -1000,8 +1584,8 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    font-size: 0.65rem;
-    padding: 0.5rem 0.4rem;
+    font-size: 0.7rem;
+    padding: 0.45rem 0.3rem;
     border: none;
     border-bottom: 2px solid var(--ar-rc-accent);
     text-align: center;
@@ -1028,6 +1612,17 @@
     text-align: center;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
+    width: 11%;
+    max-width: 3.25rem;
+}
+.ar-rc-table thead th:not(.ar-rc-th-subj) {
+    width: 11%;
+    max-width: 3.25rem;
+}
+.ar-rc-table thead th.ar-rc-th-subj,
+.ar-rc-table .ar-rc-td-subj {
+    width: auto;
+    min-width: 0;
 }
 .ar-rc-summary-box {
     border: 2px solid var(--ar-rc-navy);
@@ -1467,6 +2062,72 @@
     padding-top: 0.4rem !important;
     border-top: 1px dashed color-mix(in srgb, var(--brand-primary, #166534) 20%, transparent) !important;
 }
+.ar-student-roster-list {
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 28%, #cbd5e1);
+    border-radius: 0.5rem;
+    background: #fff;
+    max-height: 14rem;
+    overflow-y: auto;
+}
+.dark .ar-student-roster-list {
+    border-color: color-mix(in srgb, var(--brand-secondary, #22c55e) 35%, #475569);
+    background: rgb(15 23 42 / 0.6);
+}
+.ar-student-roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+}
+.ar-student-roster-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+    background: color-mix(in srgb, var(--brand-primary, #166534) 8%, #f8fafc);
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.dark .ar-student-roster-table th {
+    color: var(--brand-secondary, #4ade80);
+    background: rgb(30 41 59);
+    border-bottom-color: #475569;
+}
+.ar-student-roster-table td {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+.dark .ar-student-roster-table td {
+    border-bottom-color: #334155;
+}
+.ar-student-roster-row {
+    cursor: pointer;
+    transition: background 0.12s;
+}
+.ar-student-roster-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 10%, #fff);
+}
+.dark .ar-student-roster-row:hover {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 25%, rgb(30 41 59));
+}
+.ar-student-roster-row--active {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 14%, #fff) !important;
+    outline: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 40%, transparent);
+}
+.dark .ar-student-roster-row--active {
+    background: color-mix(in srgb, var(--brand-primary, #166534) 35%, rgb(30 41 59)) !important;
+}
+.ar-student-roster-empty {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    color: #64748b;
+    text-align: center;
+}
 </style>
 
 {% set role_theme = portal_page_variant|default('default') %}
@@ -1510,18 +2171,7 @@
             <div id="ar-report-desc" class="hidden" aria-hidden="true"></div>
 
             <div class="ar-filters-panel" id="ar-filters-panel">
-                <p id="ar-filter-hint" class="ar-filter-hint hidden" aria-live="polite"></p>
-                <div id="ar-wrap-student" class="hidden">
-                    <label for="gf-student-search" class="ar-filter-label">Student</label>
-                    <div class="relative">
-                        <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-brand-primary/70"><i class="fas fa-search text-sm"></i></span>
-                        <input type="search" id="gf-student-search" autocomplete="off" placeholder="Name or ID…" class="ar-filter-control pl-9">
-                        <input type="hidden" id="gf-student" value="">
-                        <div id="gf-student-suggestions" class="hidden absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl z-30"></div>
-                    </div>
-                    <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
-                </div>
-                <div id="ar-filter-main-grid" class="ar-filters-grid ar-filters-grid--compact">
+                <p id="ar-filter-hint" class="ar-filter-hint hidden" aria-live="polite"></p><div id="ar-filter-main-grid" class="ar-filters-grid ar-filters-grid--compact">
                     <div id="ar-wrap-exam-scope" class="hidden ar-filter-field">
                         <label for="ar-exam-scope" class="ar-filter-label">Generate as</label>
                         <select id="ar-exam-scope" class="ar-filter-control">
@@ -1553,10 +2203,24 @@
                             <option value="">Select exam…</option>
                         </select>
                     </div>
+                    <div id="ar-filter-wrap-level-view" class="hidden ar-filter-field">
+                        <label for="gf-level-view" class="ar-filter-label">Class view</label>
+                        <select id="gf-level-view" class="ar-filter-control">
+                            <option value="individual">Individual class</option>
+                            <option value="combined" {% if not level_combinations or level_combinations|length == 0 %}disabled{% endif %}>Combined levels</option>
+                        </select>
+                        {% if level_combinations and level_combinations|length > 0 and can_manage_level_combinations %}
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                            <a href="{{ employee_dash_url('combined-academic-levels') }}" class="text-brand-primary hover:underline">Manage combined groups</a>
+                        </p>
+                        {% elif level_combinations and level_combinations|length > 0 %}
+                        <p class="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Uses groups from Combined academic levels settings.</p>
+                        {% endif %}
+                    </div>
                     <div id="ar-filter-wrap-level" class="hidden ar-filter-field">
-                        <label for="gf-level" class="ar-filter-label">Class</label>
+                        <label for="gf-level" id="ar-level-filter-label" class="ar-filter-label">Class</label>
                         <select id="gf-level" class="ar-filter-control">
-                            <option value="">All classes</option>
+                            <option value="" data-all-classes="1">All classes</option>
                             {% for lv in academic_levels %}
                             <option value="{{ lv.id }}">{{ lv.level_name }}{% if lv.level_category %} ({{ lv.level_category }}){% endif %}</option>
                             {% endfor %}
@@ -1564,6 +2228,26 @@
                     </div>
                 </div>
 
+                
+                                <div id="ar-wrap-student" class="hidden">
+                    <div id="ar-student-search-block" class="hidden">
+                        <label for="gf-student-search" class="ar-filter-label">Student</label>
+                        <div class="relative">
+                            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-brand-primary/70"><i class="fas fa-search text-sm"></i></span>
+                            <input type="search" id="gf-student-search" autocomplete="off" placeholder="Name or ID…" class="ar-filter-control pl-9">
+                            <div id="gf-student-suggestions" class="hidden absolute left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl z-30"></div>
+                        </div>
+                        <button type="button" id="gf-student-clear" class="mt-3 text-xs font-semibold text-brand-primary hover:underline hidden">Clear selection</button>
+                    </div>
+                    <div id="ar-wrap-student-roster" class="hidden ar-filter-field">
+                        <label for="gf-student-select" class="ar-filter-label">Student</label>
+                        <p id="ar-student-roster-hint" class="text-[11px] text-slate-500 dark:text-slate-400 mb-1 leading-snug">Choose a class above, then pick a student.</p>
+                        <select id="gf-student-select" class="ar-filter-control" disabled>
+                            <option value="">Select a class first…</option>
+                        </select>
+                    </div>
+                    <input type="hidden" id="gf-student" value="">
+                </div>
                 <div id="ar-extra-filters" class="ar-filters-grid ar-filters-grid--compact hidden">
                     <div id="ar-wrap-timetable-view" class="hidden ar-filter-field sm:col-span-2">
                         <label for="gf-timetable-view" class="ar-filter-label">Timetable view</label>
@@ -1619,10 +2303,16 @@
                     <div class="no-print flex flex-col gap-3 xl:items-end">
                         <div class="flex flex-wrap items-center gap-2">
                             <button type="button"
-                                    id="ar-print-save-pdf-btn"
-                                    title="Opens your browser print dialog — choose Save as PDF or a printer"
+                                    id="ar-print-btn"
+                                    title="Print this report on paper"
                                     class="inline-flex items-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md shadow-brand-primary/20 hover:opacity-95 transition-all">
-                                <i class="fas fa-print mr-2"></i>Print / Save as PDF
+                                <i class="fas fa-print mr-2"></i>Print
+                            </button>
+                            <button type="button"
+                                    id="ar-download-pdf-btn"
+                                    title="Save as PDF via your browser print dialog"
+                                    class="inline-flex items-center px-4 py-2.5 rounded-xl border-2 border-brand-primary text-brand-primary dark:text-brand-secondary dark:border-brand-secondary bg-white dark:bg-slate-800 text-sm font-semibold hover:bg-brand-primary/5 transition-all">
+                                <i class="fas fa-file-pdf mr-2"></i>Download PDF
                             </button>
                             <div class="flex items-center rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-1 gap-1">
                                 <select id="ar-export-format"
@@ -1640,11 +2330,25 @@
                             </div>
                         </div>
                         <p class="text-[11px] text-slate-500 dark:text-slate-400 xl:text-right max-w-md leading-snug">
-                            Official PDF: Print dialog → <span class="whitespace-nowrap font-medium text-slate-600 dark:text-slate-300">Save as PDF</span>.
+                            <span class="font-medium text-slate-600 dark:text-slate-300">PDF:</span> Download PDF → choose <span class="whitespace-nowrap font-medium">Save as PDF</span> → enable <span class="whitespace-nowrap font-medium">Background graphics</span>.
                         </p>
                     </div>
                 </div>
             </div>
+
+            <div id="ar-print-letterhead" class="ar-print-letterhead ar-print-only-hidden px-3 sm:px-5 pt-3 sm:pt-4" aria-hidden="true">
+                <div class="ar-print-letterhead-grid">
+                    {% if school_settings.school_logo %}
+                    <img src="{{ url_for('static', filename=school_settings.school_logo) }}" alt="" class="ar-print-letterhead-logo">
+                    {% endif %}
+                    <div class="ar-print-letterhead-text min-w-0">
+                        <p class="ar-print-letterhead-kicker">Official academic report</p>
+                        <h1 class="ar-print-letterhead-school">{{ school_settings.school_name or 'School' }}</h1>
+                        <p id="ar-print-school-contact" class="ar-print-letterhead-contact"></p>
+                    </div>
+                </div>
+            </div>
+            <div id="ar-print-page-footer" class="ar-print-only-hidden" aria-hidden="true"></div>
             <div id="ar-details-list" class="ar-preview-scroll p-3 sm:p-5 lg:p-6 bg-slate-50/40 dark:bg-slate-950/30">
                 <p class="text-sm text-slate-500 dark:text-slate-400">Loading report details...</p>
             </div>
@@ -1652,11 +2356,17 @@
     </div>
 </div>
 
+<div id="ar-print-pdf-toast" class="no-print hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md px-4 py-3 rounded-xl border border-brand-primary/30 bg-white dark:bg-slate-800 shadow-xl text-sm text-slate-700 dark:text-slate-200" role="status">
+    <p class="font-semibold text-brand-primary dark:text-brand-secondary mb-1"><i class="fas fa-file-pdf mr-1"></i> Save as PDF</p>
+    <p class="leading-snug">In the print dialog: set <strong>Destination</strong> to <strong>Save as PDF</strong>. Turn on <strong>Background graphics</strong> for colours and borders.</p>
+</div>
+
 <script>
 (function() {
   const API = {{ employee_dash_url('api/employee/academic-reports/generate')|tojson }};
   const STUDENT_SEARCH_API = {{ employee_dash_url('api/employee/academic-reports/search-students')|tojson }};
   const PREVIEW_BASE = {{ employee_dash_url('academic-reports/preview')|tojson }};
+  const LEVEL_COMBINATIONS = {{ level_combinations|default([])|tojson }};
   const SCHOOL_INFO = {
     name: {{ (school_settings.school_name or 'School')|tojson }},
     address: {{ (school_settings.school_address or school_settings.address or '')|tojson }},
@@ -1688,8 +2398,6 @@
       reports: [
         { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: subject marks on a 0–100 scale (raw ÷ exam total × 100 from Exam subject settings); last summary column is grade allocation points from the row mean (Grades Registration).' },
         { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s scaled marks (/100) in the selected class — enter Student ID.' },
-        { id: 'exam_subject_performance', label: 'Subject performance', desc: 'Mean, range, and pass rate per subject on a 0–100 scale.' },
-        { id: 'exam_teacher_performance', label: 'Teacher performance', desc: 'By teacher: scaled stats (/100) per subject in the class.' },
       ],
     },
     timetables: {
@@ -1717,17 +2425,145 @@
   const mainGridEl = document.getElementById('ar-filter-main-grid');
   const wrapTeacher = document.getElementById('ar-wrap-teacher');
   const wrapStudent = document.getElementById('ar-wrap-student');
+  const studentSearchBlock = document.getElementById('ar-student-search-block');
+  const wrapStudentRoster = document.getElementById('ar-wrap-student-roster');
+  const studentSelectEl = document.getElementById('gf-student-select');
+  const studentRosterHint = document.getElementById('ar-student-roster-hint');
   const studentSearchEl = document.getElementById('gf-student-search');
   const studentHiddenEl = document.getElementById('gf-student');
   const studentSuggestEl = document.getElementById('gf-student-suggestions');
   const studentClearBtn = document.getElementById('gf-student-clear');
   let studentSearchTimer = null;
+  let classRosterLoadToken = 0;
   const wrapExamName = document.getElementById('ar-wrap-exam-name');
   const wrapRegisterDate = document.getElementById('ar-wrap-register-date');
   const wrapDates = document.getElementById('ar-wrap-dates');
   const wrapTimetableView = document.getElementById('ar-wrap-timetable-view');
   const examNameEl = document.getElementById('gf-exam-name');
   const levelEl = document.getElementById('gf-level');
+  const levelViewEl = document.getElementById('gf-level-view');
+
+  function isCombinedLevelView() {
+    return levelViewEl && String(levelViewEl.value || '') === 'combined';
+  }
+
+  function getSelectedCombinedCombo() {
+    if (!isCombinedLevelView() || !levelEl) return null;
+    var lid = val('gf-level');
+    if (!lid) return null;
+    var id = parseInt(lid, 10);
+    if (isNaN(id)) return null;
+    return (LEVEL_COMBINATIONS || []).find(function(c) {
+      return (c.level_ids || []).some(function(mid) { return Number(mid) === id; });
+    }) || null;
+  }
+
+  /** Level IDs used to filter exams / scope when a class is selected. */
+  function activeLevelIdsForFilters() {
+    if (!val('gf-level')) return [];
+    if (isCombinedLevelView()) {
+      var combo = getSelectedCombinedCombo();
+      return combo && combo.level_ids ? combo.level_ids.map(function(x) { return Number(x); }) : [];
+    }
+    var one = parseInt(val('gf-level'), 10);
+    return isNaN(one) ? [] : [one];
+  }
+
+  /**
+   * Rebuild class dropdown: individual levels or combined groups.
+   * @param {Set<string>|null} allowedLevelIds - when set, only options touching these level ids
+   */
+  function rebuildLevelSelect(allowedLevelIds) {
+    if (!levelEl) return;
+    var prev = String(levelEl.value || '');
+    var prevComboId = null;
+    if (prev && isCombinedLevelView()) {
+      var prevCombo = (LEVEL_COMBINATIONS || []).find(function(c) {
+        return (c.level_ids || []).some(function(mid) { return String(mid) === prev; });
+      });
+      if (prevCombo) prevComboId = prevCombo.combo_id;
+    }
+    levelEl.innerHTML = '';
+    var levelLabel = document.getElementById('ar-level-filter-label');
+
+    if (isCombinedLevelView()) {
+      if (levelLabel) levelLabel.textContent = 'Combined class';
+      var combos = LEVEL_COMBINATIONS || [];
+      if (!combos.length) {
+        var emptyOpt = document.createElement('option');
+        emptyOpt.value = '';
+        emptyOpt.textContent = 'No combined groups configured';
+        levelEl.appendChild(emptyOpt);
+        levelEl.disabled = true;
+        return;
+      }
+      levelEl.disabled = false;
+      combos.forEach(function(combo) {
+        var ids = (combo.level_ids || []).map(function(x) { return Number(x); }).filter(function(x) { return !isNaN(x); });
+        if (!ids.length) return;
+        if (allowedLevelIds && allowedLevelIds.size) {
+          var matches = ids.some(function(id) { return allowedLevelIds.has(String(id)); });
+          if (!matches) return;
+        }
+        var opt = document.createElement('option');
+        opt.value = String(ids[0]);
+        opt.textContent = combo.level_name || (combo.level_names || []).join(' / ') || ('Group ' + combo.combo_id);
+        opt.setAttribute('data-combined-group', '1');
+        if (combo.combo_id != null) opt.setAttribute('data-combo-id', String(combo.combo_id));
+        if (combo.level_names && combo.level_names.length) {
+          opt.title = combo.level_names.join(' · ');
+        }
+        levelEl.appendChild(opt);
+      });
+      if (!levelEl.options.length) {
+        var noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = 'No combined class for this exam';
+        levelEl.appendChild(noneOpt);
+      } else if (prevComboId != null) {
+        var byCombo = Array.from(levelEl.options).find(function(o) {
+          return o.getAttribute('data-combo-id') === String(prevComboId);
+        });
+        if (byCombo) levelEl.value = byCombo.value;
+        else levelEl.selectedIndex = 0;
+      } else if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
+        levelEl.value = prev;
+      } else {
+        levelEl.selectedIndex = 0;
+      }
+    } else {
+      if (levelLabel) levelLabel.textContent = 'Class';
+      levelEl.disabled = false;
+      var allOpt = document.createElement('option');
+      allOpt.value = '';
+      allOpt.textContent = 'All classes';
+      allOpt.setAttribute('data-all-classes', '1');
+      levelEl.appendChild(allOpt);
+      levelOptionsCache.forEach(function(o) {
+        if (!o.value) return;
+        if (allowedLevelIds && allowedLevelIds.size && !allowedLevelIds.has(String(o.value)) && String(o.value) !== prev) {
+          return;
+        }
+        var opt = document.createElement('option');
+        opt.value = o.value;
+        opt.textContent = o.label;
+        levelEl.appendChild(opt);
+      });
+      if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
+        levelEl.value = prev;
+      } else {
+        levelEl.value = '';
+      }
+    }
+    if (studentRosterHint && isCombinedLevelView() && val('gf-level')) {
+      studentRosterHint.textContent = 'Combined class: students from all levels in this group.';
+    }
+  }
+
+  function syncLevelViewUi() {
+    rebuildLevelSelect(null);
+    syncExamNameOptions();
+  }
   const detailsListEl = document.getElementById('ar-details-list');
   const generatedAtEl = document.getElementById('ar-generated-at');
   const examOptions = {{ (exam_names or [])|tojson|safe }};
@@ -1784,6 +2620,7 @@
     if (!generatedAtEl) return;
     const now = new Date();
     generatedAtEl.textContent = 'Generated: ' + now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+    updatePrintLetterhead();
   }
 
   function currentReportId() {
@@ -1800,22 +2637,53 @@
     return sectionEl.value === 'exams' && currentExamScope() === 'individual';
   }
 
-  /** Exam reports: class filter for all-students mode; student search for individual mode. */
+  function isExamIndividualStudentReport() {
+    return sectionEl.value === 'exams' && currentReportId() === 'exam_individual_performance';
+  }
+
+  /** True when the user must pick one student (not whole-class individual cards). */
+  function examNeedsSingleStudentPicker(reportType) {
+    reportType = String(reportType || currentReportId() || '').trim();
+    if (reportType === 'exam_individual_performance' && isExamIndividualMode()) return true;
+    return false;
+  }
+
+  /** Exam reports: class always; student picker only for single-student individual report. */
   function examReportFilterNeeds() {
-    const individual = isExamIndividualMode();
+    const pickOne = examNeedsSingleStudentPicker(currentReportId());
     return {
       examScope: true,
       year: true,
       term: true,
       exam: true,
-      level: !individual,
-      student: individual
+      level: true,
+      student: pickOne,
+      studentRoster: pickOne,
+      studentSearch: false
     };
   }
 
-  /** Defensive: keep only rows for the selected student in individual exam mode. */
+  /** In subject / For teacher: class aggregates only — no Generate as or student picker. */
+  function examClassAggregateFilterNeeds() {
+    return {
+      examScope: false,
+      year: true,
+      term: true,
+      exam: true,
+      level: true,
+      student: false,
+      studentRoster: false,
+      studentSearch: false
+    };
+  }
+
+  function usesExamStudentRoster() {
+    return examNeedsSingleStudentPicker(currentReportId());
+  }
+
+  /** Defensive: keep only rows for the selected student when a single-student report is active. */
   function narrowExamRowsToSelectedStudent(rows) {
-    if (!isExamIndividualMode()) return rows;
+    if (!examNeedsSingleStudentPicker(currentReportId())) return rows;
     const rid = currentReportId();
     if (!rid || rid.indexOf('exam_') !== 0) return rows;
     const sid = val('gf-student');
@@ -1829,10 +2697,10 @@
     });
   }
 
-  /** Student live search: attendance individual, or any exam report in Individual students mode. */
+  /** Student required before generating (attendance individual or one-student exam report). */
   function reportUsesFindStudentPicker(reportType) {
     if (reportType === 'attendance_individual') return true;
-    if (reportType && reportType.indexOf('exam_') === 0 && isExamIndividualMode()) return true;
+    if (examNeedsSingleStudentPicker(reportType)) return true;
     return false;
   }
 
@@ -1857,18 +2725,6 @@
           desc: scope === 'class'
             ? 'All students: report cards per student (marks on 0–100 scale).'
             : 'Individual students: one student’s scaled marks (/100) — select student below.'
-        },
-        {
-          id: 'exam_subject_performance',
-          label: 'In subject',
-          desc: scope === 'class'
-            ? 'All students: subject stats on a 0–100 scale.'
-            : 'Individual students: scaled marks for the subject.'
-        },
-        {
-          id: 'exam_teacher_performance',
-          label: 'For teacher',
-          desc: 'Teacher stats per subject on a 0–100 scale.'
         },
       ];
     }
@@ -1940,6 +2796,9 @@
       btn.addEventListener('click', function() {
         if (reportEl.value === r.id) return;
         reportEl.value = r.id;
+        if (sectionEl.value === 'exams' && examScopeEl && r.id === 'exam_individual_performance') {
+          examScopeEl.value = 'individual';
+        }
         reportEl.dispatchEvent(new Event('change'));
       });
       reportGridEl.appendChild(btn);
@@ -1983,12 +2842,25 @@
       case 'attendance_class':
         return Object.assign({}, none, { level: true, dates: true });
       case 'attendance_individual':
-        return Object.assign({}, none, { level: true, dates: true, student: true });
+        return Object.assign({}, none, { level: true, dates: true, student: true, studentSearch: true });
+      case 'exam_individual_performance': {
+        const pickOne = isExamIndividualMode();
+        return Object.assign({}, none, {
+          examScope: true,
+          year: true,
+          term: true,
+          exam: true,
+          level: true,
+          student: pickOne,
+          studentRoster: pickOne,
+          studentSearch: false
+        });
+      }
       case 'exam_all_students_performance':
-      case 'exam_individual_performance':
+        return Object.assign({}, none, examReportFilterNeeds());
       case 'exam_subject_performance':
       case 'exam_teacher_performance':
-        return Object.assign({}, none, examReportFilterNeeds());
+        return Object.assign({}, none, examClassAggregateFilterNeeds());
       case 'timetable_subject':
         return Object.assign({}, none, { level: true, timetableView: true, year: true, term: true });
       case 'timetable_exam':
@@ -2012,7 +2884,7 @@
     if (needs.year) labels.push('Academic year');
     if (needs.term) labels.push('Term');
     if (needs.exam) labels.push('Exam name');
-    if (needs.level) labels.push('Class');
+    if (needs.level) labels.push('Class view', 'Class');
     if (needs.student) labels.push('Student');
     if (needs.teacher) labels.push('Teacher');
     if (needs.timetableView) labels.push('Timetable view');
@@ -2028,39 +2900,33 @@
     const wt = document.getElementById('ar-filter-wrap-term');
     const we = document.getElementById('ar-filter-wrap-exam');
     const wl = document.getElementById('ar-filter-wrap-level');
+    const wlv = document.getElementById('ar-filter-wrap-level-view');
 
     setFilterBlockVisible(examScopeWrap, needs.examScope);
 
     if (!needs.student) {
-      if (studentHiddenEl) studentHiddenEl.value = '';
-      if (studentSearchEl) studentSearchEl.value = '';
-      hideStudentSuggestions();
-      updateStudentClearVisibility();
+      clearStudentSelection(true);
     }
 
     setFilterBlockVisible(wy, needs.year);
     setFilterBlockVisible(wt, needs.term);
     setFilterBlockVisible(we, needs.exam);
     setFilterBlockVisible(wl, needs.level);
+    setFilterBlockVisible(wlv, needs.level);
 
-    const mainCount = [needs.examScope, needs.year, needs.term, needs.exam, needs.level].filter(Boolean).length;
+    const mainCount = [needs.examScope, needs.year, needs.term, needs.exam, needs.level].filter(Boolean).length + (needs.level ? 1 : 0);
     if (mainGridEl) {
       setFilterBlockVisible(mainGridEl, mainCount > 0);
       mainGridEl.classList.toggle('ar-filters-grid--dynamic', mainCount > 0 && mainCount < 5);
     }
 
     setFilterBlockVisible(wrapStudent, needs.student);
-    if (isExamIndividualMode() && levelEl) levelEl.value = '';
-    const studentLabelEl = wrapStudent && wrapStudent.querySelector('.ar-filter-label');
-    if (studentLabelEl) {
-      studentLabelEl.textContent = isExamIndividualMode()
-        ? 'Student (admission no. or name)'
-        : 'Student';
-    }
-    if (studentSearchEl) {
-      studentSearchEl.placeholder = isExamIndividualMode()
-        ? 'Type admission number or student name…'
-        : 'Name or ID…';
+    setFilterBlockVisible(studentSearchBlock, needs.studentSearch);
+    setFilterBlockVisible(wrapStudentRoster, needs.studentRoster);
+    if (needs.studentRoster) {
+      loadClassStudentRoster();
+    } else if (studentSelectEl) {
+      resetStudentSelect();
     }
     setFilterBlockVisible(wrapTeacher, needs.teacher);
     setFilterBlockVisible(wrapTimetableView, needs.timetableView);
@@ -2092,6 +2958,7 @@
 
     if (needs.exam) syncExamNameOptions();
     if (levelEl) levelEl.disabled = false;
+    syncLevelViewUi();
 
     updateReportDescription();
   }
@@ -2108,17 +2975,8 @@
     const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
 
-    // If no exam selected, restore full list (but UI will keep it disabled anyway).
     if (!selectedExam) {
-      const prev = String(levelEl.value || '');
-      levelEl.innerHTML = '';
-      levelOptionsCache.forEach(function(o) {
-        const opt = document.createElement('option');
-        opt.value = o.value;
-        opt.textContent = o.label;
-        levelEl.appendChild(opt);
-      });
-      if (Array.from(levelEl.options).some(function(o) { return o.value === prev; })) levelEl.value = prev;
+      rebuildLevelSelect(null);
       return;
     }
 
@@ -2138,29 +2996,7 @@
       if (lid !== null && lid !== undefined && String(lid).trim() !== '') allowed.add(String(lid));
     });
 
-    const prev = String(levelEl.value || '');
-    levelEl.innerHTML = '';
-    // Always keep "All classes"
-    const allOpt = document.createElement('option');
-    allOpt.value = '';
-    allOpt.textContent = 'All classes';
-    levelEl.appendChild(allOpt);
-
-    levelOptionsCache.forEach(function(o) {
-      if (!o.value) return; // skip the cached "All classes" option
-      var keep = !allowed.size || allowed.has(String(o.value)) || (prev && String(o.value) === prev);
-      if (!keep) return;
-      const opt = document.createElement('option');
-      opt.value = o.value;
-      opt.textContent = o.label;
-      levelEl.appendChild(opt);
-    });
-
-    if (prev && Array.from(levelEl.options).some(function(o) { return o.value === prev; })) {
-      levelEl.value = prev;
-    } else {
-      levelEl.value = '';
-    }
+    rebuildLevelSelect(allowed.size ? allowed : null);
   }
 
   function syncExamNameOptions() {
@@ -2168,13 +3004,14 @@
     const previous = String(examNameEl.value || '');
     const yearVal = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const termVal = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
-    const levelVal = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
+    const activeLevelIds = activeLevelIdsForFilters();
 
     const seen = new Set();
     const opts = examOptions.filter(function(item) {
       const yOk = !yearVal || Number(item.academic_year_id || 0) === yearVal;
       const tOk = !termVal || Number(item.term_id || 0) === termVal;
-      const lOk = !levelVal || Number(item.academic_level_id || 0) === levelVal;
+      const examLvl = Number(item.academic_level_id || 0);
+      const lOk = !activeLevelIds.length || activeLevelIds.indexOf(examLvl) >= 0;
       return yOk && tOk && lOk;
     }).filter(function(item) {
       const rawName = String(item.exam_name || '').trim();
@@ -2208,6 +3045,19 @@
     if (!levelEl || !levelIdStr) return;
     var exists = Array.from(levelEl.options).some(function(o) { return String(o.value) === levelIdStr; });
     if (exists) return;
+    if (isCombinedLevelView()) {
+      var combo = (LEVEL_COMBINATIONS || []).find(function(c) {
+        return (c.level_ids || []).some(function(mid) { return String(mid) === String(levelIdStr); });
+      });
+      if (combo) {
+        rebuildLevelSelect(null);
+        var anchor = combo.level_ids && combo.level_ids.length ? String(combo.level_ids[0]) : String(levelIdStr);
+        if (Array.from(levelEl.options).some(function(o) { return o.value === anchor; })) {
+          levelEl.value = anchor;
+        }
+        return;
+      }
+    }
     var fromCache = levelOptionsCache.find(function(o) { return String(o.value) === levelIdStr; });
     var label = fromCache ? fromCache.label : (levelLabel || ('Level ' + levelIdStr));
     var opt = document.createElement('option');
@@ -2222,6 +3072,17 @@
   function setClassLevelForStudent(academicLevelId, levelName) {
     if (!levelEl || academicLevelId === undefined || academicLevelId === null || academicLevelId === '') return;
     var idStr = String(academicLevelId);
+    if (isCombinedLevelView()) {
+      var combo = (LEVEL_COMBINATIONS || []).find(function(c) {
+        return (c.level_ids || []).some(function(mid) { return String(mid) === idStr; });
+      });
+      if (combo && combo.level_ids && combo.level_ids.length) {
+        rebuildLevelSelect(null);
+        levelEl.value = String(combo.level_ids[0]);
+        syncExamNameOptions();
+        return;
+      }
+    }
     ensureLevelOptionPresent(idStr, levelName);
     levelEl.value = idStr;
     syncExamNameOptions();
@@ -2234,10 +3095,7 @@
   sectionEl.addEventListener('change', function() {
     syncSectionTabsActive();
     if (sectionEl.value !== 'exams') {
-      if (studentHiddenEl) studentHiddenEl.value = '';
-      if (studentSearchEl) studentSearchEl.value = '';
-      hideStudentSuggestions();
-      updateStudentClearVisibility();
+      clearStudentSelection(true);
     }
     fillReportOptions(sectionEl.value);
   });
@@ -2252,6 +3110,9 @@
   }
 
   reportEl.addEventListener('change', function() {
+    if (sectionEl.value === 'exams' && examScopeEl && isExamIndividualStudentReport()) {
+      examScopeEl.value = 'individual';
+    }
     syncReportGridActive();
     syncReportFilters();
     loadDetails();
@@ -2270,9 +3131,13 @@
   function getFiltersForReport(reportType) {
     const yi = val('gf-year') ? parseInt(val('gf-year'), 10) : null;
     const ti = val('gf-term') ? parseInt(val('gf-term'), 10) : null;
-    const skipClass = reportType && reportType.indexOf('exam_') === 0 && isExamIndividualMode();
-    const li = skipClass ? null : (val('gf-level') ? parseInt(val('gf-level'), 10) : null);
-    const out = { academic_year_id: yi, term_id: ti, level_id: li };
+    const li = val('gf-level') ? parseInt(val('gf-level'), 10) : null;
+    const out = {
+      academic_year_id: yi,
+      term_id: ti,
+      level_id: li,
+      level_view: (levelViewEl && levelViewEl.value) ? levelViewEl.value : 'individual',
+    };
     out.teacher_id = reportType === 'timetable_teacher' && val('gf-teacher') ? parseInt(val('gf-teacher'), 10) : null;
     out.timetable_view = reportType === 'timetable_subject' ? (val('gf-timetable-view') || 'student') : null;
     if (reportUsesFindStudentPicker(reportType)) {
@@ -2322,6 +3187,151 @@
     return String(reportType || 'report').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60);
   }
 
+  function reportDisplayTitle(reportType) {
+    var rid = reportType || currentReportId();
+    var rep = (lastReportOptions || []).find(function(r) { return r.id === rid; });
+    if (rep && rep.label) return rep.label;
+    var sec = CATALOG[sectionEl.value];
+    if (sec && sec.reports) {
+      var r2 = sec.reports.find(function(r) { return r.id === rid; });
+      if (r2 && r2.label) return r2.label;
+    }
+    return String(rid || 'Report').replace(/_/g, ' ');
+  }
+
+  function buildPrintFilterSummary() {
+    var parts = [];
+    var needs = filtersForReport(currentReportId());
+    var secLabel = (CATALOG[sectionEl.value] || {}).label;
+    if (secLabel) parts.push(secLabel);
+    if (needs.level) {
+      var lvw = filterSelectText('gf-level-view');
+      if (lvw) parts.push('View: ' + lvw);
+      var lv = filterSelectText('gf-level');
+      if (lv && lv.indexOf('All classes') === -1 && lv.indexOf('No combined') === -1) {
+        if (isCombinedLevelView()) {
+          parts.push('Combined class: ' + lv);
+        } else {
+          parts.push('Class: ' + lv);
+        }
+      }
+    }
+    if (needs.year) {
+      var y = filterSelectText('gf-year');
+      if (y && y.indexOf('All years') === -1) parts.push('Year: ' + y.replace(/\s*\(current\)\s*$/i, ''));
+    }
+    if (needs.term) {
+      var tm = filterSelectText('gf-term');
+      if (tm && tm.indexOf('Any') === -1) parts.push('Term: ' + tm.replace(/\s*\(current\)\s*$/i, '').split(' — ')[0]);
+    }
+    if (needs.exam) {
+      var ex = filterSelectText('gf-exam-name');
+      if (ex && ex.indexOf('Select exam') === -1) parts.push('Exam: ' + shortExamLabel(ex));
+    }
+    if (needs.dates) {
+      var df = val('gf-dfrom');
+      var dt = val('gf-dto');
+      if (df || dt) parts.push('Dates: ' + (df || '…') + ' to ' + (dt || '…'));
+    }
+    if (needs.registerDate) {
+      var rd = val('gf-register-date');
+      if (rd) parts.push('Date: ' + rd);
+    }
+    if (needs.teacher) {
+      var te = filterSelectText('gf-teacher');
+      if (te && te.indexOf('Select teacher') === -1) parts.push('Teacher: ' + te);
+    }
+    if (needs.student || usesExamStudentRoster()) {
+      var sid = val('gf-student');
+      if (sid) {
+        var sel = document.getElementById('gf-student-select');
+        if (sel && sel.selectedIndex > 0) {
+          parts.push('Student: ' + String(sel.options[sel.selectedIndex].text || sid));
+        } else {
+          parts.push('Student ID: ' + sid);
+        }
+      }
+    }
+  if (needs.examScope && examScopeEl) {
+      parts.push('Scope: ' + (examScopeEl.value === 'individual' ? 'Individual students' : 'All students'));
+    }
+    return parts.join(' · ');
+  }
+
+  function updatePrintLetterhead() {
+    var footerEl = document.getElementById('ar-print-page-footer');
+    var now = new Date();
+    var nowStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
+    if (footerEl) {
+      footerEl.textContent =
+        (SCHOOL_INFO.name || 'School') + ' — ' + reportDisplayTitle() + ' — ' + nowStr;
+    }
+  }
+
+  var detailsOpenState = [];
+
+  function expandDetailsForPrint() {
+    detailsOpenState = [];
+    document.querySelectorAll('#ar-details-list details').forEach(function(d) {
+      detailsOpenState.push(d.open);
+      d.open = true;
+    });
+  }
+
+  function restoreDetailsAfterPrint() {
+    var list = document.querySelectorAll('#ar-details-list details');
+    list.forEach(function(d, i) {
+      if (detailsOpenState.length > i) d.open = detailsOpenState[i];
+    });
+    detailsOpenState = [];
+  }
+
+  function prepareAcademicReportPrint() {
+    updatePrintLetterhead();
+    expandDetailsForPrint();
+    syncPrintPageMode();
+    scrollAcademicReportPaneToTop();
+  }
+
+  function suggestPrintFilename() {
+    var day = new Date().toISOString().slice(0, 10);
+    var stem = reportFileStem(currentReportId());
+    var lv = filterSelectText('gf-level');
+    var classPart = 'all';
+    if (lv && lv.indexOf('All classes') === -1) {
+      classPart = lv.replace(/[^a-zA-Z0-9]+/g, '_').slice(0, 24);
+    }
+    return stem + '_' + classPart + '_' + day;
+  }
+
+  function showPrintPdfHint() {
+    var el = document.getElementById('ar-print-pdf-toast');
+    if (!el) return;
+    el.classList.remove('hidden');
+    window.clearTimeout(showPrintPdfHint._t);
+    showPrintPdfHint._t = window.setTimeout(function() {
+      el.classList.add('hidden');
+    }, 6000);
+  }
+
+  function runAcademicReportPrint(opts) {
+    opts = opts || {};
+    if (!currentReportId()) return;
+    if (!detailsListEl || !detailsListEl.querySelector('table, article.ar-rc, .ar-register-sheet')) {
+      window.alert('Generate the report first, then print or download.');
+      return;
+    }
+    prepareAcademicReportPrint();
+    if (opts.pdfHint) showPrintPdfHint();
+    var prevTitle = document.title;
+    document.title = suggestPrintFilename();
+    window.print();
+    window.setTimeout(function() {
+      document.title = prevTitle;
+      restoreDetailsAfterPrint();
+    }, 400);
+  }
+
   function escapeHtml(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -2329,6 +3339,12 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  /** Print layout: one sheet per page; index > 0 adds a page break before the sheet. */
+  function printPageWrapClass(sectionIndex) {
+    var i = sectionIndex | 0;
+    return 'ar-print-page-sheet' + (i > 0 ? ' ar-print-page-follow' : '');
   }
 
   /** Whole numbers for marks, means, and totals on exam reports. */
@@ -2472,6 +3488,26 @@
     '</div></div>';
   }
 
+
+  /** Student meta fields with photo on the right (individual report layout). */
+  function renderReportCardMetaWithPhoto(pairs, photoHtml) {
+    return '' +
+      '<div class="ar-rc-meta-panel ar-rc-meta-panel--with-photo">' +
+        '<div class="ar-rc-meta-panel-main">' +
+          '<div class="ar-rc-meta-grid">' +
+            pairs.map(function(p) {
+              return '' +
+                '<div class="ar-rc-meta-item">' +
+                  '<span class="ar-rc-meta-label">' + escapeHtml(p.label) + '</span>' +
+                  '<span class="ar-rc-meta-value">' + escapeHtml(p.value || '—') + '</span>' +
+                '</div>';
+            }).join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="ar-rc-meta-photo-wrap">' + (photoHtml || '') + '</div>' +
+      '</div>';
+  }
+
   function renderReportCardSignatures() {
     return '' +
       '<div class="ar-rc-signatures">' +
@@ -2537,7 +3573,8 @@
         (descriptorText
           ? '<p class="text-xs text-gray-600 mb-2"><span class="font-bold">Descriptor:</span> ' + escapeHtml(descriptorText) + '</p>'
           : '') +
-        '<div class="ar-rc-feedback-lines">' +
+        '<div class="ar-rc-feedback-lines ar-rc-feedback-lines--sheet">' +
+          '<div class="ar-rc-feedback-line"></div>' +
           '<div class="ar-rc-feedback-line"></div>' +
           '<div class="ar-rc-feedback-line"></div>' +
           '<div class="ar-rc-feedback-line"></div>' +
@@ -2545,7 +3582,8 @@
       '</div>';
   }
 
-  function renderReportCardClassBanner(className, subtitle) {
+  function renderReportCardClassBanner(className, subtitle, docTitle) {
+    var title = docTitle || ('Class performance · ' + (className || '—'));
     var sub = subtitle
       ? '<p class="text-xs text-gray-600 mt-1 mb-0">' + escapeHtml(subtitle) + '</p>'
       : '';
@@ -2555,11 +3593,159 @@
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
-            renderReportCardHeader('Class performance · ' + (className || '—'), null) +
+            renderReportCardHeader(title, null) +
             sub +
           '</div>' +
         '</article>' +
       '</div>';
+  }
+
+  function examPerfColumnHeader(key) {
+    var map = {
+      subject_name: 'Subject',
+      teacher_name: 'Teacher',
+      mean: 'Mean %',
+      min: 'Min %',
+      max: 'Max %',
+      count: 'Scripts',
+      pass_rate: 'Pass %'
+    };
+    return map[key] || columnHeaderLabel(key);
+  }
+
+  function formatExamPerfCell(key, val) {
+    if (val === null || val === undefined || val === '') return '—';
+    if (key === 'count') return String(val);
+    if (key === 'mean' || key === 'min' || key === 'max' || key === 'pass_rate') {
+      var n = parseFloat(val);
+      if (isNaN(n)) return String(val);
+      return String(Math.round(n));
+    }
+    return String(val);
+  }
+
+  function examPerfPassRateClass(pct) {
+    var n = parseFloat(pct);
+    if (isNaN(n)) return 'text-slate-600 dark:text-slate-400';
+    if (n >= 70) return 'text-green-700 dark:text-green-400 font-semibold tabular-nums';
+    if (n >= 50) return 'text-amber-700 dark:text-amber-400 font-semibold tabular-nums';
+    return 'text-red-700 dark:text-red-400 font-semibold tabular-nums';
+  }
+
+  function examPerfClassLabel(bundle) {
+    var meta = bundle.meta || {};
+    var af = meta.applied_filters || {};
+    var cls = String(af.class_level || '').trim();
+    if (cls && cls.indexOf('All classes') === -1 && cls.indexOf('Level ID') === -1) return cls;
+    var lv = filterSelectText('gf-level');
+    if (lv && lv.indexOf('All classes') === -1) return lv;
+    return cls || '—';
+  }
+
+  function renderExamPerfTable(bundle, opts) {
+    opts = opts || {};
+    var columns = Array.isArray(bundle.columns) ? bundle.columns : [];
+    var rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    var meta = bundle.meta || {};
+    var mh = meta.hint ? String(meta.hint).trim() : '';
+    if (!rows.length || !columns.length) {
+      var hint = mh
+        ? '<p class="text-sm text-slate-600 dark:text-slate-300 mt-3 max-w-xl mx-auto leading-relaxed">' + escapeHtml(mh) + '</p>'
+        : '';
+      return '<div class="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">' +
+        '<p class="text-sm text-slate-500 dark:text-slate-400">No data found for this report and filters.</p>' +
+        hint +
+      '</div>';
+    }
+    var af = meta.applied_filters || {};
+    var ew = meta.exam_window || {};
+    var className = examPerfClassLabel(bundle);
+    var subtitle = [reportSchoolYearLabel(af), reportTermExamLine(af, ew)].filter(function(x) { return x && x !== '-'; }).join(' · ');
+    var docTitle = (opts.docTitle || 'Exam performance') + ' · ' + className;
+    var numericKeys = { mean: true, min: true, max: true, count: true, pass_rate: true };
+    var head = columns.map(function(c) {
+      var align = numericKeys[c] ? ' text-center' : ' text-left';
+      return '<th scope="col" class="py-2 px-2 text-[11px] font-bold uppercase tracking-wider text-white/95 bg-slate-800 dark:bg-slate-950 border-b border-slate-700' + align + '">' +
+        escapeHtml(examPerfColumnHeader(c)) + '</th>';
+    }).join('');
+    function renderRow(row, ri) {
+      var zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/40' : ' bg-white dark:bg-slate-900';
+      var cells = columns.map(function(c) {
+        var raw = row[c];
+        var text = formatExamPerfCell(c, raw);
+        var align = numericKeys[c] ? ' text-center tabular-nums' : ' text-left';
+        var extra = c === 'pass_rate' ? ' ' + examPerfPassRateClass(raw) : '';
+        var weight = (c === 'subject_name' || c === 'teacher_name') ? ' font-semibold text-slate-900 dark:text-white' : ' text-slate-800 dark:text-slate-200';
+        return '<td class="py-2 px-2 align-middle border-b border-slate-100 dark:border-slate-800' + align + weight + extra + '">' + escapeHtml(text) + '</td>';
+      }).join('');
+      return '<tr class="' + zebra + '">' + cells + '</tr>';
+    }
+    var body = rows.map(function(row, ri) { return renderRow(row, ri); }).join('');
+    var scaleNote = meta.marks_scale === 'scaled_pct'
+      ? '<p class="text-[11px] text-slate-500 dark:text-slate-400 mt-3">Marks scaled to 0–100 from exam subject settings. Pass rate: share of scripts at 50% or above.</p>'
+      : '';
+    var banner = opts.skipBanner
+      ? ''
+      : renderReportCardClassBanner(className, subtitle, docTitle);
+    return banner +
+      '<article class="ar-rc ar-exam-perf-table">' +
+        '<div class="ar-rc-inner">' +
+          (opts.sectionTitle
+            ? '<p class="text-sm font-bold text-slate-800 dark:text-slate-100 mb-2 flex items-center gap-2"><i class="fas fa-chalkboard-teacher text-brand-primary"></i>' + escapeHtml(opts.sectionTitle) + '</p>'
+            : '') +
+          '<div class="ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">' +
+            '<table class="ar-fit-table ar-simple-table ar-exam-perf-matrix w-full border-collapse">' +
+              '<thead><tr>' + head + '</tr></thead>' +
+              '<tbody>' + body + '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>' +
+      '</article>' +
+      (opts.skipBanner ? '' : scaleNote);
+  }
+
+  function renderExamSubjectPerformance(bundle) {
+    return renderExamPerfTable(bundle, { docTitle: 'In subject' });
+  }
+
+  function renderExamTeacherPerformance(bundle) {
+    var columns = Array.isArray(bundle.columns) ? bundle.columns : [];
+    var rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    var meta = bundle.meta || {};
+    if (!rows.length || !columns.length) {
+      return renderExamPerfTable(bundle, { docTitle: 'For teacher' });
+    }
+    var groups = [];
+    var map = {};
+    rows.forEach(function(row) {
+      var t = String(row.teacher_name || 'Unassigned').trim() || 'Unassigned';
+      if (!map[t]) {
+        map[t] = [];
+        groups.push(t);
+      }
+      map[t].push(row);
+    });
+    var af = meta.applied_filters || {};
+    var ew = meta.exam_window || {};
+    var className = examPerfClassLabel(bundle);
+    var subtitle = [reportSchoolYearLabel(af), reportTermExamLine(af, ew)].filter(function(x) { return x && x !== '-'; }).join(' · ');
+    var docTitle = 'For teacher · ' + className;
+    var subCols = columns.filter(function(c) { return c !== 'teacher_name'; });
+    var sections = groups.map(function(teacherName, gi) {
+      var subRows = map[teacherName] || [];
+      var inner = renderExamPerfTable(
+        { columns: subCols, rows: subRows, meta: meta },
+        { skipBanner: true, sectionTitle: teacherName }
+      );
+      var pageCls = printPageWrapClass(gi) + (gi ? ' mt-6' : '');
+      return '<div class="' + pageCls + '">' + inner + '</div>';
+    }).join('');
+    var scaleNote = meta.marks_scale === 'scaled_pct'
+      ? '<p class="text-[11px] text-slate-500 dark:text-slate-400 mt-3">Marks scaled to 0–100 from exam subject settings. Pass rate: share of scripts at 50% or above.</p>'
+      : '';
+    return renderReportCardClassBanner(className, subtitle, docTitle) +
+      '<div class="ar-exam-teacher-sections space-y-1">' + sections + '</div>' +
+      scaleNote;
   }
 
   /** Display label for teacher on timetable grids: allocated staff number (not portal login, not DB pk). */
@@ -2580,23 +3766,31 @@
   function marksMatrixTableClass(subjectCount) {
     var n = subjectCount || 0;
     var cls = 'ar-marks-matrix ar-fit-table';
-    if (n > 6) cls += ' ar-marks-matrix--dense';
+    if (n > 7) cls += ' ar-marks-matrix--dense';
     if (n > 10) cls += ' ar-marks-matrix--xdense';
-    if (n > 14) cls += ' ar-marks-matrix--xxdense';
+    if (n > 13) cls += ' ar-marks-matrix--xxdense';
     return cls;
+  }
+
+  /** Short label for narrow portrait columns (screen + print). */
+  function marksMatrixSubjectLabel(name, subjectCount) {
+    var s = String(name || '').trim();
+    if (!s) return '—';
+    var n = subjectCount || 0;
+    var maxLen = n > 10 ? 5 : (n > 7 ? 6 : (n > 4 ? 8 : 24));
+    if (s.length <= maxLen) return s;
+    return s.slice(0, Math.max(1, maxLen - 1)) + '…';
   }
 
   function buildMarksMatrixColgroup(subjectCount) {
     var n = Math.max(0, subjectCount | 0);
-    var idxPct = 2.2;
-    var totPct = 3.8;
-    var ptsPct = 3.8;
-    var grdPct = 3.6;
-    var studentPct = Math.min(16, Math.max(8, 20 - n * 0.75));
-    var fixed = idxPct + studentPct + totPct + ptsPct + grdPct;
-    var subjPct = n > 0 ? Math.max(2, (100 - fixed) / n) : 0;
+    var totPct = 5;
+    var ptsPct = 4.5;
+    var grdPct = 7;
+    var studentPct = Math.min(32, Math.max(20, 34 - n * 0.85));
+    var fixed = studentPct + totPct + ptsPct + grdPct;
+    var subjPct = n > 0 ? Math.max(1.4, (100 - fixed) / n) : 0;
     var html = '<colgroup>' +
-      '<col class="ar-col-idx" style="width:' + idxPct.toFixed(2) + '%">' +
       '<col class="ar-col-student" style="width:' + studentPct.toFixed(2) + '%">';
     for (var i = 0; i < n; i++) {
       html += '<col class="ar-col-subj" style="width:' + subjPct.toFixed(2) + '%">';
@@ -2660,6 +3854,10 @@
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
     const ew = meta.exam_window || {};
+    const mergeSingleCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    const combinedCohortName = String(
+      meta.combined_display_name || af.class_level || filterSelectText('gf-level') || 'Combined class'
+    ).trim();
     const examsCovered = (ew.exam_count != null && ew.exam_count !== '') ? String(ew.exam_count) : '-';
     const bands = Array.isArray(meta.grade_bands) ? meta.grade_bands : [];
     function gradeMeaning(code) {
@@ -2701,7 +3899,9 @@
         seen[n] = true;
         ordered.push(n);
       }
-      if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
+      if (mergeSingleCohort && subjectColumns.length) {
+        subjectColumns.forEach(addCol);
+      } else if (k && Array.isArray(subjectColumnsByClass[k]) && subjectColumnsByClass[k].length) {
         subjectColumnsByClass[k].forEach(addCol);
       } else if (k && list && list.length) {
         var ln = String((list[0] && list[0].level_name) || '').trim();
@@ -2709,7 +3909,7 @@
           subjectColumnsByClass[ln].forEach(addCol);
         }
       }
-      if (!ordered.length && subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length)) {
+      if (!ordered.length && subjectColumns.length && (!k || !Object.keys(subjectColumnsByClass).length || mergeSingleCohort)) {
         subjectColumns.forEach(addCol);
       }
       var fromRows = {};
@@ -2740,27 +3940,38 @@
     }
 
     function classKeyForRow(row) {
+      if (mergeSingleCohort) return combinedCohortName || 'Combined class';
       var g = String((row && row.current_grade) || '').trim();
       if (g) return g;
       return String((row && row.level_name) || af.class_level || '').trim() || '—';
     }
 
-    // Group by class to avoid one long list when "All classes" is selected.
-    const groupedByClass = {};
-    rows.forEach(function(row) {
-      const ck = classKeyForRow(row);
-      if (!groupedByClass[ck]) groupedByClass[ck] = [];
-      groupedByClass[ck].push(row);
-    });
-
-    var extraClassLabels = Array.isArray(meta.all_class_labels) ? meta.all_class_labels : [];
-    extraClassLabels.forEach(function(ln) {
-      var k = String(ln || '').trim();
-      if (!k) return;
-      if (!Object.prototype.hasOwnProperty.call(groupedByClass, k)) {
-        groupedByClass[k] = [];
-      }
-    });
+  /** Group by class to avoid one long list when "All classes" is selected; combined view = one cohort. */
+    let groupedByClass = {};
+    if (mergeSingleCohort) {
+      const cohortName = combinedCohortName || 'Combined class';
+      groupedByClass[cohortName] = rows.slice().sort(function(a, b) {
+        const tt = (parseFloat(b.total_marks) || 0) - (parseFloat(a.total_marks) || 0);
+        if (tt !== 0) return tt;
+        const mm = (parseFloat(b.mean) || 0) - (parseFloat(a.mean) || 0);
+        if (mm !== 0) return mm;
+        return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+      });
+    } else {
+      rows.forEach(function(row) {
+        const ck = classKeyForRow(row);
+        if (!groupedByClass[ck]) groupedByClass[ck] = [];
+        groupedByClass[ck].push(row);
+      });
+      var extraClassLabels = Array.isArray(meta.all_class_labels) ? meta.all_class_labels : [];
+      extraClassLabels.forEach(function(ln) {
+        var k = String(ln || '').trim();
+        if (!k) return;
+        if (!Object.prototype.hasOwnProperty.call(groupedByClass, k)) {
+          groupedByClass[k] = [];
+        }
+      });
+    }
 
     /** Sort and assign position within one class (ties share the same rank). */
     function rankStudentsWithinClass(list) {
@@ -2783,13 +3994,19 @@
       });
     }
 
-    function renderStudentCard(row, classPosition) {
+    function renderStudentCard(row, classPosition, studentSheetIndex) {
+      if (studentSheetIndex === undefined) studentSheetIndex = 0;
       const grade = String(row.grade || '-');
       const meaning = gradeMeaning(grade);
       const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
-      const classLabel = (row.current_grade && String(row.current_grade).trim())
-        ? row.current_grade
-        : (row.level_name || af.class_level || '-');
+      const homeClass = (row.home_class && String(row.home_class).trim())
+        ? row.home_class
+        : ((row.current_grade && String(row.current_grade).trim()) ? row.current_grade : '');
+      const classLabel = mergeSingleCohort
+        ? (homeClass || combinedCohortName || '-')
+        : ((row.current_grade && String(row.current_grade).trim())
+          ? row.current_grade
+          : (row.level_name || af.class_level || '-'));
       const rankVal = classPosition != null ? classPosition : (row.position || '-');
       const termExamLabel = reportTermExamLine(af, ew);
       const photoHtml = row.student_photo && String(row.student_photo).trim()
@@ -2809,44 +4026,32 @@
             '<td class="ar-rc-td-num">' + escapeHtml(subPoints) + '</td>' +
           '</tr>';
       }).join('');
-      const summaryBox = '' +
-        '<div class="ar-rc-summary-box mt-3">' +
-          '<table><tbody>' +
-            '<tr><td>Total marks</td><td>' + escapeHtml(formatReportMark(row.total_marks)) + '</td></tr>' +
-            '<tr><td>Mean</td><td>' + escapeHtml(formatReportMark(row.mean)) + '</td></tr>' +
-            '<tr><td>Overall grade</td><td>' + escapeHtml(grade) + '</td></tr>' +
-            '<tr><td>Grade points</td><td>' + escapeHtml(overallPoints) + '</td></tr>' +
-            '<tr><td>Class rank</td><td>' + escapeHtml(rankVal) + '</td></tr>' +
-          '</tbody></table>' +
-        '</div>';
       return '' +
-        '<article class="ar-rc mb-8 print:break-after-page">' +
+        '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(studentSheetIndex) + '">' +
           '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
           '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
           '<div class="ar-rc-inner">' +
             renderReportCardHeader('REPORT CARD', { label: 'Class rank', value: rankVal }) +
-            renderReportCardMetaGrid([
+            renderReportCardMetaWithPhoto([
               { label: 'Student name', value: row.full_name || '-' },
               { label: 'Class / section', value: classLabel },
               { label: 'School year', value: reportSchoolYearLabel(af) },
               { label: 'Term / exam', value: termExamLabel }
-            ]) +
-            '<div class="ar-rc-body-grid ar-rc-body-grid--split">' +
-              '<div>' +
-                '<table class="ar-rc-table">' +
-                  '<thead><tr>' +
-                    '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
-                  '</tr></thead>' +
-                  '<tbody>' + subjectRows + '</tbody>' +
-                '</table>' +
+            ], photoHtml) +
+            '<div class="ar-rc-main-body">' +
+              '<table class="ar-rc-table ar-rc-table--subjects">' +
+                '<thead><tr>' +
+                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
+                '</tr></thead>' +
+                '<tbody>' + subjectRows + '</tbody>' +
+              '</table>' +
+              '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+                '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Class rank</p><p class="ar-rc-stat-value">' + escapeHtml(rankVal) + '</p></div>' +
               '</div>' +
-              '<div class="text-center">' + photoHtml + summaryBox + '</div>' +
-            '</div>' +
-            '<div class="ar-rc-stats-row">' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Total marks</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.total_marks)) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Mean</p><p class="ar-rc-stat-value">' + escapeHtml(formatReportMark(row.mean)) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(grade) + '</p></div>' +
-              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
             '</div>' +
             '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegend + '</p>' +
             renderReportCardFeedback(meaning || '') +
@@ -2866,10 +4071,11 @@
       const head = '' +
         '<thead>' +
           '<tr class="bg-slate-800 text-white dark:bg-slate-950">' +
-            '<th scope="col" class="ar-col-idx">#</th>' +
             '<th scope="col" class="ar-col-student">Student</th>' +
             classSubjectColumns.map(function(subjectName) {
-              return '<th scope="col" class="ar-col-subj" title="' + escapeHtml(subjectName) + '">' + escapeHtml(subjectName) + '</th>';
+              var full = escapeHtml(subjectName);
+              var short = escapeHtml(marksMatrixSubjectLabel(subjectName, classSubjectColumns.length));
+              return '<th scope="col" class="ar-col-subj" title="' + full + '">' + short + '</th>';
             }).join('') +
             '<th scope="col" class="ar-col-sum">Tot</th>' +
             '<th scope="col" class="ar-col-sum" title="Grade allocation points from mean % (Grades Registration)">Pts</th>' +
@@ -2924,14 +4130,16 @@
       const ranked = rankStudentsWithinClass(list);
       const body = ranked.map(function(entry, ri) {
         const row = entry.row;
-        const pos = entry.position;
         const grade = String(row.grade || '-');
         const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
         const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : ' bg-white dark:bg-slate-900';
-        const studentTitle = escapeHtml(row.full_name || '-');
+        var studentLabel = row.full_name || '-';
+        if (mergeSingleCohort && row.home_class && String(row.home_class).trim()) {
+          studentLabel = studentLabel + ' (' + String(row.home_class).trim() + ')';
+        }
+        const studentTitle = escapeHtml(studentLabel);
         return '' +
           '<tr class="' + zebra + ' border-b border-slate-100 dark:border-slate-800">' +
-            '<td class="ar-col-idx text-slate-600 dark:text-slate-400">' + escapeHtml(pos) + '</td>' +
             '<td class="ar-col-student text-slate-900 dark:text-white" title="' + studentTitle + '">' +
               '<span class="font-semibold">' + studentTitle + '</span>' +
             '</td>' +
@@ -2958,7 +4166,6 @@
       const foot = list.length && classSubjectColumns.length
         ? '<tfoot>' +
             '<tr class="bg-slate-200/95 dark:bg-slate-800 border-t-2 border-slate-400 dark:border-slate-500 text-slate-900 dark:text-slate-100">' +
-              '<td class="ar-col-idx"></td>' +
               '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100">Mean</td>' +
               subjectFooterCells +
               '<td class="' + summaryMeanCellClass(totalMeanStr) + '">' + escapeHtml(totalMeanStr) + '</td>' +
@@ -2984,21 +4191,24 @@
         '</article>';
     }
 
-    const classBlocks = Object.keys(groupedByClass).sort(function(a, b) {
+    const classKeys = Object.keys(groupedByClass).sort(function(a, b) {
       if (a === b) return 0;
       if (a === '—') return 1;
       if (b === '—') return -1;
       return a.localeCompare(b);
-    }).map(function(className) {
+    });
+    const multiClass = classKeys.length > 1;
+    const classBlocks = classKeys.map(function(className, sectionIndex) {
       const list = groupedByClass[className] || [];
       const scope = currentExamScope();
       const inner = scope === 'class'
         ? renderClassTable(className, list)
-        : rankStudentsWithinClass(list).map(function(entry) {
-            return renderStudentCard(entry.row, entry.position);
+        : rankStudentsWithinClass(list).map(function(entry, studentIdx) {
+            return renderStudentCard(entry.row, entry.position, studentIdx);
           }).join('');
+      const sheetCls = printPageWrapClass(sectionIndex) + ' ar-class-print-sheet rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]';
       return '' +
-        '<details class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden shadow-md ring-1 ring-slate-900/[0.03] dark:ring-white/[0.06]" open>' +
+        '<details class="' + sheetCls + '" open>' +
           '<summary class="cursor-pointer select-none list-none px-5 py-4 bg-gradient-to-r from-slate-50 to-slate-100/70 dark:from-slate-800 dark:to-slate-800/60 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-700 [&::-webkit-details-marker]:hidden">' +
             '<div class="flex items-center gap-3 min-w-0">' +
               '<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25">' +
@@ -3026,6 +4236,20 @@
     const meta = bundle.meta || {};
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     const secs = meta.class_sections;
+    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    if (mergeCohort && Array.isArray(secs) && secs.length > 1) {
+      const merged = [];
+      secs.forEach(function(sec) {
+        (sec.rows || []).forEach(function(r) { merged.push(r); });
+      });
+      merged.sort(function(a, b) {
+        return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+      });
+      return [{
+        class_name: String(meta.combined_display_name || '').trim(),
+        rows: merged,
+      }];
+    }
     if (Array.isArray(secs) && secs.length) return secs;
     return [{ class_name: '', rows: rows }];
   }
@@ -3126,7 +4350,7 @@
           '</td>' +
         '</tr>' +
       '</tfoot>';
-    const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
+    const wrapCls = printPageWrapClass(sectionIndex) + ' ar-register-class-wrap ar-class-print-sheet' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
       '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
@@ -3140,6 +4364,8 @@
     if (!rows.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
+    const meta = bundle.meta || {};
+    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
     const sections = registerSectionsFromBundle(bundle);
     const blocks = [];
     let rendered = 0;
@@ -3149,7 +4375,7 @@
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
       blocks.push(renderAttendanceRegisterSection(bundle, secRows, {
-        omitClassColumn: title.length > 0,
+        omitClassColumn: mergeCohort || title.length > 0,
         sectionTitle: title.length ? title : null,
         sectionIndex: rendered,
       }));
@@ -3242,7 +4468,7 @@
           '</td>' +
         '</tr>' +
       '</tfoot>';
-    const wrapCls = 'ar-register-class-wrap' + (sectionIndex > 0 ? ' ar-register-follow' : '');
+    const wrapCls = printPageWrapClass(sectionIndex) + ' ar-register-class-wrap ar-class-print-sheet' + (sectionIndex > 0 ? ' ar-register-follow' : '');
     return '' +
       '<div class="' + wrapCls + '">' +
       '<div class="ar-register-sheet ar-fit-sheet rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-slate-900/[0.04] dark:ring-white/[0.06]">' +
@@ -3256,6 +4482,8 @@
     if (!rows.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
+    const meta = bundle.meta || {};
+    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
     const sections = registerSectionsFromBundle(bundle);
     const blocks = [];
     let rendered = 0;
@@ -3265,7 +4493,7 @@
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
       blocks.push(renderExamEntryRegisterSection(bundle, secRows, {
-        omitClassColumn: title.length > 0,
+        omitClassColumn: mergeCohort || title.length > 0,
         sectionTitle: title.length ? title : null,
         sectionIndex: rendered,
       }));
@@ -3443,13 +4671,15 @@
 
     var sectionsHtml = classKeys.map(function (ck, idx) {
       var inner = buildExamSubsetTable(byClass[ck]);
+      var sheetIndex = classKeys.length > 1 ? idx + 1 : idx;
+      var pageCls = printPageWrapClass(sheetIndex) + (idx ? ' mt-10' : '');
       if (!inner) {
-        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+        return '<div class="' + pageCls + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(ck) + '</p>' +
           '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No grid data for this class.</p>' +
         '</div>';
       }
-      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+      return '<div class="' + pageCls + '">' +
         '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-user-graduate mr-1 text-brand-primary"></i>' + escapeHtml(ck) + '</p>' +
         '</div>' +
@@ -3589,13 +4819,15 @@
 
     const sections = groups.map(function (g, idx) {
       const inner = buildTableForRows(g.rows);
+      const sheetIndex = groups.length > 1 ? idx + 1 : idx;
+      const pageCls = printPageWrapClass(sheetIndex) + (idx ? ' mt-10' : '');
       if (!inner) {
-        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+        return '<div class="' + pageCls + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(g.level) + '</p>' +
           '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No valid day/slot rows for this class.</p>' +
         '</div>';
       }
-      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+      return '<div class="' + pageCls + '">' +
         '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-chalkboard mr-1 text-brand-primary"></i>' + escapeHtml(g.level) + '</p>' +
           '<p class="text-[11px] text-gray-600 dark:text-gray-400 mt-0.5">Days as rows · periods as columns</p>' +
@@ -3743,13 +4975,15 @@
 
     const sections = groups.map(function (g, idx) {
       const inner = buildTableForRows(g.rows);
+      const sheetIndex = groups.length > 1 ? idx + 1 : idx;
+      const pageCls = printPageWrapClass(sheetIndex) + (idx ? ' mt-10' : '');
       if (!inner) {
-        return '<div class="' + (idx ? 'mt-10' : '') + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
+        return '<div class="' + pageCls + ' rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white">' + escapeHtml(g.level) + '</p>' +
           '<p class="text-xs text-gray-500 dark:text-gray-400 mt-2">No valid rows for this class.</p>' +
         '</div>';
       }
-      return '<div class="' + (idx ? 'mt-10' : '') + '">' +
+      return '<div class="' + pageCls + '">' +
         '<div class="mb-2 rounded-lg border border-brand-primary/20 bg-brand-primary/5 dark:bg-brand-primary/10 px-3 py-2">' +
           '<p class="text-sm font-semibold text-gray-900 dark:text-white"><i class="fas fa-chalkboard mr-1 text-brand-primary"></i>' + escapeHtml(g.level) + '</p>' +
         '</div>' +
@@ -3870,14 +5104,6 @@
     const photoHtml = (first.student_photo && String(first.student_photo).trim())
       ? '<img src="' + escapeHtml(first.student_photo) + '" alt="Student photo" class="ar-rc-photo mx-auto">'
       : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
-    const summaryBox = '' +
-      '<div class="ar-rc-summary-box mt-3"><table><tbody>' +
-        '<tr><td>Overall average</td><td>' + escapeHtml(overallAvgText) + '</td></tr>' +
-        '<tr><td>Overall grade</td><td>' + escapeHtml(overallGrade) + '</td></tr>' +
-        '<tr><td>Grade points</td><td>' + escapeHtml(overallPoints) + '</td></tr>' +
-        '<tr><td>Subjects passed</td><td>' + escapeHtml(String(passCount)) + '</td></tr>' +
-        '<tr><td>Exams covered</td><td>' + escapeHtml(examsCount) + '</td></tr>' +
-      '</tbody></table></div>';
     const gradeLegendInd = (
       Array.isArray((bundle.meta || {}).grade_bands) && (bundle.meta || {}).grade_bands.length
         ? (bundle.meta || {}).grade_bands.map(function(g) {
@@ -3890,33 +5116,31 @@
     );
 
     return '' +
-      '<article class="ar-rc">' +
+      '<article class="ar-rc ar-rc-individual mb-6 ' + printPageWrapClass(0) + '">' +
         '<div class="ar-rc-deco ar-rc-deco--tr"></div>' +
         '<div class="ar-rc-deco ar-rc-deco--bl"></div>' +
         '<div class="ar-rc-inner">' +
           renderReportCardHeader('REPORT CARD', null) +
-          renderReportCardMetaGrid([
+          renderReportCardMetaWithPhoto([
             { label: 'Student name', value: first.full_name || '-' },
             { label: 'Class / section', value: first.level_name || '-' },
             { label: 'School year', value: reportSchoolYearLabel(af) },
             { label: 'Term / exam', value: termExamLabel }
-          ]) +
-          '<div class="ar-rc-body-grid ar-rc-body-grid--split">' +
-            '<div>' +
-              '<table class="ar-rc-table">' +
-                '<thead><tr>' +
-                  '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
-                '</tr></thead>' +
-                '<tbody>' + tableRows + '</tbody>' +
-              '</table>' +
+          ], photoHtml) +
+          '<div class="ar-rc-main-body">' +
+            '<table class="ar-rc-table ar-rc-table--subjects">' +
+              '<thead><tr>' +
+                '<th class="ar-rc-th-subj">Subject</th><th>Total</th><th>Obtained</th><th>Grade</th><th>Points</th>' +
+              '</tr></thead>' +
+              '<tbody>' + tableRows + '</tbody>' +
+            '</table>' +
+            '<div class="ar-rc-stats-row ar-rc-stats-row--5">' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
+              '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Exams covered</p><p class="ar-rc-stat-value">' + escapeHtml(examsCount) + '</p></div>' +
             '</div>' +
-            '<div class="text-center">' + photoHtml + summaryBox + '</div>' +
-          '</div>' +
-          '<div class="ar-rc-stats-row">' +
-            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall average</p><p class="ar-rc-stat-value">' + escapeHtml(overallAvgText) + '</p></div>' +
-            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Overall grade</p><p class="ar-rc-stat-value">' + escapeHtml(overallGrade) + '</p></div>' +
-            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Grade points</p><p class="ar-rc-stat-value">' + escapeHtml(overallPoints) + '</p></div>' +
-            '<div class="ar-rc-stat"><p class="ar-rc-stat-label">Subjects passed</p><p class="ar-rc-stat-value">' + escapeHtml(String(passCount)) + '</p></div>' +
           '</div>' +
           '<p class="ar-rc-grade-scale"><span class="font-bold">Grade scale:</span> ' + gradeLegendInd + '</p>' +
           renderReportCardFeedback('') +
@@ -3931,10 +5155,37 @@
     if (!reportType || !detailsListEl) return;
 
     const needsStudentPick = reportUsesFindStudentPicker(reportType);
+    if (
+      reportType === 'exam_all_students_performance'
+      && isExamIndividualMode()
+      && !val('gf-level')
+    ) {
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span> above to generate an individual report card for each student.</p>';
+      setGeneratedNow();
+      return;
+    }
+    if (isCombinedLevelView() && !val('gf-level')) {
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a <span class="font-medium text-gray-700 dark:text-gray-300">combined class</span> from the dropdown (Combined levels view).</p>';
+      setGeneratedNow();
+      return;
+    }
+    if (
+      (reportType === 'exam_subject_performance' || reportType === 'exam_teacher_performance')
+      && !val('gf-level')
+    ) {
+      detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span>, then choose year, term, and exam to generate this report.</p>';
+      setGeneratedNow();
+      return;
+    }
     if (needsStudentPick && !val('gf-student')) {
-      const pickMsg = isExamIndividualMode()
-        ? 'Search by <span class="font-medium text-gray-700 dark:text-gray-300">admission number or student name</span> below, then select a learner to generate the report.'
-        : 'Select a student below, or choose another report.';
+      let pickMsg;
+      if (usesExamStudentRoster()) {
+        pickMsg = val('gf-level')
+          ? 'Select a student from the dropdown below to generate the report.'
+          : 'Select a <span class="font-medium text-gray-700 dark:text-gray-300">class</span> above, then choose a student from the dropdown.';
+      } else {
+        pickMsg = 'Select a student below, or choose another report.';
+      }
       detailsListEl.innerHTML = '<p class="text-sm text-gray-500 dark:text-gray-400">' + pickMsg + '</p>';
       setGeneratedNow();
       return;
@@ -3971,11 +5222,17 @@
               ? renderExamEntryRegister(bundle)
           : (reportType === 'exam_individual_performance'
               ? renderIndividualStudentPerformanceForm(bundle)
+          : (reportType === 'exam_subject_performance'
+              ? renderExamSubjectPerformance(bundle)
+          : (reportType === 'exam_teacher_performance'
+              ? renderExamTeacherPerformance(bundle)
           : (reportType === 'timetable_exam'
           ? renderExamTimetable(bundle)
           : (reportType === 'timetable_subject'
               ? renderSubjectClassTimetable(bundle)
-              : (reportType === 'timetable_teacher'               ? renderTeacherTimetable(bundle) : renderTable(bundle))))))));
+              : (reportType === 'timetable_teacher'
+                  ? renderTeacherTimetable(bundle)
+                  : renderTable(bundle))))))))));
     } catch (e) {
       detailsListEl.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Failed to load report details.</p>';
       setGeneratedNow();
@@ -3993,9 +5250,86 @@
     studentClearBtn.classList.toggle('hidden', !String(studentHiddenEl.value || '').trim());
   }
 
+  function resetStudentSelect() {
+    if (!studentSelectEl) return;
+    studentSelectEl.innerHTML = '<option value="">Select a class first…</option>';
+    studentSelectEl.value = '';
+    studentSelectEl.disabled = true;
+  }
+
+  function renderStudentSelect(students) {
+    if (!studentSelectEl) return;
+    const prev = studentHiddenEl ? String(studentHiddenEl.value || '') : '';
+    studentSelectEl.innerHTML = '';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = students.length ? 'Select student…' : 'No students in this class';
+    studentSelectEl.appendChild(placeholder);
+    students.forEach(function(s) {
+      const sid = s.student_id != null ? String(s.student_id) : '';
+      if (!sid) return;
+      const opt = document.createElement('option');
+      opt.value = sid;
+      const name = s.full_name ? String(s.full_name).trim() : '—';
+      const adm = s.admission_number != null ? String(s.admission_number).trim() : sid;
+      opt.textContent = name + ' — ' + adm;
+      studentSelectEl.appendChild(opt);
+    });
+    studentSelectEl.disabled = !students.length;
+    if (prev && Array.from(studentSelectEl.options).some(function(o) { return o.value === prev; })) {
+      studentSelectEl.value = prev;
+    } else {
+      studentSelectEl.value = '';
+      if (studentHiddenEl) studentHiddenEl.value = '';
+    }
+  }
+
+  async function loadClassStudentRoster() {
+    if (!usesExamStudentRoster() || !studentSelectEl || !STUDENT_SEARCH_API) return;
+    const lidStr = val('gf-level');
+    const token = ++classRosterLoadToken;
+    if (!lidStr) {
+      resetStudentSelect();
+      if (studentRosterHint) {
+        studentRosterHint.textContent = 'Choose a class above, then pick a student.';
+      }
+      return;
+    }
+    if (studentRosterHint) {
+      studentRosterHint.textContent = 'Students in the selected class.';
+    }
+    studentSelectEl.disabled = true;
+    studentSelectEl.innerHTML = '<option value="">Loading students…</option>';
+    try {
+      const res = await fetch(STUDENT_SEARCH_API, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          list_all: true,
+          level_id: parseInt(lidStr, 10),
+          level_view: (levelViewEl && levelViewEl.value) ? levelViewEl.value : 'individual',
+        }),
+      });
+      const data = await res.json().catch(function() { return {}; });
+      if (token !== classRosterLoadToken) return;
+      if (!res.ok || data.success === false) {
+        studentSelectEl.innerHTML = '<option value="">Could not load students</option>';
+        studentSelectEl.disabled = true;
+        return;
+      }
+      renderStudentSelect(Array.isArray(data.students) ? data.students : []);
+    } catch (e) {
+      if (token !== classRosterLoadToken) return;
+      studentSelectEl.innerHTML = '<option value="">Could not load students</option>';
+      studentSelectEl.disabled = true;
+    }
+  }
+
   function clearStudentSelection(skipReload) {
     if (studentHiddenEl) studentHiddenEl.value = '';
     if (studentSearchEl) studentSearchEl.value = '';
+    if (studentSelectEl && !studentSelectEl.disabled) studentSelectEl.value = '';
     hideStudentSuggestions();
     updateStudentClearVisibility();
     if (!skipReload) loadDetails();
@@ -4068,7 +5402,10 @@
       var payload = { q: q };
       if (!isExamIndividualMode()) {
         var lidStr = val('gf-level');
-        if (lidStr) payload.level_id = parseInt(lidStr, 10);
+        if (lidStr) {
+          payload.level_id = parseInt(lidStr, 10);
+          payload.level_view = (levelViewEl && levelViewEl.value) ? levelViewEl.value : 'individual';
+        }
       }
       var res = await fetch(STUDENT_SEARCH_API, {
         method: 'POST',
@@ -4107,12 +5444,26 @@
     }
     loadDetails();
   });
-  ['gf-year', 'gf-level', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
+  ['gf-year', 'gf-level', 'gf-level-view', 'gf-term', 'gf-exam-name', 'gf-timetable-view', 'gf-teacher', 'gf-dfrom', 'gf-dto', 'gf-register-date'].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) el.addEventListener('change', function() {
       if (id === 'gf-exam-name') {
         userChoseNoExamFilter = !String(el.value || '').trim();
         syncLevelOptionsForSelectedExam();
+      }
+      if (id === 'gf-level-view') {
+        var prevLevel = val('gf-level');
+        syncLevelViewUi();
+        if (usesExamStudentRoster()) {
+          clearStudentSelection(true);
+          loadClassStudentRoster();
+        } else if (prevLevel && !val('gf-level')) {
+          loadDetails();
+        }
+      }
+      if (id === 'gf-level' && usesExamStudentRoster()) {
+        clearStudentSelection(true);
+        loadClassStudentRoster();
       }
       loadDetails();
     });
@@ -4137,6 +5488,13 @@
   if (studentClearBtn) {
     studentClearBtn.addEventListener('click', function() { clearStudentSelection(false); });
   }
+  if (studentSelectEl) {
+    studentSelectEl.addEventListener('change', function() {
+      const sid = String(studentSelectEl.value || '').trim();
+      if (studentHiddenEl) studentHiddenEl.value = sid;
+      loadDetails();
+    });
+  }
   document.addEventListener('click', function(ev) {
     if (!wrapStudent || wrapStudent.classList.contains('hidden')) return;
     if (wrapStudent.contains(ev.target)) return;
@@ -4149,35 +5507,67 @@
     window.scrollTo(0, 0);
   }
   function syncPrintPageMode() {
-    var root = document.documentElement;
-    var hasMarksMatrix = !!document.querySelector('#ar-preview-wrap table.ar-marks-matrix');
-    root.classList.toggle('ar-print-marks-matrix', hasMarksMatrix);
+    document.documentElement.classList.remove('ar-print-marks-matrix');
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (!wrap) return;
+    var list = document.getElementById('ar-details-list');
+    var reportType = currentReportId();
+    var individualCards = list ? list.querySelectorAll('article.ar-rc-individual') : [];
+
+    wrap.classList.remove(
+      'ar-print-single-sheet',
+      'ar-print-individual-batch',
+      'ar-print-register-batch',
+      'ar-print-data-table'
+    );
+
+    if (individualCards.length === 1) {
+      wrap.classList.add('ar-print-single-sheet');
+    } else if (individualCards.length > 1) {
+      wrap.classList.add('ar-print-individual-batch');
+    }
+
+    if (list && list.querySelector('table.ar-marks-matrix')) {
+      document.documentElement.classList.add('ar-print-marks-matrix');
+    } else if (
+      reportType === 'class_list_attendance'
+      || reportType === 'class_list_exam'
+      || (list && list.querySelector('.ar-register-class-wrap'))
+    ) {
+      wrap.classList.add('ar-print-register-batch');
+    } else if (
+      list && list.querySelector('table.ar-fit-table, table.ar-simple-table, table.ar-timetable-grid')
+    ) {
+      wrap.classList.add('ar-print-data-table');
+    }
   }
 
   window.addEventListener('beforeprint', function() {
     if (!document.getElementById('ar-preview-wrap')) return;
     document.documentElement.classList.add('ar-print-academic-report');
-    syncPrintPageMode();
-    scrollAcademicReportPaneToTop();
+    prepareAcademicReportPrint();
   });
   window.addEventListener('afterprint', function() {
     document.documentElement.classList.remove('ar-print-academic-report');
     document.documentElement.classList.remove('ar-print-marks-matrix');
+    var wrap = document.getElementById('ar-preview-wrap');
+    if (wrap) {
+      wrap.classList.remove(
+        'ar-print-single-sheet',
+        'ar-print-individual-batch',
+        'ar-print-register-batch',
+        'ar-print-data-table'
+      );
+    }
+    restoreDetailsAfterPrint();
   });
-  const printSavePdfBtn = document.getElementById('ar-print-save-pdf-btn');
-  if (printSavePdfBtn) {
-    printSavePdfBtn.addEventListener('click', function() {
-      const reportType = currentReportId();
-      if (!reportType) return;
-      var prevTitle = document.title;
-      var day = new Date().toISOString().slice(0, 10);
-      document.title = reportFileStem(reportType) + '_' + day;
-      scrollAcademicReportPaneToTop();
-      window.print();
-      window.setTimeout(function() {
-        document.title = prevTitle;
-      }, 250);
-    });
+  const printBtn = document.getElementById('ar-print-btn');
+  if (printBtn) {
+    printBtn.addEventListener('click', function() { runAcademicReportPrint({ pdfHint: false }); });
+  }
+  const downloadPdfBtn = document.getElementById('ar-download-pdf-btn');
+  if (downloadPdfBtn) {
+    downloadPdfBtn.addEventListener('click', function() { runAcademicReportPrint({ pdfHint: true }); });
   }
   const exportBtn = document.getElementById('ar-export-btn');
   const exportFmtEl = document.getElementById('ar-export-format');
@@ -4185,6 +5575,10 @@
     exportBtn.addEventListener('click', function() {
       const reportType = currentReportId();
       if (!reportType) return;
+      if (!detailsListEl || !detailsListEl.querySelector('table, article.ar-rc, .ar-register-sheet')) {
+        window.alert('Generate the report first, then download the spreadsheet.');
+        return;
+      }
       const fmt = exportFmtEl ? (exportFmtEl.value || 'csv') : 'csv';
       window.location.href = buildExportUrl(reportType, fmt);
     });

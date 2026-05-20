@@ -282,6 +282,68 @@
             min-width: 6.5rem;
         }
     }
+    .reports-combined-card {
+        border-color: color-mix(in srgb, var(--brand-primary) 32%, #e5e7eb) !important;
+    }
+    .dark .reports-combined-card {
+        border-color: color-mix(in srgb, var(--brand-primary) 38%, #374151) !important;
+    }
+    .reports-combined-card .reports-class-card-header {
+        background: linear-gradient(to right, var(--brand-primary), var(--brand-secondary)) !important;
+    }
+    .reports-combined-panel {
+        border-color: color-mix(in srgb, var(--brand-primary) 28%, #e5e7eb);
+        background: linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--brand-primary) 7%, #fff) 0%,
+            color-mix(in srgb, var(--brand-secondary) 5%, #fff) 100%
+        );
+    }
+    .dark .reports-combined-panel {
+        border-color: color-mix(in srgb, var(--brand-primary) 35%, #374151);
+        background: linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--brand-primary) 14%, #111827) 0%,
+            color-mix(in srgb, var(--brand-secondary) 10%, #111827) 100%
+        );
+    }
+    .reports-combined-panel__head {
+        border-bottom-color: color-mix(in srgb, var(--brand-primary) 18%, #e5e7eb);
+    }
+    .dark .reports-combined-panel__head {
+        border-bottom-color: color-mix(in srgb, var(--brand-primary) 22%, #374151);
+    }
+    .reports-combined-panel__divide > * + * {
+        border-color: color-mix(in srgb, var(--brand-primary) 12%, #f3f4f6);
+    }
+    .dark .reports-combined-panel__divide > * + * {
+        border-color: color-mix(in srgb, var(--brand-primary) 16%, #1f2937);
+    }
+    .brand-combo-badge {
+        background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+        color: var(--brand-primary);
+    }
+    .dark .brand-combo-badge {
+        background: color-mix(in srgb, var(--brand-primary) 24%, transparent);
+        color: color-mix(in srgb, var(--brand-primary) 72%, #fff);
+    }
+    .brand-combo-icon {
+        background: color-mix(in srgb, var(--brand-primary) 12%, #fff);
+        color: var(--brand-primary);
+    }
+    .dark .brand-combo-icon {
+        background: color-mix(in srgb, var(--brand-primary) 20%, #1f2937);
+        color: color-mix(in srgb, var(--brand-primary) 75%, #fff);
+    }
+    .reports-section-heading {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+    @media (min-width: 640px) {
+        .reports-section-heading { font-size: 0.875rem; }
+    }
 </style>
 {% endblock %}
 
@@ -315,10 +377,99 @@
 {% endif %}
 {% endblock %}
 
+{% macro reports_class_card(class_report, is_combined=false) %}
+<div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden min-w-0{% if is_combined %} reports-combined-card{% endif %}">
+    <div class="reports-class-card-header bg-gradient-to-r from-brand-primary to-brand-secondary">
+        <h3 class="reports-class-title text-white flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {% if is_combined %}
+            <span class="text-[10px] font-bold uppercase tracking-wider rounded-md bg-white/20 px-2 py-0.5">Combined</span>
+            <i class="fas fa-object-group shrink-0 text-[10px] sm:text-base"></i>
+            {% else %}
+            <i class="fas fa-graduation-cap shrink-0 text-[10px] sm:text-base"></i>
+            {% endif %}
+            {{ class_report.level_name }}{% if class_report.level_category and not is_combined %} ({{ class_report.level_category }}){% elif class_report.level_category and is_combined %} · {{ class_report.level_category }}{% endif %}
+        </h3>
+        {% if is_combined and class_report.member_level_names %}
+        <p class="text-[10px] sm:text-xs text-white/80 mt-1">Levels: {{ class_report.member_level_names | join(' · ') }}</p>
+        {% endif %}
+        <div class="reports-class-stats text-white/90">
+            <span><i class="fas fa-users mr-1"></i> {{ class_report.student_count }} student(s)</span>
+            <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}</strong></span>
+            {% if class_report.class_grade_mean is not none %}
+            <span><i class="fas fa-percentage mr-1"></i> Avg mean: <strong>{{ class_report.class_grade_mean }}%</strong></span>
+            {% endif %}
+            {% if class_report.class_grade_code and class_report.class_grade_code != '—' %}
+            <span><i class="fas fa-tag mr-1"></i> Code: <strong>{{ class_report.class_grade_code }}</strong></span>
+            <span><i class="fas fa-star mr-1"></i> Points: <strong>{{ class_report.class_grade_points }}</strong></span>
+            {% endif %}
+            <span><i class="fas fa-book mr-1"></i> {{ class_report.subjects|length }} subject(s)</span>
+        </div>
+    </div>
+    <div class="reports-class-body">
+        <p class="reports-scroll-hint" aria-hidden="true"><i class="fas fa-arrows-left-right text-[9px]"></i> Swipe for more columns</p>
+        <div class="reports-fit-sheet">
+        <table class="reports-fit-table w-full">
+            <thead>
+                <tr class="border-b border-gray-200 dark:border-gray-700">
+                    <th class="text-left font-semibold text-gray-900 dark:text-white">Subject</th>
+                    <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Mean</span><span class="hidden sm:inline">Mean</span></th>
+                    <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Hi</span><span class="hidden sm:inline">Highest</span></th>
+                    <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Lo</span><span class="hidden sm:inline">Lowest</span></th>
+                    <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">N</span><span class="hidden sm:inline">Entries</span></th>
+                    <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Pass</span><span class="hidden sm:inline">Pass Rate</span></th>
+                    <th class="text-right font-semibold text-amber-800 dark:text-amber-300">Code</th>
+                    <th class="text-right font-semibold text-amber-800 dark:text-amber-300"><span class="sm:hidden">Pts</span><span class="hidden sm:inline">Points</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subj in class_report.subjects %}
+                <tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td class="font-medium text-gray-900 dark:text-white">{{ subj.subject_name }}</td>
+                    <td class="text-right">
+                        <span class="{% if subj.mean >= 70 %}text-green-600 dark:text-green-400{% elif subj.mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-semibold">{{ subj.mean }}</span>
+                    </td>
+                    <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.max|default('-') }}</td>
+                    <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.min|default('-') }}</td>
+                    <td class="text-right text-gray-600 dark:text-gray-400">{{ subj.count }}</td>
+                    <td class="text-right">
+                        <span class="{% if subj.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif subj.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-medium">{{ subj.pass_rate }}%</span>
+                    </td>
+                    <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_code|default('—') }}</td>
+                    <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_points|default('—') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% if class_report.subjects %}
+            <tfoot>
+                <tr class="bg-gray-50 dark:bg-gray-900/60 border-t-2 border-gray-300 dark:border-gray-600 font-semibold text-gray-900 dark:text-white">
+                    <td>Overall (class)</td>
+                    <td class="text-right">
+                        <span class="{% if class_report.class_mean >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_mean }}</span>
+                    </td>
+                    <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_max if class_report.class_max is not none else '—' }}</td>
+                    <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_min if class_report.class_min is not none else '—' }}</td>
+                    <td class="text-right text-gray-600 dark:text-gray-400">{{ class_report.total_marks_entries|default(0) }}</td>
+                    <td class="text-right">
+                        <span class="{% if class_report.class_pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_pass_rate|default(0) }}%</span>
+                    </td>
+                    <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_code|default('—') }}</td>
+                    <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_points|default('—') }}</td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+        {% if not class_report.subjects %}
+        <p class="reports-empty text-center text-gray-500 dark:text-gray-400 py-6 sm:py-8">No exam data recorded for this class in the selected period.</p>
+        {% endif %}
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
 {% block content %}
 {% set role_theme = portal_page_variant|default('default') %}
 {% set role_hero_title = 'Reports' %}
-{% set role_hero_subtitle = 'Exam performance by class — scaled marks (/100), pass rates, and grade codes from Grades Registration.' %}
+{% set role_hero_subtitle = 'Individual class reports and combined level groups from Combined academic levels settings.' %}
 {% set role_hero_icon_class = 'fa-chart-line' %}
 {% include 'dashboards/includes/role_hero.html' %}
 
@@ -339,7 +490,7 @@
                     </a>
                 </div>
 
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-2 sm:gap-3">
                     <div class="reports-filter-field flex flex-col min-w-0">
                         <label for="academic_year_id" class="reports-filter-label">Year</label>
                         <select name="academic_year_id" id="academic_year_id"
@@ -372,6 +523,15 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="reports-filter-field flex flex-col min-w-0">
+                        <label for="report_view" class="reports-filter-label">Report type</label>
+                        <select name="report_view" id="report_view"
+                                class="reports-filter-select w-full rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/90 px-1.5 py-1 text-gray-900 dark:text-white focus:border-brand-primary focus:outline-none focus:ring-1 focus:ring-brand-primary/25 transition-colors">
+                            <option value="all" {% if (selected_report_view|default('all')) == 'all' %}selected{% endif %}>All (combined + individual)</option>
+                            <option value="combined" {% if (selected_report_view|default('all')) == 'combined' %}selected{% endif %}>Combined only</option>
+                            <option value="individual" {% if (selected_report_view|default('all')) == 'individual' %}selected{% endif %}>Individual only</option>
+                        </select>
+                    </div>
                     <div class="reports-filter-field flex flex-col min-w-0 col-span-2 lg:col-span-1">
                         <label for="level_id" class="reports-filter-label">Class</label>
                         <select name="level_id" id="level_id"
@@ -385,6 +545,13 @@
                         </select>
                     </div>
                 </div>
+                {% if level_combinations and level_combinations|length > 0 %}
+                <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5 pt-1">
+                    <i class="fas fa-object-group text-brand-primary" aria-hidden="true"></i>
+                    {{ level_combinations|length }} combined level group{{ 's' if level_combinations|length != 1 else '' }} from settings.
+                    <a href="{{ employee_dash_url('combined-academic-levels') }}" class="text-brand-primary hover:underline font-medium">Manage</a>
+                </p>
+                {% endif %}
 
                 <div class="reports-filter-actions flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-700/80">
                     <button type="submit"
@@ -401,90 +568,42 @@
         </div>
     </div>
 
+    {% set _combined = combined_report_data|default([]) %}
+    {% set _individual = report_data|default([]) %}
+    {% set _has_reports = report_data is not none and (_combined|length > 0 or _individual|length > 0) %}
     {% if report_data is not none %}
-    {% if report_data|length > 0 %}
+    {% if _has_reports %}
+    {% if _combined|length > 0 and (selected_report_view|default('all')) in ('all', 'combined') %}
+    
+    <div class="mb-3 sm:mb-4">
+        <h2 class="reports-section-heading text-brand-primary flex items-center gap-2">
+            <i class="fas fa-object-group" aria-hidden="true"></i>
+            Combined level reports
+        </h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Aggregated from groups in Combined academic levels settings.</p>
+    </div>
     <div class="reports-class-list mb-4 sm:mb-6">
-        {% for class_report in report_data %}
-        <div class="bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden min-w-0">
-            <div class="reports-class-card-header bg-gradient-to-r from-brand-primary to-brand-secondary">
-                <h3 class="reports-class-title text-white flex items-center gap-1.5 sm:gap-2">
-                    <i class="fas fa-graduation-cap shrink-0 text-[10px] sm:text-base"></i>
-                    {{ class_report.level_name }}{% if class_report.level_category %} ({{ class_report.level_category }}){% endif %}
-                </h3>
-                <div class="reports-class-stats text-white/90">
-                    <span><i class="fas fa-users mr-1"></i> {{ class_report.student_count }} student(s)</span>
-                    <span><i class="fas fa-chart-line mr-1"></i> Class mean: <strong>{{ class_report.class_mean }}/100</strong></span>
-                    {% if class_report.class_grade_mean is not none %}
-                    <span><i class="fas fa-percentage mr-1"></i> Avg mean: <strong>{{ class_report.class_grade_mean }}%</strong></span>
-                    {% endif %}
-                    {% if class_report.class_grade_code and class_report.class_grade_code != '—' %}
-                    <span><i class="fas fa-tag mr-1"></i> Code: <strong>{{ class_report.class_grade_code }}</strong></span>
-                    <span><i class="fas fa-star mr-1"></i> Points: <strong>{{ class_report.class_grade_points }}</strong></span>
-                    {% endif %}
-                    <span><i class="fas fa-book mr-1"></i> {{ class_report.subjects|length }} subject(s)</span>
-                </div>
-            </div>
-            <div class="reports-class-body">
-                <p class="reports-scroll-hint" aria-hidden="true"><i class="fas fa-arrows-left-right text-[9px]"></i> Swipe for more columns</p>
-                <div class="reports-fit-sheet">
-                <table class="reports-fit-table w-full">
-                    <thead>
-                        <tr class="border-b border-gray-200 dark:border-gray-700">
-                            <th class="text-left font-semibold text-gray-900 dark:text-white">Subject</th>
-                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Mean</span><span class="hidden sm:inline">Mean /100</span></th>
-                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Hi</span><span class="hidden sm:inline">Highest /100</span></th>
-                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Lo</span><span class="hidden sm:inline">Lowest /100</span></th>
-                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">N</span><span class="hidden sm:inline">Entries</span></th>
-                            <th class="text-right font-semibold text-gray-900 dark:text-white"><span class="sm:hidden">Pass</span><span class="hidden sm:inline">Pass Rate</span></th>
-                            <th class="text-right font-semibold text-amber-800 dark:text-amber-300">Code</th>
-                            <th class="text-right font-semibold text-amber-800 dark:text-amber-300"><span class="sm:hidden">Pts</span><span class="hidden sm:inline">Points</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for subj in class_report.subjects %}
-                        <tr class="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                            <td class="font-medium text-gray-900 dark:text-white">{{ subj.subject_name }}</td>
-                            <td class="text-right">
-                                <span class="{% if subj.mean >= 70 %}text-green-600 dark:text-green-400{% elif subj.mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-semibold">{{ subj.mean }}</span>
-                            </td>
-                            <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.max|default('-') }}</td>
-                            <td class="text-right text-gray-700 dark:text-gray-300">{{ subj.min|default('-') }}</td>
-                            <td class="text-right text-gray-600 dark:text-gray-400">{{ subj.count }}</td>
-                            <td class="text-right">
-                                <span class="{% if subj.pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif subj.pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %} font-medium">{{ subj.pass_rate }}%</span>
-                            </td>
-                            <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_code|default('—') }}</td>
-                            <td class="text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums">{{ subj.grade_points|default('—') }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    {% if class_report.subjects %}
-                    <tfoot>
-                        <tr class="bg-gray-50 dark:bg-gray-900/60 border-t-2 border-gray-300 dark:border-gray-600 font-semibold text-gray-900 dark:text-white">
-                            <td>Overall (class)</td>
-                            <td class="text-right">
-                                <span class="{% if class_report.class_mean >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_mean >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_mean }}</span>
-                            </td>
-                            <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_max if class_report.class_max is not none else '—' }}</td>
-                            <td class="text-right text-gray-700 dark:text-gray-300">{{ class_report.class_min if class_report.class_min is not none else '—' }}</td>
-                            <td class="text-right text-gray-600 dark:text-gray-400">{{ class_report.total_marks_entries|default(0) }}</td>
-                            <td class="text-right">
-                                <span class="{% if class_report.class_pass_rate >= 70 %}text-green-600 dark:text-green-400{% elif class_report.class_pass_rate >= 50 %}text-amber-600 dark:text-amber-400{% else %}text-red-600 dark:text-red-400{% endif %}">{{ class_report.class_pass_rate|default(0) }}%</span>
-                            </td>
-                            <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_code|default('—') }}</td>
-                            <td class="text-right font-bold text-amber-800 dark:text-amber-300 tabular-nums">{{ class_report.class_grade_points|default('—') }}</td>
-                        </tr>
-                    </tfoot>
-                    {% endif %}
-                </table>
-                {% if not class_report.subjects %}
-                <p class="reports-empty text-center text-gray-500 dark:text-gray-400 py-6 sm:py-8">No exam data recorded for this class in the selected period.</p>
-                {% endif %}
-                </div>
-            </div>
-        </div>
+        {% for class_report in _combined %}
+        {{ reports_class_card(class_report, true) }}
         {% endfor %}
     </div>
+    {% endif %}
+    {% if _individual|length > 0 and (selected_report_view|default('all')) in ('all', 'individual') %}
+    {% if _combined|length > 0 and (selected_report_view|default('all')) == 'all' %}
+    <div class="mb-3 sm:mb-4">
+        <h2 class="reports-section-heading text-gray-800 dark:text-gray-200 flex items-center gap-2">
+            <i class="fas fa-graduation-cap" aria-hidden="true"></i>
+            Individual class reports
+        </h2>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">One report per class (levels not in a combined group).</p>
+    </div>
+    {% endif %}
+    <div class="reports-class-list mb-4 sm:mb-6">
+        {% for class_report in _individual %}
+        {{ reports_class_card(class_report, false) }}
+        {% endfor %}
+    </div>
+    {% endif %}
     {% else %}
     <div class="reports-empty bg-white dark:bg-gray-800 rounded-lg sm:rounded-xl shadow-md border border-gray-200 dark:border-gray-700 p-5 sm:p-8 text-center mb-4 sm:mb-6">
         <div class="reports-empty__icon bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
@@ -517,7 +636,7 @@
         if (timer) clearTimeout(timer);
         timer = setTimeout(function() { form.submit(); }, 220);
     }
-    form.querySelectorAll('select[name="academic_year_id"], select[name="term_id"], select[name="exam_i"], select[name="level_id"]').forEach(function(el) {
+    form.querySelectorAll('select[name="academic_year_id"], select[name="term_id"], select[name="exam_i"], select[name="report_view"], select[name="level_id"]').forEach(function(el) {
         el.addEventListener('change', scheduleSubmit);
     });
 })();

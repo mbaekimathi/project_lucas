@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}Combined academic levels - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% block sidebar_content %}
+{% set cc_nav_scope = 'settings' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .level-combo-checkbox:checked {
+        accent-color: var(--brand-primary);
+    }
+    .level-combo-pick:has(input:checked) {
+        border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
+        background: color-mix(in srgb, var(--brand-primary) 8%, transparent);
+    }
+    .dark .level-combo-pick:has(input:checked) {
+        background: color-mix(in srgb, var(--brand-primary) 18%, transparent);
+    }
+    .brand-combo-panel {
+        border-color: color-mix(in srgb, var(--brand-primary) 28%, #e5e7eb);
+        background: linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--brand-primary) 7%, #fff) 0%,
+            color-mix(in srgb, var(--brand-secondary) 5%, #fff) 100%
+        );
+    }
+    .dark .brand-combo-panel {
+        border-color: color-mix(in srgb, var(--brand-primary) 35%, #374151);
+        background: linear-gradient(
+            145deg,
+            color-mix(in srgb, var(--brand-primary) 14%, #111827) 0%,
+            color-mix(in srgb, var(--brand-secondary) 10%, #111827) 100%
+        );
+    }
+    .brand-combo-panel__head {
+        border-bottom-color: color-mix(in srgb, var(--brand-primary) 18%, #e5e7eb);
+    }
+    .dark .brand-combo-panel__head {
+        border-bottom-color: color-mix(in srgb, var(--brand-primary) 22%, #374151);
+    }
+    .brand-combo-panel__divide > * + * {
+        border-color: color-mix(in srgb, var(--brand-primary) 12%, #f3f4f6);
+    }
+    .dark .brand-combo-panel__divide > * + * {
+        border-color: color-mix(in srgb, var(--brand-primary) 16%, #1f2937);
+    }
+    .brand-combo-badge {
+        background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+        color: var(--brand-primary);
+    }
+    .dark .brand-combo-badge {
+        background: color-mix(in srgb, var(--brand-primary) 24%, transparent);
+        color: color-mix(in srgb, var(--brand-primary) 72%, #fff);
+    }
+    .brand-combo-icon {
+        background: color-mix(in srgb, var(--brand-primary) 12%, #fff);
+        color: var(--brand-primary);
+    }
+    .dark .brand-combo-icon {
+        background: color-mix(in srgb, var(--brand-primary) 20%, #1f2937);
+        color: color-mix(in srgb, var(--brand-primary) 75%, #fff);
+    }
+    .brand-count-ready {
+        background: color-mix(in srgb, var(--brand-primary) 14%, #fff);
+        color: var(--brand-primary);
+    }
+    .dark .brand-count-ready {
+        background: color-mix(in srgb, var(--brand-primary) 22%, #1f2937);
+        color: color-mix(in srgb, var(--brand-primary) 75%, #fff);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set role_theme = portal_page_variant|default('default') %}
+{% set role_hero_title = 'Combined academic levels' %}
+{% set role_hero_subtitle = 'Group multiple levels for shared reports and analytics' %}
+{% set role_hero_icon_class = 'fa-layer-group' %}
+{% include 'dashboards/includes/role_hero.html' %}
+
+
+<div class="max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="{ selectedCount: 0 }">
+    <div>
+        <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white tracking-tight flex flex-wrap items-center gap-3">
+            <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-lg">
+                <i class="fas fa-layer-group text-lg" aria-hidden="true"></i>
+            </span>
+            Combined academic levels
+        </h1>
+        <p class="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-400 max-w-3xl">
+            Select <strong>two or more</strong> academic levels to treat as one combined group in reports and analytics.
+            Combined names are shown joined with <strong>/</strong> (for example <em>Form 1 / Form 2</em>).
+        </p>
+        <p class="mt-3 text-sm text-gray-600 dark:text-gray-400 max-w-3xl border-l-4 border-brand-primary/40 pl-4">
+            Levels are grouped by <strong>academic level category</strong> (same as Academic settings).
+            Each level can belong to only <strong>one</strong> combination at a time — remove an existing group first to reassign a level.
+        </p>
+    </div>
+
+    {% if combinations_display and combinations_display|length > 0 %}
+    <section class="brand-combo-panel rounded-2xl border shadow-sm overflow-hidden">
+        <div class="brand-combo-panel__head px-4 py-4 sm:px-6 flex flex-wrap items-center justify-between gap-3 border-b">
+            <div class="flex items-center gap-3">
+                <span class="brand-combo-icon inline-flex h-10 w-10 items-center justify-center rounded-xl">
+                    <i class="fas fa-object-group" aria-hidden="true"></i>
+                </span>
+                <div>
+                    <h2 class="text-base font-bold text-gray-900 dark:text-white">Active combinations</h2>
+                    <p class="text-xs text-gray-600 dark:text-gray-400">{{ combinations_display|length }} group{{ 's' if combinations_display|length != 1 else '' }} configured</p>
+                </div>
+            </div>
+        </div>
+        <ul class="brand-combo-panel__divide divide-y">
+            {% for c in combinations_display %}
+            <li class="px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-4 hover:bg-white/60 dark:hover:bg-gray-900/20 transition-colors">
+                <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2 mb-1">
+                        <span class="brand-combo-badge text-[10px] font-bold uppercase tracking-wider rounded-md px-2 py-0.5">Combined</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ c.member_count }} level{{ 's' if c.member_count != 1 else '' }}</span>
+                    </div>
+                    <p class="font-semibold text-gray-900 dark:text-white text-base">{{ c.label_name }}</p>
+                    {% if c.label_code and c.label_code != '—' %}
+                    <p class="text-xs font-mono text-gray-600 dark:text-gray-300 mt-1">{{ c.label_code }}</p>
+                    {% endif %}
+                    {% if c.categories %}
+                    <p class="mt-2 flex flex-wrap gap-1">
+                        {% for cat in c.categories.split(', ') %}
+                        <span class="text-[10px] rounded-md bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 font-medium text-gray-600 dark:text-gray-300">{{ cat }}</span>
+                        {% endfor %}
+                    </p>
+                    {% endif %}
+                </div>
+                <form method="post" action="{{ employee_dash_url('combined-academic-levels') }}" class="shrink-0"
+                      onsubmit="return confirm('Remove this combined academic levels group? Each level will appear separately again.');">
+                    <input type="hidden" name="combine_action" value="delete">
+                    <input type="hidden" name="combination_id" value="{{ c.id }}">
+                    <button type="submit"
+                            class="inline-flex items-center gap-2 text-sm font-semibold text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-3 py-2 rounded-lg border border-red-200 dark:border-red-900/50 bg-white dark:bg-gray-900 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                        <i class="fas fa-unlink text-xs" aria-hidden="true"></i>
+                        Remove
+                    </button>
+                </form>
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    <section id="combine-academic-levels" class="scroll-mt-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/80 shadow-sm overflow-hidden">
+        <div class="px-4 py-4 sm:px-6 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/90">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-object-group text-brand-primary" aria-hidden="true"></i>
+                Combine academic levels
+            </h2>
+            <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-3xl">
+                Tick levels in listing order (order defines segments in the combined name). List follows the same <strong>category</strong> sections as Academic settings.
+            </p>
+        </div>
+        <div class="p-4 sm:p-6 space-y-6">
+            {% if levels_by_category %}
+            <form method="post"
+                  action="{{ employee_dash_url('combined-academic-levels') }}"
+                  class="space-y-4"
+                  @change="selectedCount = $el.querySelectorAll('input[name=level_pick]:checked').length">
+                <input type="hidden" name="combine_action" value="create">
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/50 px-4 py-3">
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        <i class="fas fa-check-double text-brand-primary mr-1.5" aria-hidden="true"></i>
+                        Select at least <strong>two</strong> levels to save a combination.
+                    </p>
+                    <span class="text-xs font-semibold rounded-full px-3 py-1 tabular-nums"
+                          :class="selectedCount >= 2 ? 'brand-count-ready' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'"
+                          x-text="selectedCount + ' selected'">0 selected</span>
+                </div>
+                <div class="space-y-4 max-h-[32rem] overflow-y-auto rounded-xl border border-gray-100 dark:border-gray-800 p-3 bg-gray-50/30 dark:bg-gray-900/30">
+                    {% for section in levels_by_category %}
+                    <div class="exam-order-category-block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-gray-900/60 overflow-hidden shadow-sm">
+                        <div class="px-3 py-2.5 sm:px-4 border-b border-slate-200/90 dark:border-slate-700/90 bg-slate-100/90 dark:bg-slate-800/90">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
+                                <i class="fas fa-layer-group text-brand-primary opacity-80" aria-hidden="true"></i>
+                                {{ section.category }}
+                                <span class="font-normal normal-case tracking-normal text-slate-500 dark:text-slate-400">({{ section.levels|length }} level{{ 's' if section.levels|length != 1 else '' }})</span>
+                            </h3>
+                        </div>
+                        <div class="space-y-1 p-2">
+                            {% for lv in section.levels %}
+                            <label class="level-combo-pick flex items-start gap-3 px-3 py-2.5 rounded-lg border border-transparent hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer transition-colors {% if lv.id in member_level_ids %}opacity-55 cursor-not-allowed{% endif %}">
+                                <input type="checkbox"
+                                       name="level_pick"
+                                       value="{{ lv.id }}"
+                                       {% if lv.id in member_level_ids %}disabled{% endif %}
+                                       class="level-combo-checkbox mt-1 h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-brand-primary focus:ring-brand-primary">
+                                <span class="flex-1 min-w-0">
+                                    <span class="flex flex-wrap items-center gap-2">
+                                        <span class="font-medium text-sm text-gray-900 dark:text-white">{{ lv.level_name }}</span>
+                                        {% if lv.level_code %}
+                                        <span class="text-gray-500 dark:text-gray-400 font-mono text-xs">{{ lv.level_code }}</span>
+                                        {% endif %}
+                                        {% if lv.id in member_level_ids %}
+                                        <span class="text-[10px] font-bold uppercase tracking-wider rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-2 py-0.5">In use</span>
+                                        {% endif %}
+                                    </span>
+                                    {% if lv.id in member_level_ids %}
+                                    <span class="block text-xs text-amber-600 dark:text-amber-400 mt-1">Remove from current combination to select here</span>
+                                    {% endif %}
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="flex flex-wrap items-center gap-3 pt-1">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="selectedCount < 2">
+                        <i class="fas fa-link" aria-hidden="true"></i>
+                        Save combination
+                    </button>
+                    <a href="{{ employee_dash_url('academic-settings') }}"
+                       class="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary transition-colors">
+                        <i class="fas fa-cog mr-1" aria-hidden="true"></i>
+                        Manage levels in Academic settings
+                    </a>
+                </div>
+            </form>
+            {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 p-10 text-center text-gray-500 dark:text-gray-400">
+                <i class="fas fa-inbox text-3xl mb-3 block text-gray-400" aria-hidden="true"></i>
+                <p class="font-medium text-gray-700 dark:text-gray-300">No active academic levels</p>
+                <p class="text-sm mt-2 max-w-md mx-auto">Add levels under <strong>Academic settings</strong> before creating combinations.</p>
+                <a href="{{ employee_dash_url('academic-settings') }}"
+                   class="inline-flex items-center gap-2 mt-4 rounded-xl px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-brand-primary to-brand-secondary shadow-md hover:opacity-95 transition-opacity">
+                    <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    Go to Academic settings
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1394,6 +1394,55 @@ def fetch_subject_exam_combinations(cursor):
     ]
 
 
+def ensure_academic_level_combination_tables(cursor):
+    """Groups of academic levels treated as one combined level in reports and analytics."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'academic_level_combinations'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS academic_level_combinations (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            print("OK: Created academic_level_combinations table")
+        cursor.execute("SHOW TABLES LIKE 'academic_level_combination_members'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS academic_level_combination_members (
+                    combination_id INT NOT NULL,
+                    academic_level_id INT NOT NULL,
+                    sort_order INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (combination_id, academic_level_id),
+                    INDEX idx_academic_level_combo_member_level (academic_level_id)
+                )
+            """)
+            print("OK: Created academic_level_combination_members table")
+    except Exception as e:
+        print(f"ensure_academic_level_combination_tables: {e}")
+
+
+def fetch_academic_level_combinations(cursor):
+    """Return [{'id': combo_id, 'member_level_ids': [..ordered..]}, ...]."""
+    ensure_academic_level_combination_tables(cursor)
+    cursor.execute(
+        """
+        SELECT m.combination_id, m.academic_level_id, m.sort_order
+        FROM academic_level_combination_members m
+        INNER JOIN academic_level_combinations c ON c.id = m.combination_id
+        ORDER BY c.id ASC, m.sort_order ASC, m.academic_level_id ASC
+        """
+    )
+    grouped = {}
+    for row in cursor.fetchall() or []:
+        cid = row.get('combination_id') if isinstance(row, dict) else row[0]
+        lid = row.get('academic_level_id') if isinstance(row, dict) else row[1]
+        if cid is None or lid is None:
+            continue
+        grouped.setdefault(int(cid), []).append(int(lid))
+    return [{'id': cid, 'member_level_ids': mids} for cid, mids in sorted(grouped.items())]
+
+
 def merge_subjects_with_exam_combinations(subjects, combinations, id_to_gc=None, section_order=None):
     """
     Replace member subjects with one synthetic column per applicable combination.
@@ -23983,6 +24032,7 @@ def exam_evaluation():
     teachers = []
     exams = []
     registered_current_exam = None
+    level_combinations = []
 
     if connection:
         try:
@@ -24248,12 +24298,52 @@ def exam_evaluation():
                     print(f"Note: exams table may not exist yet: {e}")
                     exams = []
                 registered_current_exam = load_registered_current_exam_dict(cursor)
+                ensure_academic_level_combination_tables(cursor)
+                level_by_id = {
+                    int(l['id']): l for l in academic_levels if l.get('id') is not None
+                }
+                level_combinations = []
+                for combo in fetch_academic_level_combinations(cursor):
+                    disp = _level_combo_display_row(combo, level_by_id)
+                    members = []
+                    for mid, mname in zip(
+                        disp.get('level_ids') or [],
+                        disp.get('level_names') or [],
+                    ):
+                        lv = level_by_id.get(int(mid), {})
+                        members.append({
+                            'id': int(mid),
+                            'level_name': mname,
+                            'level_category': lv.get('level_category') or '',
+                        })
+                    level_combinations.append({
+                        'combo_id': disp.get('combo_id'),
+                        'level_name': disp.get('level_name') or '—',
+                        'members': members,
+                    })
         except Exception as e:
             print(f"Error fetching exam data: {e}")
         finally:
             connection.close()
+    else:
+        level_combinations = []
 
     open_edit_id = request.args.get('open_edit', type=int)
+
+    default_academic_year_id = ''
+    default_term_id = ''
+    current_year = next((y for y in academic_years if y.get('is_current')), None)
+    if not current_year and academic_years:
+        current_year = academic_years[0]
+    if current_year and current_year.get('id') is not None:
+        default_academic_year_id = str(current_year['id'])
+        year_id = current_year['id']
+        year_terms = [t for t in terms if t.get('academic_year_id') == year_id]
+        current_term = next((t for t in year_terms if t.get('is_current')), None)
+        if not current_term and year_terms:
+            current_term = year_terms[0]
+        if current_term and current_term.get('id') is not None:
+            default_term_id = str(current_term['id'])
     
     # Session presets for UI (timetable settings)
     session_presets_ui = {
@@ -24277,8 +24367,11 @@ def exam_evaluation():
     return render_template('dashboards/exam_evaluation.html', 
                          role=user_role,
                          academic_years=academic_years,
+                         default_academic_year_id=default_academic_year_id,
+                         default_term_id=default_term_id,
                          terms=terms,
                          academic_levels=academic_levels,
+                         level_combinations=level_combinations,
                          subjects=subjects,
                          teachers=teachers,
                          exams=exams,
@@ -24804,6 +24897,220 @@ def exam_subject_settings():
         combinations_display=combinations_display,
         exam_column_order_by_category=exam_column_order_by_category,
         exam_column_order_slots=exam_column_order_slots,
+    )
+
+
+@app.route('/dashboard/employee/combined-academic-levels', methods=['GET', 'POST'])
+@login_required
+def combined_academic_levels():
+    """Combine multiple academic levels into one group (curriculum coordinator / principal / technician)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    if not (is_academic_coordinator or is_technician or is_principal):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dashboard_path())
+
+    page_url = employee_dashboard_path('combined-academic-levels')
+
+    if request.method == 'POST':
+        combine_action = (request.form.get('combine_action') or '').strip().lower()
+        if combine_action == 'delete':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_academic_level_combination_tables(cursor)
+                    cid = request.form.get('combination_id', type=int)
+                    if not cid:
+                        flash('Missing combination.', 'error')
+                    else:
+                        cursor.execute(
+                            "DELETE FROM academic_level_combination_members WHERE combination_id = %s",
+                            (cid,),
+                        )
+                        cursor.execute(
+                            "DELETE FROM academic_level_combinations WHERE id = %s",
+                            (cid,),
+                        )
+                        connection.commit()
+                        flash('Combined academic levels group removed.', 'success')
+            except Exception as e:
+                print(f"combined_academic_levels delete: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not remove combination.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(page_url)
+
+        if combine_action == 'create':
+            try:
+                with connection.cursor() as cursor:
+                    ensure_academic_level_combination_tables(cursor)
+                    raw_ids = request.form.getlist('level_pick')
+                    level_order = []
+                    seen = set()
+                    for x in raw_ids:
+                        try:
+                            lid = int(x)
+                            if lid not in seen:
+                                seen.add(lid)
+                                level_order.append(lid)
+                        except (TypeError, ValueError):
+                            continue
+                    if len(level_order) < 2:
+                        flash('Select at least two academic levels to combine.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(page_url)
+                    placeholders = ','.join(['%s'] * len(level_order))
+                    cursor.execute(
+                        f"""
+                        SELECT id FROM academic_levels
+                        WHERE id IN ({placeholders}) AND COALESCE(level_status, 'active') = 'active'
+                        """,
+                        tuple(level_order),
+                    )
+                    ok_active = {
+                        int(r.get('id') if isinstance(r, dict) else r[0])
+                        for r in (cursor.fetchall() or [])
+                    }
+                    level_order = [lid for lid in level_order if lid in ok_active]
+                    if len(level_order) < 2:
+                        flash('Need at least two active academic levels.', 'error')
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(page_url)
+                    cursor.execute(
+                        f"""
+                        SELECT academic_level_id FROM academic_level_combination_members
+                        WHERE academic_level_id IN ({placeholders})
+                        """,
+                        tuple(level_order),
+                    )
+                    if cursor.fetchall():
+                        flash(
+                            'One or more selected levels are already part of another combination. '
+                            'Remove that combination first.',
+                            'error',
+                        )
+                        try:
+                            connection.close()
+                        except Exception:
+                            pass
+                        return redirect(page_url)
+                    cursor.execute(
+                        "INSERT INTO academic_level_combinations (created_at) VALUES (CURRENT_TIMESTAMP)"
+                    )
+                    combo_id = cursor.lastrowid
+                    for order_idx, lid in enumerate(level_order):
+                        cursor.execute(
+                            """
+                            INSERT INTO academic_level_combination_members
+                                (combination_id, academic_level_id, sort_order)
+                            VALUES (%s, %s, %s)
+                            """,
+                            (combo_id, lid, order_idx),
+                        )
+                    connection.commit()
+                    flash('Academic levels combined successfully.', 'success')
+            except Exception as e:
+                print(f"combined_academic_levels create: {e}")
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
+                flash('Could not save combination. Try again.', 'error')
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    pass
+            return redirect(page_url)
+
+    levels_by_category = []
+    combinations_display = []
+    member_level_ids = set()
+    try:
+        with connection.cursor() as cursor:
+            ensure_academic_level_combination_tables(cursor)
+            cursor.execute(
+                """
+                SELECT id, level_category, level_name, level_code
+                FROM academic_levels
+                WHERE COALESCE(level_status, 'active') = 'active'
+                ORDER BY level_category ASC, level_name ASC
+                """
+            )
+            level_rows = cursor.fetchall() or []
+            by_cat = {}
+            level_meta = {}
+            for row in level_rows:
+                lid = int(row.get('id') if isinstance(row, dict) else row[0])
+                cat = (row.get('level_category') if isinstance(row, dict) else row[1]) or 'Uncategorized'
+                name = (row.get('level_name') if isinstance(row, dict) else row[2]) or '—'
+                code = (row.get('level_code') if isinstance(row, dict) else row[3]) or ''
+                level_meta[lid] = {'level_name': name, 'level_code': code, 'level_category': cat}
+                by_cat.setdefault(cat, []).append({
+                    'id': lid,
+                    'level_name': name,
+                    'level_code': code,
+                })
+            levels_by_category = [
+                {'category': cat, 'levels': lvls}
+                for cat, lvls in sorted(by_cat.items(), key=lambda x: x[0].lower())
+            ]
+            combos = fetch_academic_level_combinations(cursor)
+            for combo in combos:
+                mids = combo.get('member_level_ids') or []
+                for mid in mids:
+                    member_level_ids.add(int(mid))
+                names = [level_meta.get(mid, {}).get('level_name') or '—' for mid in mids]
+                codes = [
+                    (level_meta.get(mid, {}).get('level_code') or '').strip()
+                    for mid in mids
+                ]
+                cats = list({
+                    level_meta.get(mid, {}).get('level_category') or 'Uncategorized'
+                    for mid in mids
+                })
+                combinations_display.append({
+                    'id': combo['id'],
+                    'label_name': ' / '.join(names),
+                    'label_code': ' / '.join(c for c in codes if c) or '—',
+                    'categories': ', '.join(sorted(cats)),
+                    'member_count': len(mids),
+                })
+    except Exception as e:
+        print(f"combined_academic_levels load: {e}")
+        flash('Could not load academic levels.', 'error')
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+    return render_template(
+        'dashboards/combined_academic_levels.html',
+        role=user_role,
+        levels_by_category=levels_by_category,
+        combinations_display=combinations_display,
+        member_level_ids=member_level_ids,
     )
 
 
@@ -27271,19 +27578,28 @@ def get_terms_for_year():
     if connection:
         try:
             with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, term_name, start_date, end_date
-                    FROM terms
-                    WHERE academic_year_id = %s AND status = 'active'
-                    ORDER BY start_date ASC
-                """, (academic_year_id,))
+                try:
+                    cursor.execute("""
+                        SELECT id, term_name, start_date, end_date, COALESCE(is_current, 0) AS is_current
+                        FROM terms
+                        WHERE academic_year_id = %s AND status = 'active'
+                        ORDER BY start_date ASC
+                    """, (academic_year_id,))
+                except Exception:
+                    cursor.execute("""
+                        SELECT id, term_name, start_date, end_date
+                        FROM terms
+                        WHERE academic_year_id = %s AND status = 'active'
+                        ORDER BY start_date ASC
+                    """, (academic_year_id,))
                 terms_results = cursor.fetchall()
                 for row in terms_results:
                     terms.append({
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'term_name': row.get('term_name', '') if isinstance(row, dict) else row[1],
                         'start_date': row.get('start_date') if isinstance(row, dict) else row[2],
-                        'end_date': row.get('end_date') if isinstance(row, dict) else row[3]
+                        'end_date': row.get('end_date') if isinstance(row, dict) else row[3],
+                        'is_current': bool(row.get('is_current')) if isinstance(row, dict) else bool(row[4] if len(row) > 4 else False),
                     })
         except Exception as e:
             print(f"Error fetching terms: {e}")
@@ -34834,8 +35150,14 @@ def exam_analytics_detail(exam_id):
         return redirect(url_for('exam_analytics'))
     top_teachers = []
     levels = []
+    level_combinations = []
+    level_view = (request.args.get('level_view') or 'individual').strip().lower()
+    if level_view not in ('individual', 'combined'):
+        level_view = 'individual'
+    level_scope = None
     try:
         with connection.cursor() as cursor:
+            ensure_academic_level_combination_tables(cursor)
             cursor.execute("""
                 SELECT e.id, e.exam_name, e.exam_type, e.exam_date, e.academic_year_id, e.term_id, e.academic_level_id,
                        al.level_name, ay.year_name, t.term_name
@@ -34874,23 +35196,45 @@ def exam_analytics_detail(exam_id):
                 selected_level_id = default_level_id if levels else None
             if not selected_level_id and levels:
                 selected_level_id = levels[0]['id']
-            cursor.execute("""
-                SELECT e.id, e.subject_id, e.supervisor_id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
-                       e.duration_minutes, e.venue, e.status, e.instructions,
-                       al.level_name, al.level_category,
-                       s.subject_name, s.subject_code,
-                       ay.year_name, t.term_name,
-                       emp.full_name as supervisor_name
-                FROM exams e
-                LEFT JOIN academic_levels al ON e.academic_level_id = al.id
-                LEFT JOIN subjects s ON e.subject_id = s.id
-                LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
-                LEFT JOIN terms t ON e.term_id = t.id
-                LEFT JOIN employees emp ON e.supervisor_id = emp.id
-                WHERE TRIM(COALESCE(e.exam_name,'')) = %s AND e.academic_year_id = %s AND e.term_id = %s AND e.academic_level_id = %s
-                ORDER BY e.exam_date, e.start_time
-            """, (exam_name, ay_id, term_id, selected_level_id))
-            rows = cursor.fetchall()
+            level_combinations = fetch_academic_level_combinations(cursor)
+            level_scope = _exam_analytics_resolve_level_scope(
+                level_view, selected_level_id, levels, level_combinations
+            )
+            if level_view == 'combined' and not level_scope.get('is_combined_view'):
+                flash(
+                    'No combined level group includes the selected class. '
+                    'Create groups under Settings → Combined academic levels, or use Individual class view.',
+                    'warning',
+                )
+                level_view = 'individual'
+                level_scope = _exam_analytics_resolve_level_scope(
+                    'individual', selected_level_id, levels, level_combinations
+                )
+            scope_level_ids = level_scope.get('level_ids') or []
+            rows = []
+            if scope_level_ids:
+                lvl_ph = ','.join(['%s'] * len(scope_level_ids))
+                cursor.execute(
+                    f"""
+                    SELECT e.id, e.subject_id, e.supervisor_id, e.exam_name, e.exam_type, e.exam_date, e.session_type, e.start_time, e.end_time,
+                           e.duration_minutes, e.venue, e.status, e.instructions,
+                           al.level_name, al.level_category,
+                           s.subject_name, s.subject_code,
+                           ay.year_name, t.term_name,
+                           emp.full_name as supervisor_name
+                    FROM exams e
+                    LEFT JOIN academic_levels al ON e.academic_level_id = al.id
+                    LEFT JOIN subjects s ON e.subject_id = s.id
+                    LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+                    LEFT JOIN terms t ON e.term_id = t.id
+                    LEFT JOIN employees emp ON e.supervisor_id = emp.id
+                    WHERE TRIM(COALESCE(e.exam_name,'')) = %s AND e.academic_year_id = %s AND e.term_id = %s
+                      AND e.academic_level_id IN ({lvl_ph})
+                    ORDER BY e.exam_date, e.start_time
+                    """,
+                    (exam_name, ay_id, term_id, *scope_level_ids),
+                )
+                rows = cursor.fetchall()
         slots = []
         for r in rows:
             start_time_val = r.get('start_time') if isinstance(r, dict) else r[7]
@@ -35076,11 +35420,7 @@ def exam_analytics_detail(exam_id):
         students_marks = []
         subject_analytics = []
         class_mean = 0.0
-        level_name_for_students = ''
-        for lev in levels:
-            if lev['id'] == selected_level_id:
-                level_name_for_students = (lev.get('level_name') or '').strip()
-                break
+        level_names_for_students = list(level_scope.get('level_names') or []) if level_scope else []
         try:
             with connection.cursor() as cur2:
                 ensure_subject_exam_total_marks_column(cur2)
@@ -35163,12 +35503,18 @@ def exam_analytics_detail(exam_id):
                     label = (band.get('label') or '').strip()
                     return code or label or ''
 
-                cur2.execute("""
-                    SELECT student_id, full_name FROM students
-                    WHERE current_grade = %s AND status = 'in session'
-                    ORDER BY full_name ASC
-                """, (level_name_for_students,))
-                all_students_rows = cur2.fetchall()
+                all_students_rows = []
+                if level_names_for_students:
+                    nm_ph = ','.join(['%s'] * len(level_names_for_students))
+                    cur2.execute(
+                        f"""
+                        SELECT student_id, full_name FROM students
+                        WHERE current_grade IN ({nm_ph}) AND status = 'in session'
+                        ORDER BY full_name ASC
+                        """,
+                        tuple(level_names_for_students),
+                    )
+                    all_students_rows = cur2.fetchall()
                 for srow in all_students_rows:
                     sid = srow.get('student_id') if isinstance(srow, dict) else srow[0]
                     full_name = (srow.get('full_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else sid)) if srow else sid
@@ -35371,13 +35717,11 @@ def exam_analytics_detail(exam_id):
             class_mean = 0.0
             class_mean_grade = ''
             top_teachers = []
-        selected_level_name = ''
-        for lev in levels:
-            if lev['id'] == selected_level_id:
-                selected_level_name = lev.get('level_name', '') or ''
-                if lev.get('level_category'):
-                    selected_level_name = (selected_level_name + ' (' + lev['level_category'] + ')').strip()
-                break
+        selected_level_name = (level_scope.get('display_name') or '—') if level_scope else ''
+        if level_scope and not level_scope.get('is_combined_view'):
+            lcat = level_scope.get('level_category') or ''
+            if lcat:
+                selected_level_name = f"{selected_level_name} ({lcat})"
         first_row = rows[0] if rows else row
         exam_summary = {
             'exam_name': exam_name,
@@ -35410,6 +35754,10 @@ def exam_analytics_detail(exam_id):
         class_mean=class_mean,
         class_mean_grade=class_mean_grade,
         is_academic_coordinator=is_academic_coordinator,
+        level_view=level_view,
+        level_combinations=level_combinations,
+        is_combined_level_view=bool(level_scope and level_scope.get('is_combined_view')),
+        combined_member_level_names=level_scope.get('level_names') if level_scope and level_scope.get('is_combined_view') else [],
     )
 
 # Exam Analytics - single class/subject analytics (mean grade, position, top teachers)
@@ -36899,6 +37247,290 @@ def get_students_by_academic_level():
         print(f"Error in get_students_by_academic_level: {e}")
         return jsonify({'success': False, 'message': 'An error occurred.'}), 500
 
+def _level_combo_display_row(combo, level_by_id):
+    """Build label fields for a combined academic level group."""
+    mids = combo.get('member_level_ids') or []
+    names = []
+    codes = []
+    cats = []
+    for mid in mids:
+        lv = level_by_id.get(int(mid)) or {}
+        names.append((lv.get('level_name') or '—').strip())
+        codes.append((lv.get('level_code') or '').strip())
+        cat = (lv.get('level_category') or '').strip()
+        if cat:
+            cats.append(cat)
+    label_name = ' / '.join(names) if names else '—'
+    label_code = ' / '.join(c for c in codes if c) or '—'
+    if cats and len(set(cats)) == 1:
+        level_category = cats[0]
+    else:
+        level_category = ', '.join(sorted(set(cats))) if cats else ''
+    return {
+        'combo_id': int(combo['id']),
+        'level_ids': [int(x) for x in mids],
+        'level_names': names,
+        'level_name': label_name,
+        'level_category': level_category,
+        'level_code': label_code,
+    }
+
+
+def _exam_analytics_resolve_level_scope(level_view, selected_level_id, levels, level_combinations):
+    """Resolve which academic level(s) to include for exam analytics detail."""
+    level_by_id = {int(l['id']): l for l in (levels or []) if l.get('id') is not None}
+    combo_by_member = {}
+    for combo in level_combinations or []:
+        disp = _level_combo_display_row(combo, level_by_id)
+        for mid in disp.get('level_ids') or []:
+            combo_by_member[int(mid)] = disp
+
+    lv = level_by_id.get(int(selected_level_id)) if selected_level_id else None
+    single_name = (lv.get('level_name') or '').strip() if lv else ''
+
+    if (level_view or '').strip().lower() == 'combined':
+        disp = combo_by_member.get(int(selected_level_id)) if selected_level_id else None
+        if not disp and level_combinations:
+            disp = _level_combo_display_row(level_combinations[0], level_by_id)
+        if disp and disp.get('level_ids'):
+            return {
+                'level_ids': list(disp['level_ids']),
+                'level_names': list(disp['level_names']),
+                'display_name': disp['level_name'],
+                'level_category': disp.get('level_category') or '',
+                'is_combined_view': True,
+                'combo_id': disp.get('combo_id'),
+            }
+
+    return {
+        'level_ids': [int(selected_level_id)] if selected_level_id else [],
+        'level_names': [single_name] if single_name else [],
+        'display_name': single_name or '—',
+        'level_category': (lv.get('level_category') or '') if lv else '',
+        'is_combined_view': False,
+        'combo_id': None,
+    }
+
+
+def _build_exam_class_report(
+    cursor,
+    level_ids,
+    level_names,
+    display_name,
+    level_category,
+    term_id,
+    academic_year_id,
+    exam_extra_sql,
+    exam_extra_params,
+    default_grade_bands,
+    subject_grade_bands,
+    *,
+    is_combined=False,
+    combo_id=None,
+    primary_level_id=None,
+):
+    """Build one exam performance report card for one level or a combined level group."""
+    level_ids = [int(x) for x in (level_ids or []) if x is not None]
+    level_names = [str(n).strip() for n in (level_names or []) if n and str(n).strip()]
+    if not level_ids or not level_names:
+        return None
+
+    level_placeholders = ','.join(['%s'] * len(level_ids))
+    name_placeholders = ','.join(['%s'] * len(level_names))
+
+    cursor.execute(
+        f"""
+        SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
+               s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
+               ay.year_name, t.term_name
+        FROM exams e
+        LEFT JOIN subjects s ON e.subject_id = s.id
+        LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
+        LEFT JOIN terms t ON e.term_id = t.id
+        WHERE e.academic_level_id IN ({level_placeholders})
+        AND (%s IS NULL OR e.term_id = %s)
+        AND (%s IS NULL OR e.academic_year_id = %s)
+        {exam_extra_sql}
+        ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC,
+                 s.subject_name ASC,
+                 e.exam_name ASC
+        """,
+        tuple(level_ids) + (term_id, term_id, academic_year_id, academic_year_id) + tuple(exam_extra_params),
+    )
+    exam_rows = cursor.fetchall() or []
+
+    subject_stats = {}
+    all_marks_for_class = []
+    students_in_class = set()
+    student_subject_scaled = defaultdict(lambda: defaultdict(list))
+
+    for ex in exam_rows:
+        exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
+        subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
+        if isinstance(ex, dict):
+            subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
+            subject_etm = ex.get('exam_total_marks')
+            subject_edo = ex.get('exam_display_order')
+        else:
+            subject_name = ex[4] or ex[5] or 'N/A'
+            subject_etm = ex[6] if len(ex) > 6 else None
+            subject_edo = ex[7] if len(ex) > 7 else None
+
+        if not subject_id:
+            continue
+        if subject_id not in subject_stats:
+            try:
+                edo_n = int(subject_edo) if subject_edo is not None and str(subject_edo).strip().isdigit() else (
+                    int(subject_edo) if isinstance(subject_edo, int) else 10**9
+                )
+            except (TypeError, ValueError):
+                edo_n = 10**9
+            subject_stats[subject_id] = {
+                'subject_name': subject_name,
+                'exam_total_marks': subject_etm,
+                'exam_display_order': edo_n,
+                'exam_ids': [],
+                'marks': [],
+                'mean': 0,
+                'min': None,
+                'max': None,
+                'count': 0,
+                'pass_count': 0,
+                'pass_rate': 0,
+            }
+        subject_stats[subject_id]['exam_ids'].append(exam_id)
+
+        cursor.execute(
+            f"""
+            SELECT sm.student_id, sm.marks, sub.exam_total_marks
+            FROM student_marks sm
+            INNER JOIN students st ON sm.student_id = st.student_id
+            INNER JOIN subjects sub ON sm.subject_id = sub.id
+            WHERE sm.exam_id = %s AND st.current_grade IN ({name_placeholders})
+            """,
+            [exam_id] + level_names,
+        )
+        mark_rows = cursor.fetchall() or []
+        for mr in mark_rows:
+            sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
+            mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
+            etm = mr.get('exam_total_marks') if isinstance(mr, dict) else (mr[2] if len(mr) > 2 else None)
+            if etm is None:
+                etm = subject_stats[subject_id].get('exam_total_marks')
+            scaled = raw_mark_to_percentage(mval, etm)
+            if scaled is not None:
+                subject_stats[subject_id]['marks'].append(scaled)
+                all_marks_for_class.append(scaled)
+                students_in_class.add(sid)
+                student_subject_scaled[sid][subject_id].append(scaled)
+                if scaled >= 50:
+                    subject_stats[subject_id]['pass_count'] += 1
+
+    registered_subject_ids = set()
+    for lid in level_ids:
+        for _sub in _library_subjects_for_level(cursor, lid):
+            try:
+                registered_subject_ids.add(int(_sub.get('id') or 0))
+            except (TypeError, ValueError):
+                pass
+    if registered_subject_ids:
+        subject_stats = {
+            sid: sd for sid, sd in subject_stats.items() if sid in registered_subject_ids
+        }
+
+    subject_list = []
+
+    def _report_subject_sort_key(kv):
+        sid_i, sd = kv
+        try:
+            eo = int(sd.get('exam_display_order') or 10**9)
+        except (TypeError, ValueError):
+            eo = 10**9
+        try:
+            sid_key = int(sid_i)
+        except (TypeError, ValueError):
+            sid_key = 0
+        return (eo, str(sd.get('subject_name') or '').lower(), sid_key)
+
+    for sid, sdata in sorted(subject_stats.items(), key=_report_subject_sort_key):
+        marks = sdata['marks']
+        if marks:
+            sdata['mean'] = round_mark_display(sum(marks) / len(marks)) or 0
+            sdata['min'] = round_mark_display(min(marks))
+            sdata['max'] = round_mark_display(max(marks))
+            sdata['count'] = len(marks)
+            sdata['pass_rate'] = round_mark_display(100 * sdata['pass_count'] / len(marks)) if marks else 0
+        else:
+            sdata['mean'] = 0
+            sdata['min'] = None
+            sdata['max'] = None
+            sdata['count'] = 0
+            sdata['pass_rate'] = 0
+        try:
+            sid_int = int(sid)
+        except (TypeError, ValueError):
+            sid_int = 0
+        subj_bands = subject_grade_bands.get(sid_int) or default_grade_bands
+        grade_code, grade_points = grade_code_and_points_from_pct(
+            sdata['mean'] if marks else None, subj_bands
+        )
+        subject_list.append({
+            'subject_name': sdata['subject_name'],
+            'mean': sdata['mean'],
+            'min': sdata['min'],
+            'max': sdata['max'],
+            'count': sdata['count'],
+            'pass_rate': sdata['pass_rate'],
+            'grade_code': grade_code or '—',
+            'grade_points': grade_points if grade_points is not None else '—',
+        })
+
+    student_overall_means = []
+    for _sid, submap in student_subject_scaled.items():
+        sub_avgs = []
+        for _vals in submap.values():
+            if _vals:
+                sub_avgs.append(sum(_vals) / len(_vals))
+        if sub_avgs:
+            student_overall_means.append(sum(sub_avgs) / len(sub_avgs))
+    class_grade_mean = (
+        round_mark_display(sum(student_overall_means) / len(student_overall_means))
+        if student_overall_means else None
+    )
+    class_grade_code, class_grade_points = grade_code_and_points_from_pct(
+        class_grade_mean, default_grade_bands
+    )
+
+    class_mean = round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
+    pass_n = sum(1 for m in all_marks_for_class if m >= 50)
+    class_pass_rate = (
+        round_mark_display(100 * pass_n / len(all_marks_for_class)) if all_marks_for_class else 0
+    )
+    class_max = round_mark_display(max(all_marks_for_class)) if all_marks_for_class else None
+    class_min = round_mark_display(min(all_marks_for_class)) if all_marks_for_class else None
+
+    out_level_id = primary_level_id if primary_level_id is not None else (level_ids[0] if level_ids else None)
+    return {
+        'level_id': out_level_id,
+        'combo_id': combo_id,
+        'is_combined': bool(is_combined),
+        'member_level_ids': list(level_ids) if is_combined else [],
+        'member_level_names': list(level_names) if is_combined else [],
+        'level_name': display_name,
+        'level_category': level_category or '',
+        'subjects': subject_list,
+        'class_mean': class_mean,
+        'class_max': class_max,
+        'class_min': class_min,
+        'class_pass_rate': class_pass_rate,
+        'class_grade_mean': class_grade_mean,
+        'class_grade_code': class_grade_code or '—',
+        'class_grade_points': class_grade_points if class_grade_points is not None else '—',
+        'student_count': len(students_in_class),
+        'total_marks_entries': len(all_marks_for_class),
+    }
+
+
 # Reports Route (for academic coordinators)
 @app.route('/dashboard/employee/reports')
 @login_required
@@ -36967,11 +37599,16 @@ def reports():
     has_term_param = 'term_id' in request.args
     has_year_param = 'academic_year_id' in request.args
     has_exam_i_param = 'exam_i' in request.args
+    report_view = (request.args.get('report_view') or 'all').strip().lower()
+    if report_view not in ('all', 'combined', 'individual'):
+        report_view = 'all'
 
     academic_levels = []
     terms = []
     academic_years = []
-    report_data = None  # {level_id: {level_name, subjects: [...], class_mean, student_count}}
+    report_data = None
+    combined_report_data = None
+    level_combinations = []
     stats_snapshot = {'active_students': 0, 'teachers': 0, 'subjects': 0}
     exam_group_options = []
     selected_exam_i = -1
@@ -36984,7 +37621,9 @@ def reports():
             with connection.cursor() as cursor:
                 ensure_subject_exam_display_order_columns(cursor)
                 ensure_subject_exam_total_marks_column(cursor)
+                ensure_academic_level_combination_tables(cursor)
                 stats_snapshot = _fetch_reports_snapshot_counts(cursor)
+                level_combinations = fetch_academic_level_combinations(cursor)
                 # Get academic levels
                 cursor.execute("""
                     SELECT id, level_name, level_category, level_description
@@ -37123,190 +37762,78 @@ def reports():
 
                 # Build report if filters provided
                 if level_id or term_id or academic_year_id:
-                    levels_to_report = [l for l in academic_levels if not level_id or l['id'] == level_id]
+                    level_by_id = {int(l['id']): l for l in academic_levels if l.get('id') is not None}
+                    member_level_ids_set = set()
+                    combo_by_member = {}
+                    for combo in level_combinations:
+                        disp = _level_combo_display_row(combo, level_by_id)
+                        for mid in disp.get('level_ids') or []:
+                            member_level_ids_set.add(int(mid))
+                            combo_by_member[int(mid)] = disp
+
                     report_data = []
+                    combined_report_data = []
                     default_grade_bands, subject_grade_bands = load_grade_bands_from_db(cursor)
 
-                    for lev in levels_to_report:
-                        level_name = lev['level_name']
-                        # Get exams for this level (optionally filtered by term/year/exam group)
-                        cursor.execute(f"""
-                            SELECT e.id, e.exam_name, e.subject_id, e.exam_date,
-                                   s.subject_name, s.subject_code, s.exam_total_marks, s.exam_display_order,
-                                   ay.year_name, t.term_name
-                            FROM exams e
-                            LEFT JOIN subjects s ON e.subject_id = s.id
-                            LEFT JOIN academic_years ay ON e.academic_year_id = ay.id
-                            LEFT JOIN terms t ON e.term_id = t.id
-                            WHERE e.academic_level_id = %s
-                            AND (%s IS NULL OR e.term_id = %s)
-                            AND (%s IS NULL OR e.academic_year_id = %s)
-                            {exam_extra_sql}
-                            ORDER BY COALESCE(s.exam_display_order, 1000000000) ASC,
-                                     s.subject_name ASC,
-                                     e.exam_name ASC
-                        """, (lev['id'], term_id, term_id, academic_year_id, academic_year_id, *exam_extra_params))
-                        exam_rows = cursor.fetchall() or []
-                        
-                        # Group by subject - each exam slot is one subject
-                        subject_stats = {}  # subject_id -> {name, exam_ids, mean, min, max, count, pass_count}
-                        all_marks_for_class = []
-                        students_in_class = set()
-                        student_subject_scaled = defaultdict(lambda: defaultdict(list))
-                        
-                        for ex in exam_rows:
-                            exam_id = ex.get('id') if isinstance(ex, dict) else ex[0]
-                            subject_id = ex.get('subject_id') if isinstance(ex, dict) else ex[2]
-                            if isinstance(ex, dict):
-                                subject_name = ex.get('subject_name') or ex.get('subject_code') or 'N/A'
-                                subject_etm = ex.get('exam_total_marks')
-                                subject_edo = ex.get('exam_display_order')
-                            else:
-                                subject_name = ex[4] or ex[5] or 'N/A'
-                                subject_etm = ex[6] if len(ex) > 6 else None
-                                subject_edo = ex[7] if len(ex) > 7 else None
-                            
-                            if not subject_id:
+                    combos_to_build = []
+                    for combo in level_combinations:
+                        disp = _level_combo_display_row(combo, level_by_id)
+                        if not disp.get('level_ids'):
+                            continue
+                        if level_id:
+                            if level_id not in disp['level_ids']:
                                 continue
-                            if subject_id not in subject_stats:
-                                try:
-                                    edo_n = int(subject_edo) if subject_edo is not None and str(subject_edo).strip().isdigit() else (int(subject_edo) if isinstance(subject_edo, int) else 10**9)
-                                except (TypeError, ValueError):
-                                    edo_n = 10**9
-                                subject_stats[subject_id] = {
-                                    'subject_name': subject_name,
-                                    'exam_total_marks': subject_etm,
-                                    'exam_display_order': edo_n,
-                                    'exam_ids': [],
-                                    'marks': [],
-                                    'mean': 0, 'min': None, 'max': None, 'count': 0,
-                                    'pass_count': 0, 'pass_rate': 0
-                                }
-                            subject_stats[subject_id]['exam_ids'].append(exam_id)
-                            
-                            # Get marks for this exam (scaled to /100 using exam subject settings)
-                            cursor.execute("""
-                                SELECT sm.student_id, sm.marks, sub.exam_total_marks
-                                FROM student_marks sm
-                                INNER JOIN students st ON sm.student_id = st.student_id
-                                INNER JOIN subjects sub ON sm.subject_id = sub.id
-                                WHERE sm.exam_id = %s AND st.current_grade = %s
-                            """, (exam_id, level_name))
-                            mark_rows = cursor.fetchall() or []
-                            for mr in mark_rows:
-                                sid = mr.get('student_id') if isinstance(mr, dict) else mr[0]
-                                mval = mr.get('marks') if isinstance(mr, dict) else mr[1]
-                                etm = mr.get('exam_total_marks') if isinstance(mr, dict) else (mr[2] if len(mr) > 2 else None)
-                                if etm is None:
-                                    etm = subject_stats[subject_id].get('exam_total_marks')
-                                scaled = raw_mark_to_percentage(mval, etm)
-                                if scaled is not None:
-                                    subject_stats[subject_id]['marks'].append(scaled)
-                                    all_marks_for_class.append(scaled)
-                                    students_in_class.add(sid)
-                                    student_subject_scaled[sid][subject_id].append(scaled)
-                                    if scaled >= 50:
-                                        subject_stats[subject_id]['pass_count'] += 1
+                        combos_to_build.append(disp)
 
-                        registered_subject_ids = set()
-                        for _sub in _library_subjects_for_level(cursor, lev['id']):
-                            try:
-                                registered_subject_ids.add(int(_sub.get('id') or 0))
-                            except (TypeError, ValueError):
-                                pass
-                        if registered_subject_ids:
-                            subject_stats = {
-                                sid: sd for sid, sd in subject_stats.items()
-                                if sid in registered_subject_ids
-                            }
-                        
-                        # Compute subject stats (column order matches Exam subject settings: exam_display_order)
-                        subject_list = []
-
-                        def _report_subject_sort_key(kv):
-                            sid_i, sd = kv
-                            try:
-                                eo = int(sd.get('exam_display_order') or 10**9)
-                            except (TypeError, ValueError):
-                                eo = 10**9
-                            try:
-                                sid_key = int(sid_i)
-                            except (TypeError, ValueError):
-                                sid_key = 0
-                            return (eo, str(sd.get('subject_name') or '').lower(), sid_key)
-
-                        for sid, sdata in sorted(subject_stats.items(), key=_report_subject_sort_key):
-                            marks = sdata['marks']
-                            if marks:
-                                sdata['mean'] = round_mark_display(sum(marks) / len(marks)) or 0
-                                sdata['min'] = round_mark_display(min(marks))
-                                sdata['max'] = round_mark_display(max(marks))
-                                sdata['count'] = len(marks)
-                                sdata['pass_rate'] = round_mark_display(100 * sdata['pass_count'] / len(marks)) if marks else 0
-                            else:
-                                sdata['mean'] = 0
-                                sdata['min'] = None
-                                sdata['max'] = None
-                                sdata['count'] = 0
-                                sdata['pass_rate'] = 0
-                            try:
-                                sid_int = int(sid)
-                            except (TypeError, ValueError):
-                                sid_int = 0
-                            subj_bands = subject_grade_bands.get(sid_int) or default_grade_bands
-                            grade_code, grade_points = grade_code_and_points_from_pct(
-                                sdata['mean'] if marks else None, subj_bands
+                    if report_view in ('all', 'combined'):
+                        for disp in combos_to_build:
+                            row = _build_exam_class_report(
+                                cursor,
+                                disp['level_ids'],
+                                disp['level_names'],
+                                disp['level_name'],
+                                disp.get('level_category') or '',
+                                term_id,
+                                academic_year_id,
+                                exam_extra_sql,
+                                exam_extra_params,
+                                default_grade_bands,
+                                subject_grade_bands,
+                                is_combined=True,
+                                combo_id=disp['combo_id'],
+                                primary_level_id=disp['level_ids'][0] if disp.get('level_ids') else None,
                             )
-                            subject_list.append({
-                                'subject_name': sdata['subject_name'],
-                                'mean': sdata['mean'],
-                                'min': sdata['min'],
-                                'max': sdata['max'],
-                                'count': sdata['count'],
-                                'pass_rate': sdata['pass_rate'],
-                                'grade_code': grade_code or '—',
-                                'grade_points': grade_points if grade_points is not None else '—',
-                            })
+                            if row:
+                                combined_report_data.append(row)
 
-                        student_overall_means = []
-                        for _sid, submap in student_subject_scaled.items():
-                            sub_avgs = []
-                            for _vals in submap.values():
-                                if _vals:
-                                    sub_avgs.append(sum(_vals) / len(_vals))
-                            if sub_avgs:
-                                student_overall_means.append(sum(sub_avgs) / len(sub_avgs))
-                        class_grade_mean = (
-                            round_mark_display(sum(student_overall_means) / len(student_overall_means))
-                            if student_overall_means else None
-                        )
-                        class_grade_code, class_grade_points = grade_code_and_points_from_pct(
-                            class_grade_mean, default_grade_bands
-                        )
-                        
-                        class_mean = round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
-                        pass_n = sum(1 for m in all_marks_for_class if m >= 50)
-                        class_pass_rate = (
-                            round_mark_display(100 * pass_n / len(all_marks_for_class)) if all_marks_for_class else 0
-                        )
-                        class_max = round_mark_display(max(all_marks_for_class)) if all_marks_for_class else None
-                        class_min = round_mark_display(min(all_marks_for_class)) if all_marks_for_class else None
-
-                        report_data.append({
-                            'level_id': lev['id'],
-                            'level_name': level_name,
-                            'level_category': lev.get('level_category', ''),
-                            'subjects': subject_list,
-                            'class_mean': class_mean,
-                            'class_max': class_max,
-                            'class_min': class_min,
-                            'class_pass_rate': class_pass_rate,
-                            'class_grade_mean': class_grade_mean,
-                            'class_grade_code': class_grade_code or '—',
-                            'class_grade_points': class_grade_points if class_grade_points is not None else '—',
-                            'student_count': len(students_in_class),
-                            'total_marks_entries': len(all_marks_for_class),
-                        })
+                    if report_view in ('all', 'individual'):
+                        if level_id:
+                            levels_to_report = [l for l in academic_levels if l['id'] == level_id]
+                            if report_view == 'all' and int(level_id) in member_level_ids_set:
+                                levels_to_report = []
+                        else:
+                            levels_to_report = [
+                                l for l in academic_levels
+                                if int(l['id']) not in member_level_ids_set
+                            ]
+                        for lev in levels_to_report:
+                            row = _build_exam_class_report(
+                                cursor,
+                                [lev['id']],
+                                [lev['level_name']],
+                                lev['level_name'],
+                                lev.get('level_category') or '',
+                                term_id,
+                                academic_year_id,
+                                exam_extra_sql,
+                                exam_extra_params,
+                                default_grade_bands,
+                                subject_grade_bands,
+                                is_combined=False,
+                                primary_level_id=lev['id'],
+                            )
+                            if row:
+                                report_data.append(row)
         except Exception as e:
             print(f"Error in reports: {e}")
             import traceback
@@ -37321,6 +37848,9 @@ def reports():
         terms=terms,
         academic_years=academic_years,
         report_data=report_data,
+        combined_report_data=combined_report_data,
+        level_combinations=level_combinations,
+        selected_report_view=report_view,
         selected_level_id=level_id,
         selected_term_id=term_id,
         selected_academic_year_id=academic_year_id,
@@ -38410,14 +38940,83 @@ def _coerce_academic_report_filters(f):
             out[dk] = str(dv).strip() or None
     tv = (f.get('timetable_view') or '').strip().lower()
     out['timetable_view'] = tv if tv in ('student', 'teacher') else 'student'
+    lv = (f.get('level_view') or 'individual').strip().lower()
+    out['level_view'] = lv if lv in ('individual', 'combined') else 'individual'
     return out
 
 
-def _group_class_list_rows(rows):
+def _sql_filter_academic_level_ids(q, params, column, level_ids):
+    """Append AND filter for one or many academic_level_id values."""
+    if not level_ids:
+        return q, params
+    if len(level_ids) == 1:
+        q += f" AND {column} = %s"
+        params.append(level_ids[0])
+    else:
+        ph = ','.join(['%s'] * len(level_ids))
+        q += f" AND {column} IN ({ph})"
+        params.extend(level_ids)
+    return q, params
+
+
+def _sql_filter_student_current_grade(q, params, level_ids, table_alias=None):
+    """Append AND filter matching students.current_grade to level name(s)."""
+    if not level_ids:
+        return q, params
+    prefix = f"{table_alias}." if table_alias else ""
+    if len(level_ids) == 1:
+        q += (
+            f" AND {prefix}current_grade = (SELECT level_name FROM academic_levels"
+            f" WHERE id = %s LIMIT 1)"
+        )
+        params.append(level_ids[0])
+    else:
+        ph = ','.join(['%s'] * len(level_ids))
+        q += (
+            f" AND {prefix}current_grade IN (SELECT level_name FROM academic_levels"
+            f" WHERE id IN ({ph}))"
+        )
+        params.extend(level_ids)
+    return q, params
+
+
+def _resolve_academic_report_level_scope(cursor, level_view, level_id):
+    """Resolve level_ids for academic reports (individual class or combined group)."""
+    ensure_academic_level_combination_tables(cursor)
+    combos = fetch_academic_level_combinations(cursor)
+    cursor.execute("""
+        SELECT id, level_name, level_category, level_code
+        FROM academic_levels
+        WHERE level_status = 'active'
+        ORDER BY level_name
+    """)
+    levels = []
+    for row in cursor.fetchall() or []:
+        levels.append({
+            'id': row.get('id') if isinstance(row, dict) else row[0],
+            'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
+            'level_category': row.get('level_category') if isinstance(row, dict) else (row[2] if len(row) > 2 else ''),
+            'level_code': row.get('level_code') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
+        })
+    return _exam_analytics_resolve_level_scope(level_view, level_id, levels, combos)
+
+
+def _group_class_list_rows(rows, is_combined_level=False, combined_display_name=None):
     """Split flat student rows into sections by current_grade (for all-classes reports)."""
     from itertools import groupby
     if not rows:
         return []
+
+    if is_combined_level:
+        label = (combined_display_name or '').strip() or 'Combined class'
+        rows_sorted = sorted(
+            rows,
+            key=lambda r: (
+                str(r.get('full_name') or '').lower(),
+                str(r.get('student_id') or '').lower(),
+            ),
+        )
+        return [{'class_name': label, 'rows': rows_sorted}]
 
     def _grade_key(r):
         g = (r.get('current_grade') or '').strip()
@@ -38755,6 +39354,24 @@ def _build_academic_report_payload(cursor, report_type, f):
     ay = f.get('academic_year_id')
     tid = f.get('term_id')
     lid = f.get('level_id')
+    level_view = (f.get('level_view') or 'individual').strip().lower()
+    if level_view not in ('individual', 'combined'):
+        level_view = 'individual'
+    level_scope = _resolve_academic_report_level_scope(cursor, level_view, lid)
+    if level_view == 'combined':
+        if not lid:
+            return {
+                'error': 'Select a class to generate a combined level report.',
+            }
+        if not level_scope.get('is_combined_view'):
+            return {
+                'error': (
+                    'No combined level group includes the selected class. '
+                    'Create groups under Settings → Combined academic levels, or use Individual class.'
+                ),
+            }
+    level_ids = list(level_scope.get('level_ids') or [])
+    is_combined_level = bool(level_scope.get('is_combined_view'))
     teacher_id = f.get('teacher_id')
     timetable_view = (f.get('timetable_view') or 'student').lower()
     student_id = _str_opt(f.get('student_id'))
@@ -38934,9 +39551,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if tid:
             q += " AND term_id = %s"
             p.append(tid)
-        if lid:
-            q += " AND academic_level_id = %s"
-            p.append(lid)
+        q, p = _sql_filter_academic_level_ids(q, p, 'academic_level_id', level_ids)
         if student_id:
             q += " AND id IN (SELECT DISTINCT exam_id FROM student_marks WHERE student_id = %s)"
             p.append(student_id)
@@ -38990,13 +39605,28 @@ def _build_academic_report_payload(cursor, report_type, f):
 
     year_name = _lookup_name("SELECT year_name AS name FROM academic_years WHERE id = %s", ay)
     term_name = _lookup_name("SELECT term_name AS name FROM terms WHERE id = %s", tid)
-    level_name = _lookup_name("SELECT level_name AS name FROM academic_levels WHERE id = %s", lid)
+    if is_combined_level:
+        level_name = level_scope.get('display_name') or '—'
+        class_level_label = level_name
+        if level_scope.get('level_names'):
+            class_level_label = f"{level_name} ({' · '.join(level_scope.get('level_names') or [])})"
+    else:
+        level_name = _lookup_name("SELECT level_name AS name FROM academic_levels WHERE id = %s", lid)
+        class_level_label = level_name or ('All classes' if not lid else f"Level ID {lid}")
     teacher_name = _lookup_name("SELECT full_name AS name FROM employees WHERE id = %s", teacher_id)
+    meta['is_combined_level_view'] = is_combined_level
+    meta['merge_single_cohort'] = is_combined_level
+    meta['combined_display_name'] = (
+        (level_scope.get('display_name') or '').strip() if is_combined_level else ''
+    )
+    meta['combined_member_level_names'] = list(level_scope.get('level_names') or []) if is_combined_level else []
+    meta['level_view'] = level_view
     meta['applied_filters'] = {
         'report_type': report_type,
         'academic_year': year_name or ('All years' if not ay else f"Year ID {ay}"),
         'term': term_name or ('Any term' if not tid else f"Term ID {tid}"),
-        'class_level': level_name or ('All classes' if not lid else f"Level ID {lid}"),
+        'class_level': class_level_label,
+        'level_view': 'Combined levels' if is_combined_level else 'Individual class',
         'teacher': teacher_name or ('Not selected' if not teacher_id else f"Teacher ID {teacher_id}"),
         'student_id': student_id or 'All students',
         'exam_name': exam_name or 'All exams',
@@ -39022,9 +39652,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             WHERE LOWER(COALESCE(status, '')) = 'in session'
         """
         params = []
-        if lid:
-            q += " AND current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
-            params.append(lid)
+        q, params = _sql_filter_student_current_grade(q, params, level_ids)
         # Group by class in output: sort by grade then name (all classes = every class, each section separate)
         q += " ORDER BY current_grade, full_name"
         cursor.execute(q, params)
@@ -39035,8 +39663,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
                 'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
             })
-        meta['class_sections'] = _group_class_list_rows(rows)
-        if not lid:
+        meta['class_sections'] = _group_class_list_rows(
+            rows,
+            is_combined_level=is_combined_level,
+            combined_display_name=level_scope.get('display_name') if is_combined_level else None,
+        )
+        if not level_ids:
             meta['all_classes'] = True
         return {'title': title, 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -39048,9 +39680,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             WHERE LOWER(COALESCE(s.status, '')) = 'in session'
         """
         params = []
-        if lid:
-            q += " AND s.current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
-            params.append(lid)
+        q, params = _sql_filter_student_current_grade(q, params, level_ids, table_alias='s')
         if student_id:
             q += " AND s.student_id = %s"
             params.append(student_id)
@@ -39063,7 +39693,11 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'full_name': r.get('full_name') if isinstance(r, dict) else r[1],
                 'current_grade': r.get('current_grade') if isinstance(r, dict) else (r[2] if len(r) > 2 else ''),
             })
-        meta['class_sections'] = _group_class_list_rows(rows)
+        meta['class_sections'] = _group_class_list_rows(
+            rows,
+            is_combined_level=is_combined_level,
+            combined_display_name=level_scope.get('display_name') if is_combined_level else None,
+        )
         meta['row_limit'] = 5000
         return {'title': 'Class list — attendance', 'columns': cols, 'rows': rows, 'meta': meta}
 
@@ -39089,9 +39723,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND t.academic_year_id = %s"
             params.append(ay)
-        if lid:
-            q += " AND t.academic_level_id = %s"
-            params.append(lid)
+        q, params = _sql_filter_academic_level_ids(q, params, 't.academic_level_id', level_ids)
         q += """
             ORDER BY FIELD(t.day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'),
                      t.time_slot, al.level_name, e.full_name
@@ -39147,9 +39779,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND e.academic_year_id = %s"
             params.append(ay)
-        if lid:
-            q += " AND e.academic_level_id = %s"
-            params.append(lid)
+        q, params = _sql_filter_academic_level_ids(q, params, 'e.academic_level_id', level_ids)
         q += " ORDER BY e.exam_date, e.start_time, al.level_name"
         cursor.execute(q, params)
         rows = []
@@ -39264,10 +39894,16 @@ def _build_academic_report_payload(cursor, report_type, f):
             WHERE 1=1
         """
         params = []
-        if lid:
-            q += " AND e.academic_level_id = %s"
-            q_no_image += " AND e.academic_level_id = %s"
-            params.append(lid)
+        if level_ids:
+            if len(level_ids) == 1:
+                _lvl_clause = " AND e.academic_level_id = %s"
+                params.append(level_ids[0])
+            else:
+                _lvl_ph = ','.join(['%s'] * len(level_ids))
+                _lvl_clause = f" AND e.academic_level_id IN ({_lvl_ph})"
+                params.extend(level_ids)
+            q += _lvl_clause
+            q_no_image += _lvl_clause
         if tid:
             q += " AND e.term_id = %s"
             q_no_image += " AND e.term_id = %s"
@@ -39312,6 +39948,15 @@ def _build_academic_report_payload(cursor, report_type, f):
             if lid_val is None:
                 return []
             return reg_labels_by_lid.get(lid_val, [])
+
+        merged_reg_labels = []
+        if is_combined_level and level_ids:
+            seen_mrg = set()
+            for lid_i in level_ids:
+                for lbl in reg_labels_by_lid.get(int(lid_i), []):
+                    if lbl not in seen_mrg:
+                        seen_mrg.add(lbl)
+                        merged_reg_labels.append(lbl)
 
         for r in cursor.fetchall() or []:
             if isinstance(r, dict):
@@ -39376,7 +40021,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 if cur_grade and not (g0.get('current_grade') or '').strip():
                     g0['current_grade'] = cur_grade
             class_key = _student_class_key(cur_grade, level_nm)
-            reg_labels = _registered_labels_for_class_key(class_key)
+            if is_combined_level and merged_reg_labels:
+                reg_labels = merged_reg_labels
+            else:
+                reg_labels = _registered_labels_for_class_key(class_key)
             if reg_labels and subject_label and subject_label not in reg_labels:
                 continue
             if subject_label:
@@ -39416,22 +40064,35 @@ def _build_academic_report_payload(cursor, report_type, f):
             lid_int = int(lid) if lid is not None else None
         except (TypeError, ValueError):
             lid_int = None
-        if lid_int is not None and reg_labels_by_lid.get(lid_int):
+        if is_combined_level and level_ids:
+            merged_labels = []
+            seen_lbl = set()
+            for lid_i in level_ids:
+                for lbl in reg_labels_by_lid.get(int(lid_i), []):
+                    if lbl not in seen_lbl:
+                        seen_lbl.add(lbl)
+                        merged_labels.append(lbl)
+            subject_columns = merged_labels if merged_labels else sorted(subject_names_set, key=_all_students_subj_col_sort)
+        elif lid_int is not None and reg_labels_by_lid.get(lid_int):
             subject_columns = list(reg_labels_by_lid.get(lid_int) or [])
         else:
             subject_columns = sorted(subject_names_set, key=_all_students_subj_col_sort)
         cols.extend(subject_columns)
         cols.extend(['total_marks', 'mean', 'grade'])
 
+        combined_display = (level_scope.get('display_name') or '').strip() if is_combined_level else ''
         pre_rows = []
         for student in grouped.values():
-            ck = _student_class_key(student.get('current_grade'), student.get('level_name'))
-            cols_for_student = _registered_labels_for_class_key(ck)
-            if not cols_for_student:
-                cols_for_student = sorted(
-                    [k for k in student['subject_marks'].keys() if k],
-                    key=_all_students_subj_col_sort,
-                )
+            if is_combined_level:
+                cols_for_student = list(subject_columns)
+            else:
+                ck = _student_class_key(student.get('current_grade'), student.get('level_name'))
+                cols_for_student = _registered_labels_for_class_key(ck)
+                if not cols_for_student:
+                    cols_for_student = sorted(
+                        [k for k in student['subject_marks'].keys() if k],
+                        key=_all_students_subj_col_sort,
+                    )
             subject_marks_map = {}
             normalized_marks = []
             for subject_name in cols_for_student:
@@ -39455,12 +40116,14 @@ def _build_academic_report_payload(cursor, report_type, f):
                     photo_url = url_for('static', filename=str(raw_pf))
                 except Exception:
                     photo_url = ''
+            home_class = student.get('current_grade') or student.get('level_name') or ''
             pre_rows.append({
                 'admission_number': student['admission_number'],
                 'student_id': student['admission_number'],
                 'full_name': student['full_name'],
-                'level_name': student.get('level_name') or '',
-                'current_grade': student.get('current_grade') or '',
+                'level_name': combined_display or student.get('level_name') or '',
+                'current_grade': home_class,
+                'home_class': home_class,
                 'student_photo': photo_url,
                 'subject_marks': subject_marks_map,
                 'class_subject_columns': cols_for_student,
@@ -39499,8 +40162,11 @@ def _build_academic_report_payload(cursor, report_type, f):
                 **flat_row
             })
         meta['subject_columns'] = subject_columns
-        meta['subject_columns_by_class'] = subject_columns_by_class
-        if not lid:
+        if is_combined_level and combined_display:
+            meta['subject_columns_by_class'] = {combined_display: list(subject_columns)}
+        else:
+            meta['subject_columns_by_class'] = subject_columns_by_class
+        if not level_ids:
             try:
                 cursor.execute(
                     "SELECT level_name FROM academic_levels WHERE level_status = 'active' ORDER BY level_name"
@@ -39515,10 +40181,13 @@ def _build_academic_report_payload(cursor, report_type, f):
                 meta['all_class_labels'] = []
         else:
             meta['all_class_labels'] = []
-        return {'title': 'All students — exam performance', 'columns': cols, 'rows': rows, 'meta': meta}
+        perf_title = 'All students — exam performance'
+        if is_combined_level:
+            perf_title = f"{perf_title} (combined: {level_scope.get('display_name') or '—'})"
+        return {'title': perf_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'exam_teacher_performance':
-        if not lid:
+        if not level_ids:
             return {
                 'title': 'Teacher — exam performance',
                 'columns': ['teacher_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate'],
@@ -39544,9 +40213,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 GROUP BY academic_level_id, subject_id
             ) tsa ON tsa.academic_level_id = e.academic_level_id AND tsa.subject_id = e.subject_id
             LEFT JOIN employees tch ON tsa.teacher_id = tch.id
-            WHERE e.academic_level_id = %s
+            WHERE 1=1
         """
-        params = [lid]
+        params = []
+        q, params = _sql_filter_academic_level_ids(q, params, 'e.academic_level_id', level_ids)
         if tid:
             q += " AND e.term_id = %s"
             params.append(tid)
@@ -39611,9 +40281,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND e.academic_year_id = %s"
             params.append(ay)
-        if lid:
-            q += " AND e.academic_level_id = %s"
-            params.append(lid)
+        q, params = _sql_filter_academic_level_ids(q, params, 'e.academic_level_id', level_ids)
         clause, ep = _exam_name_clause_and_params()
         q += clause
         params.extend(ep)
@@ -39697,8 +40365,20 @@ def _build_academic_report_payload(cursor, report_type, f):
         if report_type == 'exam_class_performance':
             cols = ['level_name', 'subject_name', 'mean', 'min', 'max', 'count', 'pass_rate']
             rows = []
-            for (ln, k2) in sorted(grp_level_subj.keys(), key=_level_subj_sort_key):
-                marks = grp_level_subj[(ln, k2)]
+            combined_label = (level_scope.get('display_name') or 'Combined class') if is_combined_level else ''
+            perf_keys = (
+                sorted(grp_subj.keys(), key=_subj_perf_sort_key)
+                if is_combined_level
+                else sorted(grp_level_subj.keys(), key=_level_subj_sort_key)
+            )
+            for key_item in perf_keys:
+                if is_combined_level:
+                    k2 = key_item
+                    marks = grp_subj[k2]
+                    ln = combined_label
+                else:
+                    ln, k2 = key_item
+                    marks = grp_level_subj[(ln, k2)]
                 if isinstance(k2, int):
                     disp_name = subject_display_label(
                         subj_code_by_id.get(k2), subj_name_by_id.get(k2), 'N/A'
@@ -39715,9 +40395,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                     'count': len(marks),
                     'pass_rate': round_mark_display(100 * pc / len(marks)) if marks else 0,
                 })
-            return {'title': 'Exam performance — by class & subject', 'columns': cols, 'rows': rows, 'meta': meta}
+            perf_title = 'Exam performance — by class & subject'
+            if is_combined_level:
+                perf_title = f'Exam performance — combined ({combined_label})'
+            return {'title': perf_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
-        if not lid:
+        if not level_ids:
             return {
                 'title': 'Subject — exam performance',
                 'columns': ['subject_name', 'mean', 'min', 'max', 'count', 'pass_rate'],
@@ -39751,7 +40434,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         except Exception:
             pass
         if report_type == 'exam_individual_performance':
-            if not lid:
+            if not level_ids:
                 return {
                     'title': 'Individual student — exam performance',
                     'columns': ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks'],
@@ -39792,9 +40475,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if ay:
             q += " AND e.academic_year_id = %s"
             params.append(ay)
-        if lid:
-            q += " AND e.academic_level_id = %s"
-            params.append(lid)
+        q, params = _sql_filter_academic_level_ids(q, params, 'e.academic_level_id', level_ids)
         if exam_name:
             q += " AND e.exam_name = %s"
             params.append(exam_name)
@@ -39824,8 +40505,12 @@ def _build_academic_report_payload(cursor, report_type, f):
                 q_no_image += " AND e.term_id = %s"
             if ay:
                 q_no_image += " AND e.academic_year_id = %s"
-            if lid:
-                q_no_image += " AND e.academic_level_id = %s"
+            if level_ids:
+                if len(level_ids) == 1:
+                    q_no_image += " AND e.academic_level_id = %s"
+                else:
+                    _lvl_ph2 = ','.join(['%s'] * len(level_ids))
+                    q_no_image += f" AND e.academic_level_id IN ({_lvl_ph2})"
             if exam_names:
                 placeholders = ','.join(['%s'] * len(exam_names))
                 q_no_image += f" AND e.exam_name IN ({placeholders})"
@@ -39986,9 +40671,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             WHERE sar.attendance_date BETWEEN %s AND %s
             """
             ap = [date_from, date_to]
-        if lid:
-            aq += " AND sar.academic_level_id = %s"
-            ap.append(lid)
+        aq, ap = _sql_filter_academic_level_ids(aq, ap, 'sar.academic_level_id', level_ids)
         aq += """
             GROUP BY al.id, al.level_name
             ORDER BY al.level_name
@@ -40004,7 +40687,20 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'unique_students': int(r.get('unique_students') or 0) if isinstance(r, dict) else int(r[4] or 0),
                 'unique_days': int(r.get('unique_days') or 0) if isinstance(r, dict) else int(r[5] or 0),
             })
-        return {'title': 'Attendance summary by class', 'columns': cols, 'rows': rows, 'meta': meta}
+        if is_combined_level and rows:
+            combined_label = level_scope.get('display_name') or 'Combined class'
+            rows = [{
+                'level_name': combined_label,
+                'records': sum(int(x.get('records') or 0) for x in rows),
+                'present_count': sum(int(x.get('present_count') or 0) for x in rows),
+                'absent_count': sum(int(x.get('absent_count') or 0) for x in rows),
+                'unique_students': sum(int(x.get('unique_students') or 0) for x in rows),
+                'unique_days': max(int(x.get('unique_days') or 0) for x in rows) if rows else 0,
+            }]
+        att_title = 'Attendance summary by class'
+        if is_combined_level:
+            att_title = f"{att_title} (combined: {level_scope.get('display_name') or '—'})"
+        return {'title': att_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     if report_type == 'attendance_individual':
         cols = ['student_id', 'full_name', 'level_name', 'attendance_date', 'present']
@@ -40026,9 +40722,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         if tid:
             q += " AND sar.term_id = %s"
             params.append(tid)
-        if lid:
-            q += " AND sar.academic_level_id = %s"
-            params.append(lid)
+        q, params = _sql_filter_academic_level_ids(q, params, 'sar.academic_level_id', level_ids)
         if student_id:
             q += " AND s.student_id = %s"
             params.append(student_id)
@@ -40046,7 +40740,10 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'present': 'Yes' if pr else 'No',
             })
         meta['row_limit'] = 5000
-        return {'title': 'Individual attendance', 'columns': cols, 'rows': rows, 'meta': meta}
+        ind_att_title = 'Individual attendance'
+        if is_combined_level:
+            ind_att_title = f"{ind_att_title} (combined: {level_scope.get('display_name') or '—'})"
+        return {'title': ind_att_title, 'columns': cols, 'rows': rows, 'meta': meta}
 
     return {'error': 'Unknown report type.'}
 
@@ -40065,13 +40762,15 @@ def academic_reports():
     teachers = []
     exam_names = []
     registered_current_exam = None
+    level_combinations = []
 
     connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_academic_level_combination_tables(cursor)
                 cursor.execute("""
-                    SELECT id, level_name, level_category FROM academic_levels
+                    SELECT id, level_name, level_category, level_code FROM academic_levels
                     WHERE level_status = 'active' ORDER BY level_name
                 """)
                 for row in cursor.fetchall() or []:
@@ -40079,7 +40778,11 @@ def academic_reports():
                         'id': row.get('id') if isinstance(row, dict) else row[0],
                         'level_name': row.get('level_name') if isinstance(row, dict) else row[1],
                         'level_category': row.get('level_category') if isinstance(row, dict) else row[2],
+                        'level_code': row.get('level_code') if isinstance(row, dict) else (row[3] if len(row) > 3 else ''),
                     })
+                level_by_id = {int(l['id']): l for l in academic_levels if l.get('id') is not None}
+                for combo in fetch_academic_level_combinations(cursor):
+                    level_combinations.append(_level_combo_display_row(combo, level_by_id))
                 cursor.execute("""
                     SELECT t.id, t.term_name, t.academic_year_id, ay.year_name, t.is_current
                     FROM terms t
@@ -40141,6 +40844,12 @@ def academic_reports():
     ar_is_curriculum_coordinator = (
         ar_user_role == 'curriculum coordinator' or ar_viewing_as == 'curriculum coordinator'
     )
+    can_manage_level_combinations = (
+        ar_is_curriculum_coordinator
+        or ar_user_role == 'technician'
+        or ar_user_role == 'head of institution'
+        or ar_viewing_as == 'head of institution'
+    )
 
     return render_template(
         'dashboards/academic_reports.html',
@@ -40151,6 +40860,8 @@ def academic_reports():
         teachers=teachers,
         exam_names=exam_names,
         registered_current_exam=registered_current_exam,
+        level_combinations=level_combinations,
+        can_manage_level_combinations=can_manage_level_combinations,
         sidebar_hide_accounts_fees=ar_is_curriculum_coordinator,
     )
 
@@ -40294,8 +41005,7 @@ def api_academic_reports_search_students():
 
     data = request.get_json(silent=True) or {}
     q = (data.get('q') or '').strip()
-    if len(q) < 1:
-        return jsonify({'success': True, 'students': []})
+    list_all = data.get('list_all') in (True, 'true', '1', 1, 'yes')
 
     def _int_or_none(v):
         if v is None or v == '' or v == 'null':
@@ -40306,30 +41016,66 @@ def api_academic_reports_search_students():
             return None
 
     lid = _int_or_none(data.get('level_id'))
-
-    like_pat = '%' + q + '%'
-
-    sql = """
-        SELECT s.student_id, s.full_name, COALESCE(s.current_grade, '') AS level_name,
-               (
-                   SELECT al.id FROM academic_levels al
-                   WHERE al.level_status = 'active'
-                     AND TRIM(COALESCE(al.level_name, '')) = TRIM(COALESCE(s.current_grade, ''))
-                   ORDER BY al.id ASC
-                   LIMIT 1
-               ) AS academic_level_id
-        FROM students s
-        WHERE (s.full_name LIKE %s OR s.student_id LIKE %s)
-    """
-    params = [like_pat, like_pat]
-    if lid:
-        sql += " AND s.current_grade = (SELECT level_name FROM academic_levels WHERE id = %s LIMIT 1)"
-        params.append(lid)
-    sql += " ORDER BY s.full_name ASC LIMIT 40"
+    level_view = (data.get('level_view') or 'individual').strip().lower()
+    if level_view not in ('individual', 'combined'):
+        level_view = 'individual'
 
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+
+    level_ids = []
+    try:
+        with connection.cursor() as cursor:
+            scope = _resolve_academic_report_level_scope(cursor, level_view, lid)
+            if level_view == 'combined' and lid and not scope.get('is_combined_view'):
+                return jsonify({
+                    'success': False,
+                    'message': 'Selected class is not in a combined level group.',
+                }), 400
+            level_ids = list(scope.get('level_ids') or [])
+    except Exception as e:
+        print(f"api_academic_reports_search_students scope: {e}")
+        level_ids = [lid] if lid else []
+
+    if list_all and level_ids:
+        sql = """
+            SELECT s.student_id, s.full_name, COALESCE(s.current_grade, '') AS level_name,
+                   (
+                       SELECT al.id FROM academic_levels al
+                       WHERE al.level_status = 'active'
+                         AND TRIM(COALESCE(al.level_name, '')) = TRIM(COALESCE(s.current_grade, ''))
+                       ORDER BY al.id ASC
+                       LIMIT 1
+                   ) AS academic_level_id
+            FROM students s
+            WHERE 1=1
+        """
+        params = []
+        sql, params = _sql_filter_student_current_grade(sql, params, level_ids, table_alias='s')
+        sql += " ORDER BY s.full_name ASC LIMIT 500"
+    else:
+        if len(q) < 1:
+            connection.close()
+            return jsonify({'success': True, 'students': []})
+
+        like_pat = '%' + q + '%'
+
+        sql = """
+            SELECT s.student_id, s.full_name, COALESCE(s.current_grade, '') AS level_name,
+                   (
+                       SELECT al.id FROM academic_levels al
+                       WHERE al.level_status = 'active'
+                         AND TRIM(COALESCE(al.level_name, '')) = TRIM(COALESCE(s.current_grade, ''))
+                       ORDER BY al.id ASC
+                       LIMIT 1
+                   ) AS academic_level_id
+            FROM students s
+            WHERE (s.full_name LIKE %s OR s.student_id LIKE %s)
+        """
+        params = [like_pat, like_pat]
+        sql, params = _sql_filter_student_current_grade(sql, params, level_ids, table_alias='s')
+        sql += " ORDER BY s.full_name ASC LIMIT 40"
 
     students = []
 
@@ -40346,16 +41092,20 @@ def api_academic_reports_search_students():
             cursor.execute(sql, params)
             for r in cursor.fetchall() or []:
                 if isinstance(r, dict):
+                    sid = r.get('student_id')
                     students.append({
-                        'student_id': r.get('student_id'),
+                        'student_id': sid,
+                        'admission_number': sid,
                         'full_name': r.get('full_name'),
                         'level_name': r.get('level_name') or '',
                         'academic_level_id': _lid_as_int(r.get('academic_level_id')),
                     })
                 else:
                     lid_row = r[3] if len(r) > 3 else None
+                    sid = r[0]
                     students.append({
-                        'student_id': r[0],
+                        'student_id': sid,
+                        'admission_number': sid,
                         'full_name': r[1],
                         'level_name': r[2] if len(r) > 2 else '',
                         'academic_level_id': _lid_as_int(lid_row),

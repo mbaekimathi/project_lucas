@@ -88,39 +88,122 @@
     .dark .edit-exam-modal-panel {
         box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
+
+    .exam-eval-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.375rem;
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 18%, #e5e7eb);
+        background: #fff;
+        font-size: 0.75rem;
+        line-height: 1.2;
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+    }
+    .exam-eval-chip:has(input:checked) {
+        border-color: color-mix(in srgb, var(--brand-primary) 45%, transparent);
+        background: color-mix(in srgb, var(--brand-primary) 8%, #fff);
+    }
+    .dark .exam-eval-chip {
+        background: rgba(17, 24, 39, 0.6);
+        border-color: rgba(255, 255, 255, 0.12);
+    }
+    .dark .exam-eval-chip:has(input:checked) {
+        background: color-mix(in srgb, var(--brand-primary) 18%, #111827);
+    }
+    .exam-eval-group {
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 16%, #e5e7eb);
+        border-radius: 0.5rem;
+        background: color-mix(in srgb, var(--brand-primary) 4%, #fff);
+    }
+    .dark .exam-eval-group {
+        border-color: rgba(255, 255, 255, 0.1);
+        background: rgba(17, 24, 39, 0.5);
+    }
+    .exam-eval-segment label:has(input:checked) {
+        background: var(--brand-primary);
+        color: #fff;
+        border-color: var(--brand-primary);
+    }
+    .exam-eval-group--shared {
+        border-color: color-mix(in srgb, var(--brand-primary) 40%, #e5e7eb);
+        background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+    }
+    .dark .exam-eval-group--shared {
+        border-color: color-mix(in srgb, var(--brand-primary) 45%, #374151);
+        background: color-mix(in srgb, var(--brand-primary) 16%, #111827);
+    }
+    .exam-eval-share-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 9999px;
+        font-size: 0.625rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        background: color-mix(in srgb, var(--brand-primary) 14%, transparent);
+        color: var(--brand-primary);
+    }
+    .dark .exam-eval-share-badge {
+        background: color-mix(in srgb, var(--brand-primary) 28%, transparent);
+        color: color-mix(in srgb, var(--brand-primary) 80%, #fff);
+    }
+    .exam-eval-deadline-btn {
+        border-color: color-mix(in srgb, #059669 35%, #e5e7eb);
+        background: color-mix(in srgb, #059669 6%, #fff);
+        color: #047857;
+    }
+    .dark .exam-eval-deadline-btn {
+        border-color: color-mix(in srgb, #34d399 35%, #374151);
+        background: color-mix(in srgb, #059669 14%, #111827);
+        color: #6ee7b7;
+    }
+    .exam-eval-deadline-btn--set {
+        border-color: color-mix(in srgb, #059669 50%, #e5e7eb);
+    }
+    .exam-eval-deadline-btn--closed {
+        border-color: color-mix(in srgb, #d97706 45%, #e5e7eb);
+        background: color-mix(in srgb, #d97706 8%, #fff);
+        color: #b45309;
+    }
+    .dark .exam-eval-deadline-btn--closed {
+        border-color: color-mix(in srgb, #fbbf24 40%, #374151);
+        background: color-mix(in srgb, #d97706 12%, #111827);
+        color: #fcd34d;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="exam-eval-page p-3 sm:p-5 lg:p-8 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
-    <div class="mb-5 sm:mb-8 scroll-reveal">
-        <div class="flex flex-col gap-4">
-            <div class="min-w-0">
-                <h1 class="text-xl sm:text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 flex flex-wrap items-center gap-3 sm:gap-4">
-                    <div class="w-11 h-11 sm:w-14 sm:h-14 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg shadow-brand-primary/20">
-                        <i class="fas fa-clipboard-check text-white text-lg sm:text-2xl"></i>
-                    </div>
-                    <span class="leading-tight break-words min-w-0">Exam &amp; Evaluation</span>
-                </h1>
-                <p class="text-sm sm:text-base text-gray-600 dark:text-gray-400 max-w-3xl leading-relaxed">Register manually for one class, or auto-register for many classes using Subject &amp; Class Allocation with collision-free teacher sessions.</p>
+<div class="exam-eval-page p-3 sm:p-4 lg:p-6 min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 max-w-[100vw] overflow-x-hidden portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="examEvaluation()" x-init="init()">
+    <div class="mb-4 scroll-reveal">
+        <h1 class="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
+            <div class="w-9 h-9 shrink-0 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-md shadow-brand-primary/15">
+                <i class="fas fa-clipboard-check text-white text-sm"></i>
             </div>
-        </div>
+            <span>Exam &amp; Evaluation</span>
+        </h1>
+        <p class="mt-1 text-xs sm:text-sm text-gray-500 dark:text-gray-400">Register exams and manage timetables.</p>
     </div>
 
     <!-- Register Exam + Allocations -->
-    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8 mb-6">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-            <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center">
-                <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
-                    <i class="fas fa-plus-circle text-white"></i>
+    <div class="dashboard-card rounded-xl shadow-lg p-4 sm:p-5 mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+            <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm">
+                    <i class="fas fa-plus-circle text-white text-xs"></i>
                 </div>
-                Register Exam (with Allocations)
+                Register exam
             </h2>
             <button type="button"
-                    @click="showRegisterExamPanel = !showRegisterExamPanel"
-                    class="modern-btn w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold transition-all shadow-lg">
-                <i class="fas fa-plus mr-2"></i>
-                <span x-text="showRegisterExamPanel ? 'Hide Register Exam' : 'Register Exam'"></span>
+                    @click="toggleRegisterExamPanel()"
+                    class="modern-btn w-full sm:w-auto px-3 py-2 text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold transition-all shadow-md">
+                <i class="fas fa-plus mr-1.5 text-xs"></i>
+                <span x-text="showRegisterExamPanel ? 'Hide' : 'New exam'"></span>
             </button>
         </div>
 
@@ -139,46 +222,46 @@
         </div>
 
         <!-- Client conflict warning -->
-        <div x-show="clientConflictMessage" x-cloak class="mb-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center shadow-sm">
-            <i class="fas fa-exclamation-triangle text-yellow-700 dark:text-yellow-400 mr-3 text-xl"></i>
+        <div x-show="clientConflictMessage" x-cloak class="mb-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-500 rounded-lg flex items-center text-sm">
+            <i class="fas fa-exclamation-triangle text-yellow-700 dark:text-yellow-400 mr-2"></i>
             <span class="text-yellow-900 dark:text-yellow-200 font-medium" x-text="clientConflictMessage"></span>
         </div>
 
-        <form @submit.prevent="saveExam()" class="space-y-5 sm:space-y-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
+        <form @submit.prevent="saveExam()" class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Academic Year <span class="text-red-500">*</span></label>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Academic year <span class="text-red-500">*</span></label>
                     <select x-model="examForm.academic_year_id"
                             @change="loadTerms(); generateExamName()"
                             required
-                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                            class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
                         <option value="">Select Academic Year</option>
                         <template x-for="year in academicYears" :key="year.id">
-                            <option :value="year.id" x-text="year.year_name"></option>
+                            <option :value="String(year.id)" x-text="year.year_name + (isCurrentFlag(year.is_current) ? ' (Current)' : '')"></option>
                         </template>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Term <span class="text-red-500">*</span></label>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Term <span class="text-red-500">*</span></label>
                     <select x-model="examForm.term_id"
                             @change="generateExamName()"
                             required
                             :disabled="!examForm.academic_year_id"
-                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary disabled:opacity-50">
+                            class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary disabled:opacity-50">
                         <option value="">Select Term</option>
                         <template x-for="term in terms" :key="term.id">
-                            <option :value="term.id" x-text="term.term_name"></option>
+                            <option :value="String(term.id)" x-text="term.term_name + (isCurrentFlag(term.is_current) ? ' (Current)' : '')"></option>
                         </template>
                     </select>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Exam Type <span class="text-red-500">*</span></label>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Exam type <span class="text-red-500">*</span></label>
                     <select x-model="examForm.exam_type"
                             @change="generateExamName()"
                             required
-                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                            class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
                         <option value="">Select Type</option>
                         <option value="OPENING">Opening</option>
                         <option value="MIDTERM">Midterm</option>
@@ -188,206 +271,168 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Exam Name <span class="text-red-500">*</span>
-                        <span class="text-xs text-gray-500 dark:text-gray-400 ml-2">(Auto-generated)</span>
-                    </label>
-                    <input type="text"
-                           x-model="examForm.exam_name"
-                           readonly
-                           required
-                           class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed uppercase font-semibold"
-                           style="text-transform: uppercase;">
-                </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                    Exam name <span class="text-red-500">*</span>
+                </label>
+                <input type="text"
+                       x-model="examForm.exam_name"
+                       readonly
+                       required
+                       class="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed uppercase font-semibold"
+                       style="text-transform: uppercase;">
             </div>
 
-            <p x-show="!isHeaderValid" class="text-sm text-gray-600 dark:text-gray-400 flex items-start gap-2">
-                <i class="fas fa-arrow-up mt-0.5 text-brand-primary"></i>
-                <span>Select <strong>academic year</strong>, <strong>term</strong>, and <strong>exam type</strong> above. The exam name will generate automatically—then you can choose registration mode, classes, and dates.</span>
+            <p x-show="!isHeaderValid" class="text-xs text-gray-500 dark:text-gray-400">
+                Select year, term, and exam type to continue.
             </p>
 
-            <div x-show="isHeaderValid" x-cloak class="space-y-5 sm:space-y-6">
+            <div x-show="isHeaderValid" x-cloak class="space-y-4">
             <!-- Registration mode -->
-            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700">
-                <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Registration mode</p>
-                <div class="flex flex-col sm:flex-row gap-4">
-                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-xl border-2 transition-all flex-1"
-                           :class="registrationMode === 'auto' ? 'border-brand-primary bg-brand-primary/5 dark:bg-brand-primary/10' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'">
-                        <input type="radio" name="registrationMode" value="auto" x-model="registrationMode" @change="onRegistrationModeChange()" class="mt-1">
-                        <span>
-                            <span class="font-semibold text-gray-900 dark:text-white">Auto (all selected levels)</span>
-                            <span class="block text-xs text-gray-600 dark:text-gray-400 mt-1">Uses <strong>Subject &amp; Class Allocation</strong> for each selected class. For every subject, <strong>one supervisor is chosen at random</strong> from teachers assigned to that class/subject who are <strong>active</strong> in the system. Sessions are packed so each teacher has at most one paper per time slot; extra subjects move to the next slot or the next day.</span>
-                        </span>
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700">
+                <p class="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Mode</p>
+                <div class="exam-eval-segment inline-flex rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden text-sm font-semibold">
+                    <label class="cursor-pointer px-4 py-2 border-r border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+                        <input type="radio" name="registrationMode" value="auto" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
+                        Auto schedule
                     </label>
-                    <label class="flex items-start gap-3 cursor-pointer p-4 rounded-xl border-2 transition-all flex-1"
-                           :class="registrationMode === 'manual' ? 'border-brand-primary bg-brand-primary/5 dark:bg-brand-primary/10' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'">
-                        <input type="radio" name="registrationMode" value="manual" x-model="registrationMode" @change="onRegistrationModeChange()" class="mt-1">
-                        <span>
-                            <span class="font-semibold text-gray-900 dark:text-white">Manual</span>
-                            <span class="block text-xs text-gray-600 dark:text-gray-400 mt-1">One academic level at a time; you enter each subject, teacher, date, and session.</span>
-                        </span>
+                    <label class="cursor-pointer px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 transition-colors">
+                        <input type="radio" name="registrationMode" value="manual" x-model="registrationMode" @change="onRegistrationModeChange()" class="sr-only">
+                        Manual
                     </label>
                 </div>
             </div>
 
             <!-- Academic levels — manual (single) -->
-            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual'">
-                <div class="mb-6">
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                        Academic Level <span class="text-red-500">*</span>
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual'">
+                <div class="mb-3">
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
+                        Class <span class="text-red-500">*</span>
                     </label>
                     <select x-model="selectedAcademicLevel"
                             @change="onAcademicLevelChange()"
                             :required="registrationMode === 'manual'"
-                            class="modern-input w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
+                            class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary">
                         <option value="">Select Academic Level</option>
                         <template x-for="level in academicLevels" :key="level.id">
                             <option :value="level.id" x-text="level.level_name + ' (' + level.level_category + ')'"></option>
                         </template>
                     </select>
-                    <p x-show="selectedAcademicLevel" class="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500 rounded-lg text-sm text-gray-700 dark:text-gray-300">
-                        <i class="fas fa-info-circle mr-2 text-blue-600"></i>
-                        Select subjects, teachers, dates, venues, and sessions for this academic level. Each subject can only be used once per level.
-                    </p>
+
                 </div>
             </div>
 
             <!-- Academic levels — auto (multi) -->
-            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700" x-show="registrationMode === 'auto'">
-                <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                        Classes to include <span class="text-red-500">*</span>
-                    </label>
-                    <div class="flex flex-wrap gap-2">
-                        <button type="button" @click="selectAllLevels()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white hover:opacity-90">Select all</button>
-                        <button type="button" @click="clearLevels()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90">Clear</button>
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'auto'">
+                <div class="flex flex-wrap items-start justify-between gap-2 mb-2">
+                    <div class="min-w-0 flex-1">
+                        <label class="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            Classes <span class="text-red-500">*</span>
+                            <a href="{{ employee_dash_url('combined-academic-levels') }}" class="ml-1 text-brand-primary font-medium hover:underline" title="Manage combined academic levels"><i class="fas fa-layer-group"></i></a>
+                        </label>
+                        <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-snug">
+                            <i class="fas fa-link text-brand-primary mr-0.5" aria-hidden="true"></i>
+                            Combined groups share <strong class="font-semibold text-gray-600 dark:text-gray-300">one exam timetable</strong> (same dates &amp; sessions). Check classes, then enable <strong class="font-semibold">Share timetable</strong> per group.
+                        </p>
+                    </div>
+                    <div class="flex gap-1.5 shrink-0">
+                        <button type="button" @click="selectAllLevels()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
+                        <button type="button" @click="clearLevels()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
                     </div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-56 overflow-y-auto p-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40">
-                    <template x-for="level in academicLevels" :key="'chk-' + level.id">
-                        <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
-                            <input type="checkbox"
-                                   class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
-                                   :checked="selectedLevelIds.includes(String(level.id))"
-                                   @change="toggleLevel(level.id)">
-                            <span x-text="level.level_name + ' (' + level.level_category + ')'"></span>
-                        </label>
+
+                <div class="space-y-2" x-show="levelCombinations.length > 0">
+                    <template x-for="combo in levelCombinations" :key="'combo-' + combo.combo_id">
+                        <div class="exam-eval-group p-2 transition-colors"
+                             :class="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2 ? 'exam-eval-group--shared' : ''">
+                            <div class="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-gray-100 dark:border-gray-700">
+                                <span class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate" x-text="combo.level_name || 'Combined group'"></span>
+                                <span class="exam-eval-share-badge shrink-0"
+                                      x-show="isComboShareEnabled(combo.combo_id) && includedCountForCombo(combo.combo_id) >= 2"
+                                      title="These classes use the same exam dates and sessions">
+                                    <i class="fas fa-link text-[9px]" aria-hidden="true"></i>
+                                    Shared timetable
+                                </span>
+                                <span class="text-[10px] text-gray-500 shrink-0 ml-auto" x-text="includedCountForCombo(combo.combo_id) + '/' + (combo.members || []).length + ' classes'"></span>
+                            </div>
+                            <label class="flex items-center gap-2 mb-1.5 cursor-pointer"
+                                   :class="includedCountForCombo(combo.combo_id) < 2 ? 'opacity-50 cursor-not-allowed' : ''">
+                                <input type="checkbox"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
+                                       :checked="isComboShareEnabled(combo.combo_id)"
+                                       :disabled="includedCountForCombo(combo.combo_id) < 2"
+                                       @change="toggleComboShare(combo.combo_id)">
+                                <span class="text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                                    Share timetable across checked classes
+                                    <span class="text-gray-400 dark:text-gray-500 font-normal" x-show="includedCountForCombo(combo.combo_id) < 2">(pick 2+ classes)</span>
+                                </span>
+                            </label>
+                            <div class="flex flex-wrap gap-1">
+                                <template x-for="member in (combo.members || [])" :key="'combo-' + combo.combo_id + '-m-' + member.id">
+                                    <label class="exam-eval-chip">
+                                        <input type="checkbox"
+                                               class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3 w-3"
+                                               :checked="isLevelIncluded(member.id)"
+                                               @change="toggleCombinationMember(combo.combo_id, member.id)">
+                                        <span x-text="member.level_name"></span>
+                                    </label>
+                                </template>
+                            </div>
+                        </div>
                     </template>
                 </div>
-                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" x-show="selectedLevelIds.length === 0">
-                    Choose at least one class, or use Select all.
-                </p>
 
-                <div class="mt-4 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40">
-                    <label class="flex items-start gap-3 cursor-pointer">
-                        <input type="checkbox"
-                               class="mt-1 rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
-                               x-model="autoShareTimetable">
-                        <span class="text-sm text-gray-800 dark:text-gray-200">
-                            <span class="font-semibold">Share the same timetable across selected classes</span>
-                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                When enabled, selected classes follow the same date/session pattern; supervisors are assigned per class and must be different for the same slot.
-                            </span>
-                        </span>
-                    </label>
-                </div>
-
-                <div class="mt-3 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50/70 dark:bg-gray-900/20"
-                     x-show="autoShareTimetable"
-                     x-cloak>
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
-                        <div class="min-w-0">
-                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                                Timetable share groups (clusters)
-                            </p>
-                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Each class can belong to only one group. Groups do not share supervisors with each other.
-                            </p>
-                        </div>
-                        <button type="button"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:opacity-90"
-                                @click="addShareGroup()">
-                            + Add group
-                        </button>
-                    </div>
-
-                    <div class="space-y-3">
-                        <template x-for="g in autoShareGroups" :key="'grp-' + g.id">
-                            <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/40 p-3">
-                                <div class="flex items-center justify-between gap-3 mb-2">
-                                    <div class="text-sm font-bold text-gray-900 dark:text-white" x-text="g.name"></div>
-                                    <button type="button"
-                                            class="text-xs font-semibold text-red-600 hover:text-red-700"
-                                            :disabled="autoShareGroups.length <= 1"
-                                            @click="removeShareGroup(g.id)">
-                                        Remove
-                                    </button>
-                                </div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-44 overflow-y-auto p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50/60 dark:bg-gray-900/30">
-                                    <template x-for="level in availableLevelsForShareGroup(g.id)" :key="'grp-' + g.id + '-' + level.id">
-                                        <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
-                                            <input type="checkbox"
-                                                   class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
-                                                   :checked="(g.levelIds || []).includes(String(level.id))"
-                                                   @change="toggleShareGroupLevel(g.id, level.id)">
-                                            <span x-text="level.level_name + ' (' + level.level_category + ')'"></span>
-                                        </label>
-                                    </template>
-                                </div>
-                                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                                    Selected: <span class="font-semibold" x-text="(g.levelIds || []).length"></span>
-                                    class(es). (Needs 2+ to apply sharing.)
-                                </p>
-                            </div>
+                <div class="mt-2" x-show="ungroupedLevels.length > 0">
+                    <p class="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1" x-show="levelCombinations.length > 0">Other classes</p>
+                    <div class="flex flex-wrap gap-1 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40 max-h-32 overflow-y-auto">
+                        <template x-for="level in ungroupedLevels" :key="'ung-' + level.id">
+                            <label class="exam-eval-chip">
+                                <input type="checkbox"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3 w-3"
+                                       :checked="isLevelIncluded(level.id)"
+                                       @change="toggleUngroupedLevel(level.id)">
+                                <span x-text="level.level_name"></span>
+                            </label>
                         </template>
                     </div>
-
-                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                        Note: each share group schedules only the subjects common to classes inside that group.
-                    </p>
                 </div>
 
-                <div class="mt-6">
-                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Base start date <span class="text-red-500">*</span></label>
+                <p class="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400" x-show="selectedLevelIds.length === 0">Select at least one class.</p>
+
+                <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div>
+                    <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Start date <span class="text-red-500">*</span></label>
                     <input type="date" x-model="autoBaseDate"
-                           class="modern-input w-full max-w-md px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Choose the first day exams begin. The system will continue on following days as needed.
-                    </p>
-                    <p class="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                        <i class="fas fa-map-marker-alt mr-1 text-brand-primary"></i>
-                        Venue uses each academic level’s <strong>class identity</strong>: <strong>level code</strong> when set on the level, otherwise <strong>category + class name</strong> (same label as shown in Classes to include).
-                    </p>
+                           class="modern-input w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-primary">
+
                 </div>
 
-                <div class="mt-6">
-                    <div class="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                            Sessions to allocate <span class="text-red-500">*</span>
+                <div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                        <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300">
+                            Sessions <span class="text-red-500">*</span>
                         </label>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" @click="selectAllSessions()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white hover:opacity-90">Select all</button>
-                            <button type="button" @click="clearSessions()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:opacity-90">Clear</button>
+                        <div class="flex gap-1.5">
+                            <button type="button" @click="selectAllSessions()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-200 dark:bg-gray-600 text-gray-800 dark:text-white">All</button>
+                            <button type="button" @click="clearSessions()" class="text-[11px] font-semibold px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">Clear</button>
                         </div>
                     </div>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40">
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5 p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50/80 dark:bg-gray-800/40">
                         <template x-for="s in autoSessionOptions" :key="'sess-' + s.value">
-                            <label class="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-200 cursor-pointer">
+                            <label class="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-200 cursor-pointer">
                                 <input type="checkbox"
-                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary"
+                                       class="rounded border-gray-300 text-brand-primary focus:ring-brand-primary h-3.5 w-3.5"
                                        :checked="selectedSessionTypes.includes(s.value)"
                                        @change="toggleSession(s.value)">
                                 <span x-text="s.label"></span>
                             </label>
                         </template>
                     </div>
-                    <p class="mt-3 text-xs text-gray-500 dark:text-gray-400" x-show="selectedSessionTypes.length === 0">
-                        Choose at least one session to allocate.
+                    <p class="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400" x-show="selectedSessionTypes.length === 0">
+                        Pick at least one session.
                     </p>
 
-                    <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl" x-show="selectedSessionTypes.includes('CUSTOM')" x-cloak>
+                    <div class="mt-2 grid grid-cols-3 gap-2" x-show="selectedSessionTypes.includes('CUSTOM')" x-cloak>
                         <div>
                             <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Custom start time <span class="text-red-500">*</span></label>
                             <input type="time"
@@ -413,22 +458,17 @@
                                    class="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-gray-100 dark:bg-gray-700/50 text-gray-900 dark:text-white cursor-not-allowed">
                         </div>
                     </div>
+                </div>
 
-                    <div class="mt-5 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40">
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                                Exam days calendar
-                            </div>
-                            <div class="text-sm text-gray-700 dark:text-gray-300">
-                                Need <span class="font-semibold" x-text="autoRequiredDays"></span> day(s) ·
-                                <span class="font-semibold" x-text="autoActiveSubjectCount"></span> active subjects ·
-                                <span class="font-semibold" x-text="autoSessionsPerDay"></span> sessions/day
-                            </div>
+                <div class="mt-3 p-2.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white/70 dark:bg-gray-800/40 lg:col-span-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span class="font-semibold text-gray-800 dark:text-gray-200">Exam days</span>
+                            <span class="text-gray-500 dark:text-gray-400">
+                                <span x-text="autoRequiredDays"></span> days ·
+                                <span x-text="autoActiveSubjectCount"></span> subjects ·
+                                <span x-text="autoSessionsPerDay"></span>/day
+                            </span>
                         </div>
-
-                        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            Click a day to exclude/include it (e.g., public holidays). The system will keep selecting future days so the total selected days stays at the required number.
-                        </p>
 
                     <div class="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <button type="button"
@@ -453,7 +493,7 @@
                             <div class="mt-2 grid grid-cols-7 gap-1.5 sm:gap-2">
                                 <template x-for="cell in autoCalendarCells" :key="cell.key">
                                     <button type="button"
-                                        class="h-9 sm:h-10 rounded-lg border-2 text-xs sm:text-sm font-semibold transition-all min-w-0"
+                                        class="h-8 rounded-md border text-xs font-semibold transition-all min-w-0"
                                             :disabled="!cell.inMonth || cell.beforeBase"
                                             :class="cell.beforeBase
                                                 ? 'border-gray-100 dark:border-gray-700 bg-gray-100/60 dark:bg-gray-800/30 text-gray-400 cursor-not-allowed'
@@ -476,32 +516,33 @@
                             </div>
                         <div class="flex flex-wrap gap-2 max-h-28 overflow-y-auto pr-1">
                                 <template x-for="d in autoExamDates" :key="'sel-' + d">
-                                    <span class="inline-flex items-center px-3 py-1.5 rounded-full bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 text-xs font-semibold" x-text="d"></span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-brand-primary/10 text-brand-primary dark:bg-brand-primary/20 text-[10px] font-semibold" x-text="d"></span>
                                 </template>
                             </div>
                         </div>
                     </div>
                 </div>
+                </div>
 
-                <div class="mt-6 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                <div class="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                     <button type="button"
                             @click="resetAll()"
                             :disabled="savingExam"
-                            class="modern-btn order-2 sm:order-1 px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
-                        <i class="fas fa-redo mr-2"></i>Reset
+                            class="modern-btn order-2 sm:order-1 px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all disabled:opacity-50 font-semibold">
+                        <i class="fas fa-redo mr-1.5 text-xs"></i>Reset
                     </button>
                     <button type="submit"
                             :disabled="isRegisterDisabled"
-                            class="modern-btn order-1 sm:order-2 px-8 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-xl font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto">
-                        <i class="fas fa-save" x-show="!savingExam"></i>
-                        <i class="fas fa-spinner fa-spin" x-show="savingExam"></i>
-                        <span x-text="savingExam ? 'Registering...' : 'Register exam'"></span>
+                            class="modern-btn order-1 sm:order-2 px-5 py-2 text-sm bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white rounded-lg font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 w-full sm:w-auto sm:ml-auto">
+                        <i class="fas fa-save text-xs" x-show="!savingExam"></i>
+                        <i class="fas fa-spinner fa-spin text-xs" x-show="savingExam"></i>
+                        <span x-text="savingExam ? 'Saving…' : 'Register exam'"></span>
                     </button>
                 </div>
             </div>
 
             <!-- Allocations -->
-            <div class="pt-6 border-t-2 border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual' && selectedAcademicLevel">
+            <div class="pt-4 border-t border-gray-200 dark:border-gray-700" x-show="registrationMode === 'manual' && selectedAcademicLevel">
                 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
                     <h3 class="text-lg sm:text-xl font-bold text-gray-900 dark:text-white flex items-center">
                         <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md">
@@ -733,7 +774,7 @@
                 </div>
             </div>
 
-            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t-2 border-gray-200 dark:border-gray-700">
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                 <button type="button"
                         @click="resetAll()"
                         :disabled="savingExam"
@@ -754,24 +795,22 @@
     </div>
 
     <!-- Registered Exam Allocations: open full timetables on dedicated page -->
-    <div class="dashboard-card rounded-2xl shadow-xl p-5 sm:p-6 md:p-8">
+    <div class="dashboard-card rounded-xl shadow-lg p-4 sm:p-5">
         <div class="flex flex-col gap-4 mb-4">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <h2 class="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white flex items-center min-w-0">
-                    <div class="w-10 h-10 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center mr-3 shadow-md shrink-0">
-                        <i class="fas fa-list text-white"></i>
+                <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 min-w-0">
+                    <div class="w-8 h-8 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center shadow-sm shrink-0">
+                        <i class="fas fa-list text-white text-xs"></i>
                     </div>
-                    Registered Exam Allocations
+                    Registered exams
                 </h2>
                 <span class="px-4 py-2 bg-brand-primary/10 text-brand-primary rounded-lg font-semibold text-sm shrink-0 self-start sm:self-center">
                     <span x-text="uniqueExams.length"></span> exam(s)
                 </span>
             </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Click the <i class="fas fa-star text-amber-500" aria-hidden="true"></i> on a row to set the <strong>school-wide current exam</strong> (used as the default on class marks sheets when possible).
-            </p>
-            <p class="text-sm text-gray-600 dark:text-gray-400">
-                Use <strong>Allocation</strong> on each exam to open that exam page and set its timetable.
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+                <i class="fas fa-star text-amber-500"></i> = current exam for marks sheets ·
+                <i class="fas fa-clock text-emerald-600 dark:text-emerald-400"></i> = set when marks entry closes · open a row for timetable.
             </p>
         </div>
 
@@ -854,26 +893,22 @@
                                     <i class="fas fa-trash mr-1"></i>Delete
                                 </button>
                             </div>
-                            <div class="flex items-center justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
-                                <span x-show="marksLockDeadlinePassed(exam) && exam.marks_lock_at"
-                                      class="text-amber-600 dark:text-amber-400"
-                                      title="Deadline reached">
-                                    <i class="fas fa-lock text-sm" aria-hidden="true"></i>
-                                </span>
+                            <div class="flex flex-col gap-2 pt-3 border-t border-gray-200 dark:border-gray-600" @click.stop>
                                 <button type="button"
                                         @click.stop="openMarksLockModal(exam)"
                                         :disabled="lockingExam || savingMarksLockKey === exam._key"
-                                        title="Marks entry deadline"
-                                        class="inline-flex h-10 w-10 items-center justify-center rounded-xl border-2 border-emerald-300 dark:border-emerald-700 bg-white dark:bg-gray-900 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 disabled:opacity-40 disabled:cursor-not-allowed">
-                                    <i class="fas fa-calendar-alt text-lg" aria-hidden="true"></i>
-                                    <span class="sr-only">Marks entry deadline</span>
+                                        :title="marksLockDeadlineTitle(exam)"
+                                        class="exam-eval-deadline-btn inline-flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg border-2 text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                        :class="marksLockDeadlinePassed(exam) && exam.marks_lock_at ? 'exam-eval-deadline-btn--closed' : (exam.marks_lock_at ? 'exam-eval-deadline-btn--set' : '')">
+                                    <i class="fas fa-clock shrink-0" aria-hidden="true"></i>
+                                    <span class="text-left leading-tight" x-text="marksLockDeadlineSummary(exam)"></span>
                                 </button>
                                 <template x-if="exam.marks_lock_at">
                                     <button type="button"
                                             @click.stop="clearMarksLockSchedule(exam)"
                                             :disabled="lockingExam || savingMarksLockKey === exam._key"
-                                            class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed px-1">
-                                        Clear deadline
+                                            class="text-xs font-semibold text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed text-center">
+                                        Clear marks deadline
                                     </button>
                                 </template>
                             </div>
@@ -917,10 +952,12 @@
                                 Allocation
                             </th>
                             <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold">Actions</th>
-                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold w-14"
-                                title="Marks entry deadline">
-                                <i class="fas fa-calendar-alt opacity-95" aria-hidden="true"></i>
-                                <span class="sr-only">Marks entry deadline</span>
+                            <th class="p-3 sm:p-4 text-center text-xs sm:text-sm font-bold min-w-[7.5rem]"
+                                title="When teachers must stop entering marks for this exam">
+                                <span class="inline-flex items-center justify-center gap-1.5">
+                                    <i class="fas fa-clock opacity-95" aria-hidden="true"></i>
+                                    Marks deadline
+                                </span>
                             </th>
                             <th class="p-3 sm:p-4 text-right text-xs sm:text-sm font-bold">Allocation lock</th>
                         </tr>
@@ -982,26 +1019,22 @@
                                     </div>
                                 </td>
                                 <td class="p-3 sm:p-4 align-middle text-center" @click.stop>
-                                    <div class="inline-flex items-center justify-center gap-2 flex-wrap">
-                                        <span x-show="marksLockDeadlinePassed(exam) && exam.marks_lock_at"
-                                              class="text-amber-600 dark:text-amber-400"
-                                              title="Deadline reached">
-                                            <i class="fas fa-lock text-sm" aria-hidden="true"></i>
-                                        </span>
+                                    <div class="inline-flex flex-col items-center gap-1 min-w-[7rem]">
                                         <button type="button"
                                                 @click="openMarksLockModal(exam)"
                                                 :disabled="lockingExam || savingMarksLockKey === exam._key"
-                                                title="Marks entry deadline"
-                                                class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-300 dark:border-emerald-600 bg-white dark:bg-gray-900 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 disabled:opacity-40 disabled:cursor-not-allowed">
-                                            <i class="fas fa-calendar-alt" aria-hidden="true"></i>
-                                            <span class="sr-only">Marks entry deadline</span>
+                                                :title="marksLockDeadlineTitle(exam)"
+                                                class="exam-eval-deadline-btn inline-flex items-center justify-center gap-1.5 w-full px-2 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                                                :class="marksLockDeadlinePassed(exam) && exam.marks_lock_at ? 'exam-eval-deadline-btn--closed' : (exam.marks_lock_at ? 'exam-eval-deadline-btn--set' : '')">
+                                            <i class="fas fa-clock shrink-0 text-xs" aria-hidden="true"></i>
+                                            <span x-text="marksLockDeadlineSummary(exam)"></span>
                                         </button>
                                         <template x-if="exam.marks_lock_at">
                                             <button type="button"
                                                     @click="clearMarksLockSchedule(exam)"
                                                     :disabled="lockingExam || savingMarksLockKey === exam._key"
-                                                    class="text-[11px] font-semibold text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
-                                                Clear deadline
+                                                    class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 underline disabled:opacity-40 disabled:cursor-not-allowed">
+                                                Clear
                                             </button>
                                         </template>
                                     </div>
@@ -1045,8 +1078,8 @@
          @click.stop>
         <div class="bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-5 py-4">
             <h3 class="text-lg font-bold flex items-center gap-2">
-                <i class="fas fa-calendar-alt" aria-hidden="true"></i>
-                Marks entry closes
+                <i class="fas fa-clock" aria-hidden="true"></i>
+                Marks entry deadline
             </h3>
             <p class="text-xs text-white/85 mt-1 break-words" x-text="marksLockModalExam ? marksLockModalExam.exam_name : ''"></p>
         </div>
@@ -1461,6 +1494,7 @@
 <script type="application/json" id="exam-data-academic-years">{{ academic_years|tojson|safe }}</script>
 <script type="application/json" id="exam-data-terms">{{ terms|tojson|safe }}</script>
 <script type="application/json" id="exam-data-academic-levels">{{ academic_levels|tojson|safe }}</script>
+<script type="application/json" id="exam-data-level-combinations">{{ level_combinations|default([])|tojson|safe }}</script>
 <script type="application/json" id="exam-data-subjects">{{ subjects|tojson|safe }}</script>
 <script type="application/json" id="exam-data-teachers">{{ teachers|tojson|safe }}</script>
 <script type="application/json" id="exam-data-exams">{{ exams|tojson|safe }}</script>
@@ -1504,8 +1538,8 @@ function examEvaluation() {
         examForm: {
             exam_name: '',
             exam_type: '',
-            academic_year_id: '',
-            term_id: '',
+            academic_year_id: {{ default_academic_year_id|default('')|tojson }},
+            term_id: {{ default_term_id|default('')|tojson }},
         },
 
         allocations: [],
@@ -1524,10 +1558,8 @@ function examEvaluation() {
             { value: 'EVENING', label: 'Evening' },
             { value: 'CUSTOM', label: 'Custom' },
         ],
-        autoShareTimetable: false,
-        autoShareGroups: [
-            { id: 'A', name: 'Group A', levelIds: [] }
-        ],
+        levelCombinations: [],
+        comboShareEnabled: {},
 
         init() {
             this.academicYears = JSON.parse(document.getElementById('exam-data-academic-years')?.textContent || '[]');
@@ -1537,6 +1569,19 @@ function examEvaluation() {
             this.subjects = JSON.parse(document.getElementById('exam-data-subjects')?.textContent || '[]');
             this.teachers = JSON.parse(document.getElementById('exam-data-teachers')?.textContent || '[]');
             this.exams = JSON.parse(document.getElementById('exam-data-exams')?.textContent || '[]');
+
+            try {
+                this.levelCombinations = JSON.parse(document.getElementById('exam-data-level-combinations')?.textContent || '[]');
+            } catch (e) {
+                this.levelCombinations = [];
+            }
+            this.initFromLevelCombinations();
+
+            if (this.examForm.academic_year_id) {
+                this.syncTermsForYear(String(this.examForm.academic_year_id), false);
+            } else {
+                this.applyDefaultYearAndTerm();
+            }
 
             // Load configured session times (fallback to defaults if missing)
             try {
@@ -1740,7 +1785,42 @@ function examEvaluation() {
             }
         },
 
-        toggleLevel(levelId) {
+        get ungroupedLevels() {
+            const inCombo = new Set();
+            (this.levelCombinations || []).forEach(c => {
+                (c.members || []).forEach(m => inCombo.add(String(m.id)));
+            });
+            return (this.academicLevels || []).filter(l => !inCombo.has(String(l.id)));
+        },
+
+        initFromLevelCombinations() {
+            const share = {};
+            (this.levelCombinations || []).forEach(c => {
+                const cid = String(c.combo_id);
+                const members = (c.members || []).map(m => String(m.id));
+                share[cid] = members.length >= 2;
+            });
+            this.comboShareEnabled = share;
+        },
+
+        syncSelectedLevelIdsFromChecks() {
+            const ids = new Set();
+            (this.levelCombinations || []).forEach(c => {
+                (c.members || []).forEach(m => {
+                    if (this.isLevelIncluded(m.id)) ids.add(String(m.id));
+                });
+            });
+            this.ungroupedLevels.forEach(l => {
+                if (this.isLevelIncluded(l.id)) ids.add(String(l.id));
+            });
+            this.selectedLevelIds = Array.from(ids);
+        },
+
+        isLevelIncluded(levelId) {
+            return this.selectedLevelIds.includes(String(levelId));
+        },
+
+        toggleCombinationMember(comboId, levelId) {
             const s = String(levelId);
             const i = this.selectedLevelIds.indexOf(s);
             if (i >= 0) {
@@ -1748,77 +1828,81 @@ function examEvaluation() {
             } else {
                 this.selectedLevelIds.push(s);
             }
-            this._cleanupShareGroups();
+            const cid = String(comboId);
+            if (this.includedCountForCombo(comboId) < 2 && this.comboShareEnabled[cid]) {
+                this.comboShareEnabled[cid] = false;
+            }
         },
 
-        _cleanupShareGroups() {
-            const sel = new Set(this.selectedLevelIds.map(String));
-            (this.autoShareGroups || []).forEach(g => {
-                g.levelIds = (g.levelIds || []).filter(x => sel.has(String(x)));
-            });
-        },
-
-        addShareGroup() {
-            const n = (this.autoShareGroups || []).length;
-            const id = String.fromCharCode('A'.charCodeAt(0) + n);
-            this.autoShareGroups.push({ id, name: `Group ${id}`, levelIds: [] });
-        },
-
-        removeShareGroup(groupId) {
-            if (!this.autoShareGroups || this.autoShareGroups.length <= 1) return;
-            this.autoShareGroups = this.autoShareGroups.filter(g => String(g.id) !== String(groupId));
-        },
-
-        toggleShareGroupLevel(groupId, levelId) {
+        toggleUngroupedLevel(levelId) {
             const s = String(levelId);
-            if (!this.selectedLevelIds.includes(s)) return;
-            const grp = (this.autoShareGroups || []).find(g => String(g.id) === String(groupId));
-            if (!grp) return;
-            grp.levelIds = grp.levelIds || [];
-            const i = grp.levelIds.indexOf(s);
+            const i = this.selectedLevelIds.indexOf(s);
             if (i >= 0) {
-                grp.levelIds.splice(i, 1);
+                this.selectedLevelIds.splice(i, 1);
+            } else {
+                this.selectedLevelIds.push(s);
+            }
+        },
+
+        includedCountForCombo(comboId) {
+            const combo = (this.levelCombinations || []).find(c => String(c.combo_id) === String(comboId));
+            if (!combo) return 0;
+            return (combo.members || []).filter(m => this.isLevelIncluded(m.id)).length;
+        },
+
+        isComboShareEnabled(comboId) {
+            return !!this.comboShareEnabled[String(comboId)];
+        },
+
+        toggleComboShare(comboId) {
+            const cid = String(comboId);
+            if (this.includedCountForCombo(comboId) < 2) {
+                this.comboShareEnabled[cid] = false;
                 return;
             }
-            // Ensure a class is in only one group at a time
-            (this.autoShareGroups || []).forEach(g => {
-                if (!g.levelIds) g.levelIds = [];
-                if (String(g.id) !== String(groupId)) {
-                    g.levelIds = g.levelIds.filter(x => String(x) !== s);
+            this.comboShareEnabled[cid] = !this.comboShareEnabled[cid];
+        },
+
+        buildShareGroupsPayload() {
+            const groups = [];
+            (this.levelCombinations || []).forEach(c => {
+                const cid = String(c.combo_id);
+                if (!this.comboShareEnabled[cid]) return;
+                const levelIds = (c.members || [])
+                    .filter(m => this.isLevelIncluded(m.id))
+                    .map(m => parseInt(m.id, 10));
+                if (levelIds.length >= 2) {
+                    groups.push({
+                        name: String(c.level_name || 'Combined group'),
+                        level_ids: levelIds,
+                    });
                 }
             });
-            grp.levelIds.push(s);
-        },
-
-        _claimedShareLevelIds(exceptGroupId) {
-            const out = new Set();
-            (this.autoShareGroups || []).forEach(g => {
-                if (exceptGroupId != null && String(g.id) === String(exceptGroupId)) return;
-                (g.levelIds || []).forEach(x => out.add(String(x)));
-            });
-            return out;
-        },
-
-        availableLevelsForShareGroup(groupId) {
-            const claimed = this._claimedShareLevelIds(groupId);
-            const selected = new Set(this.selectedLevelIds.map(String));
-            return (this.academicLevels || []).filter(l => {
-                const id = String(l.id);
-                if (!selected.has(id)) return false;
-                // show if not claimed elsewhere
-                if (!claimed.has(id)) return true;
-                // also show if already selected in this group (so it remains visible)
-                const grp = (this.autoShareGroups || []).find(g => String(g.id) === String(groupId));
-                return !!(grp && (grp.levelIds || []).includes(id));
-            });
+            return groups;
         },
 
         selectAllLevels() {
-            this.selectedLevelIds = this.academicLevels.map(l => String(l.id));
+            const ids = [];
+            (this.levelCombinations || []).forEach(c => {
+                (c.members || []).forEach(m => ids.push(String(m.id)));
+            });
+            this.ungroupedLevels.forEach(l => ids.push(String(l.id)));
+            this.selectedLevelIds = ids;
+            const share = {};
+            (this.levelCombinations || []).forEach(c => {
+                const members = (c.members || []).map(m => String(m.id));
+                share[String(c.combo_id)] = members.length >= 2;
+            });
+            this.comboShareEnabled = share;
         },
 
         clearLevels() {
             this.selectedLevelIds = [];
+            const share = {};
+            (this.levelCombinations || []).forEach(c => {
+                share[String(c.combo_id)] = false;
+            });
+            this.comboShareEnabled = share;
         },
 
         toggleSession(sessionType) {
@@ -2262,25 +2346,68 @@ function examEvaluation() {
             this.examForm.exam_name = `${year.year_name} - ${term.term_name} - ${typeText}`.toUpperCase();
         },
 
-        async loadTerms() {
-            if (!this.examForm.academic_year_id) {
+        isCurrentFlag(value) {
+            return value === true || value === 1 || value === '1' || String(value).toLowerCase() === 'true';
+        },
+
+        toggleRegisterExamPanel() {
+            this.showRegisterExamPanel = !this.showRegisterExamPanel;
+            if (this.showRegisterExamPanel) {
+                this.$nextTick(() => {
+                    if (!this.examForm.academic_year_id) {
+                        this.applyDefaultYearAndTerm();
+                    } else {
+                        this.syncTermsForYear(String(this.examForm.academic_year_id), false);
+                    }
+                });
+            }
+        },
+
+        applyDefaultYearAndTerm() {
+            const years = this.academicYears || [];
+            const currentYear = years.find(y => y && this.isCurrentFlag(y.is_current));
+            const year = currentYear || years[0];
+            if (!year || year.id == null) return;
+            this.examForm.academic_year_id = String(year.id);
+            this.syncTermsForYear(String(year.id), true);
+            if (this.examForm.exam_type) {
+                this.generateExamName();
+            }
+        },
+
+        syncTermsForYear(yearId, pickDefaultTerm) {
+            if (!yearId) {
+                this.terms = [];
+                if (pickDefaultTerm) this.examForm.term_id = '';
+                return;
+            }
+            this.terms = (this.termsAll || []).filter(t => String(t.academic_year_id) === String(yearId));
+            if (!pickDefaultTerm) {
+                const tid = this.examForm.term_id;
+                if (tid && this.terms.some(t => String(t.id) === String(tid))) {
+                    return;
+                }
+            }
+            const currentTerm = this.terms.find(t => t && this.isCurrentFlag(t.is_current));
+            if (currentTerm && currentTerm.id != null) {
+                this.examForm.term_id = String(currentTerm.id);
+            } else if (this.terms.length > 0) {
+                this.examForm.term_id = String(this.terms[0].id);
+            } else {
+                this.examForm.term_id = '';
+            }
+        },
+
+        loadTerms() {
+            const yearId = this.examForm.academic_year_id;
+            if (!yearId) {
                 this.terms = [];
                 this.examForm.term_id = '';
                 return;
             }
-            try {
-                const response = await fetch('{{ employee_dash_url('exam-evaluation/get-terms') }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ academic_year_id: parseInt(this.examForm.academic_year_id) })
-                });
-                const result = await response.json();
-                if (result.success) {
-                    this.terms = result.terms;
-                    this.examForm.term_id = '';
-                }
-            } catch (e) {
-                console.error(e);
+            this.syncTermsForYear(String(yearId), true);
+            if (this.examForm.exam_type) {
+                this.generateExamName();
             }
         },
 
@@ -2299,17 +2426,15 @@ function examEvaluation() {
 
             let payload;
             if (this.registrationMode === 'auto') {
+                const shareGroups = this.buildShareGroupsPayload();
                 payload = {
                     exam_name: this.examForm.exam_name.trim().toUpperCase(),
                     exam_type: this.examForm.exam_type.trim().toUpperCase(),
                     academic_year_id: parseInt(this.examForm.academic_year_id),
                     term_id: parseInt(this.examForm.term_id),
                     auto_generate: true,
-                    share_timetable: !!this.autoShareTimetable,
-                    share_groups: (this.autoShareTimetable ? (this.autoShareGroups || []).map(g => ({
-                        name: String(g.name || ''),
-                        level_ids: (g.levelIds || []).map(x => parseInt(x, 10))
-                    })) : []),
+                    share_timetable: shareGroups.length > 0,
+                    share_groups: shareGroups,
                     base_exam_date: this.autoBaseDate,
                     level_ids: this.selectedLevelIds.map(id => parseInt(id, 10)),
                     session_types: this.selectedSessionTypes.slice(),
@@ -2380,7 +2505,7 @@ function examEvaluation() {
                 academic_year_id: '',
                 term_id: '',
             };
-            this.terms = this.termsAll;
+            this.applyDefaultYearAndTerm();
             this.selectedAcademicLevel = '';
             this.allocations = [];
             this.registrationMode = 'auto';
@@ -2395,6 +2520,10 @@ function examEvaluation() {
             this.successMessage = '';
             this.errorMessage = '';
             this.clientConflictMessage = '';
+            this.initFromLevelCombinations();
+            if (this.registrationMode === 'auto') {
+                this.selectAllLevels();
+            }
         },
 
         async toggleExamLock(exam) {
@@ -2531,6 +2660,36 @@ function examEvaluation() {
             const t = this._marksLockMs(exam.marks_lock_at);
             if (t === null) return false;
             return t <= Date.now();
+        },
+
+        marksLockDeadlineSummary(exam) {
+            void this.marksLockTick;
+            if (!exam || !exam.marks_lock_at) return 'Set marks deadline';
+            if (this.marksLockDeadlinePassed(exam)) return 'Marks closed';
+            try {
+                const raw = String(exam.marks_lock_at).trim().replace(' ', 'T');
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return 'Deadline set';
+                const when = d.toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                });
+                return 'Closes ' + when;
+            } catch (e) {
+                return 'Deadline set';
+            }
+        },
+
+        marksLockDeadlineTitle(exam) {
+            if (!exam || !exam.marks_lock_at) {
+                return 'Set the date and time when teachers must stop entering marks for this exam';
+            }
+            if (this.marksLockDeadlinePassed(exam)) {
+                return 'Marks entry has closed. Click to view or clear the deadline.';
+            }
+            return 'Marks entry closes: ' + this.marksLockDeadlineSummary(exam) + '. Click to change.';
         },
 
         openMarksLockModal(exam) {

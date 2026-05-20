@@ -158,4 +158,10 @@
     <span>Grade settings</span>
     {% if request.endpoint == 'grades_registration' or request.path.endswith('/grades-registration') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('combined-academic-levels') }}"
+   class="sidebar-item {% if request.endpoint == 'combined_academic_levels' or request.path.endswith('/combined-academic-levels') %}sidebar-item-active{% endif %}">
+    <i class="fas fa-object-group w-5"></i>
+    <span>Combined academic levels</span>
+    {% if request.endpoint == 'combined_academic_levels' or request.path.endswith('/combined-academic-levels') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 {% endif %}
