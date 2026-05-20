@@ -39833,7 +39833,11 @@ def _academic_report_school_export_banner_lines():
 
 
 def _academic_report_bundle_summary_lines(bundle, report_type):
-    """Report title + applied filter lines for export letterhead."""
+    """Report title + key applied filters for export letterhead (CSV / Excel).
+
+    Omits exam type, teacher, student, date range, timetable view, and generated
+    timestamp so the sheet stays focused on cohort + exam context.
+    """
     out = []
     title = (bundle.get('title') or '').strip() or str(report_type or '').replace('_', ' ').title()
     out.append(f'Report: {title}')
@@ -39847,13 +39851,6 @@ def _academic_report_bundle_summary_lines(bundle, report_type):
         ('class_level', 'Class'),
         ('level_view', 'Level view'),
         ('exam_name', 'Exam'),
-        ('exam_type', 'Exam type'),
-        ('teacher', 'Teacher'),
-        ('student_id', 'Student'),
-        ('date_from', 'Date from'),
-        ('date_to', 'Date to'),
-        ('timetable_view', 'Timetable view'),
-        ('generated_at', 'Generated'),
     ]
     for key, label in pairs:
         v = af.get(key)
@@ -41205,10 +41202,13 @@ def _build_academic_report_payload(cursor, report_type, f):
                     )
             subject_marks_map = {}
             normalized_marks = []
+            raw_subject_avgs = []
             for subject_name in cols_for_student:
                 marks_for_subject = student['subject_marks'].get(subject_name, [])
                 if marks_for_subject:
-                    avg_subject_mark = round_mark_display(sum(marks_for_subject) / len(marks_for_subject))
+                    raw_avg = sum(float(m) for m in marks_for_subject) / len(marks_for_subject)
+                    raw_subject_avgs.append(raw_avg)
+                    avg_subject_mark = round_mark_display(raw_avg)
                     subject_marks_map[subject_name] = avg_subject_mark
                     normalized_marks.append(avg_subject_mark)
                 else:
@@ -41216,8 +41216,11 @@ def _build_academic_report_payload(cursor, report_type, f):
             marks = normalized_marks
             if not marks:
                 continue
+            mean_raw = sum(raw_subject_avgs) / len(raw_subject_avgs)
             total_marks = round_mark_display(sum(marks)) or 0
-            mean_marks = round_mark_display(total_marks / len(marks)) if marks else 0
+            mean_marks = round_mark_display(mean_raw) if marks else 0
+            rank_total_raw = sum(raw_subject_avgs)
+            rank_mean_raw = mean_raw
             grade = _grade_from_settings(None, mean_marks, default_grade_bands, {})
             grade_points = _grade_points_from_settings(None, mean_marks, default_grade_bands, {})
             raw_pf = str(student.get('profile_raw') or '').strip()
@@ -41242,14 +41245,26 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'mean': mean_marks,
                 'grade': grade or '-',
                 'grade_points': grade_points,
+                '_rank_total': float(rank_total_raw),
+                '_rank_mean': float(rank_mean_raw),
             })
 
-        pre_rows.sort(key=lambda x: (-float(x.get('total_marks') or 0), -float(x.get('mean') or 0), str(x.get('full_name') or '').lower()))
+        def _pre_row_sort_key(x):
+            tr = float(x.get('_rank_total', 0))
+            mn = float(x.get('_rank_mean', 0))
+            name = str(x.get('full_name') or '').lower()
+            adm = str(x.get('admission_number') or x.get('student_id') or '').lower()
+            return (-tr, -mn, name, adm)
+
+        pre_rows.sort(key=_pre_row_sort_key)
         rows = []
         last_key = None
         current_position = 0
         for index, item in enumerate(pre_rows, start=1):
-            rank_key = (float(item.get('total_marks') or 0), float(item.get('mean') or 0))
+            rank_key = (
+                round(float(item.get('_rank_total', 0)), 8),
+                round(float(item.get('_rank_mean', 0)), 8),
+            )
             if rank_key != last_key:
                 current_position = index
                 last_key = rank_key
@@ -41262,6 +41277,8 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'level_name': item.get('level_name') or '',
                 'current_grade': item.get('current_grade') or '',
                 'student_photo': item.get('student_photo') or '',
+                'rank_sort_total': item.get('_rank_total'),
+                'rank_sort_mean': item.get('_rank_mean'),
             }
             for subject_name in row_cols:
                 flat_row[subject_name] = item['subject_marks'].get(subject_name, '')

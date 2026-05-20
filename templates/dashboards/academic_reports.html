@@ -2213,6 +2213,105 @@
     color: #64748b;
     text-align: center;
 }
+/* Report scope summary card (above preview) */
+.ar-report-filter-card {
+    border-radius: 1rem;
+    border: 1px solid color-mix(in srgb, var(--brand-primary, #166534) 18%, #e2e8f0);
+    background: linear-gradient(135deg, #fff 0%, #f8fafc 45%, color-mix(in srgb, var(--brand-primary, #166534) 6%, #fff) 100%);
+    box-shadow: 0 10px 28px -12px rgba(15, 23, 42, 0.18);
+}
+.dark .ar-report-filter-card {
+    border-color: rgba(148, 163, 184, 0.35);
+    background: linear-gradient(135deg, rgb(15 23 42) 0%, rgb(30 41 59) 55%, color-mix(in srgb, var(--brand-primary, #22c55e) 12%, rgb(15 23 42)) 100%);
+    box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45);
+}
+.ar-report-filter-card-inner {
+    padding: 1rem 1.15rem;
+}
+@media (min-width: 640px) {
+    .ar-report-filter-card-inner { padding: 1.15rem 1.35rem; }
+}
+.ar-report-filter-card-head {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+}
+.ar-report-filter-icon {
+    flex-shrink: 0;
+    width: 2.75rem;
+    height: 2.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    background: linear-gradient(135deg, var(--brand-primary, #166534), var(--brand-secondary, #15803d));
+    color: #fff;
+    font-size: 1rem;
+    box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--brand-primary, #166534) 55%, transparent);
+}
+.ar-report-filter-head-text { min-width: 0; flex: 1; }
+.ar-report-filter-kicker {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--brand-primary, #166534);
+}
+.dark .ar-report-filter-kicker {
+    color: var(--brand-secondary, #4ade80);
+}
+.ar-report-filter-title {
+    margin-top: 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.35;
+    color: #0f172a;
+}
+.dark .ar-report-filter-title { color: #f8fafc; }
+.ar-report-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    margin-top: 1rem;
+}
+@media (min-width: 640px) {
+    .ar-report-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+    .ar-report-filter-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.ar-report-filter-item {
+    border-radius: 0.65rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.92);
+    padding: 0.55rem 0.75rem;
+}
+.dark .ar-report-filter-item {
+    border-color: rgba(71, 85, 105, 0.55);
+    background: rgba(30, 41, 59, 0.65);
+}
+.ar-report-filter-dt {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+.dark .ar-report-filter-dt { color: #94a3b8; }
+.ar-report-filter-dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #0f172a;
+}
+.dark .ar-report-filter-dd { color: #f1f5f9; }
+.ar-report-filter-foot {
+    margin-top: 0.85rem;
+    font-size: 0.6875rem;
+    color: #64748b;
+}
+.dark .ar-report-filter-foot { color: #94a3b8; }
 </style>
 
 {% set role_theme = portal_page_variant|default('default') %}
@@ -2387,12 +2486,6 @@
                     </div>
                     <div class="no-print flex flex-col gap-3 xl:items-end">
                         <div class="flex flex-wrap items-center gap-2">
-                            <button type="button"
-                                    id="ar-print-btn"
-                                    title="Print this report on paper"
-                                    class="inline-flex items-center px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md shadow-brand-primary/20 hover:opacity-95 transition-all">
-                                Print
-                            </button>
                             <button type="button"
                                     id="ar-download-pdf-btn"
                                     title="Save as PDF via your browser print dialog"
@@ -3972,7 +4065,7 @@
     var _rowMetaKeys = {
       position: 1, admission_number: 1, student_id: 1, full_name: 1, level_name: 1,
       current_grade: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1, grade_points: 1,
-      subject_marks: 1, class_subject_columns: 1
+      subject_marks: 1, class_subject_columns: 1, rank_sort_total: 1, rank_sort_mean: 1,
     };
 
     function subjectColumnsForClass(className, list) {
@@ -4032,17 +4125,32 @@
       return String((row && row.level_name) || af.class_level || '').trim() || '—';
     }
 
+    /** Unrounded totals for ordering (matches server). Fallback: displayed total/mean. */
+    function examRowScore(row) {
+      var rt = parseFloat(row.rank_sort_total);
+      var rm = parseFloat(row.rank_sort_mean);
+      if (!isNaN(rt) && !isNaN(rm)) {
+        return { t: rt, m: rm };
+      }
+      return { t: parseFloat(row.total_marks) || 0, m: parseFloat(row.mean) || 0 };
+    }
+    function compareExamRows(a, b) {
+      var pa = examRowScore(a);
+      var pb = examRowScore(b);
+      if (pb.t !== pa.t) return pb.t - pa.t;
+      if (pb.m !== pa.m) return pb.m - pa.m;
+      var sidA = String(a.admission_number || a.student_id || '');
+      var sidB = String(b.admission_number || b.student_id || '');
+      var sc = sidA.localeCompare(sidB, undefined, { sensitivity: 'base', numeric: true });
+      if (sc !== 0) return sc;
+      return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+    }
+
   /** Group by class to avoid one long list when "All classes" is selected; combined view = one cohort. */
     let groupedByClass = {};
     if (mergeSingleCohort) {
       const cohortName = combinedCohortName || 'Combined class';
-      groupedByClass[cohortName] = rows.slice().sort(function(a, b) {
-        const tt = (parseFloat(b.total_marks) || 0) - (parseFloat(a.total_marks) || 0);
-        if (tt !== 0) return tt;
-        const mm = (parseFloat(b.mean) || 0) - (parseFloat(a.mean) || 0);
-        if (mm !== 0) return mm;
-        return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
-      });
+      groupedByClass[cohortName] = rows.slice().sort(compareExamRows);
     } else {
       rows.forEach(function(row) {
         const ck = classKeyForRow(row);
@@ -4059,19 +4167,31 @@
       });
     }
 
-    /** Sort and assign position within one class (ties share the same rank). */
+    /** Sort and assign position within one class (ties share the same rank). Matches API ordering. */
     function rankStudentsWithinClass(list) {
-      const sorted = list.slice().sort(function(a, b) {
-        const tt = (parseFloat(b.total_marks) || 0) - (parseFloat(a.total_marks) || 0);
-        if (tt !== 0) return tt;
-        const mm = (parseFloat(b.mean) || 0) - (parseFloat(a.mean) || 0);
-        if (mm !== 0) return mm;
-        return String(a.full_name || '').localeCompare(String(b.full_name || ''), undefined, { sensitivity: 'base' });
+      const sorted = list.slice().sort(compareExamRows);
+      const allHaveServer = sorted.every(function(r) {
+        var p = parseInt(String(r && r.position != null ? r.position : ''), 10);
+        return !isNaN(p) && p >= 1;
       });
+      if (allHaveServer) {
+        const byPos = sorted.slice().sort(function(a, b) {
+          var pa = parseInt(String(a.position), 10) || 999999;
+          var pb = parseInt(String(b.position), 10) || 999999;
+          if (pa !== pb) return pa - pb;
+          var sidA = String(a.admission_number || a.student_id || '');
+          var sidB = String(b.admission_number || b.student_id || '');
+          return sidA.localeCompare(sidB, undefined, { sensitivity: 'base', numeric: true });
+        });
+        return byPos.map(function(row) {
+          return { row: row, position: parseInt(String(row.position), 10) };
+        });
+      }
       let lastKey = null;
       let currentPosition = 0;
       return sorted.map(function(item, index) {
-        const rk = [parseFloat(item.total_marks) || 0, parseFloat(item.mean) || 0];
+        const sp = examRowScore(item);
+        const rk = [Math.round(sp.t * 1e8) / 1e8, Math.round(sp.m * 1e8) / 1e8];
         if (!lastKey || rk[0] !== lastKey[0] || rk[1] !== lastKey[1]) {
           currentPosition = index + 1;
           lastKey = rk;
@@ -5244,6 +5364,67 @@
 
   }
 
+  function renderReportFilterSummaryCard(bundle) {
+    bundle = bundle || {};
+    const meta = bundle.meta || {};
+    const af = meta.applied_filters || {};
+    function pick(k) {
+      const v = af[k];
+      if (v === undefined || v === null) return '';
+      const s = String(v).trim();
+      if (!s || s.toLowerCase() === 'null' || s.toLowerCase() === 'none') return '';
+      return s;
+    }
+    const title = String(bundle.title || '').trim();
+    const rows = [
+      { key: 'academic_year', label: 'Academic year' },
+      { key: 'term', label: 'Term' },
+      { key: 'class_level', label: 'Class' },
+      { key: 'level_view', label: 'Level view' },
+      { key: 'exam_name', label: 'Exam' },
+    ];
+    const items = rows
+      .map(function(r) {
+        const val = pick(r.key);
+        if (!val) return '';
+        return (
+          '<div class="ar-report-filter-item">' +
+            '<dt class="ar-report-filter-dt">' + escapeHtml(r.label) + '</dt>' +
+            '<dd class="ar-report-filter-dd">' + escapeHtml(val) + '</dd>' +
+          '</div>'
+        );
+      })
+      .join('');
+    if (!title && !items) return '';
+    const titleHtml = title
+      ? '<h3 class="ar-report-filter-title">' + escapeHtml(title) + '</h3>'
+      : '';
+    const footBits = [];
+    if (Array.isArray(bundle.rows) && bundle.rows.length) {
+      footBits.push(escapeHtml(String(bundle.rows.length)) + ' record(s)');
+    }
+    const gen = pick('generated_at');
+    if (gen) footBits.push('Generated ' + escapeHtml(gen));
+    const foot = footBits.length
+      ? '<p class="ar-report-filter-foot">' + footBits.join(' · ') + '</p>'
+      : '';
+    return (
+      '<div class="ar-report-filter-card no-print mb-4 sm:mb-5">' +
+        '<div class="ar-report-filter-card-inner">' +
+          '<div class="ar-report-filter-card-head">' +
+            '<span class="ar-report-filter-icon" aria-hidden="true"><i class="fas fa-sliders-h"></i></span>' +
+            '<div class="ar-report-filter-head-text">' +
+              '<p class="ar-report-filter-kicker">Report scope</p>' +
+              titleHtml +
+            '</div>' +
+          '</div>' +
+          (items ? '<dl class="ar-report-filter-grid">' + items + '</dl>' : '') +
+          foot +
+        '</div>' +
+      '</div>'
+    );
+  }
+
   async function loadDetails() {
     const reportType = currentReportId();
     if (!reportType || !detailsListEl) return;
@@ -5307,6 +5488,7 @@
       };
       setGeneratedNow();
       detailsListEl.innerHTML =
+        renderReportFilterSummaryCard(bundle) +
         (reportType === 'exam_all_students_performance'
           ? renderAllStudentsPerformance(bundle)
           :
@@ -5655,10 +5837,6 @@
     }
     restoreDetailsAfterPrint();
   });
-  const printBtn = document.getElementById('ar-print-btn');
-  if (printBtn) {
-    printBtn.addEventListener('click', function() { runAcademicReportPrint({ pdfHint: false }); });
-  }
   const downloadPdfBtn = document.getElementById('ar-download-pdf-btn');
   if (downloadPdfBtn) {
     downloadPdfBtn.addEventListener('click', function() { runAcademicReportPrint({ pdfHint: true }); });
