@@ -89,6 +89,9 @@
     {% include 'dashboards/includes/institution_leadership_sidebar.html' %}
 {% elif current_role == 'curriculum coordinator' %}
     {% include 'dashboards/includes/curriculum_coordinator_sidebar.html' %}
+{% elif current_role in ('teacher', 'teachers') %}
+    {% set teacher_nav_scope = 'all' %}
+    {% include 'dashboards/includes/teacher_sidebar.html' %}
 {% elif current_role == 'accountant' %}
     {% include 'dashboards/includes/accountant_sidebar.html' %}
 

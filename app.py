@@ -314,9 +314,17 @@ def portal_role_from_request_path() -> str:
     """Role for portal theme from /<role-slug>/… URL when session role differs."""
     if not has_request_context():
         return ''
-    parts = (request.path or '').strip('/').split('/')
+    # RootRolePathRewriteMiddleware maps /teachers/… → /dashboard/employee/…; keep slug from the browser URL.
+    raw_path = (
+        request.environ.get('portal_original_path_info')
+        or request.path
+        or ''
+    )
+    parts = raw_path.strip('/').split('/')
     if not parts:
         return ''
+    if parts[0].lower() == 'dashboard' and len(parts) > 1:
+        return slug_to_role(parts[1])
     return slug_to_role(parts[0])
 
 
@@ -502,6 +510,7 @@ class RootRolePathRewriteMiddleware:
             else:
                 new_path = '/dashboard/employee/' + rest
         environ = dict(environ)
+        environ['portal_original_path_info'] = path
         environ['PATH_INFO'] = new_path
         return self.app(environ, start_response)
 
@@ -521,6 +530,7 @@ class DashboardRolePathRewriteMiddleware:
                     rest = '/'.join(parts[2:]) if len(parts) > 2 else ''
                     new_path = '/dashboard/employee' + ('/' + rest if rest else '')
                     environ = dict(environ)
+                    environ['portal_original_path_info'] = path
                     environ['PATH_INFO'] = new_path
         return self.app(environ, start_response)
 
@@ -6197,8 +6207,44 @@ def session_effective_role():
     user_role = (session.get('role') or '').strip().lower()
     viewing = (session.get('viewing_as_employee_role') or '').strip().lower()
     if user_role == 'technician' and viewing:
-        return viewing
-    return user_role or 'employee'
+        return normalize_allocated_role(viewing) or viewing.replace('-', ' ')
+    return normalize_allocated_role(user_role) or user_role.replace('-', ' ') or 'employee'
+
+
+def may_delete_staff_members():
+    """Whether the current session may permanently remove employees from the system."""
+    if not has_request_context():
+        return False
+    if (session.get('role') or '').strip().lower() == 'technician':
+        return True
+    eff = session_effective_role()
+    if eff in ('head of institution', 'super admin'):
+        return True
+    return check_permission_or_role(
+        'delete_staff',
+        allowed_roles=['head of institution', 'super admin'],
+    )
+
+
+def _purge_employee_dependencies(cursor, employee_pk):
+    """Clear rows that reference this employee so DELETE FROM employees can succeed."""
+    pk = int(employee_pk)
+    cleanup_statements = [
+        ("DELETE FROM library_book_student_issues WHERE teacher_id = %s", (pk,)),
+        ("DELETE FROM library_book_teacher_distributions WHERE teacher_id = %s", (pk,)),
+        ("UPDATE library_book_stock_movements SET performed_by = NULL WHERE performed_by = %s", (pk,)),
+        ("UPDATE student_attendance_records SET recorded_by_employee_id = NULL WHERE recorded_by_employee_id = %s", (pk,)),
+        ("UPDATE exams SET supervisor_id = NULL WHERE supervisor_id = %s", (pk,)),
+        ("UPDATE student_payments SET received_by = NULL WHERE received_by = %s", (pk,)),
+        ("UPDATE student_payment_audit SET changed_by = NULL WHERE changed_by = %s", (pk,)),
+        ("UPDATE store_stock_movements SET performed_by = NULL WHERE performed_by = %s", (pk,)),
+        ("UPDATE store_requisitions SET requested_by = NULL WHERE requested_by = %s", (pk,)),
+    ]
+    for sql, params in cleanup_statements:
+        try:
+            cursor.execute(sql, params)
+        except Exception as ex:
+            print(f"_purge_employee_dependencies ({sql[:48]}…): {ex}")
 
 
 def has_permission(employee_id, permission_key):
@@ -18126,7 +18172,7 @@ def staff_management():
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['head of institution', 'super admin'])
+    can_delete = may_delete_staff_members()
     
     # Fetch all employees
     connection = get_db_connection()
@@ -18182,7 +18228,7 @@ def teacher_management():
     # Check what actions the user can perform
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
-    can_delete = check_permission_or_role('delete_staff', ['head of institution', 'super admin'])
+    can_delete = may_delete_staff_members()
     
     # Fetch only teachers
     connection = get_db_connection()
@@ -18483,19 +18529,13 @@ def update_employee(employee_id):
 @app.route('/delete-employee/<int:employee_id>', methods=['POST'])
 @login_required
 def delete_employee(employee_id):
-    """Delete an employee"""
+    """Permanently remove an employee and related portal access from the system."""
     actor_pk = resolve_session_employee_pk()
 
     if actor_pk is not None and employee_id == actor_pk:
         return jsonify({'success': False, 'message': 'You cannot delete your own account.'}), 400
 
-    # Match UI: only head of institution and super admin (technicians bypass in check_permission_or_role)
-    has_access = check_permission_or_role(
-        'delete_staff',
-        allowed_roles=['super admin', 'head of institution'],
-    )
-
-    if not has_access:
+    if not may_delete_staff_members():
         return jsonify({'success': False, 'message': 'You do not have permission to delete employees.'}), 403
     
     connection = get_db_connection()
@@ -18504,18 +18544,68 @@ def delete_employee(employee_id):
     
     try:
         with connection.cursor() as cursor:
-            # Check if employee exists and get name
-            cursor.execute("SELECT id, full_name FROM employees WHERE id = %s", (employee_id,))
+            cursor.execute(
+                "SELECT id, full_name, profile_picture, role FROM employees WHERE id = %s",
+                (employee_id,),
+            )
             employee = cursor.fetchone()
             
             if not employee:
                 return jsonify({'success': False, 'message': 'Employee not found.'}), 404
-            
-            # Delete employee
+
+            emp_name = employee.get('full_name') if isinstance(employee, dict) else employee[1]
+            emp_role = (employee.get('role') if isinstance(employee, dict) else employee[3] or '').strip().lower()
+            profile_path = employee.get('profile_picture') if isinstance(employee, dict) else employee[2]
+
+            if emp_role in ('head of institution', 'super admin'):
+                ensure_employee_roles_schema(cursor)
+                cursor.execute(
+                    """
+                    SELECT COUNT(*) AS cnt FROM employees e
+                    WHERE e.id != %s AND e.status = 'active'
+                      AND (
+                        e.role = %s
+                        OR EXISTS (
+                            SELECT 1 FROM employee_roles er
+                            WHERE er.employee_id = e.id AND er.role = %s
+                        )
+                      )
+                    """,
+                    (employee_id, emp_role, emp_role),
+                )
+                cnt_row = cursor.fetchone()
+                remaining = (
+                    cnt_row.get('cnt', 0) if isinstance(cnt_row, dict) else (cnt_row[0] if cnt_row else 0)
+                )
+                if int(remaining or 0) < 1:
+                    return jsonify({
+                        'success': False,
+                        'message': (
+                            f'Cannot delete the only active {emp_role}. '
+                            'Assign the role to another staff member first.'
+                        ),
+                    }), 400
+
+            _purge_employee_dependencies(cursor, employee_id)
             cursor.execute("DELETE FROM employees WHERE id = %s", (employee_id,))
             
             connection.commit()
-            return jsonify({'success': True, 'message': f'Employee {employee.get("full_name")} has been deleted successfully.'})
+
+            if profile_path:
+                try:
+                    rel = str(profile_path).replace('\\', '/').lstrip('/')
+                    if rel.startswith('static/'):
+                        rel = rel[7:]
+                    full_path = os.path.join(app.root_path, 'static', rel)
+                    if os.path.isfile(full_path):
+                        os.remove(full_path)
+                except OSError as file_err:
+                    print(f"Note: could not remove profile file for employee {employee_id}: {file_err}")
+
+            return jsonify({
+                'success': True,
+                'message': f'{emp_name} has been removed from the system.',
+            })
             
     except IntegrityError as ie:
         print(f"Error deleting employee (integrity): {ie}")

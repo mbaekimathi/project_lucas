@@ -316,7 +316,7 @@
                                 {% if can_delete|default(false) and not is_self %}
                                 <button type="button" @click="openDeleteModal({{ employee.id }}, {{ employee.full_name|tojson }})"
                                         class="staff-action-icon-btn text-red-600 dark:text-red-400"
-                                        title="Remove from directory" aria-label="Delete {{ employee.full_name }}">
+                                        title="Delete employee" aria-label="Delete {{ employee.full_name }}">
                                     <i class="fas fa-trash-alt"></i>
                                 </button>
                                 {% elif can_delete|default(false) and is_self %}
@@ -483,21 +483,30 @@
                         <i class="fas fa-user-times"></i>
                     </div>
                     <div class="min-w-0">
-                        <h3 id="staff-delete-modal-title" class="text-lg font-bold text-gray-900 dark:text-white">Remove staff member?</h3>
-                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">This permanently deletes the account and related access. Timetables or records that reference this person may be affected.</p>
+                        <h3 id="staff-delete-modal-title" class="text-lg font-bold text-gray-900 dark:text-white">Delete employee permanently?</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">This removes their portal login, roles, and staff record from the system. Linked timetables, assignments, and payroll rows for this person are cleared or unlinked.</p>
                     </div>
                 </div>
             </div>
             <div class="px-5 py-4 space-y-3">
                 <p class="text-sm text-gray-700 dark:text-gray-300">
-                    You are about to delete <strong class="text-gray-900 dark:text-white" x-text="deleteModal.name"></strong>.
+                    You are about to permanently delete <strong class="text-gray-900 dark:text-white" x-text="deleteModal.name"></strong> from the school system. This cannot be undone.
                 </p>
+                <label class="block text-sm text-gray-600 dark:text-gray-400">
+                    <span class="font-medium text-gray-700 dark:text-gray-300">Type <span class="font-mono text-red-600 dark:text-red-400">DELETE</span> to confirm</span>
+                    <input type="text"
+                           x-model="deleteModal.confirmText"
+                           autocomplete="off"
+                           class="mt-1.5 w-full modern-input px-3 py-2 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                           placeholder="DELETE"
+                           aria-label="Type DELETE to confirm">
+                </label>
                 <div class="flex flex-col-reverse sm:flex-row gap-2 pt-1">
                     <button type="button" @click="deleteModal.open = false" :disabled="deleteModal.loading"
                             class="touch-btn flex-1 px-4 py-2.5 rounded-xl font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
                         Cancel
                     </button>
-                    <button type="button" @click="confirmDelete()" :disabled="deleteModal.loading"
+                    <button type="button" @click="confirmDelete()" :disabled="deleteModal.loading || deleteModal.confirmText !== 'DELETE'"
                             class="touch-btn flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md">
                         <span x-show="!deleteModal.loading">Delete permanently</span>
                         <span x-show="deleteModal.loading" class="inline-flex items-center justify-center gap-2">
@@ -660,7 +669,7 @@ function staffManagement() {
                 new_password: ''
             }
         },
-        deleteModal: { open: false, id: null, name: '', loading: false },
+        deleteModal: { open: false, id: null, name: '', confirmText: '', loading: false },
 
         get visibleCount() {
             return this.employeeRows.filter((row) =>
@@ -685,6 +694,7 @@ function staffManagement() {
                     this.deleteModal.loading = false;
                     this.deleteModal.id = null;
                     this.deleteModal.name = '';
+                    this.deleteModal.confirmText = '';
                 }
             });
         },
@@ -842,6 +852,7 @@ function staffManagement() {
         openDeleteModal(employeeId, employeeName) {
             this.deleteModal.id = employeeId;
             this.deleteModal.name = employeeName || '';
+            this.deleteModal.confirmText = '';
             this.deleteModal.loading = false;
             this.deleteModal.open = true;
         },
@@ -849,12 +860,21 @@ function staffManagement() {
         async confirmDelete() {
             const employeeId = this.deleteModal.id;
             if (!employeeId) return;
+            if (this.deleteModal.confirmText !== 'DELETE') {
+                this.showMessage('Type DELETE in the confirmation box to proceed.', 'error');
+                return;
+            }
             this.deleteModal.loading = true;
             try {
                 const response = await fetch(`${_staffEmpPrefix}/delete-employee/${employeeId}`, {
                     method: 'POST',
                     credentials: 'same-origin',
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: '{}',
                 });
                 const raw = await response.text();
                 let result = {};
