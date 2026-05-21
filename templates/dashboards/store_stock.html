@@ -17,6 +17,7 @@ document.addEventListener('alpine:init', function () {
       stockMode: 'in',
       listMode: null,
       formOpen: false,
+      registerFormOpen: {{ register_form_open_default|default(false)|tojson }},
       stockItems: [],
       recentMovements: [],
       storeItemId: '',
@@ -35,6 +36,7 @@ document.addEventListener('alpine:init', function () {
       supplierLookupUrl: {{ employee_dash_url('store-stock/supplier-lookup')|tojson }},
       stockPostUrl: {{ employee_dash_url('store-stock')|tojson }},
       printUrlBase: {{ employee_dash_url('store-stock/print')|tojson }},
+      preselectItemId: {{ preselect_item_id|tojson }},
       init: function () {
         var el = document.getElementById('store-stock-items-json');
         try {
@@ -53,6 +55,15 @@ document.addEventListener('alpine:init', function () {
         if (urlMode === 'in' || urlMode === 'out') {
           this.listMode = urlMode;
           this.stockMode = urlMode;
+        }
+        if (this.preselectItemId) {
+          this.storeItemId = String(this.preselectItemId);
+          this.formOpen = true;
+          this.listMode = 'in';
+          this.stockMode = 'in';
+          if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', this.stockPostUrl);
+          }
         }
         var printId = {{ last_print_id|tojson }};
         if (printId) {
@@ -102,6 +113,24 @@ document.addEventListener('alpine:init', function () {
       },
       closeForm: function () {
         this.formOpen = false;
+      },
+      openRegisterForm: function () {
+        this.registerFormOpen = true;
+        this.$nextTick(function () {
+          var panel = this.$refs.registerFormPanel;
+          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }.bind(this));
+      },
+      closeRegisterForm: function () {
+        this.registerFormOpen = false;
+      },
+      uppercaseInput: function ($event) {
+        var el = $event.target;
+        if (el && el.value != null) {
+          var pos = el.selectionStart;
+          el.value = el.value.toUpperCase();
+          if (pos != null) el.setSelectionRange(pos, pos);
+        }
       },
       switchMode: function (mode) {
         this.stockMode = mode === 'out' ? 'out' : 'in';
@@ -256,13 +285,11 @@ document.addEventListener('alpine:init', function () {
                 <p class="text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400">School store</p>
                 <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white sm:text-3xl">Stock in &amp; stock out</h1>
                 <p class="mt-2 text-sm text-gray-600 dark:text-gray-400 max-w-2xl">
-                    Choose stock in or stock out, select an item from the catalog, then complete the form.
-                    Stock in creates a reference number and records payment as <strong>pending</strong> (total = quantity × buying price).
+                    Register new catalog items here, then use stock in or stock out. Stock in creates a reference number and records payment as <strong>pending</strong> (total = quantity × buying price).
                 </p>
                 {% if not stock_items %}
                 <p class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-                    No active items in the catalog.
-                    <a href="{{ employee_dash_url('store-inventory') }}" class="font-semibold underline">Register items</a> first.
+                    No active items in the catalog yet. Use <strong>Register item</strong> below to add one, then record stock in.
                 </p>
                 {% endif %}
             </div>
@@ -271,7 +298,95 @@ document.addEventListener('alpine:init', function () {
         <script type="application/json" id="store-stock-items-json">{{ stock_items_client|tojson }}</script>
         <script type="application/json" id="store-recent-movements-json">{{ recent_movements|tojson }}</script>
 
-        <div class="space-y-8">
+        <div class="space-y-8 uppercase">
+            <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
+                <div class="border-b border-gray-100 px-5 py-5 dark:border-gray-800 sm:px-7 sm:py-6" x-show="!registerFormOpen">
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div class="min-w-0 normal-case">
+                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">Register store item</h2>
+                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">Add a new item to the catalog before stocking in or out. Library Department items are sent to the librarian catalog.</p>
+                        </div>
+                        <button type="button" @click="openRegisterForm()"
+                                class="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-3.5 text-sm font-semibold text-white shadow-md hover:brightness-110">
+                            <i class="fas fa-plus-circle"></i> Register item
+                        </button>
+                    </div>
+                </div>
+                <div x-show="registerFormOpen" x-cloak x-ref="registerFormPanel"
+                     class="border-t-4 border-brand-primary bg-gradient-to-b from-white to-gray-50/80 px-5 py-6 dark:from-gray-900 dark:to-gray-950/80 sm:px-7 sm:py-8">
+                    <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">New store item</h2>
+                            <p class="mt-1 text-xs font-normal normal-case text-gray-500 dark:text-gray-400">Required fields must be completed. Image is optional.</p>
+                        </div>
+                        <button type="button" @click="closeRegisterForm()"
+                                class="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                    <form method="post" :action="stockPostUrl" enctype="multipart/form-data" class="space-y-5 normal-case">
+                        <input type="hidden" name="form_action" value="register_item" />
+                        <div class="grid gap-5 sm:grid-cols-2">
+                            <div class="sm:col-span-2">
+                                <label for="reg_item_category" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Item category</label>
+                                <input list="store-stock-category-suggestions" type="text" name="item_category" id="reg_item_category" required maxlength="120" autocomplete="off"
+                                       @input="uppercaseInput($event)"
+                                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                                       placeholder="STATIONERY, TEXTBOOK, LAB SUPPLIES" />
+                                <datalist id="store-stock-category-suggestions">
+                                    {% for cat in category_suggestions %}
+                                    <option value="{{ cat }}"></option>
+                                    {% endfor %}
+                                </datalist>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="reg_item_name" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Item name</label>
+                                <input type="text" name="item_name" id="reg_item_name" required maxlength="255" autocomplete="off"
+                                       @input="uppercaseInput($event)"
+                                       class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                                       placeholder="ITEM NAME" />
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="reg_department_station" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Department station</label>
+                                <select name="department_station" id="reg_department_station" required
+                                        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                    <option value="">SELECT STATION</option>
+                                    {% for st in department_stations %}
+                                    <option value="{{ st }}">{{ st }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="reg_description" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Description <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                                <textarea name="description" id="reg_description" rows="3"
+                                          @input="uppercaseInput($event)"
+                                          class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                                          placeholder="SIZE, BRAND, NOTES"></textarea>
+                            </div>
+                            <div>
+                                <label for="reg_measure" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Measure</label>
+                                <select name="measure" id="reg_measure" required
+                                        class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                    <option value="">SELECT MEASURE</option>
+                                    {% for m in measures %}
+                                    <option value="{{ m }}">{{ m }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div>
+                                <label for="reg_image" class="mb-1.5 block text-xs font-semibold text-gray-700 dark:text-gray-300">Image <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                                <input type="file" name="image" id="reg_image" accept="image/png,image/jpeg,image/gif,image/webp"
+                                       class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm normal-case file:mr-3 file:rounded-lg file:border-0 file:bg-brand-primary/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-primary dark:border-gray-600 dark:bg-gray-950" />
+                            </div>
+                        </div>
+                        <button type="submit"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-primary px-6 py-3.5 text-sm font-semibold text-white shadow-md sm:w-auto hover:brightness-110">
+                            <i class="fas fa-plus-circle"></i> Add to catalog
+                        </button>
+                    </form>
+                </div>
+            </section>
+
             <section class="rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900 sm:rounded-3xl overflow-hidden">
                 <div class="px-5 py-5 sm:px-7 sm:py-6" x-show="!formOpen" x-cloak>
                     <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">Record incoming stock or issue items from the store.</p>

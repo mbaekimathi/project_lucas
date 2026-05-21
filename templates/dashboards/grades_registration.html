@@ -37,6 +37,124 @@
         transform: translateY(-1px);
     }
 </style>
+<script>
+document.addEventListener('alpine:init', function () {
+    Alpine.data('subjectGradeEditor', function (subjectId, customModeInitial, showAddInitial) {
+        return {
+            customMode: !!customModeInitial,
+            showAddCustomGrade: !!showAddInitial,
+            rows: [],
+            draft: { code: '', level_label: '', meaning: '', allocation_points: '', start_mark: '', end_mark: '' },
+            init: function () {
+                var rowsEl = document.getElementById('subject-grade-rows-' + subjectId);
+                if (rowsEl && rowsEl.textContent) {
+                    try {
+                        this.rows = JSON.parse(rowsEl.textContent) || [];
+                    } catch (e) {
+                        this.rows = [];
+                    }
+                }
+            },
+            emptyDraft: function () {
+                this.draft = { code: '', level_label: '', meaning: '', allocation_points: '', start_mark: '', end_mark: '' };
+            },
+            draftCodeExists: function () {
+                var c = (this.draft.code || '').trim().toUpperCase();
+                if (!c) return false;
+                return this.rows.some(function (r) {
+                    return (r.code || '').trim().toUpperCase() === c;
+                });
+            },
+            fillDraftFromRow: function (idx) {
+                var band = this.rows[idx];
+                if (!band) return;
+                this.draft = {
+                    code: band.code || '',
+                    level_label: band.level_label || '',
+                    meaning: band.meaning || '',
+                    allocation_points: band.allocation_points !== undefined && band.allocation_points !== null ? band.allocation_points : '',
+                    start_mark: band.start_mark !== undefined && band.start_mark !== null ? band.start_mark : '',
+                    end_mark: band.end_mark !== undefined && band.end_mark !== null ? band.end_mark : ''
+                };
+                this.showAddCustomGrade = true;
+            },
+            addCustomGrade: function () {
+                var c = (this.draft.code || '').trim().toUpperCase();
+                var lvl = (this.draft.level_label || '').trim();
+                var mean = (this.draft.meaning || '').trim();
+                var sm = parseFloat(this.draft.start_mark);
+                var em = parseFloat(this.draft.end_mark);
+                if (!c || !lvl || !mean) {
+                    alert('Please enter code, mark level, and meaning.');
+                    return;
+                }
+                if (Number.isNaN(sm) || Number.isNaN(em)) {
+                    alert('Please enter valid start and end marks.');
+                    return;
+                }
+                if (sm > em) {
+                    alert('Start mark must be less than or equal to end mark.');
+                    return;
+                }
+                var ap = this.draft.allocation_points;
+                if (ap !== '' && ap !== null && ap !== undefined) {
+                    ap = parseFloat(ap);
+                    if (Number.isNaN(ap)) {
+                        alert('Please enter a valid points value or leave it blank.');
+                        return;
+                    }
+                } else {
+                    ap = '';
+                }
+                var row = {
+                    code: c,
+                    level_label: lvl.toUpperCase(),
+                    meaning: mean.toUpperCase(),
+                    allocation_points: ap,
+                    start_mark: sm,
+                    end_mark: em
+                };
+                var existingIdx = -1;
+                for (var i = 0; i < this.rows.length; i++) {
+                    if ((this.rows[i].code || '').trim().toUpperCase() === c) {
+                        existingIdx = i;
+                        break;
+                    }
+                }
+                if (existingIdx >= 0) {
+                    this.rows.splice(existingIdx, 1, row);
+                } else {
+                    this.rows.push(row);
+                }
+                this.emptyDraft();
+            },
+            copyDefaultsAsStartingPoint: function () {
+                var defEl = document.getElementById('subject-grade-defaults-' + subjectId);
+                if (defEl && defEl.textContent) {
+                    try {
+                        this.rows = JSON.parse(defEl.textContent) || [];
+                    } catch (e) {
+                        this.rows = [];
+                    }
+                }
+            },
+            startFreshCustom: function () {
+                if (this.rows.length && !confirm('Remove all grade rows and start a new custom list?')) return;
+                this.rows = [];
+                this.showAddCustomGrade = true;
+            },
+            removeRow: function (i) {
+                this.rows.splice(i, 1);
+            },
+            onCustomModeToggle: function () {
+                if (this.customMode) {
+                    this.showAddCustomGrade = true;
+                }
+            }
+        };
+    });
+});
+</script>
 {% endblock %}
 
 {% block content %}
@@ -298,7 +416,7 @@
             </span>
         </div>
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            All active subjects use the default grading system. Use <strong>Edit Grade Allocation</strong> to adjust mark ranges and optional points per level for one subject only (blank points keep the default for that code).
+            Open <strong>Edit Grade Allocation</strong>, turn on <strong>Use custom grading for this subject</strong>, then use <strong>Add Custom Grade</strong> in that subject&apos;s section to create each grade band. Leave custom grading off to only adjust default points and mark ranges.
         </p>
 
         {% if subject_grade_allocations %}
@@ -315,22 +433,59 @@
                             {% if subj.uses_default %}Using default grading{% else %}Custom grade allocation saved{% endif %}
                         </p>
                     </div>
-                    <button type="button"
-                            @click="editSubjectId = (editSubjectId === {{ subj.subject_id }}) ? null : {{ subj.subject_id }}"
-                            class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white text-sm font-semibold shadow-md">
-                        <i class="fas fa-edit"></i>
-                        <span>Edit Grade Allocation</span>
-                    </button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        {% if not subj.uses_default %}
+                        <form method="POST"
+                              action="{{ employee_dash_url('grades-registration/subject/reset-default') }}"
+                              class="inline"
+                              onsubmit="return confirm('Revert this subject to school default grading? All custom grade bands will be removed.');">
+                            <input type="hidden" name="subject_id" value="{{ subj.subject_id }}">
+                            <button type="submit"
+                                    class="modern-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-sm font-semibold hover:border-brand-primary">
+                                <i class="fas fa-undo text-brand-primary"></i>
+                                Revert to default
+                            </button>
+                        </form>
+                        {% endif %}
+                        <button type="button"
+                                @click="editSubjectId = (editSubjectId === {{ subj.subject_id }}) ? null : {{ subj.subject_id }}"
+                                class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white text-sm font-semibold shadow-md">
+                            <i class="fas fa-edit"></i>
+                            <span>Edit Grade Allocation</span>
+                        </button>
+                    </div>
                 </div>
 
+                <script type="application/json" id="subject-grade-rows-{{ subj.subject_id }}">{{ subj.bands | tojson }}</script>
+                <script type="application/json" id="subject-grade-defaults-{{ subj.subject_id }}">{{ subj.default_bands | tojson }}</script>
                 <form x-show="editSubjectId === {{ subj.subject_id }}"
+                      x-data="subjectGradeEditor({{ subj.subject_id }}, {{ 'true' if not subj.uses_default else 'false' }}, {{ 'true' if not subj.uses_default else 'false' }})"
                       x-transition:enter="transition ease-out duration-200"
                       x-transition:enter-start="opacity-0 -translate-y-1"
                       x-transition:enter-end="opacity-100 translate-y-0"
+                      x-cloak
                       method="POST"
                       action="{{ employee_dash_url('grades-registration/subject/save-ranges') }}"
-                      class="mt-4 space-y-3">
+                      class="mt-4 space-y-3"
+                      @submit="if (customMode && !rows.length) { $event.preventDefault(); alert('Add at least one custom grade using Add Custom Grade, then click Save Custom Grading.'); }">
                     <input type="hidden" name="subject_id" value="{{ subj.subject_id }}">
+                    <input type="hidden" name="custom_full" :value="customMode ? '1' : ''">
+
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700">
+                        <label class="inline-flex items-start sm:items-center gap-3 cursor-pointer">
+                            <input type="checkbox"
+                                   x-model="customMode"
+                                   @change="onCustomModeToggle()"
+                                   class="mt-1 sm:mt-0 w-5 h-5 rounded border-gray-300 text-brand-primary focus:ring-brand-primary">
+                            <span>
+                                <span class="block text-sm font-semibold text-gray-900 dark:text-white">Use custom grading for this subject</span>
+                                <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5" x-show="!customMode">Only points and mark ranges change; codes and levels follow the school default.</span>
+                                <span class="block text-xs text-blue-700 dark:text-blue-300 mt-0.5" x-show="customMode" x-cloak>Use <strong>Add Custom Grade</strong> below to create each grade band for this subject.</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <template x-if="!customMode">
                     <div class="overflow-x-auto">
                         <table class="w-full min-w-[650px] text-sm">
                             <thead class="bg-gray-50 dark:bg-gray-700/50">
@@ -381,10 +536,216 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="flex justify-end">
-                        <button type="submit" class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md">
+                    </template>
+
+                    <template x-if="customMode">
+                    <div class="space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">Custom grades for this subject</p>
+                            <div class="flex flex-wrap gap-2">
+                                {% if subj.uses_default %}
+                                <button type="button"
+                                        @click="copyDefaultsAsStartingPoint()"
+                                        class="modern-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-brand-primary">
+                                    <i class="fas fa-copy text-brand-primary"></i>
+                                    Copy school defaults
+                                </button>
+                                <button type="button"
+                                        @click="startFreshCustom()"
+                                        class="modern-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-brand-primary">
+                                    <i class="fas fa-broom text-brand-primary"></i>
+                                    Start empty list
+                                </button>
+                                {% endif %}
+                                <button type="button"
+                                        @click="showAddCustomGrade = !showAddCustomGrade"
+                                        class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md">
+                                    <i class="fas" :class="showAddCustomGrade ? 'fa-eye-slash' : 'fa-plus-circle'"></i>
+                                    <span x-text="showAddCustomGrade ? 'Hide Add Custom Grade' : 'Add Custom Grade'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div x-show="showAddCustomGrade"
+                             x-transition
+                             class="rounded-xl border border-brand-primary/30 dark:border-brand-primary/40 bg-brand-primary/5 dark:bg-brand-primary/10 p-4">
+                            <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+                                <i class="fas fa-plus-circle text-brand-primary"></i>
+                                <span>Register a custom grade for {{ subj.subject_name }}</span>
+                            </h3>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                                Enter a code that is already in the list to <strong>update</strong> that grade. Use a new code to add another row.
+                            </p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Code</label>
+                                    <input type="text"
+                                           x-model="draft.code"
+                                           @input="draft.code = ($event.target.value || '').toUpperCase()"
+                                           placeholder="EE1"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Mark level</label>
+                                    <input type="text"
+                                           x-model="draft.level_label"
+                                           @input="draft.level_label = ($event.target.value || '').toUpperCase()"
+                                           placeholder="EXCEEDING EXPECTATION 1"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Meaning</label>
+                                    <input type="text"
+                                           x-model="draft.meaning"
+                                           @input="draft.meaning = ($event.target.value || '').toUpperCase()"
+                                           placeholder="EXCELLENT"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Points</label>
+                                    <input type="number"
+                                           x-model="draft.allocation_points"
+                                           min="0" step="0.01"
+                                           placeholder="Optional"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Start mark</label>
+                                    <input type="number"
+                                           x-model="draft.start_mark"
+                                           min="0" max="100" step="0.01"
+                                           placeholder="0"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">End mark</label>
+                                    <input type="number"
+                                           x-model="draft.end_mark"
+                                           min="0" max="100" step="0.01"
+                                           placeholder="100"
+                                           class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap justify-end gap-2 mt-4">
+                                <button type="button"
+                                        @click="emptyDraft()"
+                                        class="modern-btn px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                                    Clear form
+                                </button>
+                                <button type="button"
+                                        @click="addCustomGrade()"
+                                        class="modern-btn inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md">
+                                    <i class="fas" :class="draftCodeExists() ? 'fa-sync-alt' : 'fa-plus'"></i>
+                                    <span x-text="draftCodeExists() ? 'Update in subject list' : 'Add to subject list'"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                        <table class="w-full min-w-[820px] text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-700/50">
+                                <tr class="text-left text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
+                                    <th class="py-2 px-3">Code</th>
+                                    <th class="py-2 px-3">Mark Level</th>
+                                    <th class="py-2 px-3">Meaning</th>
+                                    <th class="py-2 px-3">Points</th>
+                                    <th class="py-2 px-3">Start Mark</th>
+                                    <th class="py-2 px-3">End Mark</th>
+                                    <th class="py-2 px-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr x-show="!rows.length" x-cloak>
+                                    <td colspan="7" class="py-8 px-3 text-center text-gray-500 dark:text-gray-400">
+                                        <i class="fas fa-layer-group text-2xl mb-2 opacity-40"></i>
+                                        <p class="text-sm">No custom grades yet. Click <strong>Add Custom Grade</strong> and fill the form, then <strong>Add to subject list</strong>.</p>
+                                    </td>
+                                </tr>
+                                <template x-for="(band, idx) in rows" :key="idx">
+                                    <tr class="border-b border-gray-100 dark:border-gray-700/60">
+                                        <td class="py-2 px-3">
+                                            <input type="text"
+                                                   name="code"
+                                                   x-model="band.code"
+                                                   required
+                                                   placeholder="EE1"
+                                                   @input="band.code = ($event.target.value || '').toUpperCase()"
+                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase font-semibold">
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <input type="text"
+                                                   name="level_label"
+                                                   x-model="band.level_label"
+                                                   required
+                                                   placeholder="EXCEEDING EXPECTATION 1"
+                                                   @input="band.level_label = ($event.target.value || '').toUpperCase()"
+                                                   class="modern-input w-full min-w-[10rem] px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase">
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <input type="text"
+                                                   name="meaning"
+                                                   x-model="band.meaning"
+                                                   required
+                                                   placeholder="EXCELLENT"
+                                                   @input="band.meaning = ($event.target.value || '').toUpperCase()"
+                                                   class="modern-input w-full min-w-[10rem] px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 uppercase">
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <input type="number"
+                                                   name="allocation_points"
+                                                   x-model="band.allocation_points"
+                                                   min="0" step="0.01"
+                                                   placeholder="Optional"
+                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <input type="number"
+                                                   name="start_mark"
+                                                   x-model="band.start_mark"
+                                                   min="0" max="100" step="0.01"
+                                                   required
+                                                   class="modern-input w-28 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                        </td>
+                                        <td class="py-2 px-3">
+                                            <input type="number"
+                                                   name="end_mark"
+                                                   x-model="band.end_mark"
+                                                   min="0" max="100" step="0.01"
+                                                   required
+                                                   class="modern-input w-28 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+                                        </td>
+                                        <td class="py-2 px-3 text-right whitespace-nowrap">
+                                            <div class="inline-flex flex-wrap items-center justify-end gap-1">
+                                                <button type="button"
+                                                        @click="fillDraftFromRow(idx)"
+                                                        class="modern-btn inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 text-xs font-semibold hover:border-brand-primary">
+                                                    <i class="fas fa-edit text-brand-primary"></i>
+                                                    Edit
+                                                </button>
+                                                <button type="button"
+                                                        @click="removeRow(idx)"
+                                                        class="modern-btn inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950/30">
+                                                    <i class="fas fa-trash-alt"></i>
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="text-xs text-gray-500 dark:text-gray-400" x-show="rows.length" x-cloak>
+                        <span x-text="rows.length"></span> custom grade band<span x-show="rows.length !== 1">s</span> ready to save. You can still edit values in the table or remove rows.
+                    </p>
+                    </div>
+                    </template>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-3">
+                        <button type="submit"
+                                class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md">
                             <i class="fas fa-save"></i>
-                            <span>Save Subject Allocation</span>
+                            <span x-text="customMode ? 'Save Custom Grading' : 'Save Subject Allocation'"></span>
                         </button>
                     </div>
                 </form>

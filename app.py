@@ -1181,7 +1181,7 @@ def load_grade_bands_from_db(cursor):
         print(f"Note: grade_registrations lookup skipped: {ge}")
     try:
         cursor.execute("""
-            SELECT subject_id, code, start_mark, end_mark, allocation_points
+            SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
             FROM subject_grade_mark_overrides
             WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
             ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -1192,19 +1192,19 @@ def load_grade_bands_from_db(cursor):
                 ap = srow.get('allocation_points')
                 band = {
                     'code': (srow.get('code') or '').strip(),
-                    'label': '',
+                    'label': (srow.get('level_label') or '').strip(),
                     'start': float(srow.get('start_mark') or 0),
                     'end': float(srow.get('end_mark') or 0),
                     'allocation_points': float(ap) if ap is not None else None,
                 }
             else:
                 sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                apv = srow[4] if len(srow) > 4 else None
+                apv = srow[5] if len(srow) > 5 else None
                 band = {
                     'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                    'label': '',
-                    'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
-                    'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                    'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
+                    'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                    'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
                     'allocation_points': float(apv) if apv is not None else None,
                 }
             if sid <= 0:
@@ -2215,10 +2215,64 @@ def ensure_library_books_table(cursor):
         ensure_library_book_suppliers_table(cursor)
         ensure_library_book_teacher_distributions_table(cursor)
         ensure_library_book_student_issues_table(cursor)
+        migrate_library_books_store_department_link(cursor)
     except Exception as e:
         print(f"ensure_library_books_table: {e}")
     finally:
         _library_books_schema_ensuring = False
+
+
+def migrate_library_books_store_department_link(cursor):
+    """Link library titles to store catalog; allow pending subject until librarian completes setup."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM library_books LIKE 'store_item_id'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE library_books
+                ADD COLUMN store_item_id INT NULL AFTER copies_total
+            """)
+            print("OK: Added library_books.store_item_id")
+        cursor.execute("""
+            SELECT 1 FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'library_books'
+              AND INDEX_NAME = 'uq_library_book_store_item'
+            LIMIT 1
+        """)
+        if not cursor.fetchone():
+            try:
+                cursor.execute("""
+                    ALTER TABLE library_books
+                    ADD UNIQUE KEY uq_library_book_store_item (store_item_id)
+                """)
+            except Exception as idx_err:
+                print(f"migrate_library_books_store_department_link index: {idx_err}")
+        cursor.execute("""
+            SELECT IS_NULLABLE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'library_books'
+              AND COLUMN_NAME = 'subject_id'
+        """)
+        sub_col = cursor.fetchone()
+        sub_nullable = (
+            (sub_col.get('IS_NULLABLE') if isinstance(sub_col, dict) else sub_col[0])
+            if sub_col else 'NO'
+        )
+        if (sub_nullable or '').upper() == 'NO':
+            _library_books_drop_fk_on_column(cursor, 'library_books', 'subject_id')
+            cursor.execute("ALTER TABLE library_books MODIFY subject_id INT NULL")
+            try:
+                cursor.execute("""
+                    ALTER TABLE library_books
+                    ADD CONSTRAINT fk_library_books_subject
+                    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE RESTRICT
+                """)
+            except Exception as fk_err:
+                print(f"migrate_library_books_store_department_link subject fk: {fk_err}")
+            print("OK: library_books.subject_id allows NULL for store-originated titles")
+    except Exception as e:
+        print(f"migrate_library_books_store_department_link: {e}")
 
 
 def _library_books_drop_fk_on_column(cursor, table, column_name):
@@ -4332,29 +4386,40 @@ def _library_enrich_books_with_allocations(cursor, books):
 
 
 def _library_stock_allocation_lines(cursor):
-    """Active books allocated to active academic levels (for stock in/out UI)."""
+    """
+    Eligible book × class lines for stock in/out: configured catalog titles matched to
+    active levels in the same academic category where the class teaches the book's subject.
+    """
     rows = []
     try:
         ensure_library_books_table(cursor)
         ensure_library_book_allocations_table(cursor)
         migrate_library_books_copies_and_allocation_qty(cursor)
-        cursor.execute("""
+        level_subjects_map = _library_subjects_by_level_map(cursor)
+        cursor.execute(
+            """
             SELECT lb.id AS book_id,
                    lb.book_name,
                    lb.subject_id AS book_subject_id,
-                   lb.academic_category,
+                   UPPER(TRIM(lb.academic_category)) AS academic_category,
                    COALESCE(lb.copies_total, 1) AS copies_total,
-                   lba.academic_level_id AS level_id,
+                   al.id AS level_id,
                    UPPER(TRIM(al.level_name)) AS level_name,
                    UPPER(TRIM(al.level_category)) AS level_category,
-                   COALESCE(lba.quantity, 1) AS quantity
-            FROM library_book_allocations lba
-            INNER JOIN library_books lb ON lb.id = lba.library_book_id
-            INNER JOIN academic_levels al ON al.id = lba.academic_level_id
+                   COALESCE(lba.quantity, 0) AS quantity
+            FROM library_books lb
+            INNER JOIN academic_levels al
+              ON UPPER(TRIM(al.level_category)) = UPPER(TRIM(lb.academic_category))
+            LEFT JOIN library_book_allocations lba
+              ON lba.library_book_id = lb.id AND lba.academic_level_id = al.id
             WHERE COALESCE(lb.library_status, 'active') = 'active'
               AND COALESCE(al.level_status, 'active') = 'active'
+              AND UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN (%s, 'UNKNOWN', '')
+              AND COALESCE(lb.subject_id, 0) > 0
             ORDER BY al.level_category, al.level_name, lb.book_name
-        """)
+            """,
+            (LIBRARY_PENDING_ACADEMIC_CATEGORY,),
+        )
         for row in cursor.fetchall() or []:
             if isinstance(row, dict):
                 bid = row.get('book_id')
@@ -4375,24 +4440,24 @@ def _library_stock_allocation_lines(cursor):
                 lid = row[5] if len(row) > 5 else None
                 lname = row[6] if len(row) > 6 else ''
                 lcat = row[7] if len(row) > 7 else ''
-                qty = row[8] if len(row) > 8 else 1
+                qty = row[8] if len(row) > 8 else 0
             if bid is None or lid is None:
                 continue
             try:
                 bid_i = int(bid)
                 lid_i = int(lid)
-                qty_i = int(qty or 1)
+                qty_i = max(0, int(qty or 0))
                 ctot_i = int(ctot or 1)
+                bsub_i = int(bsub) if bsub is not None else 0
             except (TypeError, ValueError):
                 continue
-            if qty_i < 1:
-                qty_i = 1
+            if bsub_i < 1:
+                continue
             if ctot_i < 1:
                 ctot_i = 1
-            try:
-                bsub_i = int(bsub) if bsub is not None else None
-            except (TypeError, ValueError):
-                bsub_i = None
+            subs_at_level = level_subjects_map.get(str(lid_i)) or level_subjects_map.get(lid_i) or []
+            if not any(int(s.get('id') or 0) == bsub_i for s in subs_at_level):
+                continue
             rows.append({
                 'book_id': bid_i,
                 'book_name': (bname or '').strip().upper(),
@@ -4802,7 +4867,40 @@ def _library_apply_stock_movement(cursor, book_id, level_id, movement_type, quan
 
     cursor.execute(
         """
-        SELECT COALESCE(quantity, 1) AS qty
+        SELECT subject_id, UPPER(TRIM(academic_category)) AS ac
+        FROM library_books WHERE id = %s
+        """,
+        (book_id,),
+    )
+    book_sub_row = cursor.fetchone()
+    book_subject_id = 0
+    if book_sub_row:
+        if isinstance(book_sub_row, dict):
+            book_subject_id = int(book_sub_row.get('subject_id') or 0)
+            book_ac_for_sub = (book_sub_row.get('ac') or '').strip().upper()
+        else:
+            book_subject_id = int(book_sub_row[0] or 0) if len(book_sub_row) > 0 else 0
+            book_ac_for_sub = ((book_sub_row[1] or '') if len(book_sub_row) > 1 else '').strip().upper()
+    else:
+        book_ac_for_sub = book_cat
+    if _library_book_needs_librarian_setup(book_ac_for_sub, book_subject_id):
+        return False, (
+            'Complete academic category and subject in the book catalog before stocking in or out.'
+        ), extras
+    if book_subject_id and not _library_level_has_subject(cursor, level_id, book_subject_id):
+        return False, (
+            'This class does not teach the subject linked to this book. '
+            'Check Subject & Class Allocation.'
+        ), extras
+    if movement_type == 'in' and stock_subject_id_val and book_subject_id:
+        if int(stock_subject_id_val) != int(book_subject_id):
+            return False, (
+                'Stock-in subject must match the book\'s catalog subject for this title.'
+            ), extras
+
+    cursor.execute(
+        """
+        SELECT COALESCE(quantity, 0) AS qty
         FROM library_book_allocations
         WHERE library_book_id = %s AND academic_level_id = %s
         """,
@@ -4810,8 +4908,15 @@ def _library_apply_stock_movement(cursor, book_id, level_id, movement_type, quan
     )
     ar = cursor.fetchone()
     if not ar:
-        return False, 'This book is not allocated to the selected level. Assign it to a level first.', extras
-    if isinstance(ar, dict):
+        cursor.execute(
+            """
+            INSERT INTO library_book_allocations (library_book_id, academic_level_id, quantity)
+            VALUES (%s, %s, 0)
+            """,
+            (book_id, level_id),
+        )
+        qty_before = 0
+    elif isinstance(ar, dict):
         qty_before = int(ar.get('qty') or 0)
     else:
         qty_before = int(ar[0] or 0) if ar else 0
@@ -4864,7 +4969,7 @@ def _library_apply_stock_movement(cursor, book_id, level_id, movement_type, quan
                 "UPDATE library_books SET buying_price = %s WHERE id = %s",
                 (buying_price_val, book_id),
             )
-        msg = f'Stocked in {quantity} cop{"ies" if quantity != 1 else "y"} (level total: {qty_after}).'
+        msg = f'Allocated {quantity} cop{"ies" if quantity != 1 else "y"} to class (level total: {qty_after}).'
     else:
         if quantity > qty_before:
             return False, f'Cannot stock out {quantity}; only {qty_before} at this level.', extras
@@ -5970,6 +6075,14 @@ def init_db():
                 cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN allocation_points DECIMAL(6,2) NULL AFTER end_mark")
             except Exception as e:
                 print(f"Note: subject_grade_mark_overrides.allocation_points may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN level_label VARCHAR(255) NULL AFTER code")
+            except Exception as e:
+                print(f"Note: subject_grade_mark_overrides.level_label may already exist: {e}")
+            try:
+                cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN meaning VARCHAR(255) NULL AFTER level_label")
+            except Exception as e:
+                print(f"Note: subject_grade_mark_overrides.meaning may already exist: {e}")
             
             # Create fee_structures table
             cursor.execute("""
@@ -11623,9 +11736,9 @@ def grades_registration():
                 active_subjects = cursor.fetchall() or []
 
                 cursor.execute("""
-                    SELECT subject_id, code, start_mark, end_mark, allocation_points
+                    SELECT subject_id, code, level_label, meaning, start_mark, end_mark, allocation_points
                     FROM subject_grade_mark_overrides
-                    ORDER BY subject_id, code
+                    ORDER BY subject_id, COALESCE(start_mark, -1) DESC, COALESCE(end_mark, -1) DESC, code
                 """)
                 subject_grade_mark_overrides = cursor.fetchall() or []
 
@@ -11670,28 +11783,46 @@ def grades_registration():
                         })
 
                 overrides_by_subject = {}
+                subjects_with_custom = set()
                 for row in subject_grade_mark_overrides:
                     if isinstance(row, dict):
                         sid = row.get('subject_id')
                         code = row.get('code')
+                        level_label = row.get('level_label')
+                        meaning = row.get('meaning')
                         sm = row.get('start_mark')
                         em = row.get('end_mark')
                         ap = row.get('allocation_points')
                     else:
                         sid = row[0]
                         code = row[1]
-                        sm = row[2]
-                        em = row[3]
-                        ap = row[4] if len(row) > 4 else None
+                        level_label = row[2] if len(row) > 2 else None
+                        meaning = row[3] if len(row) > 3 else None
+                        sm = row[4] if len(row) > 4 else None
+                        em = row[5] if len(row) > 5 else None
+                        ap = row[6] if len(row) > 6 else None
                     if sid is None or not code:
                         continue
-                    if sid not in overrides_by_subject:
-                        overrides_by_subject[sid] = {}
-                    overrides_by_subject[sid][str(code).upper()] = {
+                    subjects_with_custom.add(sid)
+                    overrides_by_subject.setdefault(sid, []).append({
+                        'code': code,
+                        'level_label': level_label,
+                        'meaning': meaning,
                         'start_mark': sm,
                         'end_mark': em,
                         'allocation_points': ap,
-                    }
+                    })
+
+                default_bands_for_subjects = []
+                for d in defaults_as_dict:
+                    default_bands_for_subjects.append({
+                        'code': d.get('code'),
+                        'level_label': d.get('level_label'),
+                        'meaning': d.get('meaning'),
+                        'start_mark': d.get('start_mark'),
+                        'end_mark': d.get('end_mark'),
+                        'allocation_points': d.get('allocation_points'),
+                    })
 
                 for srow in active_subjects:
                     if isinstance(srow, dict):
@@ -11702,28 +11833,27 @@ def grades_registration():
                         sid = srow[0]
                         sname = srow[1]
                         scode = srow[2] if len(srow) > 2 else None
-                    merged_bands = []
-                    for d in defaults_as_dict:
-                        code_key = str(d.get('code') or '').upper()
-                        ov = overrides_by_subject.get(sid, {}).get(code_key)
-                        def_pts = d.get('allocation_points')
-                        ov_pts = ov.get('allocation_points') if ov else None
-                        merged_pts = ov_pts if ov_pts is not None else def_pts
-                        merged_bands.append({
-                            'code': d.get('code'),
-                            'level_label': d.get('level_label'),
-                            'meaning': d.get('meaning'),
-                            'description': d.get('description'),
-                            'start_mark': ov.get('start_mark') if ov else d.get('start_mark'),
-                            'end_mark': ov.get('end_mark') if ov else d.get('end_mark'),
-                            'allocation_points': merged_pts,
-                        })
+                    uses_default = sid not in subjects_with_custom
+                    if uses_default:
+                        merged_bands = list(default_bands_for_subjects)
+                    else:
+                        merged_bands = []
+                        for ov in overrides_by_subject.get(sid, []):
+                            merged_bands.append({
+                                'code': ov.get('code'),
+                                'level_label': ov.get('level_label'),
+                                'meaning': ov.get('meaning'),
+                                'start_mark': ov.get('start_mark'),
+                                'end_mark': ov.get('end_mark'),
+                                'allocation_points': ov.get('allocation_points'),
+                            })
                     subject_grade_allocations.append({
                         'subject_id': sid,
                         'subject_name': sname,
                         'subject_code': scode,
-                        'uses_default': sid not in overrides_by_subject,
-                        'bands': merged_bands
+                        'uses_default': uses_default,
+                        'bands': merged_bands,
+                        'default_bands': default_bands_for_subjects,
                     })
         except Exception as e:
             print(f"Error loading grades registration: {e}")
@@ -12013,16 +12143,27 @@ def save_subject_grade_ranges():
         return redirect(employee_dashboard_path('grades-registration'))
 
     codes = request.form.getlist('code')
+    level_labels = request.form.getlist('level_label')
+    meanings = request.form.getlist('meaning')
     start_marks = request.form.getlist('start_mark')
     end_marks = request.form.getlist('end_mark')
     allocation_points_list = request.form.getlist('allocation_points')
+    custom_full = (request.form.get('custom_full') or '').strip() == '1'
     if not (codes and len(codes) == len(start_marks) == len(end_marks)):
         flash('Invalid grade range payload.', 'error')
         return redirect(employee_dashboard_path('grades-registration'))
+    if custom_full and not (len(level_labels) == len(meanings) == len(codes)):
+        flash('Invalid grade allocation payload.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
     if len(allocation_points_list) < len(codes):
         allocation_points_list = list(allocation_points_list) + [''] * (len(codes) - len(allocation_points_list))
+    if custom_full and len(level_labels) < len(codes):
+        level_labels = list(level_labels) + [''] * (len(codes) - len(level_labels))
+    if custom_full and len(meanings) < len(codes):
+        meanings = list(meanings) + [''] * (len(codes) - len(meanings))
 
     rows = []
+    seen_codes = set()
     try:
         for idx, code in enumerate(codes):
             c = (code or '').strip().upper()
@@ -12030,6 +12171,9 @@ def save_subject_grade_ranges():
             em = float((end_marks[idx] or '').strip())
             if not c:
                 raise ValueError('Missing code')
+            if c in seen_codes:
+                raise ValueError('Duplicate code')
+            seen_codes.add(c)
             if sm > em:
                 raise ValueError('Start mark cannot exceed end mark')
             ap_raw = (allocation_points_list[idx] if idx < len(allocation_points_list) else '').strip()
@@ -12039,9 +12183,26 @@ def save_subject_grade_ranges():
                     ap = float(ap_raw)
                 except Exception:
                     raise ValueError('Invalid points')
-            rows.append((c, sm, em, ap))
+            level_label = None
+            meaning = None
+            if custom_full:
+                level_label = (level_labels[idx] if idx < len(level_labels) else '').strip()
+                meaning = (meanings[idx] if idx < len(meanings) else '').strip()
+                if not (level_label and meaning):
+                    raise ValueError('Missing level or meaning')
+            rows.append((c, level_label, meaning, sm, em, ap))
     except Exception:
-        flash('Please provide valid start/end marks for every grade code.', 'error')
+        if custom_full:
+            flash('Please provide valid code, mark level, meaning, and start/end marks for every grade row.', 'error')
+        else:
+            flash('Please provide valid start/end marks for every grade code.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    if not rows:
+        if custom_full:
+            flash('Add at least one custom grade for this subject before saving.', 'error')
+        else:
+            flash('Add at least one grade band before saving.', 'error')
         return redirect(employee_dashboard_path('grades-registration'))
 
     connection = get_db_connection()
@@ -12050,14 +12211,52 @@ def save_subject_grade_ranges():
         return redirect(employee_dashboard_path('grades-registration'))
     try:
         with connection.cursor() as cursor:
-            cursor.execute("DELETE FROM subject_grade_mark_overrides WHERE subject_id = %s", (int(subject_id_raw),))
-            for c, sm, em, ap in rows:
+            default_meta_by_code = {}
+            if not custom_full:
                 cursor.execute("""
-                    INSERT INTO subject_grade_mark_overrides (subject_id, code, start_mark, end_mark, allocation_points, created_by)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (int(subject_id_raw), c, sm, em, ap, session.get('user_id')))
+                    SELECT code, level_label, meaning
+                    FROM grade_registrations
+                    WHERE code IS NOT NULL AND TRIM(code) <> ''
+                """)
+                for grow in (cursor.fetchall() or []):
+                    if isinstance(grow, dict):
+                        dc = (grow.get('code') or '').strip().upper()
+                        default_meta_by_code[dc] = {
+                            'level_label': (grow.get('level_label') or '').strip(),
+                            'meaning': (grow.get('meaning') or '').strip(),
+                        }
+                    else:
+                        dc = ((grow[0] if len(grow) > 0 else '') or '').strip().upper()
+                        default_meta_by_code[dc] = {
+                            'level_label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
+                            'meaning': ((grow[2] if len(grow) > 2 else '') or '').strip(),
+                        }
+                filled_rows = []
+                for c, level_label, meaning, sm, em, ap in rows:
+                    meta = default_meta_by_code.get(c, {})
+                    filled_rows.append((
+                        c,
+                        level_label or meta.get('level_label') or None,
+                        meaning or meta.get('meaning') or None,
+                        sm,
+                        em,
+                        ap,
+                    ))
+                rows = filled_rows
+
+            cursor.execute("DELETE FROM subject_grade_mark_overrides WHERE subject_id = %s", (int(subject_id_raw),))
+            for c, level_label, meaning, sm, em, ap in rows:
+                cursor.execute("""
+                    INSERT INTO subject_grade_mark_overrides (
+                        subject_id, code, level_label, meaning, start_mark, end_mark, allocation_points, created_by
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (int(subject_id_raw), c, level_label, meaning, sm, em, ap, session.get('user_id')))
             connection.commit()
-        flash('Subject grade allocation updated successfully.', 'success')
+        if custom_full:
+            flash('Custom grade allocation saved for this subject.', 'success')
+        else:
+            flash('Subject mark ranges saved (still using default codes and levels).', 'success')
     except Exception as e:
         print(f"Error saving subject grade ranges: {e}")
         connection.rollback()
@@ -12065,6 +12264,42 @@ def save_subject_grade_ranges():
     finally:
         connection.close()
     return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/subject/reset-default', methods=['POST'])
+@login_required
+def reset_subject_grade_to_default():
+    """Remove per-subject grade overrides so the subject uses school default bands again."""
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    subject_id_raw = (request.form.get('subject_id') or '').strip()
+    if not subject_id_raw.isdigit():
+        flash('Invalid subject selected.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM subject_grade_mark_overrides WHERE subject_id = %s",
+                (int(subject_id_raw),),
+            )
+            connection.commit()
+        flash('Subject reverted to default grading.', 'success')
+    except Exception as e:
+        print(f"Error resetting subject grade allocation: {e}")
+        connection.rollback()
+        flash('Error reverting subject to default grading.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
 
 # Teacher My Classes Route
 @app.route('/dashboard/employee/my-classes')
@@ -29118,6 +29353,18 @@ STORE_STOCK_OUT_PURPOSES = (
     'OTHER',
 )
 
+STORE_DEPARTMENT_STATIONS = (
+    'ADMIN DEPARTMENT',
+    'ACCOUNTS DEPARTMENT',
+    'LIBRARY DEPARTMENT',
+    'STUDENTS DEPARTMENT',
+    'KITCHEN DEPARTMENT',
+    'CLUBS AND SPORTS DEPARTMENT',
+    'HOSTEL DEPARTMENT',
+)
+STORE_LIBRARY_DEPARTMENT_STATION = 'LIBRARY DEPARTMENT'
+LIBRARY_PENDING_ACADEMIC_CATEGORY = 'PENDING SETUP'
+
 _store_inventory_schema_ensuring = False
 
 
@@ -29152,10 +29399,32 @@ def ensure_store_inventory_items_table(cursor):
                 ADD COLUMN quantity_on_hand INT NOT NULL DEFAULT 0 AFTER item_status
             """)
             print("OK: Added store_inventory_items.quantity_on_hand")
+        migrate_store_inventory_department_station(cursor)
     except Exception as e:
         print(f"ensure_store_inventory_items_table: {e}")
     finally:
         _store_inventory_schema_ensuring = False
+
+
+def migrate_store_inventory_department_station(cursor):
+    """Department station routing for store items (library, kitchen, etc.)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM store_inventory_items LIKE 'department_station'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_inventory_items
+                ADD COLUMN department_station VARCHAR(120) NOT NULL DEFAULT '' AFTER quantity_on_hand
+            """)
+            print("OK: Added store_inventory_items.department_station")
+        cursor.execute("SHOW COLUMNS FROM store_inventory_items LIKE 'library_book_id'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                ALTER TABLE store_inventory_items
+                ADD COLUMN library_book_id INT NULL AFTER department_station
+            """)
+            print("OK: Added store_inventory_items.library_book_id")
+    except Exception as e:
+        print(f"migrate_store_inventory_department_station: {e}")
 
 
 _store_suppliers_schema_ensuring = False
@@ -30769,6 +31038,227 @@ def _delete_store_item_image_file(image_path):
         print(f"_delete_store_item_image_file: {e}")
 
 
+def _normalize_store_department_station(raw):
+    """Return a valid department station label or empty string."""
+    station = (raw or '').strip().upper()
+    if station in STORE_DEPARTMENT_STATIONS:
+        return station
+    return ''
+
+
+def _store_station_is_library(station):
+    return (station or '').strip().upper() == STORE_LIBRARY_DEPARTMENT_STATION
+
+
+def _library_book_needs_librarian_setup(academic_category, subject_id):
+    cat = (academic_category or '').strip().upper()
+    if cat in (LIBRARY_PENDING_ACADEMIC_CATEGORY, 'UNKNOWN', ''):
+        return True
+    try:
+        sid = int(subject_id or 0)
+    except (TypeError, ValueError):
+        sid = 0
+    return sid < 1
+
+
+def _library_setup_levels_for_book(all_levels, level_subjects_map, academic_category, subject_id):
+    """Active class levels in this category that teach the given subject (if subject set)."""
+    cat = (academic_category or '').strip().upper()
+    if cat in (LIBRARY_PENDING_ACADEMIC_CATEGORY, 'UNKNOWN', ''):
+        return []
+    try:
+        sid = int(subject_id or 0)
+    except (TypeError, ValueError):
+        sid = 0
+    out = []
+    for lev in all_levels or []:
+        lc = (lev.get('level_category') or '').upper()
+        if lc != cat:
+            continue
+        if sid < 1:
+            out.append(lev)
+            continue
+        lid = int(lev.get('id') or 0)
+        subs = (level_subjects_map or {}).get(str(lid)) or (level_subjects_map or {}).get(lid) or []
+        if any(int(s.get('id') or 0) == sid for s in subs):
+            out.append(lev)
+    return out
+
+
+def _library_sync_store_department_catalog(cursor):
+    """
+    Create library_books rows for active store items in Library Department
+    that are not yet in the librarian catalog.
+    """
+    ensure_store_inventory_items_table(cursor)
+    ensure_library_books_table(cursor)
+    migrate_library_books_store_department_link(cursor)
+    try:
+        cursor.execute(
+            """
+            SELECT si.id, si.item_category, si.item_name, si.description, si.library_book_id
+            FROM store_inventory_items si
+            WHERE si.item_status = 'active'
+              AND UPPER(TRIM(COALESCE(si.department_station, ''))) = %s
+            """,
+            (STORE_LIBRARY_DEPARTMENT_STATION,),
+        )
+        rows = cursor.fetchall() or []
+        for row in rows:
+            if isinstance(row, dict):
+                store_item_id = int(row.get('id') or 0)
+                item_category = row.get('item_category') or ''
+                item_name = row.get('item_name') or ''
+                description = row.get('description')
+                library_book_id = int(row.get('library_book_id') or 0) or None
+            else:
+                store_item_id = int(row[0] or 0)
+                item_category = row[1] if len(row) > 1 else ''
+                item_name = row[2] if len(row) > 2 else ''
+                description = row[3] if len(row) > 3 else None
+                library_book_id = int(row[4] or 0) or None if len(row) > 4 else None
+            if not store_item_id:
+                continue
+            if library_book_id:
+                cursor.execute(
+                    "SELECT id FROM library_books WHERE id = %s",
+                    (library_book_id,),
+                )
+                if cursor.fetchone():
+                    continue
+            _create_library_book_for_store_item(
+                cursor,
+                store_item_id,
+                item_category,
+                item_name,
+                description,
+            )
+    except Exception as e:
+        print(f"_library_sync_store_department_catalog: {e}")
+
+
+def _create_library_book_for_store_item(cursor, store_item_id, item_category, item_name, description):
+    """Create a library catalog row for a store item registered under Library Department."""
+    ensure_library_books_table(cursor)
+    migrate_library_books_store_department_link(cursor)
+    cursor.execute("SELECT id FROM library_books WHERE store_item_id = %s LIMIT 1", (store_item_id,))
+    existing = cursor.fetchone()
+    if existing:
+        lib_id = int(existing.get('id') if isinstance(existing, dict) else existing[0])
+        cursor.execute(
+            "UPDATE store_inventory_items SET library_book_id = %s WHERE id = %s",
+            (lib_id, store_item_id),
+        )
+        return lib_id
+    cursor.execute(
+        """
+        INSERT INTO library_books
+            (book_category, book_name, description, buying_price, academic_category,
+             subject_id, library_status, allocation_status, copies_total, store_item_id)
+        VALUES (%s, %s, %s, 0, %s, NULL, 'active', 'unallocated', 0, %s)
+        """,
+        (
+            item_category,
+            item_name,
+            description,
+            LIBRARY_PENDING_ACADEMIC_CATEGORY,
+            store_item_id,
+        ),
+    )
+    lib_id = cursor.lastrowid
+    cursor.execute(
+        "UPDATE store_inventory_items SET library_book_id = %s WHERE id = %s",
+        (lib_id, store_item_id),
+    )
+    return lib_id
+
+
+def _sync_linked_library_book_from_store_item(cursor, library_book_id, item_category, item_name, description):
+    if not library_book_id:
+        return
+    cursor.execute(
+        """
+        UPDATE library_books
+        SET book_category = %s, book_name = %s, description = %s
+        WHERE id = %s
+        """,
+        (item_category, item_name, description, library_book_id),
+    )
+
+
+def _register_store_inventory_item_from_request(cursor, request):
+    """
+    Register a new store catalog item from POST form fields.
+    Caller must commit the connection on success.
+    Returns dict: ok, message, reference_code, new_item_id.
+    """
+    item_category = (request.form.get('item_category') or '').strip()[:120].upper()
+    item_name = (request.form.get('item_name') or '').strip()[:255].upper()
+    desc_raw = (request.form.get('description') or '').strip()
+    description = desc_raw.upper() if desc_raw else None
+    measure = (request.form.get('measure') or '').strip().upper()
+    if measure not in STORE_ITEM_MEASURES:
+        measure = ''
+    department_station = _normalize_store_department_station(request.form.get('department_station'))
+
+    if not item_category or not item_name:
+        return {'ok': False, 'message': 'Item category and item name are required.'}
+    if not department_station:
+        return {'ok': False, 'message': 'Please select a department station for this item.'}
+    if not measure:
+        return {'ok': False, 'message': 'Please select a valid measure.'}
+
+    try:
+        reference_code = _generate_store_item_reference_code(cursor)
+        image_path = _save_store_item_image(request.files.get('image'))
+        cursor.execute(
+            """
+            INSERT INTO store_inventory_items
+                (reference_code, item_category, item_name, description, measure,
+                 image_path, item_status, department_station)
+            VALUES (%s, %s, %s, %s, %s, %s, 'active', %s)
+            """,
+            (
+                reference_code,
+                item_category,
+                item_name,
+                description,
+                measure,
+                image_path,
+                department_station,
+            ),
+        )
+        new_item_id = cursor.lastrowid
+        lib_msg = ''
+        if _store_station_is_library(department_station) and new_item_id:
+            ensure_library_books_table(cursor)
+            _create_library_book_for_store_item(
+                cursor,
+                new_item_id,
+                item_category,
+                item_name,
+                description,
+            )
+            lib_msg = (
+                ' It was also added to the library catalog for the librarian '
+                'to set subject and levels.'
+            )
+        return {
+            'ok': True,
+            'message': f'Store item registered as {reference_code}.{lib_msg}',
+            'reference_code': reference_code,
+            'new_item_id': new_item_id,
+        }
+    except IntegrityError:
+        return {
+            'ok': False,
+            'message': 'Could not save the store item (duplicate reference). Try again.',
+        }
+    except Exception as e:
+        print(f"_register_store_inventory_item_from_request: {e}")
+        return {'ok': False, 'message': 'An error occurred while registering the store item.'}
+
+
 def _fetch_store_inventory_items(cursor):
     """List all store inventory items for the catalog UI."""
     ensure_store_inventory_items_table(cursor)
@@ -30776,9 +31266,10 @@ def _fetch_store_inventory_items(cursor):
     try:
         cursor.execute("""
             SELECT id, reference_code, item_category, item_name, description, measure,
-                   image_path, item_status, created_at
+                   image_path, item_status, quantity_on_hand, department_station,
+                   library_book_id, created_at
             FROM store_inventory_items
-            ORDER BY item_category ASC, item_name ASC, id ASC
+            ORDER BY department_station ASC, item_category ASC, item_name ASC, id ASC
         """)
         for row in cursor.fetchall() or []:
             if isinstance(row, dict):
@@ -30791,6 +31282,9 @@ def _fetch_store_inventory_items(cursor):
                     'measure': (row.get('measure') or '').strip(),
                     'image_path': (row.get('image_path') or '').strip() or None,
                     'item_status': (row.get('item_status') or 'active').strip(),
+                    'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+                    'department_station': (row.get('department_station') or '').strip(),
+                    'library_book_id': int(row.get('library_book_id') or 0) or None,
                     'created_at': row.get('created_at'),
                 })
             else:
@@ -30803,7 +31297,10 @@ def _fetch_store_inventory_items(cursor):
                     'measure': (row[5] or '').strip(),
                     'image_path': (row[6] or '').strip() or None,
                     'item_status': (row[7] or 'active').strip(),
-                    'created_at': row[8] if len(row) > 8 else None,
+                    'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
+                    'department_station': (row[9] or '').strip() if len(row) > 9 else '',
+                    'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
+                    'created_at': row[11] if len(row) > 11 else None,
                 })
     except Exception as e:
         print(f"_fetch_store_inventory_items: {e}")
@@ -30820,6 +31317,24 @@ def _books_inventory_librarian_guard():
         flash('You do not have permission to perform this action.', 'error')
         return redirect(employee_dashboard_path())
     return None
+
+
+def _library_book_needs_setup_by_id(cursor, book_id):
+    """Return True if the book still needs librarian inventory setup."""
+    cursor.execute(
+        "SELECT academic_category, subject_id FROM library_books WHERE id = %s",
+        (book_id,),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    if isinstance(row, dict):
+        ac = row.get('academic_category')
+        sid = row.get('subject_id')
+    else:
+        ac = row[0] if len(row) > 0 else None
+        sid = row[1] if len(row) > 1 else None
+    return _library_book_needs_librarian_setup(ac, sid)
 
 
 def _librarian_issue_return_classes_summary(cursor):
@@ -30939,6 +31454,309 @@ def _librarian_issue_return_level_records(cursor, level_id):
     return records
 
 
+def _library_save_book_allocations_from_request(cursor, book_id, book_cat, copies_total, subject_id, request):
+    """
+    Parse POST level checkboxes and qty_{id} fields; validate and write allocations.
+    Returns None on success, or an error message string.
+    """
+    level_ids = _library_parse_level_ids(request.form.getlist('academic_level_id'))
+    copies_total = max(1, int(copies_total or 1))
+    book_cat = (book_cat or '').strip().upper()
+    try:
+        subject_id = int(subject_id or 0)
+    except (TypeError, ValueError):
+        subject_id = 0
+
+    if not level_ids:
+        cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
+        cursor.execute(
+            """
+            UPDATE library_books
+            SET allocation_status = 'unallocated'
+            WHERE id = %s
+            """,
+            (book_id,),
+        )
+        return None
+
+    placeholders = ','.join(['%s'] * len(level_ids))
+    cursor.execute(
+        f"""
+        SELECT id, UPPER(TRIM(level_category)) AS lvl_cat,
+               UPPER(TRIM(level_name)) AS lvl_name,
+               COALESCE(level_status, 'active') AS st
+        FROM academic_levels
+        WHERE id IN ({placeholders})
+        """,
+        tuple(level_ids),
+    )
+    rows = cursor.fetchall() or []
+    if len(rows) != len(level_ids):
+        return 'One or more selected levels are invalid.'
+    for row in rows:
+        if isinstance(row, dict):
+            st = (row.get('st') or 'active').lower()
+            lc = (row.get('lvl_cat') or '').strip().upper()
+            ln = (row.get('lvl_name') or '').strip().upper()
+        else:
+            st = ((row[2] or 'active') if len(row) > 2 else 'active').lower()
+            lc = ((row[1] or '') if len(row) > 1 else '').strip().upper()
+            ln = ((row[2] or '') if len(row) > 2 else '').strip().upper()
+        if st != 'active':
+            return 'Only active academic levels can be selected.'
+        if lc != book_cat:
+            return (
+                'Each level must belong to the same academic category as this book '
+                f'({book_cat or "—"}).'
+            )
+        lid_row = int(row.get('id') if isinstance(row, dict) else row[0])
+        if subject_id and not _library_level_has_subject(cursor, lid_row, subject_id):
+            return (
+                f'Level {ln or "—"} does not teach the selected subject. '
+                'Choose levels where this subject is registered, or change the book subject.'
+            )
+
+    qty_by_level = {}
+    assign_total = 0
+    for lid in level_ids:
+        q = request.form.get(f'qty_{lid}', type=int)
+        if q is None:
+            raw_q = (request.form.get(f'qty_{lid}') or '1').strip()
+            try:
+                q = int(raw_q)
+            except (TypeError, ValueError):
+                q = None
+        if q is None or q < 1:
+            return 'Each selected level needs a whole number of copies of at least 1.'
+        qty_by_level[lid] = q
+        assign_total += q
+    if assign_total > copies_total:
+        return (
+            f'Total copies assigned to levels ({assign_total}) cannot exceed catalog copies ({copies_total}).'
+        )
+
+    cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
+    for lid in level_ids:
+        cursor.execute(
+            """
+            INSERT INTO library_book_allocations (library_book_id, academic_level_id, quantity)
+            VALUES (%s, %s, %s)
+            """,
+            (book_id, lid, qty_by_level[lid]),
+        )
+    cursor.execute(
+        """
+        UPDATE library_books
+        SET allocation_status = 'allocated'
+        WHERE id = %s
+        """,
+        (book_id,),
+    )
+    return None
+
+
+def _library_validate_librarian_book_update_form(cursor, book_id, subjects_by_category):
+    """
+    Validate POST fields for librarian book setup/update.
+    Returns dict with ok=True and update fields, or ok=False and message.
+    """
+    from decimal import Decimal, InvalidOperation
+
+    book_category = (request.form.get('book_category') or '').strip()[:120].upper()
+    book_name = (request.form.get('book_name') or '').strip()[:255].upper()
+    desc_raw = (request.form.get('description') or '').strip()
+    description = desc_raw.upper() if desc_raw else None
+    raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
+    buying_price = None
+    if raw_price != '':
+        try:
+            buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            buying_price = None
+    academic_category = (request.form.get('academic_category') or '').strip().upper()
+    try:
+        subject_id = int(request.form.get('subject_id') or 0)
+    except (TypeError, ValueError):
+        subject_id = 0
+
+    ct_raw = (request.form.get('copies_total') or '').strip()
+    copies_total = None
+    if ct_raw != '':
+        try:
+            copies_total = int(ct_raw)
+        except (TypeError, ValueError):
+            copies_total = None
+
+    cursor.execute(
+        """
+        SELECT store_item_id, academic_category, subject_id, buying_price, copies_total
+        FROM library_books WHERE id = %s
+        """,
+        (book_id,),
+    )
+    book_row_pre = cursor.fetchone()
+    store_linked = False
+    pre_academic = ''
+    pre_subject_id = 0
+    db_buying_price = Decimal('0')
+    db_copies_total = 1
+    if book_row_pre:
+        if isinstance(book_row_pre, dict):
+            store_linked = bool(book_row_pre.get('store_item_id'))
+            pre_academic = (book_row_pre.get('academic_category') or '').strip().upper()
+            pre_subject_id = int(book_row_pre.get('subject_id') or 0)
+            try:
+                db_buying_price = Decimal(str(book_row_pre.get('buying_price') or 0)).quantize(Decimal('0.01'))
+            except (InvalidOperation, ValueError):
+                db_buying_price = Decimal('0')
+            try:
+                db_copies_total = int(book_row_pre.get('copies_total') if book_row_pre.get('copies_total') is not None else 1)
+            except (TypeError, ValueError):
+                db_copies_total = 1
+        else:
+            store_linked = bool(book_row_pre[0]) if len(book_row_pre) > 0 else False
+            pre_academic = ((book_row_pre[1] or '') if len(book_row_pre) > 1 else '').strip().upper()
+            pre_subject_id = int(book_row_pre[2] or 0) if len(book_row_pre) > 2 else 0
+            try:
+                db_buying_price = Decimal(str(book_row_pre[3] if len(book_row_pre) > 3 else 0)).quantize(Decimal('0.01'))
+            except (InvalidOperation, ValueError):
+                db_buying_price = Decimal('0')
+            try:
+                db_copies_total = int(book_row_pre[4] if len(book_row_pre) > 4 and book_row_pre[4] is not None else 1)
+            except (TypeError, ValueError):
+                db_copies_total = 1
+    pending_before = _library_book_needs_librarian_setup(pre_academic, pre_subject_id)
+    min_copies = 0 if (store_linked and pending_before) else 1
+
+    if raw_price == '':
+        buying_price = db_buying_price
+    if ct_raw == '':
+        copies_total = max(db_copies_total, min_copies)
+
+    if copies_total is None or copies_total < min_copies:
+        if min_copies == 0:
+            return {'ok': False, 'message': 'Total copies cannot be negative.'}
+        return {'ok': False, 'message': 'Total copies must be a whole number of at least 1.'}
+    if not book_category or not book_name:
+        return {'ok': False, 'message': 'Book category and book name are required.'}
+    if buying_price is None:
+        buying_price = db_buying_price
+    if buying_price is None:
+        return {'ok': False, 'message': 'Please enter a valid buying price (use numbers only, e.g. 1500 or 1500.50).'}
+    if buying_price < 0:
+        return {'ok': False, 'message': 'Buying price cannot be negative.'}
+    if not academic_category or not subject_id:
+        return {'ok': False, 'message': 'Please select an academic category and a subject.'}
+    if academic_category == LIBRARY_PENDING_ACADEMIC_CATEGORY:
+        return {
+            'ok': False,
+            'message': 'Choose a real academic category for this title (items from the store cannot stay on pending setup).',
+        }
+    if academic_category not in subjects_by_category:
+        return {'ok': False, 'message': 'Please select a valid academic category from the list.'}
+    if not _subject_allocated_to_academic_category(cursor, subject_id, academic_category):
+        return {
+            'ok': False,
+            'message': 'That subject is not linked to the selected academic category in the curriculum. '
+            'Pick a subject from the list for the category you chose.',
+        }
+
+    migrate_library_books_copies_and_allocation_qty(cursor)
+    ensure_library_book_allocations_table(cursor)
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(quantity), 0) AS s
+        FROM library_book_allocations
+        WHERE library_book_id = %s
+        """,
+        (book_id,),
+    )
+    sum_row = cursor.fetchone()
+    if isinstance(sum_row, dict):
+        allocated_sum = int(sum_row.get('s') or 0)
+    else:
+        allocated_sum = int(sum_row[0] or 0) if sum_row and len(sum_row) > 0 else 0
+    if copies_total < allocated_sum:
+        return {
+            'ok': False,
+            'message': 'Total copies cannot be less than copies already assigned to levels. '
+            'Lower allocations or raise total copies.',
+        }
+
+    return {
+        'ok': True,
+        'book_category': book_category,
+        'book_name': book_name,
+        'description': description,
+        'buying_price': buying_price,
+        'academic_category': academic_category,
+        'subject_id': subject_id,
+        'copies_total': copies_total,
+    }
+
+
+@app.route('/dashboard/employee/books-inventory/<int:book_id>/setup', methods=['POST'])
+@login_required
+def books_inventory_setup(book_id):
+    """Save academic category and subject for a catalog title."""
+    redir = _books_inventory_librarian_guard()
+    if redir:
+        return redir
+    connection = get_db_connection()
+    if not connection:
+        flash('Could not connect to the database.', 'error')
+        return redirect(employee_dash_url('books-inventory'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            ensure_library_book_allocations_table(cursor)
+            migrate_library_books_status_columns(cursor)
+            migrate_library_books_copies_and_allocation_qty(cursor)
+            cursor.execute("SELECT id FROM library_books WHERE id = %s", (book_id,))
+            if not cursor.fetchone():
+                flash('Book not found.', 'error')
+                return redirect(employee_dash_url('books-inventory'))
+
+            subjects_by_category = _library_subjects_by_academic_category(cursor)
+            parsed = _library_validate_librarian_book_update_form(cursor, book_id, subjects_by_category)
+            if not parsed.get('ok'):
+                flash(parsed.get('message', 'Could not save setup.'), 'error')
+                return redirect(employee_dash_url('books-inventory') + '?filter=setup&setup=%s' % book_id)
+
+            cursor.execute(
+                """
+                UPDATE library_books
+                SET book_category = %s, book_name = %s, description = %s, buying_price = %s,
+                    academic_category = %s, subject_id = %s, copies_total = %s
+                WHERE id = %s
+                """,
+                (
+                    parsed['book_category'],
+                    parsed['book_name'],
+                    parsed['description'],
+                    parsed['buying_price'],
+                    parsed['academic_category'],
+                    parsed['subject_id'],
+                    parsed['copies_total'],
+                    book_id,
+                ),
+            )
+            connection.commit()
+            flash('Inventory setup saved: academic category and subject updated.', 'success')
+    except IntegrityError:
+        connection.rollback()
+        flash('Could not save setup (invalid category or subject).', 'error')
+        return redirect(employee_dash_url('books-inventory') + '?filter=setup&setup=%s' % book_id)
+    except Exception as e:
+        connection.rollback()
+        print(f"books_inventory_setup: {e}")
+        flash('Could not save inventory setup.', 'error')
+        return redirect(employee_dash_url('books-inventory') + '?filter=setup&setup=%s' % book_id)
+    finally:
+        connection.close()
+    return redirect(employee_dash_url('books-inventory'))
+
+
 @app.route('/dashboard/employee/books-inventory/<int:book_id>/delete', methods=['POST'])
 @login_required
 def books_inventory_delete(book_id):
@@ -30953,6 +31771,13 @@ def books_inventory_delete(book_id):
         with connection.cursor() as cursor:
             ensure_library_books_table(cursor)
             migrate_library_books_status_columns(cursor)
+            needs_setup = _library_book_needs_setup_by_id(cursor, book_id)
+            if needs_setup is None:
+                flash('Book not found.', 'error')
+                return redirect(employee_dash_url('books-inventory'))
+            if needs_setup:
+                flash('Complete inventory setup before deleting this title.', 'error')
+                return redirect(employee_dash_url('books-inventory') + '?setup=%s' % book_id)
             cursor.execute("DELETE FROM library_books WHERE id = %s", (book_id,))
             connection.commit()
             flash('Book removed from inventory.', 'success')
@@ -30979,6 +31804,13 @@ def books_inventory_toggle_suspend(book_id):
         with connection.cursor() as cursor:
             ensure_library_books_table(cursor)
             migrate_library_books_status_columns(cursor)
+            needs_setup = _library_book_needs_setup_by_id(cursor, book_id)
+            if needs_setup is None:
+                flash('Book not found.', 'error')
+                return redirect(employee_dash_url('books-inventory'))
+            if needs_setup:
+                flash('Complete inventory setup before suspending or resuming this title.', 'error')
+                return redirect(employee_dash_url('books-inventory') + '?setup=%s' % book_id)
             cursor.execute(
                 """
                 UPDATE library_books
@@ -31004,14 +31836,6 @@ def books_inventory_allocate(book_id):
     redir = _books_inventory_librarian_guard()
     if redir:
         return redir
-    raw_ids = request.form.getlist('academic_level_id')
-    level_ids = []
-    for r in raw_ids:
-        try:
-            level_ids.append(int(r))
-        except (TypeError, ValueError):
-            continue
-    level_ids = list(dict.fromkeys(level_ids))
 
     connection = get_db_connection()
     if not connection:
@@ -31026,7 +31850,7 @@ def books_inventory_allocate(book_id):
             cursor.execute(
                 """
                 SELECT id, UPPER(TRIM(academic_category)) AS ac,
-                       COALESCE(copies_total, 1) AS ct
+                       COALESCE(copies_total, 1) AS ct, subject_id
                 FROM library_books WHERE id = %s
                 """,
                 (book_id,),
@@ -31038,100 +31862,33 @@ def books_inventory_allocate(book_id):
             if isinstance(br, dict):
                 book_cat = (br.get('ac') or '').strip().upper()
                 copies_total = int(br.get('ct') or 1)
+                br_subject_id = br.get('subject_id')
             else:
                 book_cat = ((br[1] or '') if len(br) > 1 else '').strip().upper()
                 copies_total = int(br[2] or 1) if len(br) > 2 else 1
+                br_subject_id = br[3] if len(br) > 3 else None
             if copies_total < 1:
                 copies_total = 1
-
-            if not level_ids:
-                cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
-                cursor.execute(
-                    """
-                    UPDATE library_books
-                    SET allocation_status = 'unallocated'
-                    WHERE id = %s
-                    """,
-                    (book_id,),
-                )
-                connection.commit()
-                flash('Level allocation updated (no levels selected).', 'success')
-                return redirect(employee_dash_url('books-inventory'))
-
-            placeholders = ','.join(['%s'] * len(level_ids))
-            cursor.execute(
-                f"""
-                SELECT id, UPPER(TRIM(level_category)) AS lvl_cat,
-                       COALESCE(level_status, 'active') AS st
-                FROM academic_levels
-                WHERE id IN ({placeholders})
-                """,
-                tuple(level_ids),
-            )
-            rows = cursor.fetchall() or []
-            if len(rows) != len(level_ids):
-                flash('One or more selected levels are invalid.', 'error')
-                return redirect(employee_dash_url('books-inventory'))
-            for row in rows:
-                if isinstance(row, dict):
-                    st = (row.get('st') or 'active').lower()
-                    lc = (row.get('lvl_cat') or '').strip().upper()
-                else:
-                    st = ((row[2] or 'active') if len(row) > 2 else 'active').lower()
-                    lc = ((row[1] or '') if len(row) > 1 else '').strip().upper()
-                if st != 'active':
-                    flash('Only active academic levels can be selected.', 'error')
-                    return redirect(employee_dash_url('books-inventory'))
-                if lc != book_cat:
-                    flash(
-                        'Each level must belong to the same academic category as this book '
-                        f'({book_cat or "—"}).',
-                        'error',
-                    )
-                    return redirect(employee_dash_url('books-inventory'))
-
-            qty_by_level = {}
-            assign_total = 0
-            for lid in level_ids:
-                q = request.form.get(f'qty_{lid}', type=int)
-                if q is None:
-                    raw_q = (request.form.get(f'qty_{lid}') or '1').strip()
-                    try:
-                        q = int(raw_q)
-                    except (TypeError, ValueError):
-                        q = None
-                if q is None or q < 1:
-                    flash('Each selected level needs a whole number of copies of at least 1.', 'error')
-                    return redirect(employee_dash_url('books-inventory'))
-                qty_by_level[lid] = q
-                assign_total += q
-            if assign_total > copies_total:
+            if _library_book_needs_librarian_setup(book_cat, br_subject_id):
                 flash(
-                    f'Total copies assigned to levels ({assign_total}) cannot exceed catalog copies ({copies_total}).',
+                    'Set academic category and subject first (use Set up inventory), '
+                    'then assign copies to levels.',
                     'error',
                 )
-                return redirect(employee_dash_url('books-inventory'))
+                return redirect(employee_dash_url('books-inventory') + '?setup=%s' % book_id)
 
-            cursor.execute("DELETE FROM library_book_allocations WHERE library_book_id = %s", (book_id,))
-            for lid in level_ids:
-                q = qty_by_level[lid]
-                cursor.execute(
-                    """
-                    INSERT INTO library_book_allocations (library_book_id, academic_level_id, quantity)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (book_id, lid, q),
-                )
-            cursor.execute(
-                """
-                UPDATE library_books
-                SET allocation_status = 'allocated'
-                WHERE id = %s
-                """,
-                (book_id,),
+            alloc_err = _library_save_book_allocations_from_request(
+                cursor, book_id, book_cat, copies_total, br_subject_id, request,
             )
+            if alloc_err:
+                flash(alloc_err, 'error')
+                return redirect(employee_dash_url('books-inventory'))
             connection.commit()
-            flash('Level allocation saved.', 'success')
+            level_ids = _library_parse_level_ids(request.form.getlist('academic_level_id'))
+            if level_ids:
+                flash('Level allocation saved.', 'success')
+            else:
+                flash('Level allocation updated (no levels selected).', 'success')
     except Exception as e:
         print(f"books_inventory_allocate: {e}")
         connection.rollback()
@@ -31179,7 +31936,7 @@ def books_inventory_deallocate(book_id):
 @app.route('/dashboard/employee/books-inventory/stock', methods=['GET'])
 @login_required
 def books_inventory_stock():
-    """Book inventory stock page (stock in / stock out)."""
+    """Allocate catalog books to classes (stock in) and teachers (distribution)."""
     redir = _books_inventory_librarian_guard()
     if redir:
         return redir
@@ -31489,7 +32246,7 @@ def books_inventory_stock_in():
     if redir:
         return redir
     if request.method == 'GET':
-        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
     book_id = request.form.get('book_id', type=int)
     level_id = request.form.get('academic_level_id', type=int)
     stock_subject_id = request.form.get('stock_subject_id', type=int)
@@ -31502,17 +32259,48 @@ def books_inventory_stock_in():
     teacher_allocations = _library_parse_teacher_distribution_payload(teacher_allocations_raw)
     if not book_id or not level_id:
         flash('Please select a book and academic level.', 'error')
-        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ensure_library_books_table(cursor)
+                cursor.execute(
+                    """
+                    SELECT UPPER(TRIM(academic_category)) AS ac, subject_id
+                    FROM library_books WHERE id = %s
+                    """,
+                    (book_id,),
+                )
+                br = cursor.fetchone()
+                if br:
+                    if isinstance(br, dict):
+                        ac = br.get('ac')
+                        sid = br.get('subject_id')
+                    else:
+                        ac = br[0] if len(br) > 0 else None
+                        sid = br[1] if len(br) > 1 else None
+                    if _library_book_needs_librarian_setup(ac, sid):
+                        flash(
+                            'Complete academic category and subject in the book catalog '
+                            '(catalog setup) before allocating to a class.',
+                            'error',
+                        )
+                        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
+        except Exception as e:
+            print(f"books_inventory_stock_in setup check: {e}")
+        finally:
+            connection.close()
     if not stock_subject_id:
         flash('Please select the subject this stock-in is linked to.', 'error')
-        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
     if not supplier_phone:
-        flash('Supplier phone number is required for stock in.', 'error')
-        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+        flash('Supplier phone number is required when allocating to a class.', 'error')
+        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
     connection = get_db_connection()
     if not connection:
         flash('Could not connect to the database.', 'error')
-        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
     performed_by = session.get('employee_id') or session.get('user_id')
     performed_by_name = session.get('full_name') or session.get('employee_name') or ''
     try:
@@ -31523,7 +32311,7 @@ def books_inventory_stock_in():
             if supplier_err:
                 connection.rollback()
                 flash(supplier_err, 'error')
-                return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+                return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
             ok, msg, extras = _library_apply_stock_movement(
                 cursor, book_id, level_id, 'in', quantity, notes,
                 performed_by=performed_by, performed_by_name=performed_by_name,
@@ -31546,7 +32334,7 @@ def books_inventory_stock_in():
                     if not dist_ok:
                         connection.rollback()
                         flash(dist_err or 'Could not save teacher allocations.', 'error')
-                        return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+                        return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
                 connection.commit()
                 codes = extras.get('copy_codes') or []
                 if codes:
@@ -31566,10 +32354,10 @@ def books_inventory_stock_in():
     except Exception as e:
         connection.rollback()
         print(f"books_inventory_stock_in: {e}")
-        flash('Could not record stock in.', 'error')
+        flash('Could not allocate copies to class.', 'error')
     finally:
         connection.close()
-    return redirect(employee_dash_url('books-inventory/stock') + '?stock=in')
+    return redirect(employee_dash_url('books-inventory/stock') + '?allocate=class')
 
 
 @app.route('/dashboard/employee/books-inventory/stock-out', methods=['GET', 'POST'])
@@ -31653,6 +32441,9 @@ def books_inventory():
     open_stock_panel = None
     last_stock_in_labels = None
     last_stock_out_labels = None
+    books_all = []
+    catalog_filter = 'all'
+    catalog_counts = {'all': 0, 'setup': 0}
 
     connection = get_db_connection()
     if not connection:
@@ -31666,6 +32457,7 @@ def books_inventory():
             books=books,
             library_books_client=[],
             open_edit_book_id=None,
+            open_setup_book_id=None,
             inventory_form_open_default=False,
             inventory_academic_levels=[],
             library_levels_by_category=[],
@@ -31677,19 +32469,21 @@ def books_inventory():
             library_level_subjects={},
             open_stock_panel=None,
             inventory_view='catalog',
+            books_all=books_all,
+            catalog_filter=catalog_filter,
+            catalog_counts=catalog_counts,
         )
 
     try:
         with connection.cursor() as cursor:
             ensure_library_books_table(cursor)
+            _library_sync_store_department_catalog(cursor)
             connection.commit()
 
             subjects_by_category = _library_subjects_by_academic_category(cursor)
             academic_categories = sorted(subjects_by_category.keys(), key=lambda x: (x or '').lower())
 
             if request.method == 'POST':
-                from decimal import Decimal, InvalidOperation
-
                 book_id_update = request.form.get('book_id', type=int)
                 if not book_id_update:
                     flash(
@@ -31698,124 +32492,61 @@ def books_inventory():
                         'error',
                     )
                     return redirect(employee_dash_url('books-inventory'))
-                book_category = (request.form.get('book_category') or '').strip()[:120].upper()
-                book_name = (request.form.get('book_name') or '').strip()[:255].upper()
-                desc_raw = (request.form.get('description') or '').strip()
-                description = desc_raw.upper() if desc_raw else None
-                raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
-                buying_price = None
-                if raw_price != '':
-                    try:
-                        buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
-                    except (InvalidOperation, ValueError):
-                        buying_price = None
-                academic_category = (request.form.get('academic_category') or '').strip().upper()
+                parsed = _library_validate_librarian_book_update_form(
+                    cursor, book_id_update, subjects_by_category,
+                )
+                if not parsed.get('ok'):
+                    flash(parsed.get('message', 'Could not update the book.'), 'error')
+                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
                 try:
-                    subject_id = int(request.form.get('subject_id') or 0)
-                except (TypeError, ValueError):
-                    subject_id = 0
-
-                ct_raw = (request.form.get('copies_total') or '').strip()
-                copies_total = None
-                if ct_raw == '':
-                    copies_total = 1
-                else:
-                    try:
-                        copies_total = int(ct_raw)
-                    except (TypeError, ValueError):
-                        copies_total = None
-                if copies_total is None or copies_total < 1:
-                    flash('Total copies must be a whole number of at least 1.', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-
-                if not book_category or not book_name:
-                    flash('Book category and book name are required.', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                elif buying_price is None:
-                    flash('Please enter a valid buying price (use numbers only, e.g. 1500 or 1500.50).', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                elif buying_price < 0:
-                    flash('Buying price cannot be negative.', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                elif not academic_category or not subject_id:
-                    flash('Please select an academic category and a subject.', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                elif academic_category not in subjects_by_category:
-                    flash('Please select a valid academic category from the list.', 'error')
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                elif not _subject_allocated_to_academic_category(cursor, subject_id, academic_category):
-                    flash(
-                        'That subject is not linked to the selected academic category in the curriculum. '
-                        'Pick a subject from the list for the category you chose.',
-                        'error',
-                    )
-                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                else:
-                    try:
-                        cursor.execute("SELECT id FROM library_books WHERE id = %s", (book_id_update,))
-                        if not cursor.fetchone():
-                            flash('Book not found.', 'error')
-                            return redirect(employee_dash_url('books-inventory'))
-                        migrate_library_books_copies_and_allocation_qty(cursor)
-                        ensure_library_book_allocations_table(cursor)
-                        cursor.execute(
-                            """
-                            SELECT COALESCE(SUM(quantity), 0) AS s
-                            FROM library_book_allocations
-                            WHERE library_book_id = %s
-                            """,
-                            (book_id_update,),
-                        )
-                        sum_row = cursor.fetchone()
-                        if isinstance(sum_row, dict):
-                            allocated_sum = int(sum_row.get('s') or 0)
-                        else:
-                            allocated_sum = int(sum_row[0] or 0) if sum_row and len(sum_row) > 0 else 0
-                        if copies_total < allocated_sum:
-                            flash(
-                                'Total copies cannot be less than copies already assigned to levels. '
-                                'Lower allocations in the level dialog or raise total copies.',
-                                'error',
-                            )
-                            return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                        cursor.execute(
-                            """
-                            UPDATE library_books
-                            SET book_category = %s, book_name = %s, description = %s, buying_price = %s,
-                                academic_category = %s, subject_id = %s, copies_total = %s
-                            WHERE id = %s
-                            """,
-                            (
-                                book_category,
-                                book_name,
-                                description,
-                                buying_price,
-                                academic_category,
-                                subject_id,
-                                copies_total,
-                                book_id_update,
-                            ),
-                        )
-                        connection.commit()
-                        flash('Book updated successfully.', 'success')
+                    needs_setup_edit = _library_book_needs_setup_by_id(cursor, book_id_update)
+                    if needs_setup_edit is None:
+                        flash('Book not found.', 'error')
                         return redirect(employee_dash_url('books-inventory'))
-                    except IntegrityError:
-                        connection.rollback()
-                        flash('Could not save the book (invalid category or subject).', 'error')
-                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
-                    except Exception as e:
-                        connection.rollback()
-                        print(f"books_inventory update: {e}")
-                        flash('An error occurred while updating the book.', 'error')
-                        return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                    if needs_setup_edit:
+                        flash(
+                            'This title still needs inventory setup. Use Set up to assign category, subject, and levels.',
+                            'error',
+                        )
+                        return redirect(employee_dash_url('books-inventory') + '?setup=%s' % book_id_update)
+                    cursor.execute(
+                        """
+                        UPDATE library_books
+                        SET book_category = %s, book_name = %s, description = %s, buying_price = %s,
+                            academic_category = %s, subject_id = %s, copies_total = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            parsed['book_category'],
+                            parsed['book_name'],
+                            parsed['description'],
+                            parsed['buying_price'],
+                            parsed['academic_category'],
+                            parsed['subject_id'],
+                            parsed['copies_total'],
+                            book_id_update,
+                        ),
+                    )
+                    connection.commit()
+                    flash('Book updated successfully.', 'success')
+                    return redirect(employee_dash_url('books-inventory'))
+                except IntegrityError:
+                    connection.rollback()
+                    flash('Could not save the book (invalid category or subject).', 'error')
+                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
+                except Exception as e:
+                    connection.rollback()
+                    print(f"books_inventory update: {e}")
+                    flash('An error occurred while updating the book.', 'error')
+                    return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
 
             cursor.execute("""
                 SELECT lb.id, lb.book_category, lb.book_name, lb.description, lb.buying_price,
                        lb.library_status, lb.allocation_status, lb.copies_total, lb.created_at,
-                       lb.academic_category, lb.subject_id,
+                       lb.academic_category, lb.subject_id, lb.store_item_id,
                        s.subject_name, s.subject_code
                 FROM library_books lb
-                INNER JOIN subjects s ON s.id = lb.subject_id
+                LEFT JOIN subjects s ON s.id = lb.subject_id
                 ORDER BY lb.created_at DESC, lb.book_name ASC
             """)
             for row in cursor.fetchall() or []:
@@ -31829,11 +32560,14 @@ def books_inventory():
                     else:
                         bp = 0.0
                     try:
-                        ctot = int(row.get('copies_total') or 1)
+                        ctot = int(row.get('copies_total') if row.get('copies_total') is not None else 0)
                     except (TypeError, ValueError):
-                        ctot = 1
-                    if ctot < 1:
-                        ctot = 1
+                        ctot = 0
+                    if ctot < 0:
+                        ctot = 0
+                    sid = int(row.get('subject_id') or 0)
+                    ac_cat = (row.get('academic_category') or '').upper()
+                    needs_setup = _library_book_needs_librarian_setup(ac_cat, sid)
                     books.append({
                         'id': row['id'],
                         'book_category': (row.get('book_category') or '').upper(),
@@ -31841,13 +32575,15 @@ def books_inventory():
                         'description': (row.get('description') or '').upper(),
                         'buying_price': bp,
                         'created_at': row.get('created_at'),
-                        'academic_category': (row.get('academic_category') or '').upper(),
-                        'subject_id': int(row.get('subject_id') or 0),
+                        'academic_category': ac_cat,
+                        'subject_id': sid,
                         'subject_name': (row.get('subject_name') or '').upper(),
                         'subject_code': (row.get('subject_code') or '').upper(),
                         'library_status': (row.get('library_status') or 'active'),
                         'allocation_status': (row.get('allocation_status') or 'unallocated'),
                         'copies_total': ctot,
+                        'store_item_id': int(row.get('store_item_id') or 0) or None,
+                        'needs_setup': needs_setup,
                     })
                 else:
                     try:
@@ -31859,11 +32595,17 @@ def books_inventory():
                     except (TypeError, ValueError):
                         sid_l = 0
                     try:
-                        ctot_t = int(row[7]) if len(row) > 7 else 1
+                        store_item_id_l = int(row[11]) if len(row) > 11 else 0
                     except (TypeError, ValueError):
-                        ctot_t = 1
-                    if ctot_t < 1:
-                        ctot_t = 1
+                        store_item_id_l = 0
+                    try:
+                        ctot_t = int(row[7]) if len(row) > 7 and row[7] is not None else 0
+                    except (TypeError, ValueError):
+                        ctot_t = 0
+                    if ctot_t < 0:
+                        ctot_t = 0
+                    ac_cat_t = ((row[9] or '') if len(row) > 9 else '').upper()
+                    needs_setup_t = _library_book_needs_librarian_setup(ac_cat_t, sid_l)
                     books.append({
                         'id': row[0],
                         'book_category': ((row[1] or '') if len(row) > 1 else '').upper(),
@@ -31871,13 +32613,15 @@ def books_inventory():
                         'description': ((row[3] or '') if len(row) > 3 else '').upper(),
                         'buying_price': bp,
                         'created_at': row[8] if len(row) > 8 else None,
-                        'academic_category': ((row[9] or '') if len(row) > 9 else '').upper(),
+                        'academic_category': ac_cat_t,
                         'subject_id': sid_l,
-                        'subject_name': ((row[11] or '') if len(row) > 11 else '').upper(),
-                        'subject_code': ((row[12] or '') if len(row) > 12 else '').upper(),
+                        'subject_name': ((row[12] or '') if len(row) > 12 else '').upper(),
+                        'subject_code': ((row[13] or '') if len(row) > 13 else '').upper(),
                         'library_status': (row[5] if len(row) > 5 else 'active') or 'active',
                         'allocation_status': (row[6] if len(row) > 6 else 'unallocated') or 'unallocated',
                         'copies_total': ctot_t,
+                        'store_item_id': store_item_id_l or None,
+                        'needs_setup': needs_setup_t,
                     })
             _library_enrich_books_with_allocations(cursor, books)
             inventory_academic_levels = _library_inventory_academic_levels(cursor)
@@ -31891,16 +32635,44 @@ def books_inventory():
             library_level_subjects = _library_subjects_by_level_map(cursor)
             for b in books:
                 b['allocation_status'] = 'allocated' if b.get('allocated_level_ids') else 'unallocated'
+                qty_by_level = {}
+                for ad in b.get('allocations_detail') or []:
+                    try:
+                        qty_by_level[int(ad.get('id'))] = max(1, int(ad.get('quantity') or 1))
+                    except (TypeError, ValueError):
+                        pass
+                b['alloc_qty_by_level'] = qty_by_level
+            books_all = list(books)
+            catalog_filter = (request.args.get('filter') or 'all').strip().lower()
+            if catalog_filter not in ('all', 'setup'):
+                catalog_filter = 'all'
+            catalog_counts = {
+                'all': len(books_all),
+                'setup': sum(1 for b in books_all if b.get('needs_setup')),
+            }
+            if catalog_filter == 'setup':
+                books = [b for b in books_all if b.get('needs_setup')]
+            else:
+                catalog_filter = 'all'
+                books = books_all
     except Exception as e:
         print(f"books_inventory: {e}")
         flash('Could not load the book inventory.', 'error')
+        books = []
+        books_all = []
+        catalog_filter = 'all'
+        catalog_counts = {'all': 0, 'setup': 0}
     finally:
         connection.close()
 
     open_edit_book_id = request.args.get('edit', type=int) if request.method == 'GET' else None
-    if open_edit_book_id is not None and open_edit_book_id not in {b['id'] for b in books}:
+    if open_edit_book_id is not None and open_edit_book_id not in {b['id'] for b in books_all}:
         flash('Book not found.', 'error')
         open_edit_book_id = None
+    open_setup_book_id = request.args.get('setup', type=int) if request.method == 'GET' else None
+    if open_setup_book_id is not None and open_setup_book_id not in {b['id'] for b in books_all}:
+        flash('Book not found.', 'error')
+        open_setup_book_id = None
 
     library_books_client = [
         {
@@ -31911,19 +32683,25 @@ def books_inventory():
             'buying_price': float(b['buying_price']) if b.get('buying_price') is not None else 0.0,
             'academic_category': b.get('academic_category') or '',
             'subject_id': int(b.get('subject_id') or 0),
+            'subject_name': b.get('subject_name') or '',
+            'subject_code': b.get('subject_code') or '',
             'copies_total': int(b.get('copies_total') or 1),
             'allocated_level_ids': list(b.get('allocated_level_ids') or []),
             'allocations_detail': list(b.get('allocations_detail') or []),
             'allocated_copies_sum': int(b.get('allocated_copies_sum') or 0),
             'remaining_stock': int(b.get('remaining_stock') or 0),
             'allocation_status': b.get('allocation_status') or 'unallocated',
+            'store_item_id': b.get('store_item_id'),
+            'needs_setup': bool(b.get('needs_setup')),
         }
-        for b in books
+        for b in books_all
     ]
     if request.method == 'GET' and inventory_view == 'stock':
-        stock_q = (request.args.get('stock') or '').strip().lower()
-        if stock_q in ('in', 'out'):
-            open_stock_panel = stock_q
+        stock_q = (request.args.get('allocate') or request.args.get('stock') or '').strip().lower()
+        if stock_q in ('class', 'in'):
+            open_stock_panel = 'in'
+        elif stock_q in ('teacher', 'out'):
+            open_stock_panel = 'out'
 
     def _enrich_last_stock_labels(payload):
         if not payload or not library_stock_lines:
@@ -31950,8 +32728,12 @@ def books_inventory():
         academic_categories=academic_categories,
         subjects_by_category=subjects_by_category,
         books=books,
+        books_all=books_all,
+        catalog_filter=catalog_filter,
+        catalog_counts=catalog_counts,
         library_books_client=library_books_client,
         open_edit_book_id=open_edit_book_id,
+        open_setup_book_id=open_setup_book_id,
         inventory_form_open_default=inventory_form_open_default,
         inventory_academic_levels=inventory_academic_levels,
         library_levels_by_category=library_levels_by_category,
@@ -31981,14 +32763,26 @@ def store_inventory_delete(item_id):
     try:
         with connection.cursor() as cursor:
             ensure_store_inventory_items_table(cursor)
+            ensure_library_books_table(cursor)
             cursor.execute(
-                "SELECT image_path FROM store_inventory_items WHERE id = %s",
+                """
+                SELECT image_path, library_book_id
+                FROM store_inventory_items WHERE id = %s
+                """,
                 (item_id,),
             )
             row = cursor.fetchone()
             image_path = None
+            library_book_id = None
             if row:
-                image_path = row.get('image_path') if isinstance(row, dict) else row[0]
+                if isinstance(row, dict):
+                    image_path = row.get('image_path')
+                    library_book_id = int(row.get('library_book_id') or 0) or None
+                else:
+                    image_path = row[0] if len(row) > 0 else None
+                    library_book_id = int(row[1] or 0) or None if len(row) > 1 else None
+            if library_book_id:
+                cursor.execute("DELETE FROM library_books WHERE id = %s", (library_book_id,))
             cursor.execute("DELETE FROM store_inventory_items WHERE id = %s", (item_id,))
             connection.commit()
             if image_path:
@@ -32059,6 +32853,7 @@ def store_inventory():
             store_items_client=[],
             category_suggestions=category_suggestions,
             measures=list(STORE_ITEM_MEASURES),
+            department_stations=list(STORE_DEPARTMENT_STATIONS),
             open_edit_item_id=None,
             inventory_form_open_default=False,
         )
@@ -32077,9 +32872,16 @@ def store_inventory():
                 measure = (request.form.get('measure') or '').strip().upper()
                 if measure not in STORE_ITEM_MEASURES:
                     measure = ''
+                department_station = _normalize_store_department_station(
+                    request.form.get('department_station')
+                )
 
                 if not item_category or not item_name:
                     flash('Item category and item name are required.', 'error')
+                    if item_id_update:
+                        return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
+                elif not department_station:
+                    flash('Please select a department station for this item.', 'error')
                     if item_id_update:
                         return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
                 elif not measure:
@@ -32088,25 +32890,70 @@ def store_inventory():
                         return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
                 elif item_id_update:
                     try:
-                        cursor.execute("SELECT id, image_path FROM store_inventory_items WHERE id = %s", (item_id_update,))
+                        ensure_library_books_table(cursor)
+                        cursor.execute(
+                            """
+                            SELECT id, image_path, department_station, library_book_id
+                            FROM store_inventory_items WHERE id = %s
+                            """,
+                            (item_id_update,),
+                        )
                         existing = cursor.fetchone()
                         if not existing:
                             flash('Store item not found.', 'error')
                             return redirect(employee_dash_url('store-inventory'))
-                        old_image = (
-                            existing.get('image_path') if isinstance(existing, dict) else existing[1]
-                        )
+                        if isinstance(existing, dict):
+                            old_image = existing.get('image_path')
+                            old_station = (existing.get('department_station') or '').strip().upper()
+                            library_book_id = int(existing.get('library_book_id') or 0) or None
+                        else:
+                            old_image = existing[1] if len(existing) > 1 else None
+                            old_station = ((existing[2] or '') if len(existing) > 2 else '').strip().upper()
+                            library_book_id = int(existing[3] or 0) or None if len(existing) > 3 else None
                         new_image = _save_store_item_image(request.files.get('image'))
                         image_path = new_image if new_image else old_image
                         cursor.execute(
                             """
                             UPDATE store_inventory_items
                             SET item_category = %s, item_name = %s, description = %s,
-                                measure = %s, image_path = %s
+                                measure = %s, image_path = %s, department_station = %s
                             WHERE id = %s
                             """,
-                            (item_category, item_name, description, measure, image_path, item_id_update),
+                            (
+                                item_category,
+                                item_name,
+                                description,
+                                measure,
+                                image_path,
+                                department_station,
+                                item_id_update,
+                            ),
                         )
+                        if _store_station_is_library(department_station):
+                            if not library_book_id:
+                                library_book_id = _create_library_book_for_store_item(
+                                    cursor,
+                                    item_id_update,
+                                    item_category,
+                                    item_name,
+                                    description,
+                                )
+                            else:
+                                _sync_linked_library_book_from_store_item(
+                                    cursor,
+                                    library_book_id,
+                                    item_category,
+                                    item_name,
+                                    description,
+                                )
+                        elif library_book_id:
+                            _sync_linked_library_book_from_store_item(
+                                cursor,
+                                library_book_id,
+                                item_category,
+                                item_name,
+                                description,
+                            )
                         connection.commit()
                         if new_image and old_image and old_image != new_image:
                             _delete_store_item_image_file(old_image)
@@ -32118,28 +32965,12 @@ def store_inventory():
                         flash('An error occurred while updating the store item.', 'error')
                         return redirect(employee_dash_url('store-inventory') + '?edit=%s' % item_id_update)
                 else:
-                    try:
-                        reference_code = _generate_store_item_reference_code(cursor)
-                        image_path = _save_store_item_image(request.files.get('image'))
-                        cursor.execute(
-                            """
-                            INSERT INTO store_inventory_items
-                                (reference_code, item_category, item_name, description, measure,
-                                 image_path, item_status)
-                            VALUES (%s, %s, %s, %s, %s, %s, 'active')
-                            """,
-                            (reference_code, item_category, item_name, description, measure, image_path),
-                        )
+                    result = _register_store_inventory_item_from_request(cursor, request)
+                    if result.get('ok'):
                         connection.commit()
-                        flash(f'Store item registered as {reference_code}.', 'success')
+                        flash(result['message'], 'success')
                         return redirect(employee_dash_url('store-inventory'))
-                    except IntegrityError:
-                        connection.rollback()
-                        flash('Could not save the store item (duplicate reference). Try again.', 'error')
-                    except Exception as e:
-                        connection.rollback()
-                        print(f"store_inventory insert: {e}")
-                        flash('An error occurred while registering the store item.', 'error')
+                    flash(result.get('message', 'Could not register the store item.'), 'error')
 
             items = _fetch_store_inventory_items(cursor)
             seen_cats = set()
@@ -32170,6 +33001,9 @@ def store_inventory():
             'measure': it.get('measure') or '',
             'image_path': it.get('image_path') or '',
             'item_status': it.get('item_status') or 'active',
+            'department_station': it.get('department_station') or '',
+            'library_book_id': it.get('library_book_id'),
+            'quantity_on_hand': int(it.get('quantity_on_hand') or 0),
         }
         for it in items
     ]
@@ -32185,6 +33019,7 @@ def store_inventory():
         store_items_client=store_items_client,
         category_suggestions=category_suggestions,
         measures=list(STORE_ITEM_MEASURES),
+        department_stations=list(STORE_DEPARTMENT_STATIONS),
         open_edit_item_id=open_edit_item_id,
         inventory_form_open_default=inventory_form_open_default,
     )
@@ -32283,6 +33118,10 @@ def store_stock():
     last_print_id = request.args.get('print', type=int)
 
     connection = get_db_connection()
+    category_suggestions = []
+    register_form_open_default = request.args.get('register') == '1'
+    preselect_item_id = request.args.get('item', type=int)
+
     if not connection:
         flash('Could not connect to the database.', 'error')
         return render_template(
@@ -32295,80 +33134,141 @@ def store_stock():
             stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
             default_mode=default_mode,
             last_print_id=last_print_id,
+            category_suggestions=category_suggestions,
+            measures=list(STORE_ITEM_MEASURES),
+            department_stations=list(STORE_DEPARTMENT_STATIONS),
+            register_form_open_default=register_form_open_default,
+            preselect_item_id=preselect_item_id,
         )
 
     try:
         with connection.cursor() as cursor:
             ensure_store_stock_movements_table(cursor)
+            ensure_store_inventory_items_table(cursor)
             connection.commit()
 
             if request.method == 'POST':
-                from decimal import Decimal, InvalidOperation
-
-                movement_type = (request.form.get('movement_type') or 'in').strip().lower()
-                if movement_type not in ('in', 'out'):
-                    movement_type = 'in'
-                store_item_id = request.form.get('store_item_id', type=int)
-                qty_raw = (request.form.get('quantity') or '').strip()
-                notes_raw = (request.form.get('notes') or '').strip()
-                notes = notes_raw.upper()[:500] if notes_raw else None
-
-                try:
-                    quantity = int(qty_raw)
-                except (TypeError, ValueError):
-                    quantity = None
-
-                if not store_item_id:
-                    flash('Please select a store item.', 'error')
-                elif quantity is None or quantity < 1:
-                    flash('Quantity must be a whole number of at least 1.', 'error')
+                form_action = (request.form.get('form_action') or '').strip().lower()
+                if form_action == 'register_item':
+                    ensure_store_inventory_items_table(cursor)
+                    result = _register_store_inventory_item_from_request(cursor, request)
+                    if result.get('ok'):
+                        connection.commit()
+                        flash(result['message'], 'success')
+                        new_id = result.get('new_item_id')
+                        url = employee_dash_url('store-stock')
+                        if new_id:
+                            url += f'?item={new_id}&mode=in'
+                        return redirect(url)
+                    connection.rollback()
+                    flash(result.get('message', 'Could not register the store item.'), 'error')
+                    register_form_open_default = True
                 else:
-                    cursor.execute(
-                        """
-                        SELECT id, item_name, item_status,
-                               COALESCE(quantity_on_hand, 0) AS quantity_on_hand
-                        FROM store_inventory_items WHERE id = %s
-                        """,
-                        (store_item_id,),
-                    )
-                    item_row = cursor.fetchone()
-                    if not item_row:
-                        flash('Store item not found.', 'error')
-                    else:
-                        if isinstance(item_row, dict):
-                            item_status = (item_row.get('item_status') or '').strip()
-                            qty_before = int(item_row.get('quantity_on_hand') or 0)
-                        else:
-                            item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
-                            qty_before = int(item_row[3] or 0) if len(item_row) > 3 else 0
-                        if item_status != 'active':
-                            flash('This item is suspended. Unsuspend it before stocking.', 'error')
-                        elif movement_type == 'out' and quantity > qty_before:
-                            flash(
-                                f'Cannot stock out {quantity} — only {qty_before} on hand.',
-                                'error',
-                            )
-                        elif movement_type == 'in':
-                            raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
-                            try:
-                                buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
-                            except (InvalidOperation, ValueError):
-                                buying_price = None
-                            supplier_phone = (request.form.get('supplier_phone') or '').strip()
-                            supplier_name = (request.form.get('supplier_name') or '').strip()
+                    from decimal import Decimal, InvalidOperation
 
-                            if buying_price is None or buying_price < 0:
-                                flash('Enter a valid buying price.', 'error')
+                    movement_type = (request.form.get('movement_type') or 'in').strip().lower()
+                    if movement_type not in ('in', 'out'):
+                        movement_type = 'in'
+                    store_item_id = request.form.get('store_item_id', type=int)
+                    qty_raw = (request.form.get('quantity') or '').strip()
+                    notes_raw = (request.form.get('notes') or '').strip()
+                    notes = notes_raw.upper()[:500] if notes_raw else None
+
+                    try:
+                        quantity = int(qty_raw)
+                    except (TypeError, ValueError):
+                        quantity = None
+
+                    if not store_item_id:
+                        flash('Please select a store item.', 'error')
+                    elif quantity is None or quantity < 1:
+                        flash('Quantity must be a whole number of at least 1.', 'error')
+                    else:
+                        cursor.execute(
+                            """
+                            SELECT id, item_name, item_status,
+                                   COALESCE(quantity_on_hand, 0) AS quantity_on_hand
+                            FROM store_inventory_items WHERE id = %s
+                            """,
+                            (store_item_id,),
+                        )
+                        item_row = cursor.fetchone()
+                        if not item_row:
+                            flash('Store item not found.', 'error')
+                        else:
+                            if isinstance(item_row, dict):
+                                item_status = (item_row.get('item_status') or '').strip()
+                                qty_before = int(item_row.get('quantity_on_hand') or 0)
                             else:
-                                supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
-                                    cursor, supplier_phone, supplier_name,
+                                item_status = (item_row[2] or '').strip() if len(item_row) > 2 else ''
+                                qty_before = int(item_row[3] or 0) if len(item_row) > 3 else 0
+                            if item_status != 'active':
+                                flash('This item is suspended. Unsuspend it before stocking.', 'error')
+                            elif movement_type == 'out' and quantity > qty_before:
+                                flash(
+                                    f'Cannot stock out {quantity} — only {qty_before} on hand.',
+                                    'error',
                                 )
-                                if sup_err:
-                                    flash(sup_err, 'error')
+                            elif movement_type == 'in':
+                                raw_price = (request.form.get('buying_price') or '').strip().replace(',', '')
+                                try:
+                                    buying_price = Decimal(raw_price).quantize(Decimal('0.01'))
+                                except (InvalidOperation, ValueError):
+                                    buying_price = None
+                                supplier_phone = (request.form.get('supplier_phone') or '').strip()
+                                supplier_name = (request.form.get('supplier_name') or '').strip()
+
+                                if buying_price is None or buying_price < 0:
+                                    flash('Enter a valid buying price.', 'error')
                                 else:
-                                    total_amount = (buying_price * quantity).quantize(Decimal('0.01'))
-                                    ref_no = _generate_store_stock_reference_number(cursor, 'in')
-                                    qty_after = qty_before + quantity
+                                    supplier_id, sup_err = _store_upsert_supplier_for_stock_in(
+                                        cursor, supplier_phone, supplier_name,
+                                    )
+                                    if sup_err:
+                                        flash(sup_err, 'error')
+                                    else:
+                                        total_amount = (buying_price * quantity).quantize(Decimal('0.01'))
+                                        ref_no = _generate_store_stock_reference_number(cursor, 'in')
+                                        qty_after = qty_before + quantity
+                                        performed_by = session.get('employee_id') or session.get('user_id')
+                                        performed_name = (session.get('full_name') or session.get('username') or '').strip()
+                                        cursor.execute(
+                                            """
+                                            INSERT INTO store_stock_movements
+                                                (reference_number, store_item_id, movement_type, quantity,
+                                                 buying_price, total_amount, supplier_id, payment_status,
+                                                 notes, quantity_before, quantity_after,
+                                                 performed_by, performed_by_name)
+                                            VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
+                                                    %s, %s, %s, %s, %s)
+                                            """,
+                                            (
+                                                ref_no, store_item_id, quantity, buying_price, total_amount,
+                                                supplier_id, notes, qty_before, qty_after,
+                                                performed_by, performed_name or None,
+                                            ),
+                                        )
+                                        movement_pk = cursor.lastrowid
+                                        cursor.execute(
+                                            """
+                                            UPDATE store_inventory_items
+                                            SET quantity_on_hand = %s WHERE id = %s
+                                            """,
+                                            (qty_after, store_item_id),
+                                        )
+                                        connection.commit()
+                                        flash(f'Stock in recorded as {ref_no}. Payment pending: {total_amount}.', 'success')
+                                        return redirect(
+                                            employee_dash_url('store-stock')
+                                            + f'?print={movement_pk}&mode=in'
+                                        )
+                            elif movement_type == 'out':
+                                purpose_raw = (request.form.get('stock_out_purpose') or '').strip().upper()
+                                if purpose_raw not in STORE_STOCK_OUT_PURPOSES:
+                                    flash('Select the purpose of stock out.', 'error')
+                                else:
+                                    ref_no = _generate_store_stock_reference_number(cursor, 'out')
+                                    qty_after = max(0, qty_before - quantity)
                                     performed_by = session.get('employee_id') or session.get('user_id')
                                     performed_name = (session.get('full_name') or session.get('username') or '').strip()
                                     cursor.execute(
@@ -32376,14 +33276,14 @@ def store_stock():
                                         INSERT INTO store_stock_movements
                                             (reference_number, store_item_id, movement_type, quantity,
                                              buying_price, total_amount, supplier_id, payment_status,
-                                             notes, quantity_before, quantity_after,
+                                             notes, stock_out_purpose, quantity_before, quantity_after,
                                              performed_by, performed_by_name)
-                                        VALUES (%s, %s, 'in', %s, %s, %s, %s, 'pending',
-                                                %s, %s, %s, %s, %s)
+                                        VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
+                                                %s, %s, %s, %s, %s, %s)
                                         """,
                                         (
-                                            ref_no, store_item_id, quantity, buying_price, total_amount,
-                                            supplier_id, notes, qty_before, qty_after,
+                                            ref_no, store_item_id, quantity, notes, purpose_raw,
+                                            qty_before, qty_after,
                                             performed_by, performed_name or None,
                                         ),
                                     )
@@ -32396,53 +33296,21 @@ def store_stock():
                                         (qty_after, store_item_id),
                                     )
                                     connection.commit()
-                                    flash(f'Stock in recorded as {ref_no}. Payment pending: {total_amount}.', 'success')
+                                    flash(f'Stock out recorded as {ref_no}.', 'success')
                                     return redirect(
                                         employee_dash_url('store-stock')
-                                        + f'?print={movement_pk}&mode=in'
+                                        + f'?print={movement_pk}&mode=out'
                                     )
-                        elif movement_type == 'out':
-                            purpose_raw = (request.form.get('stock_out_purpose') or '').strip().upper()
-                            if purpose_raw not in STORE_STOCK_OUT_PURPOSES:
-                                flash('Select the purpose of stock out.', 'error')
-                            else:
-                                ref_no = _generate_store_stock_reference_number(cursor, 'out')
-                                qty_after = max(0, qty_before - quantity)
-                                performed_by = session.get('employee_id') or session.get('user_id')
-                                performed_name = (session.get('full_name') or session.get('username') or '').strip()
-                                cursor.execute(
-                                    """
-                                    INSERT INTO store_stock_movements
-                                        (reference_number, store_item_id, movement_type, quantity,
-                                         buying_price, total_amount, supplier_id, payment_status,
-                                         notes, stock_out_purpose, quantity_before, quantity_after,
-                                         performed_by, performed_by_name)
-                                    VALUES (%s, %s, 'out', %s, NULL, NULL, NULL, 'na',
-                                            %s, %s, %s, %s, %s, %s)
-                                    """,
-                                    (
-                                        ref_no, store_item_id, quantity, notes, purpose_raw,
-                                        qty_before, qty_after,
-                                        performed_by, performed_name or None,
-                                    ),
-                                )
-                                movement_pk = cursor.lastrowid
-                                cursor.execute(
-                                    """
-                                    UPDATE store_inventory_items
-                                    SET quantity_on_hand = %s WHERE id = %s
-                                    """,
-                                    (qty_after, store_item_id),
-                                )
-                                connection.commit()
-                                flash(f'Stock out recorded as {ref_no}.', 'success')
-                                return redirect(
-                                    employee_dash_url('store-stock')
-                                    + f'?print={movement_pk}&mode=out'
-                                )
 
             stock_items = _fetch_store_items_for_stock(cursor)
             recent_movements = _fetch_store_stock_movements_recent(cursor)
+            seen_cats = set()
+            for it in stock_items:
+                cat = (it.get('item_category') or '').strip()
+                if cat and cat not in seen_cats:
+                    seen_cats.add(cat)
+                    category_suggestions.append(cat)
+            category_suggestions.sort(key=lambda x: x.lower())
     except Exception as e:
         print(f"store_stock: {e}")
         connection.rollback()
@@ -32460,6 +33328,11 @@ def store_stock():
         stock_out_purposes=STORE_STOCK_OUT_PURPOSES,
         default_mode=default_mode,
         last_print_id=last_print_id,
+        measures=list(STORE_ITEM_MEASURES),
+        department_stations=list(STORE_DEPARTMENT_STATIONS),
+        category_suggestions=category_suggestions,
+        register_form_open_default=register_form_open_default,
+        preselect_item_id=preselect_item_id,
     )
 
 
@@ -36496,7 +37369,7 @@ def exam_analytics_detail(exam_id):
 
                 try:
                     cur2.execute("""
-                        SELECT subject_id, code, start_mark, end_mark, allocation_points
+                        SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
                         FROM subject_grade_mark_overrides
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -36507,19 +37380,19 @@ def exam_analytics_detail(exam_id):
                             ap = srow.get('allocation_points')
                             band = {
                                 'code': (srow.get('code') or '').strip(),
-                                'label': '',
+                                'label': (srow.get('level_label') or '').strip(),
                                 'start': float(srow.get('start_mark') or 0),
                                 'end': float(srow.get('end_mark') or 0),
                                 'allocation_points': float(ap) if ap is not None else None,
                             }
                         else:
                             sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                            apv = srow[4] if len(srow) > 4 else None
+                            apv = srow[5] if len(srow) > 5 else None
                             band = {
                                 'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                                'label': '',
-                                'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
-                                'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
+                                'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
                                 'allocation_points': float(apv) if apv is not None else None,
                             }
                         if sid <= 0:
@@ -37301,7 +38174,7 @@ def students_by_academic_level(level_id):
 
                 try:
                     cursor.execute("""
-                        SELECT subject_id, code, start_mark, end_mark, allocation_points
+                        SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
                         FROM subject_grade_mark_overrides
                         WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                         ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -37312,19 +38185,19 @@ def students_by_academic_level(level_id):
                             ap = srow.get('allocation_points')
                             band = {
                                 'code': (srow.get('code') or '').strip(),
-                                'label': '',
+                                'label': (srow.get('level_label') or '').strip(),
                                 'start': float(srow.get('start_mark') or 0),
                                 'end': float(srow.get('end_mark') or 0),
                                 'allocation_points': float(ap) if ap is not None else None,
                             }
                         else:
                             sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                            apv = srow[4] if len(srow) > 4 else None
+                            apv = srow[5] if len(srow) > 5 else None
                             band = {
                                 'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                                'label': '',
-                                'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
-                                'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
+                                'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                                'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
                                 'allocation_points': float(apv) if apv is not None else None,
                             }
                         if sid <= 0:
@@ -41004,7 +41877,7 @@ def _build_academic_report_payload(cursor, report_type, f):
 
         try:
             cursor.execute("""
-                SELECT subject_id, code, start_mark, end_mark, allocation_points
+                SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
                 FROM subject_grade_mark_overrides
                 WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
                 ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
@@ -41015,19 +41888,19 @@ def _build_academic_report_payload(cursor, report_type, f):
                     ap = srow.get('allocation_points')
                     band = {
                         'code': (srow.get('code') or '').strip(),
-                        'label': '',
+                        'label': (srow.get('level_label') or '').strip(),
                         'start': float(srow.get('start_mark') or 0),
                         'end': float(srow.get('end_mark') or 0),
                         'allocation_points': float(ap) if ap is not None else None,
                     }
                 else:
                     sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                    apv = srow[4] if len(srow) > 4 else None
+                    apv = srow[5] if len(srow) > 5 else None
                     band = {
                         'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                        'label': '',
-                        'start': float(srow[2] or 0) if len(srow) > 2 else 0.0,
-                        'end': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                        'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
+                        'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
+                        'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
                         'allocation_points': float(apv) if apv is not None else None,
                     }
                 if sid <= 0:

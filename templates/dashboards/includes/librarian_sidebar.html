@@ -8,7 +8,7 @@
 <a href="{{ employee_dash_url('books-inventory/stock') }}"
    class="sidebar-item {% if request.endpoint == 'books_inventory' and inventory_view|default('catalog') == 'stock' %}sidebar-item-active{% endif %}">
     <i class="fas fa-boxes-stacked w-5"></i>
-    <span>Book inventory stock</span>
+    <span>Allocate books</span>
     {% if request.endpoint == 'books_inventory' and inventory_view|default('catalog') == 'stock' %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
 <a href="{{ employee_dash_url('issue-return-records') }}"
