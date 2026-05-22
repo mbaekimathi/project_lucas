@@ -7,7 +7,7 @@
         <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
                 Book inventory
-                <span class="font-normal text-gray-500">({{ books_all|length }})</span>
+                <span class="font-normal text-gray-500">({{ catalog_counts.all }})</span>
             </h2>
             <nav class="flex flex-wrap gap-2" aria-label="Catalog filters">
                 <a href="{{ employee_dash_url('books-inventory') }}"
@@ -141,10 +141,24 @@
             </article>
             {% endfor %}
         </div>
-        {% elif books_all|length %}
+        {% set cpm = catalog_page_meta|default({}) %}
+        {% if cpm.pages and cpm.pages > 1 %}
+        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">
+            <p class="text-xs text-gray-500">Page {{ cpm.page }} of {{ cpm.pages }} · {{ cpm.total }} titles</p>
+            <div class="flex gap-2">
+                {% if cpm.page > 1 %}
+                <a href="{{ employee_dash_url('books-inventory') }}?{% if catalog_filter == 'setup' %}filter=setup&amp;{% endif %}page={{ cpm.page - 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Previous</a>
+                {% endif %}
+                {% if cpm.page < cpm.pages %}
+                <a href="{{ employee_dash_url('books-inventory') }}?{% if catalog_filter == 'setup' %}filter=setup&amp;{% endif %}page={{ cpm.page + 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Next</a>
+                {% endif %}
+            </div>
+        </nav>
+        {% endif %}
+        {% elif catalog_counts.all %}
         <p class="px-4 py-12 text-center text-sm text-gray-600 dark:text-gray-400">
             No titles match this filter.
-            <a href="{{ employee_dash_url('books-inventory') }}" class="font-semibold text-brand-primary underline">Show all {{ books_all|length }}</a>
+            <a href="{{ employee_dash_url('books-inventory') }}" class="font-semibold text-brand-primary underline">Show all {{ catalog_counts.all }}</a>
         </p>
         {% else %}
         <p class="px-4 py-12 text-center text-sm text-gray-600 dark:text-gray-400">

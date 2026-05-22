@@ -15,6 +15,12 @@ document.addEventListener('alpine:init', function () {
   Alpine.data('storeInventoryPage', function () {
     return {
       registeredItems: [],
+      itemsPage: 1,
+      itemsPages: 1,
+      itemsTotal: 0,
+      itemsLoading: false,
+      itemsSearch: '',
+      itemsApi: {{ employee_dash_url('store-inventory/items')|tojson }},
       inventoryPostUrl: {{ employee_dash_url('store-inventory')|tojson }},
       inventoryBaseUrl: {{ employee_dash_url('store-inventory')|tojson }},
       inventoryFormOpen: {{ inventory_form_open_default|default(false)|tojson }},
@@ -26,13 +32,33 @@ document.addEventListener('alpine:init', function () {
       editMeasure: '',
       editDepartmentStation: '',
       editImagePath: '',
+      fetchItems: function (page) {
+        var self = this;
+        self.itemsLoading = true;
+        var p = new URLSearchParams();
+        p.set('page', String(page || 1));
+        p.set('per_page', '50');
+        var q = (self.itemsSearch || '').trim();
+        if (q) p.set('q', q);
+        fetch(self.itemsApi + '?' + p.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.itemsLoading = false;
+            if (data.success) {
+              self.registeredItems = data.items || [];
+              var meta = data.meta || {};
+              self.itemsPage = meta.page || 1;
+              self.itemsPages = meta.pages || 1;
+              self.itemsTotal = meta.total || 0;
+            }
+          })
+          .catch(function () { self.itemsLoading = false; });
+      },
       init: function () {
-        var el = document.getElementById('store-items-client');
-        try {
-          this.registeredItems = el && el.textContent ? JSON.parse(el.textContent) : [];
-        } catch (e) {
-          this.registeredItems = [];
-        }
+        this.fetchItems(1);
         var openId = {{ open_edit_item_id|tojson }};
         if (openId) {
           var row = this.registeredItems.find(function (x) { return x.id === openId; });
@@ -131,16 +157,12 @@ document.addEventListener('alpine:init', function () {
                         Register store items with department station, category, name, description, and measure. Items for <span class="font-medium text-gray-800 dark:text-gray-200">Library Department</span> appear in the librarian catalog for subject and level setup. Stock in is recorded on the Stock page. All text is saved in <span class="font-medium text-gray-800 dark:text-gray-200">uppercase</span>.
                     </p>
                 </div>
-                {% if items %}
-                <span class="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-100">
+                <span x-show="itemsTotal > 0" class="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-200/80 bg-white/80 px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm dark:border-gray-600 dark:bg-gray-800/80 dark:text-gray-100">
                     <i class="fas fa-layer-group text-brand-primary"></i>
-                    {{ items|length }} item{% if items|length != 1 %}s{% endif %}
+                    <span x-text="itemsTotal + ' item' + (itemsTotal === 1 ? '' : 's')"></span>
                 </span>
-                {% endif %}
             </div>
         </header>
-
-        <script type="application/json" id="store-items-client">{{ store_items_client|tojson }}</script>
 
         <section class="mb-10 sm:mb-12 uppercase">
             <div class="overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-xl shadow-gray-200/30 ring-1 ring-black/[0.03] dark:border-gray-700/80 dark:bg-gray-900/90 dark:shadow-none dark:ring-white/5 sm:rounded-3xl">

@@ -36,6 +36,718 @@
     .modern-btn:hover {
         transform: translateY(-1px);
     }
+    .grades-setting-modal-root {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        padding: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(10px) saturate(1.2);
+        -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    }
+    @media (min-width: 640px) {
+        .grades-setting-modal-root {
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+        }
+    }
+    .grades-setting-modal-panel {
+        position: relative;
+        border-radius: 1.125rem 1.125rem 0 0;
+        max-height: 100dvh;
+        height: 100dvh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, transparent);
+        box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+            0 25px 50px -12px rgba(0, 0, 0, 0.35),
+            0 0 80px -20px color-mix(in srgb, var(--brand-primary) 45%, transparent);
+        background: linear-gradient(165deg, #ffffff 0%, #f8fafc 48%, #f1f5f9 100%);
+    }
+    .dark .grades-setting-modal-panel {
+        border-color: color-mix(in srgb, var(--brand-secondary) 28%, transparent);
+        background: linear-gradient(165deg, rgb(30 41 59) 0%, rgb(17 24 39) 55%, rgb(15 23 42) 100%);
+        box-shadow:
+            0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+            0 25px 50px -12px rgba(0, 0, 0, 0.55),
+            0 0 90px -24px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+    }
+    @media (min-width: 640px) {
+        .grades-setting-modal-panel {
+            border-radius: 1.35rem;
+            max-height: min(92vh, 900px);
+            height: auto;
+            max-width: min(96vw, 58rem);
+        }
+    }
+    @media (min-width: 1280px) {
+        .grades-setting-modal-panel {
+            max-width: min(96vw, 70rem);
+        }
+    }
+    .grades-setting-modal-panel::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--brand-primary), var(--brand-secondary), var(--brand-primary));
+        z-index: 2;
+        pointer-events: none;
+    }
+    .grades-setting-modal-header {
+        position: relative;
+        flex-shrink: 0;
+        overflow: hidden;
+        background: linear-gradient(125deg, var(--brand-primary) 0%, var(--brand-secondary) 55%, color-mix(in srgb, var(--brand-primary) 85%, #000) 100%);
+        color: #fff;
+        padding: 1.1rem 1.25rem 1.15rem;
+    }
+    @media (min-width: 640px) {
+        .grades-setting-modal-header {
+            padding: 1.25rem 1.5rem 1.35rem;
+        }
+    }
+    .grades-setting-modal-header::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+            radial-gradient(ellipse 80% 120% at 100% -20%, rgba(255, 255, 255, 0.22), transparent 55%),
+            radial-gradient(ellipse 60% 80% at -10% 110%, rgba(255, 255, 255, 0.12), transparent 50%);
+        pointer-events: none;
+    }
+    .grades-setting-modal-header::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent);
+    }
+    .grades-setting-modal-header__inner {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .grades-setting-modal-header__icon {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.85rem;
+        background: rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+    .grades-setting-modal-header__close {
+        width: 2.35rem;
+        height: 2.35rem;
+        border-radius: 0.65rem;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        background: rgba(255, 255, 255, 0.12);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: background 0.2s ease, transform 0.2s ease;
+    }
+    .grades-setting-modal-header__close:hover {
+        background: rgba(255, 255, 255, 0.22);
+        transform: scale(1.04);
+    }
+    .grades-setting-modal-header__chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.65rem;
+    }
+    .grades-setting-modal-header__chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: rgba(255, 255, 255, 0.95);
+    }
+    .grades-setting-modal-body {
+        overflow-y: auto;
+        flex: 1;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        background:
+            radial-gradient(ellipse 100% 60% at 0% 0%, color-mix(in srgb, var(--brand-primary) 7%, transparent), transparent 50%),
+            radial-gradient(ellipse 80% 50% at 100% 100%, color-mix(in srgb, var(--brand-secondary) 6%, transparent), transparent 45%);
+    }
+    .dark .grades-setting-modal-body {
+        background:
+            radial-gradient(ellipse 100% 60% at 0% 0%, color-mix(in srgb, var(--brand-primary) 14%, transparent), transparent 50%),
+            radial-gradient(ellipse 80% 50% at 100% 100%, color-mix(in srgb, var(--brand-secondary) 10%, transparent), transparent 45%);
+    }
+    .grades-setting-modal-footer {
+        flex-shrink: 0;
+        padding: 0.85rem 1.25rem 1rem;
+        border-top: 1px solid color-mix(in srgb, var(--brand-primary) 12%, rgb(229 231 235));
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.98));
+        backdrop-filter: blur(12px);
+    }
+    .dark .grades-setting-modal-footer {
+        border-top-color: color-mix(in srgb, var(--brand-primary) 20%, rgb(55 65 81));
+        background: linear-gradient(180deg, rgba(30, 41, 59, 0.75), rgba(17, 24, 39, 0.98));
+    }
+    .gs-section-card {
+        border-radius: 0.9rem;
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 14%, rgb(229 231 235));
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px -4px rgba(15, 23, 42, 0.06);
+        overflow: hidden;
+    }
+    .dark .gs-section-card {
+        border-color: color-mix(in srgb, var(--brand-primary) 22%, rgb(55 65 81));
+        background: rgba(30, 41, 59, 0.55);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 24px -8px rgba(0, 0, 0, 0.35);
+    }
+    .gs-section-card__head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.6rem;
+        padding: 0.65rem 0.85rem;
+        background: linear-gradient(90deg, color-mix(in srgb, var(--brand-primary) 9%, transparent), transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 10%, rgb(243 244 246));
+    }
+    .dark .gs-section-card__head {
+        background: linear-gradient(90deg, color-mix(in srgb, var(--brand-primary) 18%, transparent), transparent);
+        border-bottom-color: rgb(55 65 81);
+    }
+    .gs-section-card__icon {
+        width: 1.85rem;
+        height: 1.85rem;
+        border-radius: 0.5rem;
+        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+    }
+    .gs-section-card__title {
+        font-size: 0.8125rem;
+        font-weight: 700;
+        color: rgb(17 24 39);
+        margin: 0;
+        flex: 1;
+        min-width: 10rem;
+    }
+    .dark .gs-section-card__title {
+        color: #f9fafb;
+    }
+    .gs-section-card__body {
+        padding: 0.85rem;
+    }
+    @media (min-width: 640px) {
+        .gs-section-card__body {
+            padding: 1rem;
+        }
+    }
+    .gs-section--profile .gs-field input {
+        padding: 0.5rem 0.7rem;
+        font-size: 0.8125rem;
+        background: #fff;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .dark .gs-section--profile .gs-field input {
+        background: rgb(51 65 85);
+        box-shadow: none;
+    }
+    .gs-toolbar-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.55rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    .gs-toolbar-btn--ghost {
+        border: 1px solid rgb(226 232 240);
+        background: #fff;
+        color: rgb(71 85 105);
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+    .gs-toolbar-btn--ghost:hover {
+        border-color: color-mix(in srgb, var(--brand-primary) 40%, transparent);
+        color: var(--brand-primary);
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--brand-primary) 12%, transparent);
+    }
+    .dark .gs-toolbar-btn--ghost {
+        border-color: rgb(71 85 105);
+        background: rgb(51 65 85);
+        color: rgb(203 213 225);
+    }
+    .gs-toolbar-btn--primary {
+        border: none;
+        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+        color: #fff;
+        box-shadow: 0 2px 10px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+    }
+    .gs-toolbar-btn--primary:hover {
+        filter: brightness(1.06);
+        transform: translateY(-1px);
+    }
+    .gs-count-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.625rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 18%, transparent), color-mix(in srgb, var(--brand-secondary) 14%, transparent));
+        color: var(--brand-primary);
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 22%, transparent);
+    }
+    .dark .gs-count-badge {
+        color: var(--brand-secondary);
+    }
+    .gs-footer-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        padding: 0.55rem 1.15rem;
+        border-radius: 0.65rem;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    .gs-footer-btn--cancel {
+        border: 1px solid rgb(226 232 240);
+        background: #fff;
+        color: rgb(71 85 105);
+    }
+    .dark .gs-footer-btn--cancel {
+        border-color: rgb(71 85 105);
+        background: rgb(51 65 85);
+        color: rgb(226 232 240);
+    }
+    .gs-footer-btn--save {
+        border: none;
+        background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+        color: #fff;
+        box-shadow: 0 4px 14px color-mix(in srgb, var(--brand-primary) 38%, transparent);
+    }
+    .gs-footer-btn--save:hover {
+        filter: brightness(1.05);
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px color-mix(in srgb, var(--brand-primary) 42%, transparent);
+    }
+    .gs-field label {
+        display: block;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgb(107 114 128);
+        margin-bottom: 0.35rem;
+    }
+    .dark .gs-field label {
+        color: rgb(156 163 175);
+    }
+    .gs-field input {
+        width: 100%;
+        min-width: 0;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        line-height: 1.35;
+        border-radius: 0.625rem;
+        border: 1px solid rgb(209 213 219);
+        background: #fff;
+        color: rgb(17 24 39);
+    }
+    .dark .gs-field input {
+        border-color: rgb(75 85 99);
+        background: rgb(55 65 81);
+        color: #fff;
+    }
+    .gs-field input:focus {
+        outline: none;
+        border-color: var(--brand-primary);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 22%, transparent);
+        transform: none;
+    }
+    .gs-field input[type="number"] {
+        -moz-appearance: textfield;
+        font-variant-numeric: tabular-nums;
+    }
+    .gs-field input[type="number"]::-webkit-outer-spin-button,
+    .gs-field input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    /* Points + mark range stay on one row and do not overlap while typing */
+    .gs-mark-range-row {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.65rem;
+        padding: 0.75rem 0.85rem;
+        border-radius: 0.75rem;
+        border: 1px solid rgb(209 213 219);
+        background: rgb(249 250 251);
+        min-width: 0;
+    }
+    .dark .gs-mark-range-row {
+        border-color: rgb(75 85 99);
+        background: rgb(17 24 39 / 0.45);
+    }
+    .gs-mark-range-row__label {
+        grid-column: 1 / -1;
+        font-size: 0.6875rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: rgb(107 114 128);
+        margin: 0 0 0.15rem;
+    }
+    .dark .gs-mark-range-row__label {
+        color: rgb(156 163 175);
+    }
+    .gs-mark-range-row__fields {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.5rem 0.65rem;
+        min-width: 0;
+        align-items: end;
+    }
+    @media (min-width: 380px) {
+        .gs-mark-range-row__fields {
+            gap: 0.65rem 0.75rem;
+        }
+    }
+    .gs-mark-range-row .gs-field {
+        min-width: 0;
+        overflow: visible;
+    }
+    .gs-mark-range-row .gs-field input {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+    @media (max-width: 379px) {
+        .gs-mark-range-row__fields {
+            grid-template-columns: 1fr;
+        }
+    }
+    .gs-add-panel {
+        border-radius: 0.75rem;
+        border: 1px dashed color-mix(in srgb, var(--brand-primary) 38%, transparent);
+        background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 8%, #fff), color-mix(in srgb, var(--brand-secondary) 5%, #fff));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+    .dark .gs-add-panel {
+        background: linear-gradient(135deg, color-mix(in srgb, var(--brand-primary) 16%, rgb(30 41 59)), color-mix(in srgb, var(--brand-secondary) 10%, rgb(30 41 59)));
+        box-shadow: none;
+    }
+    .gs-add-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem 0.65rem;
+    }
+    @media (min-width: 768px) {
+        .gs-add-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+    .gs-add-grid .gs-field--span2 {
+        grid-column: span 2;
+    }
+    @media (min-width: 768px) {
+        .gs-add-grid .gs-field--span2 {
+            grid-column: span 2;
+        }
+    }
+    .gs-add-grid .gs-mark-range-row {
+        grid-column: 1 / -1;
+        padding: 0.55rem 0.65rem;
+    }
+    .gs-band-list-panel {
+        border-radius: 0.75rem;
+        border: 1px solid color-mix(in srgb, var(--brand-primary) 16%, rgb(229 231 235));
+        background: rgba(255, 255, 255, 0.85);
+        overflow: hidden;
+        box-shadow: 0 2px 12px -4px rgba(15, 23, 42, 0.08);
+    }
+    .dark .gs-band-list-panel {
+        border-color: color-mix(in srgb, var(--brand-primary) 24%, rgb(55 65 81));
+        background: rgba(15, 23, 42, 0.5);
+        box-shadow: 0 4px 20px -6px rgba(0, 0, 0, 0.4);
+    }
+    .gs-band-list-head {
+        display: none;
+        grid-template-columns: 3.25rem 1fr 1fr 1.15fr 3.25rem 3.25rem 3.25rem 4.5rem;
+        gap: 0.35rem 0.5rem;
+        padding: 0.5rem 0.7rem;
+        font-size: 0.625rem;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: rgb(100 116 139);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--brand-primary) 6%, rgb(248 250 252)), rgb(248 250 252));
+        border-bottom: 1px solid color-mix(in srgb, var(--brand-primary) 12%, rgb(229 231 235));
+    }
+    .dark .gs-band-list-head {
+        color: rgb(148 163 184);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--brand-primary) 14%, rgb(30 41 59)), rgb(30 41 59));
+        border-bottom-color: rgb(55 65 81);
+    }
+    @media (min-width: 900px) {
+        .gs-band-list-head {
+            display: grid;
+        }
+    }
+    .gs-band-list {
+        list-style: none;
+        margin: 0;
+        padding: 0.35rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        max-height: min(42vh, 320px);
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .gs-band-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.35rem 0.5rem;
+        align-items: center;
+        padding: 0.45rem 0.55rem;
+        border-radius: 0.55rem;
+        border: 1px solid transparent;
+        background: #fff;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .gs-band-item:nth-child(even) {
+        background: color-mix(in srgb, var(--brand-primary) 4%, #fff);
+    }
+    .dark .gs-band-item {
+        background: rgb(30 41 59);
+        border-color: rgb(51 65 85 / 0.5);
+    }
+    .dark .gs-band-item:nth-child(even) {
+        background: color-mix(in srgb, var(--brand-primary) 10%, rgb(30 41 59));
+    }
+    .gs-band-item:hover {
+        border-color: color-mix(in srgb, var(--brand-primary) 35%, transparent);
+        box-shadow: 0 3px 12px color-mix(in srgb, var(--brand-primary) 14%, transparent);
+        transform: translateY(-1px);
+    }
+    .gs-band-item__grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.35rem 0.45rem;
+        min-width: 0;
+    }
+    @media (min-width: 640px) {
+        .gs-band-item__grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+    @media (min-width: 900px) {
+        .gs-band-item {
+            grid-template-columns: 1fr auto;
+            padding: 0.4rem 0.5rem;
+        }
+        .gs-band-item__grid {
+            grid-template-columns: 3.25rem 1fr 1fr 1.15fr 3.25rem 3.25rem 3.25rem;
+            gap: 0.35rem 0.5rem;
+            align-items: end;
+        }
+    }
+    .gs-band-list .gs-field label {
+        font-size: 0.5625rem;
+        margin-bottom: 0.15rem;
+        letter-spacing: 0.05em;
+    }
+    @media (min-width: 900px) {
+        .gs-band-list .gs-field label {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+        .gs-band-list .gs-field {
+            position: relative;
+        }
+    }
+    .gs-band-list .gs-field input {
+        padding: 0.3rem 0.45rem;
+        font-size: 0.75rem;
+        border-radius: 0.4375rem;
+    }
+    .gs-band-list .gs-field--code input {
+        font-weight: 700;
+        font-family: ui-monospace, monospace;
+        text-align: center;
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+        background: color-mix(in srgb, var(--brand-primary) 8%, #fff);
+        border-color: color-mix(in srgb, var(--brand-primary) 25%, rgb(209 213 219));
+        color: var(--brand-primary);
+    }
+    .dark .gs-band-list .gs-field--code input {
+        background: color-mix(in srgb, var(--brand-primary) 20%, rgb(51 65 85));
+        border-color: color-mix(in srgb, var(--brand-primary) 35%, rgb(75 85 99));
+        color: var(--brand-secondary);
+    }
+    .gs-band-item__actions {
+        display: flex;
+        flex-direction: row;
+        gap: 0.2rem;
+        align-self: center;
+    }
+    @media (min-width: 900px) {
+        .gs-band-item__actions {
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+    }
+    .gs-band-item__btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 0.4375rem;
+        border: 1px solid transparent;
+        color: rgb(107 114 128);
+        background: #fff;
+        transition: all 0.15s ease;
+    }
+    .dark .gs-band-item__btn {
+        background: rgb(55 65 81);
+        color: rgb(156 163 175);
+    }
+    .gs-band-item__btn:hover {
+        border-color: rgb(209 213 219);
+        color: var(--brand-primary);
+    }
+    .gs-band-item__btn--danger:hover {
+        color: rgb(220 38 38);
+        border-color: rgb(254 202 202);
+        background: rgb(254 242 242);
+    }
+    .dark .gs-band-item__btn--danger:hover {
+        background: rgb(127 29 29 / 0.35);
+        border-color: rgb(127 29 29);
+    }
+    .gs-band-item__marks {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.35rem;
+        grid-column: 1 / -1;
+    }
+    @media (min-width: 900px) {
+        .gs-band-item__marks {
+            grid-column: auto;
+            display: contents;
+        }
+    }
+    .gs-empty-state {
+        padding: 2rem 1rem;
+        text-align: center;
+        border-radius: 0.75rem;
+        border: 1px dashed color-mix(in srgb, var(--brand-primary) 28%, rgb(209 213 219));
+        background: color-mix(in srgb, var(--brand-primary) 4%, rgb(248 250 252));
+    }
+    .gs-empty-state i {
+        color: color-mix(in srgb, var(--brand-primary) 45%, rgb(156 163 175));
+    }
+    .dark .gs-empty-state {
+        border-color: color-mix(in srgb, var(--brand-primary) 30%, rgb(75 85 99));
+        background: color-mix(in srgb, var(--brand-primary) 10%, rgb(30 41 59));
+    }
+    .gs-bands-toolbar {
+        padding-bottom: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    .grades-accordion {
+        overflow: hidden;
+    }
+    .grades-accordion__trigger {
+        width: 100%;
+        text-align: left;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem 0.75rem;
+        padding: 0;
+        margin: 0;
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        color: inherit;
+    }
+    .grades-accordion__trigger:hover {
+        opacity: 0.92;
+    }
+    .grades-accordion__trigger:focus-visible {
+        outline: 2px solid color-mix(in srgb, var(--brand-primary) 50%, transparent);
+        outline-offset: 3px;
+        border-radius: 0.5rem;
+    }
+    .grades-accordion__chevron {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.5rem;
+        border: 1px solid rgb(229 231 235);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: rgb(107 114 128);
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+    }
+    .dark .grades-accordion__chevron {
+        border-color: rgb(75 85 99);
+        color: rgb(156 163 175);
+    }
+    .grades-accordion__chevron.is-open {
+        transform: rotate(180deg);
+        border-color: color-mix(in srgb, var(--brand-primary) 35%, transparent);
+        color: var(--brand-primary);
+    }
+    .grades-accordion__body {
+        padding-top: 1rem;
+        border-top: 1px solid rgb(243 244 246);
+        margin-top: 1rem;
+    }
+    .dark .grades-accordion__body {
+        border-top-color: rgb(55 65 81);
+    }
 </style>
 <script>
 document.addEventListener('alpine:init', function () {
@@ -43,7 +755,7 @@ document.addEventListener('alpine:init', function () {
         return {
             showAddCustomGrade: false,
             rows: [],
-            draft: { rank_order: '', code: '', level_label: '', meaning: '', description: '', allocation_points: '', start_mark: '', end_mark: '' },
+            draft: { code: '', level_label: '', meaning: '', description: '', allocation_points: '', start_mark: '', end_mark: '' },
             init: function () {
                 var rowsEl = document.getElementById('profile-grade-rows-' + profileId);
                 if (rowsEl && rowsEl.textContent) {
@@ -55,7 +767,7 @@ document.addEventListener('alpine:init', function () {
                 }
             },
             emptyDraft: function () {
-                this.draft = { rank_order: '', code: '', level_label: '', meaning: '', description: '', allocation_points: '', start_mark: '', end_mark: '' };
+                this.draft = { code: '', level_label: '', meaning: '', description: '', allocation_points: '', start_mark: '', end_mark: '' };
             },
             draftCodeExists: function () {
                 var c = (this.draft.code || '').trim().toUpperCase();
@@ -71,6 +783,7 @@ document.addEventListener('alpine:init', function () {
                     code: band.code || '',
                     level_label: band.level_label || '',
                     meaning: band.meaning || '',
+                    description: band.description || '',
                     allocation_points: band.allocation_points !== undefined && band.allocation_points !== null ? band.allocation_points : '',
                     start_mark: band.start_mark !== undefined && band.start_mark !== null ? band.start_mark : '',
                     end_mark: band.end_mark !== undefined && band.end_mark !== null ? band.end_mark : ''
@@ -86,16 +799,6 @@ document.addEventListener('alpine:init', function () {
                 if (!c || !lvl || !mean) {
                     alert('Please enter code, mark level, and meaning.');
                     return;
-                }
-                var rk = this.draft.rank_order;
-                if (rk !== '' && rk !== null && rk !== undefined) {
-                    rk = parseInt(rk, 10);
-                    if (Number.isNaN(rk)) {
-                        alert('Please enter a valid rank (whole number) or leave it blank.');
-                        return;
-                    }
-                } else {
-                    rk = '';
                 }
                 if (Number.isNaN(sm) || Number.isNaN(em)) {
                     alert('Please enter valid start and end marks.');
@@ -116,7 +819,6 @@ document.addEventListener('alpine:init', function () {
                     ap = '';
                 }
                 var row = {
-                    rank_order: rk,
                     code: c,
                     level_label: lvl.toUpperCase(),
                     meaning: mean.toUpperCase(),
@@ -171,7 +873,10 @@ document.addEventListener('alpine:init', function () {
 {% include 'dashboards/includes/role_hero.html' %}
 
 
-<div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{ showRegisterGradeForm: false, showNewSettingForm: false, editProfileId: null, editGradeId: null }">
+<div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6 portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="{ showRegisterGradeForm: false, showNewSettingForm: false, editProfileId: null, editGradeId: null, openDefaultGrades: false, openAssignClasses: false }"
+     @keydown.escape.window="if (editProfileId) editProfileId = null"
+     x-effect="document.body.classList.toggle('overflow-hidden', !!editProfileId)">
     <section class="grades-hero rounded-3xl shadow-2xl p-5 sm:p-7 lg:p-8 text-white overflow-hidden">
         <div class="flex items-start sm:items-center gap-4">
             <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
@@ -269,9 +974,13 @@ document.addEventListener('alpine:init', function () {
     </section>
 
     <div class="grid grid-cols-1 gap-6">
-        <div class="glass-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+        <div class="glass-card grades-accordion rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
+            <button type="button"
+                    class="grades-accordion__trigger"
+                    @click="openDefaultGrades = !openDefaultGrades"
+                    :aria-expanded="openDefaultGrades"
+                    aria-controls="grades-default-grades-panel">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 flex-1 min-w-0 m-0">
                     <i class="fas fa-table text-brand-primary"></i>
                     <span>Default Grades</span>
                 </h2>
@@ -280,7 +989,22 @@ document.addEventListener('alpine:init', function () {
                     {{ default_grades|length }} grade band{{ 's' if default_grades|length != 1 else '' }}
                 </span>
                 {% endif %}
-            </div>
+                <span class="grades-accordion__chevron ml-auto"
+                      :class="openDefaultGrades ? 'is-open' : ''"
+                      aria-hidden="true">
+                    <i class="fas fa-chevron-down text-sm"></i>
+                </span>
+            </button>
+            <div id="grades-default-grades-panel"
+                 x-show="openDefaultGrades"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 x-cloak
+                 class="grades-accordion__body">
             {% if default_grades %}
             <div class="overflow-x-auto">
                 <table class="w-full text-sm min-w-[920px]">
@@ -310,7 +1034,7 @@ document.addEventListener('alpine:init', function () {
                             <td class="py-3 px-3 text-right whitespace-nowrap">
                                 <div class="inline-flex flex-wrap items-center justify-end gap-2">
                                     <button type="button"
-                                            @click="editGradeId = {{ row.id }}"
+                                            @click="openDefaultGrades = true; editGradeId = {{ row.id }}"
                                             class="modern-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-100 text-xs font-semibold shadow-sm hover:border-brand-primary">
                                         <i class="fas fa-edit text-brand-primary"></i>
                                         Edit
@@ -408,241 +1132,39 @@ document.addEventListener('alpine:init', function () {
                 <p class="text-sm text-gray-500 dark:text-gray-400">No default grades registered yet.</p>
             </div>
             {% endif %}
+            </div>
         </div>
     </div>
 
-    <section class="glass-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <i class="fas fa-sliders text-brand-primary"></i>
-                <span>Grading Settings</span>
-            </h2>
-            <button type="button"
-                    @click="showNewSettingForm = !showNewSettingForm"
-                    class="modern-btn inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white text-sm font-semibold shadow-md">
-                <i class="fas" :class="showNewSettingForm ? 'fa-eye-slash' : 'fa-plus-circle'"></i>
-                <span x-text="showNewSettingForm ? 'Hide New Setting' : 'New Grading Setting'"></span>
-            </button>
-        </div>
-        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-            Create reusable grading profiles (grade bands, codes, and points). The same setting can be assigned to multiple classes in the section below.
-        </p>
-
-        <form x-show="showNewSettingForm"
-              x-transition
-              x-cloak
-              method="POST"
-              action="{{ employee_dash_url('grades-registration/settings/create') }}"
-              class="mb-6 p-4 rounded-xl border border-brand-primary/30 bg-brand-primary/5 dark:bg-brand-primary/10 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="md:col-span-2">
-                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Setting name</label>
-                <input name="name" type="text" required placeholder="e.g. O-Level Standard"
-                       class="modern-input w-full px-3 py-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
-            </div>
-            <div class="md:col-span-2">
-                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Description (optional)</label>
-                <input name="description" type="text" placeholder="Used for Form 1–4"
-                       class="modern-input w-full px-3 py-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
-            </div>
-            <div class="md:col-span-2">
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" name="copy_defaults" value="1" checked class="w-5 h-5 rounded text-brand-primary">
-                    <span class="text-sm text-gray-700 dark:text-gray-300">Copy bands from school default grades</span>
-                </label>
-            </div>
-            <div class="md:col-span-2 flex justify-end">
-                <button type="submit" class="modern-btn inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-md">
-                    <i class="fas fa-save"></i>
-                    Create setting
-                </button>
-            </div>
-        </form>
-
-        {% if grading_settings %}
-        <div class="space-y-4">
-            {% for profile in grading_settings %}
-            <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
-                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-                    <div>
-                        <p class="font-semibold text-gray-900 dark:text-white">{{ profile.name }}</p>
-                        {% if profile.description %}
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ profile.description }}</p>
-                        {% endif %}
-                        <p class="text-xs mt-1 text-blue-700 dark:text-blue-300">
-                            {{ profile.bands|length }} grade band{{ 's' if profile.bands|length != 1 else '' }}
-                            · {{ profile.class_count }} class{{ 'es' if profile.class_count != 1 else '' }} assigned
-                        </p>
-                        {% if profile.assigned_classes %}
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            {% for ac in profile.assigned_classes[:6] %}{{ ac.level_name }}{% if not loop.last %}, {% endif %}{% endfor %}
-                            {% if profile.assigned_classes|length > 6 %}…{% endif %}
-                        </p>
-                        {% endif %}
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button type="button"
-                                @click="editProfileId = (editProfileId === {{ profile.id }}) ? null : {{ profile.id }}"
-                                class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md">
-                            <i class="fas fa-edit"></i>
-                            Edit bands
-                        </button>
-                        <form method="POST"
-                              action="{{ employee_dash_url('grades-registration/settings/delete/' ~ profile.id) }}"
-                              class="inline"
-                              onsubmit="return confirm('Delete this grading setting? Classes using it will revert to school default grading.');">
-                            <button type="submit"
-                                    class="modern-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-950/30">
-                                <i class="fas fa-trash-alt"></i>
-                                Delete
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                <script type="application/json" id="profile-grade-rows-{{ profile.id }}">{{ profile.bands | tojson }}</script>
-                <script type="application/json" id="profile-grade-defaults-{{ profile.id }}">{{ profile.default_bands | tojson }}</script>
-                <form x-show="editProfileId === {{ profile.id }}"
-                      x-data="profileGradeEditor({{ profile.id }})"
-                      x-cloak
-                      method="POST"
-                      action="{{ employee_dash_url('grades-registration/settings/save-bands/' ~ profile.id) }}"
-                      class="mt-4 space-y-3"
-                      @submit="if (!rows.length) { $event.preventDefault(); alert('Add at least one grade band before saving.'); }">
-                    <div class="flex flex-wrap gap-2 justify-between items-center">
-                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">Grade bands for {{ profile.name }}</p>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" @click="copyDefaultsAsStartingPoint()"
-                                    class="modern-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                                <i class="fas fa-copy text-brand-primary"></i> Copy school defaults
-                            </button>
-                            <button type="button" @click="showAddCustomGrade = !showAddCustomGrade"
-                                    class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md">
-                                <i class="fas" :class="showAddCustomGrade ? 'fa-eye-slash' : 'fa-plus-circle'"></i>
-                                <span x-text="showAddCustomGrade ? 'Hide add grade' : 'Add grade band'"></span>
-                            </button>
-                        </div>
-                    </div>
-                    <div x-show="showAddCustomGrade" x-transition class="rounded-xl border border-brand-primary/30 bg-brand-primary/5 p-4">
-                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Start and end marks define which percentage maps to each grade band.</p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div><label class="block text-xs font-semibold mb-1">Rank</label>
-                                <input type="number" x-model="draft.rank_order" min="1" step="1" placeholder="1 = highest"
-                                       class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700"></div>
-                            <div><label class="block text-xs font-semibold mb-1">Code</label>
-                                <input type="text" x-model="draft.code" @input="draft.code = ($event.target.value || '').toUpperCase()" class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 uppercase"></div>
-                            <div><label class="block text-xs font-semibold mb-1">Mark level</label>
-                                <input type="text" x-model="draft.level_label" @input="draft.level_label = ($event.target.value || '').toUpperCase()" class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 uppercase"></div>
-                            <div><label class="block text-xs font-semibold mb-1">Points</label>
-                                <input type="number" x-model="draft.allocation_points" min="0" step="0.01" placeholder="Optional"
-                                       class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700"></div>
-                            <div><label class="block text-xs font-semibold mb-1">Meaning</label>
-                                <input type="text" x-model="draft.meaning" @input="draft.meaning = ($event.target.value || '').toUpperCase()" class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700 uppercase"></div>
-                            <div class="md:col-span-2"><label class="block text-xs font-semibold mb-1">Description</label>
-                                <input type="text" x-model="draft.description" placeholder="Optional narrative for this band"
-                                       class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700"></div>
-                            <div><label class="block text-xs font-semibold mb-1">Start mark</label>
-                                <input type="number" x-model="draft.start_mark" min="0" max="100" step="0.01" class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700"></div>
-                            <div><label class="block text-xs font-semibold mb-1">End mark</label>
-                                <input type="number" x-model="draft.end_mark" min="0" max="100" step="0.01" class="modern-input w-full px-3 py-2 border rounded-xl bg-white dark:bg-gray-700"></div>
-                        </div>
-                        <div class="flex justify-end gap-2 mt-3">
-                            <button type="button" @click="addCustomGrade()" class="modern-btn px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold">
-                                <span x-text="draftCodeExists() ? 'Update in list' : 'Add to list'"></span>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                        <table class="w-full min-w-[1100px] text-sm">
-                            <thead class="bg-gray-50 dark:bg-gray-700/50">
-                                <tr class="text-left text-gray-600 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-                                    <th class="py-2 px-3">Rank</th>
-                                    <th class="py-2 px-3">Code</th>
-                                    <th class="py-2 px-3">Mark Level</th>
-                                    <th class="py-2 px-3">Points</th>
-                                    <th class="py-2 px-3">Meaning</th>
-                                    <th class="py-2 px-3">Description</th>
-                                    <th class="py-2 px-3">Start Mark</th>
-                                    <th class="py-2 px-3">End Mark</th>
-                                    <th class="py-2 px-3 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr x-show="!rows.length" x-cloak><td colspan="9" class="py-6 text-center text-gray-500 text-sm">No bands yet. Add grade bands above.</td></tr>
-                                <template x-for="(band, idx) in rows" :key="idx">
-                                    <tr class="border-b border-gray-100 dark:border-gray-700/60">
-                                        <td class="py-2 px-3">
-                                            <input type="number" name="rank_order" x-model="band.rank_order" min="1" step="1" placeholder="—"
-                                                   class="modern-input w-16 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="text" name="code" x-model="band.code" required @input="band.code = ($event.target.value || '').toUpperCase()"
-                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg uppercase font-semibold bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="text" name="level_label" x-model="band.level_label" required @input="band.level_label = ($event.target.value || '').toUpperCase()"
-                                                   class="modern-input w-full min-w-[8rem] px-2 py-1.5 border rounded-lg uppercase bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="number" name="allocation_points" x-model="band.allocation_points" min="0" step="0.01" placeholder="—"
-                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="text" name="meaning" x-model="band.meaning" required @input="band.meaning = ($event.target.value || '').toUpperCase()"
-                                                   class="modern-input w-full min-w-[8rem] px-2 py-1.5 border rounded-lg uppercase bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="text" name="description" x-model="band.description" placeholder="Optional"
-                                                   class="modern-input w-full min-w-[10rem] px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="number" name="start_mark" x-model="band.start_mark" required min="0" max="100" step="0.01"
-                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3">
-                                            <input type="number" name="end_mark" x-model="band.end_mark" required min="0" max="100" step="0.01"
-                                                   class="modern-input w-24 px-2 py-1.5 border rounded-lg bg-white dark:bg-gray-700">
-                                        </td>
-                                        <td class="py-2 px-3 text-right whitespace-nowrap">
-                                            <button type="button" @click="fillDraftFromRow(idx)"
-                                                    class="modern-btn inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-brand-primary mr-1">
-                                                <i class="fas fa-edit text-brand-primary"></i> Edit
-                                            </button>
-                                            <button type="button" @click="removeRow(idx)"
-                                                    class="modern-btn inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 dark:border-red-900/50 text-xs font-semibold text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/30">
-                                                <i class="fas fa-trash-alt"></i> Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                </template>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="flex justify-end">
-                        <button type="submit" class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold shadow-md">
-                            <i class="fas fa-save"></i> Save grading setting
-                        </button>
-                    </div>
-                </form>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center mb-6">
-            <p class="text-sm text-gray-500 dark:text-gray-400">No grading settings yet. Create one to assign to classes.</p>
-        </div>
-        {% endif %}
-    </section>
-
-    <section class="glass-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+    <section class="glass-card grades-accordion rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
+        <button type="button"
+                class="grades-accordion__trigger"
+                @click="openAssignClasses = !openAssignClasses"
+                :aria-expanded="openAssignClasses"
+                aria-controls="grades-assign-classes-panel">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2 flex-1 min-w-0 m-0">
                 <i class="fas fa-chalkboard text-brand-primary"></i>
                 <span>Assign to Classes</span>
             </h2>
             <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-brand-primary/15 text-brand-primary dark:bg-brand-primary/25 dark:text-brand-secondary">
                 {{ total_class_allocations }} class{{ 'es' if total_class_allocations != 1 else '' }}
             </span>
-        </div>
+            <span class="grades-accordion__chevron ml-auto"
+                  :class="openAssignClasses ? 'is-open' : ''"
+                  aria-hidden="true">
+                <i class="fas fa-chevron-down text-sm"></i>
+            </span>
+        </button>
+        <div id="grades-assign-classes-panel"
+             x-show="openAssignClasses"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0 -translate-y-1"
+             x-transition:enter-end="opacity-100 translate-y-0"
+             x-transition:leave="transition ease-in duration-150"
+             x-transition:leave-start="opacity-100 translate-y-0"
+             x-transition:leave-end="opacity-0 -translate-y-1"
+             x-cloak
+             class="grades-accordion__body">
         <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
             Choose a grading setting for each class, or leave as <strong>School default</strong>. One setting can be shared by many classes (e.g. all O-Level forms).
         </p>
@@ -702,6 +1224,327 @@ document.addEventListener('alpine:init', function () {
             <p class="text-sm text-gray-500 dark:text-gray-400">No active classes found.</p>
         </div>
         {% endif %}
+        </div>
     </section>
+
+    <section class="glass-card rounded-2xl shadow-xl p-5 sm:p-6 border border-gray-200 dark:border-gray-700">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <i class="fas fa-sliders text-brand-primary"></i>
+                <span>Grading Settings</span>
+            </h2>
+            <button type="button"
+                    @click="showNewSettingForm = !showNewSettingForm"
+                    class="modern-btn inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-maroon-dark hover:to-brand-primary text-white text-sm font-semibold shadow-md">
+                <i class="fas" :class="showNewSettingForm ? 'fa-eye-slash' : 'fa-plus-circle'"></i>
+                <span x-text="showNewSettingForm ? 'Hide New Setting' : 'New Grading Setting'"></span>
+            </button>
+        </div>
+        <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Create reusable grading profiles (grade bands, codes, and points). The same setting can be assigned to multiple classes in the section above.
+        </p>
+
+        <form x-show="showNewSettingForm"
+              x-transition
+              x-cloak
+              method="POST"
+              action="{{ employee_dash_url('grades-registration/settings/create') }}"
+              class="mb-6 p-4 rounded-xl border border-brand-primary/30 bg-brand-primary/5 dark:bg-brand-primary/10 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Setting name</label>
+                <input name="name" type="text" required placeholder="e.g. O-Level Standard"
+                       class="modern-input w-full px-3 py-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Description (optional)</label>
+                <input name="description" type="text" placeholder="Used for Form 1–4"
+                       class="modern-input w-full px-3 py-2.5 border rounded-xl bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
+            </div>
+            <div class="md:col-span-2">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="copy_defaults" value="1" checked class="w-5 h-5 rounded text-brand-primary">
+                    <span class="text-sm text-gray-700 dark:text-gray-300">Copy bands from school default grades</span>
+                </label>
+            </div>
+            <div class="md:col-span-2 flex justify-end">
+                <button type="submit" class="modern-btn inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold shadow-md">
+                    <i class="fas fa-save"></i>
+                    Create setting
+                </button>
+            </div>
+        </form>
+
+        {% if grading_settings %}
+        <div class="space-y-4">
+            {% for profile in grading_settings %}
+            <div class="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                    <div>
+                        <p class="font-semibold text-gray-900 dark:text-white">{{ profile.name }}</p>
+                        {% if profile.description %}
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ profile.description }}</p>
+                        {% endif %}
+                        <p class="text-xs mt-1 text-blue-700 dark:text-blue-300">
+                            {{ profile.bands|length }} grade band{{ 's' if profile.bands|length != 1 else '' }}
+                            · {{ profile.class_count }} class{{ 'es' if profile.class_count != 1 else '' }} assigned
+                        </p>
+                        {% if profile.assigned_classes %}
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {% for ac in profile.assigned_classes[:6] %}{{ ac.level_name }}{% if not loop.last %}, {% endif %}{% endfor %}
+                            {% if profile.assigned_classes|length > 6 %}…{% endif %}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button"
+                                @click="editProfileId = {{ profile.id }}"
+                                class="modern-btn inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold shadow-md">
+                            <i class="fas fa-edit"></i>
+                            Edit setting
+                        </button>
+                        <form method="POST"
+                              action="{{ employee_dash_url('grades-registration/settings/delete/' ~ profile.id) }}"
+                              class="inline"
+                              onsubmit="return confirm('Delete this grading setting? Classes using it will revert to school default grading.');">
+                            <button type="submit"
+                                    class="modern-btn inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 text-sm font-semibold hover:bg-red-50 dark:hover:bg-red-950/30">
+                                <i class="fas fa-trash-alt"></i>
+                                Delete
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <script type="application/json" id="profile-grade-rows-{{ profile.id }}">{{ profile.bands | tojson }}</script>
+                <script type="application/json" id="profile-grade-defaults-{{ profile.id }}">{{ profile.default_bands | tojson }}</script>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-8 text-center mb-6">
+            <p class="text-sm text-gray-500 dark:text-gray-400">No grading settings yet. Create one to assign to classes.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    {# Modals at page root — outside glass-card sections so backdrop-filter does not trap stacking #}
+    {% if grading_settings %}
+    {% for profile in grading_settings %}
+    <template x-teleport="body">
+                <div x-show="editProfileId === {{ profile.id }}"
+                     x-cloak
+                     x-transition:enter="transition ease-out duration-300"
+                     x-transition:enter-start="opacity-0"
+                     x-transition:enter-end="opacity-100"
+                     x-transition:leave="transition ease-in duration-200"
+                     x-transition:leave-start="opacity-100"
+                     x-transition:leave-end="opacity-0"
+                     class="grades-setting-modal-root"
+                     @click.self="editProfileId = null"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="grades-setting-modal-title-{{ profile.id }}">
+                    <div x-show="editProfileId === {{ profile.id }}"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95"
+                         x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+                         x-transition:leave="transition ease-in duration-200"
+                         x-transition:leave-start="opacity-100 sm:scale-100"
+                         x-transition:leave-end="opacity-0 translate-y-full sm:translate-y-4 sm:scale-95"
+                         class="grades-setting-modal-panel"
+                         @click.stop>
+                        <div class="grades-setting-modal-header">
+                            <div class="grades-setting-modal-header__inner">
+                                <div class="flex items-start gap-3 min-w-0 flex-1">
+                                    <div class="grades-setting-modal-header__icon">
+                                        <i class="fas fa-sliders-h text-lg" aria-hidden="true"></i>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <h3 id="grades-setting-modal-title-{{ profile.id }}" class="text-base sm:text-lg font-bold leading-tight tracking-tight m-0">Edit grading setting</h3>
+                                        <p class="text-xs sm:text-sm text-white/90 mt-0.5 m-0">{{ profile.name }}</p>
+                                    </div>
+                                </div>
+                                <button type="button"
+                                        @click="editProfileId = null"
+                                        class="grades-setting-modal-header__close"
+                                        aria-label="Close">
+                                    <i class="fas fa-times" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <div class="grades-setting-modal-header__chips">
+                                <span class="grades-setting-modal-header__chip">
+                                    <i class="fas fa-layer-group text-[0.6rem]" aria-hidden="true"></i>
+                                    {{ profile.bands|length }} grade band{{ 's' if profile.bands|length != 1 else '' }}
+                                </span>
+                                {% if profile.class_count %}
+                                <span class="grades-setting-modal-header__chip">
+                                    <i class="fas fa-chalkboard text-[0.6rem]" aria-hidden="true"></i>
+                                    {{ profile.class_count }} class{{ 'es' if profile.class_count != 1 else '' }}
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <form x-data="profileGradeEditor({{ profile.id }})"
+                              method="POST"
+                              action="{{ employee_dash_url('grades-registration/settings/save-bands/' ~ profile.id) }}"
+                              class="flex flex-col flex-1 min-h-0"
+                              @submit="if (!rows.length) { $event.preventDefault(); alert('Add at least one grade band before saving.'); }">
+                            <div class="grades-setting-modal-body px-4 sm:px-6 py-4 space-y-4">
+                                <section class="gs-section-card gs-section--profile">
+                                    <div class="gs-section-card__head">
+                                        <span class="gs-section-card__icon"><i class="fas fa-tag" aria-hidden="true"></i></span>
+                                        <p class="gs-section-card__title">Profile details</p>
+                                    </div>
+                                    <div class="gs-section-card__body">
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                                            <div class="gs-field">
+                                                <label for="gs-name-{{ profile.id }}">Setting name</label>
+                                                <input id="gs-name-{{ profile.id }}" name="name" type="text" required value="{{ profile.name }}">
+                                            </div>
+                                            <div class="gs-field">
+                                                <label for="gs-desc-{{ profile.id }}">Description <span class="normal-case font-normal opacity-60">(optional)</span></label>
+                                                <input id="gs-desc-{{ profile.id }}" name="description" type="text" value="{{ profile.description or '' }}" placeholder="e.g. Form 4–6">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+
+                                <section class="gs-section-card">
+                                    <div class="gs-section-card__head">
+                                        <span class="gs-section-card__icon"><i class="fas fa-chart-bar" aria-hidden="true"></i></span>
+                                        <p class="gs-section-card__title flex items-center gap-2 flex-wrap">
+                                            Grade bands
+                                            <span class="gs-count-badge" x-text="rows.length + (rows.length === 1 ? ' band' : ' bands')"></span>
+                                        </p>
+                                        <div class="flex flex-wrap gap-1.5 ml-auto">
+                                            <button type="button" @click="copyDefaultsAsStartingPoint()" class="gs-toolbar-btn gs-toolbar-btn--ghost">
+                                                <i class="fas fa-copy text-brand-primary text-xs" aria-hidden="true"></i>
+                                                Defaults
+                                            </button>
+                                            <button type="button" @click="showAddCustomGrade = !showAddCustomGrade" class="gs-toolbar-btn gs-toolbar-btn--primary">
+                                                <i class="fas text-xs" :class="showAddCustomGrade ? 'fa-times' : 'fa-plus'" aria-hidden="true"></i>
+                                                <span x-text="showAddCustomGrade ? 'Close' : 'Add band'"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="gs-section-card__body pt-0">
+
+                                    <div x-show="showAddCustomGrade" x-transition x-cloak class="gs-add-panel p-3 mb-3 mt-3">
+                                        <div class="gs-add-grid">
+                                            <div class="gs-field gs-field--code"><label>Code</label>
+                                                <input type="text" x-model="draft.code" @input="draft.code = ($event.target.value || '').toUpperCase()" class="uppercase" placeholder="EE"></div>
+                                            <div class="gs-field"><label>Mark level</label>
+                                                <input type="text" x-model="draft.level_label" @input="draft.level_label = ($event.target.value || '').toUpperCase()" class="uppercase"></div>
+                                            <div class="gs-field gs-field--span2"><label>Meaning</label>
+                                                <input type="text" x-model="draft.meaning" @input="draft.meaning = ($event.target.value || '').toUpperCase()" class="uppercase"></div>
+                                            <div class="gs-field gs-field--span2"><label>Description</label>
+                                                <input type="text" x-model="draft.description" placeholder="Optional"></div>
+                                            <div class="gs-mark-range-row" role="group" aria-label="Points and mark range">
+                                                <p class="gs-mark-range-row__label">Pts · Start · End</p>
+                                                <div class="gs-mark-range-row__fields">
+                                                    <div class="gs-field"><label>Points</label>
+                                                        <input type="number" x-model="draft.allocation_points" min="0" step="0.01" placeholder="—"></div>
+                                                    <div class="gs-field"><label>Start %</label>
+                                                        <input type="number" x-model="draft.start_mark" min="0" max="100" step="0.01" placeholder="0"></div>
+                                                    <div class="gs-field"><label>End %</label>
+                                                        <input type="number" x-model="draft.end_mark" min="0" max="100" step="0.01" placeholder="100"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="flex justify-end mt-2">
+                                            <button type="button" @click="addCustomGrade()" class="gs-toolbar-btn gs-toolbar-btn--primary">
+                                                <i class="fas fa-check text-xs" aria-hidden="true"></i>
+                                                <span x-text="draftCodeExists() ? 'Update band' : 'Add to list'"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div x-show="!rows.length" x-cloak class="gs-empty-state mt-3">
+                                        <i class="fas fa-layer-group text-2xl mb-2 block" aria-hidden="true"></i>
+                                        <p class="text-sm font-semibold text-gray-800 dark:text-gray-200">No grade bands yet</p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Copy school defaults or add your first band.</p>
+                                    </div>
+
+                                    <div class="gs-band-list-panel mt-3" x-show="rows.length">
+                                        <div class="gs-band-list-head" aria-hidden="true">
+                                            <span>Code</span><span>Level</span><span>Meaning</span><span>Description</span>
+                                            <span>Pts</span><span>Start</span><span>End</span><span></span>
+                                        </div>
+                                        <ul class="gs-band-list" role="list">
+                                            <template x-for="(band, idx) in rows" :key="'band-' + idx">
+                                                <li class="gs-band-item">
+                                                    <div class="gs-band-item__grid">
+                                                        <div class="gs-field gs-field--code">
+                                                            <label>Code</label>
+                                                            <input type="text" name="code" x-model="band.code" required
+                                                                   @input="band.code = ($event.target.value || '').toUpperCase()" class="uppercase">
+                                                        </div>
+                                                        <div class="gs-field">
+                                                            <label>Mark level</label>
+                                                            <input type="text" name="level_label" x-model="band.level_label" required
+                                                                   @input="band.level_label = ($event.target.value || '').toUpperCase()" class="uppercase">
+                                                        </div>
+                                                        <div class="gs-field">
+                                                            <label>Meaning</label>
+                                                            <input type="text" name="meaning" x-model="band.meaning" required
+                                                                   @input="band.meaning = ($event.target.value || '').toUpperCase()" class="uppercase">
+                                                        </div>
+                                                        <div class="gs-field">
+                                                            <label>Description</label>
+                                                            <input type="text" name="description" x-model="band.description" placeholder="—">
+                                                        </div>
+                                                        <div class="gs-band-item__marks">
+                                                            <div class="gs-field">
+                                                                <label>Points</label>
+                                                                <input type="number" name="allocation_points" x-model="band.allocation_points"
+                                                                       min="0" step="0.01" placeholder="—" inputmode="decimal">
+                                                            </div>
+                                                            <div class="gs-field">
+                                                                <label>Start %</label>
+                                                                <input type="number" name="start_mark" x-model="band.start_mark" required
+                                                                       min="0" max="100" step="0.01" inputmode="decimal">
+                                                            </div>
+                                                            <div class="gs-field">
+                                                                <label>End %</label>
+                                                                <input type="number" name="end_mark" x-model="band.end_mark" required
+                                                                       min="0" max="100" step="0.01" inputmode="decimal">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="gs-band-item__actions">
+                                                        <button type="button" @click="fillDraftFromRow(idx)" class="gs-band-item__btn" title="Edit in add form">
+                                                            <i class="fas fa-pen text-[0.65rem]"></i>
+                                                        </button>
+                                                        <button type="button" @click="removeRow(idx)" class="gs-band-item__btn gs-band-item__btn--danger" title="Remove">
+                                                            <i class="fas fa-trash-alt text-[0.65rem]"></i>
+                                                        </button>
+                                                    </div>
+                                                </li>
+                                            </template>
+                                        </ul>
+                                    </div>
+                                    </div>
+                                </section>
+                            </div>
+
+                            <div class="grades-setting-modal-footer flex flex-col-reverse sm:flex-row sm:justify-end gap-2 sm:gap-3">
+                                <button type="button"
+                                        @click="editProfileId = null"
+                                        class="gs-footer-btn gs-footer-btn--cancel w-full sm:w-auto">
+                                    <i class="fas fa-times text-xs" aria-hidden="true"></i>
+                                    Cancel
+                                </button>
+                                <button type="submit" class="gs-footer-btn gs-footer-btn--save w-full sm:w-auto">
+                                    <i class="fas fa-save text-xs" aria-hidden="true"></i>
+                                    Save grading setting
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+    </template>
+    {% endfor %}
+    {% endif %}
 </div>
 {% endblock %}

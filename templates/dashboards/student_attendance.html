@@ -151,7 +151,7 @@
             <label for="class_level" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Class</label>
             <select name="class_level" id="class_level"
                     class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">All classes</option>
+                <option value="">— Select class —</option>
                 {% for class_name in class_level_options|default([], true) %}
                 <option value="{{ class_name }}" {% if selected_class_level == class_name %}selected{% endif %}>{{ class_name }}</option>
                 {% endfor %}
@@ -190,6 +190,7 @@
                    {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
+        <input type="hidden" name="page" id="att-page" value="{{ attendance_list_meta.page|default(1) }}">
         <div class="w-full sm:w-auto flex items-end pt-0 sm:pt-0">
             <button type="submit" class="touch-btn w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 transition-all shadow-md hover:shadow-lg">
                 <i class="fas fa-sync-alt mr-2"></i>Apply filters
@@ -466,6 +467,16 @@
             if (attendanceLiveTimer) clearTimeout(attendanceLiveTimer);
             attendanceLiveTimer = setTimeout(fetchAttendanceLiveShell, 350);
         }
+
+        document.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest ? e.target.closest('.att-page-btn') : null;
+            if (!btn) return;
+            var pageEl = document.getElementById('att-page');
+            if (pageEl) {
+                pageEl.value = btn.getAttribute('data-att-page') || '1';
+                scheduleAttendanceLive();
+            }
+        });
 
         var attSaveSeq = 0;
 

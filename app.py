@@ -5545,10 +5545,11 @@ def _library_enrich_books_with_allocations(cursor, books):
         ) if lst else ''
 
 
-def _library_stock_allocation_lines(cursor):
+def _library_stock_allocation_lines(cursor, level_id=None, subject_id=None):
     """
     Eligible book × class lines for stock in/out: configured catalog titles matched to
     active levels in the same academic category where the class teaches the book's subject.
+    Pass level_id (and optional subject_id) to load one class at a time instead of the whole school.
     """
     rows = []
     try:
@@ -5556,8 +5557,25 @@ def _library_stock_allocation_lines(cursor):
         ensure_library_book_allocations_table(cursor)
         migrate_library_books_copies_and_allocation_qty(cursor)
         level_subjects_map = _library_subjects_by_level_map(cursor)
+        extra_where = []
+        extra_params = []
+        if level_id is not None:
+            try:
+                extra_where.append('al.id = %s')
+                extra_params.append(int(level_id))
+            except (TypeError, ValueError):
+                pass
+        if subject_id is not None:
+            try:
+                sid = int(subject_id)
+                if sid > 0:
+                    extra_where.append('lb.subject_id = %s')
+                    extra_params.append(sid)
+            except (TypeError, ValueError):
+                pass
+        extra_sql = (' AND ' + ' AND '.join(extra_where)) if extra_where else ''
         cursor.execute(
-            """
+            f"""
             SELECT lb.id AS book_id,
                    lb.book_name,
                    lb.subject_id AS book_subject_id,
@@ -5576,9 +5594,10 @@ def _library_stock_allocation_lines(cursor):
               AND COALESCE(al.level_status, 'active') = 'active'
               AND UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN (%s, 'UNKNOWN', '')
               AND COALESCE(lb.subject_id, 0) > 0
+              {extra_sql}
             ORDER BY al.level_category, al.level_name, lb.book_name
             """,
-            (LIBRARY_PENDING_ACADEMIC_CATEGORY,),
+            tuple([LIBRARY_PENDING_ACADEMIC_CATEGORY] + extra_params),
         )
         for row in cursor.fetchall() or []:
             if isinstance(row, dict):
@@ -14070,6 +14089,12 @@ def save_grade_setting_profile_bands(profile_id):
         flash('Add at least one grade band before saving.', 'error')
         return redirect(employee_dashboard_path('grades-registration'))
 
+    name = (request.form.get('name') or '').strip()
+    description = (request.form.get('description') or '').strip() or None
+    if not name:
+        flash('Enter a name for the grading setting.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
     connection = get_db_connection()
     if not connection:
         flash('Database connection error.', 'error')
@@ -14081,21 +14106,32 @@ def save_grade_setting_profile_bands(profile_id):
             if not cursor.fetchone():
                 flash('Grading setting not found.', 'error')
                 return redirect(employee_dashboard_path('grades-registration'))
+            cursor.execute(
+                "UPDATE grade_setting_profiles SET name = %s, description = %s WHERE id = %s",
+                (name, description, profile_id),
+            )
             cursor.execute("DELETE FROM grade_setting_profile_bands WHERE profile_id = %s", (profile_id,))
-            for c, level_label, meaning, sm, em, ap, rk, desc in rows:
+            ordered_rows = sorted(
+                rows,
+                key=lambda r: (-float(r[3]), -float(r[4]), (r[0] or '')),
+            )
+            for rank_i, (c, level_label, meaning, sm, em, ap, _rk, desc) in enumerate(ordered_rows, start=1):
                 cursor.execute("""
                     INSERT INTO grade_setting_profile_bands (
                         profile_id, rank_order, code, level_label, meaning, description,
                         start_mark, end_mark, allocation_points
                     )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (profile_id, rk, c, level_label, meaning, desc, sm, em, ap))
+                """, (profile_id, rank_i, c, level_label, meaning, desc, sm, em, ap))
             connection.commit()
-        flash('Grading setting bands saved.', 'success')
+        flash(f'Grading setting "{name}" saved.', 'success')
     except Exception as e:
         print(f"Error saving grade setting bands: {e}")
         connection.rollback()
-        flash('Error saving grading setting.', 'error')
+        if 'uniq_grade_setting_profile_name' in str(e).lower() or 'duplicate' in str(e).lower():
+            flash('A grading setting with that name already exists.', 'error')
+        else:
+            flash('Error saving grading setting.', 'error')
     finally:
         connection.close()
     return redirect(employee_dashboard_path('grades-registration'))
@@ -14705,77 +14741,344 @@ def teacher_class_books_return():
 @app.route('/dashboard/employee/finance-overview')
 @login_required
 def finance_overview():
-    """School-wide student fee analytics (totals per student; same rules as Student fees)."""
+    """Finance overview shell; student rows and summaries load via API."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check if user is accountant, principal, or viewing as accountant/principal
-    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
-    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    is_technician = user_role == 'technician'
     is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
-    
-    # Check permission-based access
-    has_view_fees_permission = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
-    has_manage_fees_permission = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
-    
-    # Permission check handles role fallback if no permissions are assigned
-    if not (is_technician or has_view_fees_permission or has_manage_fees_permission or is_secretary):
+
+    if not _finance_overview_has_access():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # School-wide student fee analytics (same rules as Student fees / class report)
-    connection = get_db_connection()
-    student_fee_analytics = {
-        'student_rows': [],
-        'total_outstanding': 0.0,
-        'sum_total_amount': 0.0,
-        'sum_paid_amount': 0.0,
-    }
+
     class_filter_options = []
+    connection = get_db_connection()
     if connection:
         try:
             with connection.cursor() as cursor:
-                student_fee_analytics = _finance_overview_student_fee_bundle(cursor)
-                try:
-                    cursor.execute(
-                        """
-                        SELECT level_name FROM academic_levels
-                        WHERE level_status = 'active'
-                        ORDER BY level_name ASC
-                        """
-                    )
-                    for r in cursor.fetchall() or []:
-                        ln = r.get('level_name') if isinstance(r, dict) else r[0]
-                        if ln:
-                            class_filter_options.append(ln)
-                except Exception as ex:
-                    print(f"finance_overview academic levels: {ex}")
+                class_filter_options = _finance_overview_class_filter_options(cursor)
         except Exception as e:
-            print(f"Error fetching finance overview: {e}")
+            print(f"finance_overview options: {e}")
         finally:
             connection.close()
 
-    if not class_filter_options:
-        class_filter_options = sorted(
-            {
-                r.get('class_name')
-                for r in (student_fee_analytics.get('student_rows') or [])
-                if r.get('class_name') and r.get('class_name') != '—'
-            }
-        )
-
-    class_fee_summaries = _finance_overview_class_summaries(student_fee_analytics.get('student_rows') or [])
-
     return render_template(
         'dashboards/finance_overview.html',
-        student_fee_analytics=student_fee_analytics,
         class_filter_options=class_filter_options,
-        class_fee_summaries=class_fee_summaries,
         role=user_role,
         is_secretary_finance=is_secretary,
     )
+
+
+@app.route('/dashboard/employee/finance-overview/students', methods=['GET'])
+@login_required
+def finance_overview_students():
+    """Paginated student fee rows for finance overview table."""
+    if not _finance_overview_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    grade = (request.args.get('grade') or '').strip()
+    sort = (request.args.get('sort') or 'name_asc').strip()
+    if sort not in FINANCE_OVERVIEW_LIST_SORTS:
+        sort = 'name_asc'
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_finance_overview_students_page(
+                cursor, page=page, per_page=per_page, q=q, grade=grade, sort=sort,
+            )
+        return jsonify({
+            'success': True,
+            'students': payload['students'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f"finance_overview_students: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load students'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/finance-overview/summary', methods=['GET'])
+@login_required
+def finance_overview_summary():
+    """School-wide totals and per-class summary (one request when that view is opened)."""
+    if not _finance_overview_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_finance_overview_summary_payload(cursor)
+        return jsonify({'success': True, **payload})
+    except Exception as e:
+        print(f"finance_overview_summary: {e}")
+        return jsonify({'success': False, 'message': 'Could not load summary'}), 500
+    finally:
+        connection.close()
+
+def _student_fees_has_access():
+    """Same gate as student_fees page."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_accountant = user_role == 'accountant' or viewing_as_role == 'accountant'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    is_technician = user_role == 'technician'
+    if not is_accountant and not is_principal:
+        connection = get_db_connection()
+        if connection:
+            try:
+                with connection.cursor() as cursor:
+                    employee_id = session.get('employee_id') or session.get('user_id')
+                    if employee_id:
+                        cursor.execute(
+                            "SELECT role FROM employees WHERE id = %s OR employee_id = %s",
+                            (employee_id, employee_id),
+                        )
+                        result = cursor.fetchone()
+                        if result:
+                            db_role = result.get('role') if isinstance(result, dict) else result[0]
+                            db_role = (db_role or '').lower()
+                            if db_role == 'accountant':
+                                is_accountant = True
+                            elif db_role == 'head of institution':
+                                is_principal = True
+            except Exception as e:
+                print(f"_student_fees_has_access role: {e}")
+            finally:
+                connection.close()
+    has_view = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
+    return is_technician or has_view or has_manage
+
+
+def _student_fees_level_by_name(cursor):
+    level_by_name = {}
+    cursor.execute(
+        """
+        SELECT id, level_name, level_category
+        FROM academic_levels
+        WHERE level_status = 'active'
+        """
+    )
+    for r in cursor.fetchall() or []:
+        ln = r.get('level_name') if isinstance(r, dict) else r[1]
+        if not ln:
+            continue
+        level_by_name[ln] = {
+            'id': r.get('id') if isinstance(r, dict) else r[0],
+            'level_name': ln,
+            'level_category': (r.get('level_category') if isinstance(r, dict) else (r[2] if len(r) > 2 else '')) or '',
+        }
+    return level_by_name
+
+
+def _student_fees_payment_status(fee_structure, balance):
+    if not fee_structure:
+        return 'no_structure'
+    if balance <= 0:
+        return 'paid'
+    deadline_str = fee_structure.get('payment_deadline')
+    if deadline_str:
+        try:
+            deadline_date = datetime.strptime(str(deadline_str).split(' ')[0], '%Y-%m-%d').date()
+            if deadline_date < datetime.now().date():
+                return 'overdue'
+        except Exception:
+            pass
+    return 'pending'
+
+
+def _student_fees_row_payload(cursor, row, cy, ct, level_by_name):
+    """One in-session student row for the fees register (JSON-safe)."""
+    if isinstance(row, dict):
+        student_id = row.get('student_id')
+        full_name = row.get('full_name', '')
+        current_grade = row.get('current_grade', '') or ''
+        student_category = row.get('student_category', '') or ''
+        parent_name = row.get('parent_name')
+        parent_phone = row.get('parent_phone')
+    else:
+        student_id = row[1] if len(row) > 1 else row[0]
+        full_name = row[2] if len(row) > 2 else ''
+        current_grade = (row[3] if len(row) > 3 else '') or ''
+        student_category = (row[5] if len(row) > 5 else '') or ''
+        parent_name = row[6] if len(row) > 6 else None
+        parent_phone = row[7] if len(row) > 7 else None
+
+    academic_level = None
+    level_id = None
+    if current_grade and current_grade in level_by_name:
+        academic_level = dict(level_by_name[current_grade])
+        level_id = academic_level.get('id')
+
+    fee_structure = None
+    if level_id:
+        fee_structure = _reports_select_fee_structure_for_student(
+            cursor, level_id, student_category, cy, ct,
+        )
+
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(amount_paid), 0) AS total_paid
+        FROM student_payments
+        WHERE student_id = %s
+        """,
+        (student_id,),
+    )
+    all_pay = cursor.fetchone()
+    total_paid_all = float(
+        (all_pay.get('total_paid') if isinstance(all_pay, dict) else all_pay[0]) or 0
+    ) if all_pay else 0.0
+
+    carry_forward = 0.0
+    previous_term_balance = 0.0
+    total_amount_due = 0.0
+    balance = 0.0
+
+    if fee_structure:
+        amounts = _reports_compute_student_fee_balance(
+            cursor, student_id, student_category, level_id, fee_structure,
+        )
+        if amounts:
+            total_amount_due = float(amounts.get('total_amount') or 0)
+            balance = float(amounts.get('balance') or 0)
+            carry_forward = float(amounts.get('carry_forward') or 0)
+            previous_term_balance = float(amounts.get('previous_term_balance') or 0)
+
+    payment_status = _student_fees_payment_status(fee_structure, balance)
+
+    fs_out = None
+    if fee_structure:
+        fs_out = {
+            'id': fee_structure.get('id'),
+            'fee_name': fee_structure.get('fee_name', ''),
+            'category': fee_structure.get('category', 'both'),
+            'payment_deadline': fee_structure.get('payment_deadline'),
+            'total_amount': float(fee_structure.get('total_amount') or 0),
+            'status': fee_structure.get('status', 'active'),
+        }
+
+    return {
+        'student_id': student_id,
+        'full_name': full_name or '',
+        'current_grade': current_grade,
+        'student_category': student_category,
+        'parent_name': parent_name or '',
+        'parent_phone': parent_phone or '',
+        'academic_level': academic_level,
+        'fee_structure': fs_out,
+        'payment_status': payment_status,
+        'total_paid': total_paid_all,
+        'carry_forward': carry_forward,
+        'previous_term_balance': previous_term_balance,
+        'total_amount_due': total_amount_due,
+        'balance': balance,
+    }
+
+
+STUDENT_FEES_LIST_SORTS = {
+    'name_asc': ('s.full_name', 'ASC'),
+    'name_desc': ('s.full_name', 'DESC'),
+    'id_asc': ('s.student_id', 'ASC'),
+    'id_desc': ('s.student_id', 'DESC'),
+    'grade_asc': ('s.current_grade', 'ASC'),
+    'grade_desc': ('s.current_grade', 'DESC'),
+}
+
+
+def _fetch_student_fees_students_page(cursor, page=1, per_page=50, q='', grade='', category='', sort='name_asc'):
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    grade = (grade or '').strip()
+    category = (category or '').strip().lower()
+    order_col, order_dir = STUDENT_FEES_LIST_SORTS.get(sort, STUDENT_FEES_LIST_SORTS['name_asc'])
+
+    cy, ct = _reports_current_year_term_ids(cursor)
+    level_by_name = _student_fees_level_by_name(cursor)
+
+    where = ["s.status = 'in session'"]
+    params = []
+    if grade:
+        where.append('s.current_grade = %s')
+        params.append(grade)
+    if category:
+        where.append('LOWER(TRIM(COALESCE(s.student_category, ""))) = %s')
+        params.append(category)
+    if q:
+        like = '%' + q + '%'
+        where.append(
+            '(s.full_name LIKE %s OR s.student_id LIKE %s OR s.current_grade LIKE %s)'
+        )
+        params.extend([like, like, like])
+
+    where_sql = ' WHERE ' + ' AND '.join(where)
+
+    cursor.execute(f'SELECT COUNT(*) AS c FROM students s{where_sql}', tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+
+    cursor.execute(
+        f"""
+        SELECT s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
+               (
+                   SELECT p.full_name FROM parents p
+                   WHERE p.student_id = s.student_id
+                   ORDER BY p.id ASC LIMIT 1
+               ) AS parent_name,
+               (
+                   SELECT p.phone FROM parents p
+                   WHERE p.student_id = s.student_id
+                   ORDER BY p.id ASC LIMIT 1
+               ) AS parent_phone
+        FROM students s
+        {where_sql}
+        ORDER BY {order_col} {order_dir}, s.student_id ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    students = [
+        _student_fees_row_payload(cursor, r, cy, ct, level_by_name)
+        for r in (cursor.fetchall() or [])
+    ]
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {
+        'students': students,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+    }
+
+
+def _fetch_student_fees_stats(cursor):
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS total
+        FROM students
+        WHERE status = 'in session'
+        """
+    )
+    row = cursor.fetchone() or {}
+    total = int(row.get('total') if isinstance(row, dict) else row[0] or 0)
+    return {'in_session': total}
+
 
 # Student Fees Route
 @app.route('/dashboard/employee/student-fees')
@@ -14837,16 +15140,11 @@ def student_fees():
     can_edit_fee_structure = check_permission_or_role('edit_fee_structure', ['accountant', 'head of institution'])
     can_delete_fee_structure = check_permission_or_role('delete_fee_structure', ['accountant', 'head of institution'])
     
-    # Allow access if: technician OR has permission-based access (permission check handles role fallback)
-    # Note: check_permission_or_role already handles role fallback if no permissions are assigned
-    if not (is_technician or has_view_fees_permission or has_manage_fees_permission):
-        print(f"  - Access DENIED: user_role={user_role}, viewing_as_role={viewing_as_role}, is_accountant={is_accountant}, is_technician={is_technician}")
+    if not _student_fees_has_access():
         flash('You do not have permission to access this page. Only accountants, principals, or users with fee viewing permissions can access Student Fees.', 'error')
         return redirect(employee_dashboard_path())
-    
-    print(f"  - Access GRANTED: Rendering student fees page")
-    
-    # Get students with their fee information
+
+    # Student register loads via /student-fees/students (paginated API)
     connection = get_db_connection()
     students = []
     academic_levels = []
@@ -14883,472 +15181,6 @@ def student_fees():
                     current_term_result = cursor.fetchone()
                     if current_term_result:
                         current_term_id = current_term_result.get('id') if isinstance(current_term_result, dict) else current_term_result[0]
-                
-                # Fetch students who are in session
-                cursor.execute("""
-                    SELECT s.id, s.student_id, s.full_name, s.current_grade, s.status, s.student_category,
-                           p.full_name as parent_name, p.phone as parent_phone, p.email as parent_email
-                    FROM students s
-                    LEFT JOIN parents p ON s.student_id = p.student_id
-                    WHERE s.status = 'in session'
-                    ORDER BY s.full_name ASC
-                """)
-                results = cursor.fetchall()
-                
-                if results:
-                    for row in results:
-                        student_grade = row.get('current_grade', '')
-                        
-                        # Find the academic level for this student's grade
-                        academic_level = None
-                        fee_structure = None
-                        
-                        if student_grade:
-                            # Try to match student's current_grade with academic_levels.level_name
-                            cursor.execute("""
-                                SELECT al.id, al.level_category, al.level_name, al.level_description
-                                FROM academic_levels al
-                                WHERE al.level_name = %s AND al.level_status = 'active'
-                                LIMIT 1
-                            """, (student_grade,))
-                            level_result = cursor.fetchone()
-                            
-                            if level_result:
-                                academic_level_id = level_result.get('id')
-                                academic_level = {
-                                    'id': academic_level_id,
-                                    'level_category': level_result.get('level_category', ''),
-                                    'level_name': level_result.get('level_name', ''),
-                                    'level_description': level_result.get('level_description', '')
-                                }
-                                
-                                # Find active fee structure for this academic level
-                                # Match fee structure category with student category
-                                # Filter by current academic year and current term
-                                # Priority: 1) Category-specific match, 2) 'both' category, 3) NULL category
-                                # A fee structure marked as 'self sponsored' ONLY applies to self sponsored students
-                                # A fee structure marked as 'sponsored' ONLY applies to sponsored students
-                                # A fee structure marked as 'both' applies to all students
-                                student_category = row.get('student_category', '').lower().strip() if row.get('student_category') else ''
-                                
-                                if student_category == 'self sponsored':
-                                    # Match fee structures for self sponsored students
-                                    # ONLY match 'self sponsored' or 'both' category structures
-                                    # Do NOT match 'sponsored' or NULL category structures
-                                    if current_academic_year_id and current_term_id:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.academic_year_id = %s
-                                              AND fs.term_id = %s
-                                              AND (
-                                                  fs.category = 'self sponsored' 
-                                                  OR fs.category = 'both'
-                                              )
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'self sponsored' THEN 1
-                                                WHEN fs.category = 'both' THEN 2
-                                                ELSE 3
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id, current_academic_year_id, current_term_id))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND (
-                                                  fs.category = 'self sponsored' 
-                                                  OR fs.category = 'both'
-                                              )
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'self sponsored' THEN 1
-                                                WHEN fs.category = 'both' THEN 2
-                                                ELSE 3
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id,))
-                                elif student_category == 'sponsored':
-                                    # Match fee structures for sponsored students
-                                    # ONLY match 'sponsored' or 'both' category structures
-                                    # Do NOT match 'self sponsored' or NULL category structures
-                                    if current_academic_year_id and current_term_id:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.academic_year_id = %s
-                                              AND fs.term_id = %s
-                                              AND (
-                                                  fs.category = 'sponsored' 
-                                                  OR fs.category = 'both'
-                                              )
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'sponsored' THEN 1
-                                                WHEN fs.category = 'both' THEN 2
-                                                ELSE 3
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id, current_academic_year_id, current_term_id))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND (
-                                                  fs.category = 'sponsored' 
-                                                  OR fs.category = 'both'
-                                              )
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'sponsored' THEN 1
-                                                WHEN fs.category = 'both' THEN 2
-                                                ELSE 3
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id,))
-                                elif student_category == 'both':
-                                    # Students with category 'both' can see all fee structures
-                                    # Priority: 'both' first, then category-specific, then NULL
-                                    if current_academic_year_id and current_term_id:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.academic_year_id = %s
-                                              AND fs.term_id = %s
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'both' THEN 1
-                                                WHEN fs.category = 'self sponsored' THEN 2
-                                                WHEN fs.category = 'sponsored' THEN 3
-                                                WHEN fs.category IS NULL THEN 4
-                                                ELSE 5
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id, current_academic_year_id, current_term_id))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                            ORDER BY 
-                                              CASE 
-                                                WHEN fs.category = 'both' THEN 1
-                                                WHEN fs.category = 'self sponsored' THEN 2
-                                                WHEN fs.category = 'sponsored' THEN 3
-                                                WHEN fs.category IS NULL THEN 4
-                                                ELSE 5
-                                              END,
-                                              fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id,))
-                                else:
-                                    # If student has no category or unknown category, match 'both' category only
-                                    # Do not match category-specific fee structures (self sponsored or sponsored)
-                                    if current_academic_year_id and current_term_id:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.academic_year_id = %s
-                                              AND fs.term_id = %s
-                                              AND fs.category = 'both'
-                                            ORDER BY fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id, current_academic_year_id, current_term_id))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.fee_name, fs.start_date, fs.end_date, 
-                                                   fs.payment_deadline, fs.total_amount, fs.status, fs.category
-                                            FROM fee_structures fs
-                                            WHERE fs.academic_level_id = %s 
-                                              AND fs.status = 'active'
-                                              AND fs.category = 'both'
-                                            ORDER BY fs.created_at DESC
-                                            LIMIT 1
-                                        """, (academic_level_id,))
-                                
-                                fee_structure_result = cursor.fetchone()
-                                
-                                if fee_structure_result:
-                                    # Format dates
-                                    start_date = fee_structure_result.get('start_date')
-                                    end_date = fee_structure_result.get('end_date')
-                                    payment_deadline = fee_structure_result.get('payment_deadline')
-                                    
-                                    if start_date and hasattr(start_date, 'strftime'):
-                                        start_date = start_date.strftime('%Y-%m-%d')
-                                    elif start_date:
-                                        start_date = str(start_date).split(' ')[0]
-                                    
-                                    if end_date and hasattr(end_date, 'strftime'):
-                                        end_date = end_date.strftime('%Y-%m-%d')
-                                    elif end_date:
-                                        end_date = str(end_date).split(' ')[0]
-                                    
-                                    if payment_deadline and hasattr(payment_deadline, 'strftime'):
-                                        payment_deadline = payment_deadline.strftime('%Y-%m-%d')
-                                    elif payment_deadline:
-                                        payment_deadline = str(payment_deadline).split(' ')[0]
-                                    
-                                    fee_structure = {
-                                        'id': fee_structure_result.get('id'),
-                                        'fee_name': fee_structure_result.get('fee_name', ''),
-                                        'category': fee_structure_result.get('category', 'both'),
-                                        'start_date': start_date,
-                                        'end_date': end_date,
-                                        'payment_deadline': payment_deadline,
-                                        'total_amount': float(fee_structure_result.get('total_amount', 0)),
-                                        'status': fee_structure_result.get('status', 'active')
-                                    }
-                                    
-                                    # Fetch fee items for this structure
-                                    cursor.execute("""
-                                        SELECT item_name, item_description, amount
-                                        FROM fee_items
-                                        WHERE fee_structure_id = %s
-                                        ORDER BY item_order ASC
-                                    """, (fee_structure['id'],))
-                                    fee_items = cursor.fetchall()
-                                    fee_structure['items'] = [{
-                                        'item_name': item.get('item_name', ''),
-                                        'item_description': item.get('item_description', ''),
-                                        'amount': float(item.get('amount', 0))
-                                    } for item in fee_items]
-                        
-                        # Calculate total paid and balance
-                        # First, get ALL payments for this student (for display in paid column)
-                        cursor.execute("""
-                            SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-                            FROM student_payments
-                            WHERE student_id = %s
-                        """, (row.get('student_id'),))
-                        all_payments_result = cursor.fetchone()
-                        total_paid_all = 0.00
-                        if all_payments_result:
-                            total_paid_all = float(all_payments_result.get('total_paid', 0) if isinstance(all_payments_result, dict) else all_payments_result[0] or 0)
-                        
-                        # For balance calculation, use payments for current fee structure only
-                        total_paid = 0.00
-                        carry_forward = 0.00  # Overpayments from previous fee structures
-                        previous_term_balance = 0.00  # Unpaid balances from previous fee structures
-                        
-                        if fee_structure:
-                            # Get payments for current fee structure
-                            cursor.execute("""
-                                SELECT COALESCE(SUM(amount_paid), 0) as total_paid
-                                FROM student_payments
-                                WHERE student_id = %s AND fee_structure_id = %s
-                            """, (row.get('student_id'), fee_structure.get('id')))
-                            payment_result = cursor.fetchone()
-                            if payment_result:
-                                total_paid = float(payment_result.get('total_paid', 0) if isinstance(payment_result, dict) else payment_result[0] or 0)
-                            
-                            # Calculate carry-forward from previous fee structures (overpayments and unpaid balances)
-                            # Get all previous fee structures for this student's academic level that have ended
-                            # IMPORTANT: Filter by student category to only include relevant fee structures
-                            if academic_level_id:
-                                current_start_date = fee_structure.get('start_date')
-                                student_category = row.get('student_category', '').lower().strip() if row.get('student_category') else ''
-                                
-                                # Build category filter based on student category
-                                if student_category == 'self sponsored':
-                                    if current_start_date:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                                            AND (fs.category = 'self sponsored' OR fs.category = 'both')
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND fs.end_date < CURDATE()
-                                            AND (fs.category = 'self sponsored' OR fs.category = 'both')
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
-                                elif student_category == 'sponsored':
-                                    if current_start_date:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                                            AND (fs.category = 'sponsored' OR fs.category = 'both')
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND fs.end_date < CURDATE()
-                                            AND (fs.category = 'sponsored' OR fs.category = 'both')
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
-                                elif student_category == 'both':
-                                    # Include all categories for students with category 'both'
-                                    if current_start_date:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND fs.end_date < CURDATE()
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
-                                else:
-                                    # Only 'both' category for students with no category
-                                    if current_start_date:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND (fs.end_date < CURDATE() OR (fs.end_date IS NOT NULL AND fs.end_date < %s))
-                                            AND fs.category = 'both'
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id'), current_start_date))
-                                    else:
-                                        cursor.execute("""
-                                            SELECT fs.id, fs.total_amount,
-                                                   COALESCE(SUM(sp.amount_paid), 0) as total_paid
-                                            FROM fee_structures fs
-                                            LEFT JOIN student_payments sp ON fs.id = sp.fee_structure_id AND sp.student_id = %s
-                                            WHERE fs.academic_level_id = %s
-                                            AND fs.id != %s
-                                            AND fs.status = 'active'
-                                            AND fs.end_date < CURDATE()
-                                            AND fs.category = 'both'
-                                            GROUP BY fs.id, fs.total_amount
-                                        """, (row.get('student_id'), academic_level_id, fee_structure.get('id')))
-                                
-                                previous_structures = cursor.fetchall()
-                                for prev_struct in previous_structures:
-                                    if isinstance(prev_struct, dict):
-                                        prev_total = float(prev_struct.get('total_amount', 0) or 0)
-                                        prev_paid = float(prev_struct.get('total_paid', 0) or 0)
-                                    else:
-                                        prev_total = float(prev_struct[1] or 0) if len(prev_struct) > 1 else 0
-                                        prev_paid = float(prev_struct[2] or 0) if len(prev_struct) > 2 else 0
-                                    
-                                    prev_balance = prev_total - prev_paid
-                                    # If there's an overpayment (negative balance), add to carry-forward
-                                    if prev_balance < 0:
-                                        carry_forward += abs(prev_balance)
-                                    # If there's an unpaid balance (positive balance), add to previous_term_balance
-                                    elif prev_balance > 0:
-                                        previous_term_balance += prev_balance
-                        
-                        balance = 0.00
-                        total_amount_due = 0.00  # Total amount student should pay (current term + previous term balance)
-                        if fee_structure:
-                            # Total amount due = Current Fee Total + Previous Term Unpaid Balance
-                            total_amount_due = float(fee_structure.get('total_amount', 0)) + previous_term_balance
-                            # Balance = Total Amount Due - (Payments + Carry Forward)
-                            balance = total_amount_due - (total_paid + carry_forward)
-                        
-                        # Determine payment status
-                        payment_status = 'no_structure'
-                        if fee_structure:
-                            if balance <= 0:
-                                payment_status = 'paid'
-                            elif fee_structure.get('payment_deadline'):
-                                deadline_str = fee_structure.get('payment_deadline')
-                                try:
-                                    deadline_date = datetime.strptime(deadline_str, '%Y-%m-%d').date()
-                                    today_date = datetime.now().date()
-                                    if deadline_date < today_date:
-                                        payment_status = 'overdue'
-                                    else:
-                                        payment_status = 'pending'
-                                except:
-                                    payment_status = 'pending'
-                            else:
-                                payment_status = 'pending'
-                        
-                        students.append({
-                            'id': row.get('id'),
-                            'student_id': row.get('student_id'),
-                            'full_name': row.get('full_name', ''),
-                            'current_grade': student_grade,
-                            'status': row.get('status', ''),
-                            'student_category': row.get('student_category', ''),
-                            'parent_name': row.get('parent_name', ''),
-                            'parent_phone': row.get('parent_phone', ''),
-                            'parent_email': row.get('parent_email', ''),
-                            'academic_level': academic_level,
-                            'fee_structure': fee_structure,
-                            'payment_status': payment_status,
-                            'total_paid': total_paid_all,  # Show all payments in paid column
-                            'total_paid_current': total_paid,  # Payments for current fee structure (for balance calculation)
-                            'carry_forward': carry_forward,
-                            'previous_term_balance': previous_term_balance,
-                            'total_amount_due': total_amount_due,
-                            'balance': balance
-                        })
                 
                 # Fetch active academic levels for fee structure creation
                 # Include information about whether they have fee structures
@@ -15586,6 +15418,68 @@ def student_fees():
                          can_edit_fee_structure=can_edit_fee_structure,
                          can_delete_fee_structure=can_delete_fee_structure,
                          can_generate_invoices=can_generate_invoices)
+
+
+@app.route('/dashboard/employee/student-fees/stats', methods=['GET'])
+@login_required
+def student_fees_stats():
+    """Summary counts for student fees page."""
+    if not _student_fees_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            stats = _fetch_student_fees_stats(cursor)
+        return jsonify({'success': True, 'stats': stats})
+    except Exception as e:
+        print(f"student_fees_stats: {e}")
+        return jsonify({'success': False, 'message': 'Could not load statistics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/student-fees/students', methods=['GET'])
+@login_required
+def student_fees_students():
+    """Paginated in-session students with fee balances for the register."""
+    if not _student_fees_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    grade = (request.args.get('grade') or '').strip()
+    category = (request.args.get('category') or '').strip()
+    sort = (request.args.get('sort') or 'name_asc').strip()
+    if sort not in STUDENT_FEES_LIST_SORTS:
+        sort = 'name_asc'
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_student_fees_students_page(
+                cursor, page=page, per_page=per_page, q=q, grade=grade, category=category, sort=sort,
+            )
+        return jsonify({
+            'success': True,
+            'students': payload['students'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f"student_fees_students: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load students'}), 500
+    finally:
+        connection.close()
+
 
 @app.route('/dashboard/employee/student-fees/generate-invoice/<student_id>')
 @login_required
@@ -20624,62 +20518,246 @@ def salary_audits():
                          payment_analytics=payment_analytics,
                          audit_summary=audit_summary)
 
+
+STAFF_MANAGEMENT_VIEW_ROLES = [
+    'employee', 'super admin', 'head of institution', 'deputy head of institution',
+    'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+    'warden', 'transport manager', 'store manager', 'technician',
+]
+
+STAFF_MANAGEMENT_LIST_SORTS = {
+    'created_desc': ('e.created_at', 'DESC'),
+    'created_asc': ('e.created_at', 'ASC'),
+    'name_asc': ('e.full_name', 'ASC'),
+    'name_desc': ('e.full_name', 'DESC'),
+    'id_asc': ('e.employee_id', 'ASC'),
+    'id_desc': ('e.employee_id', 'DESC'),
+}
+
+
+def _staff_management_has_access():
+    return check_permission_or_role('view_staff', allowed_roles=STAFF_MANAGEMENT_VIEW_ROLES)
+
+
+def _staff_management_teachers_sql_clause():
+    return """
+        (e.role IN ('teachers', 'teacher')
+         OR EXISTS (
+             SELECT 1 FROM employee_roles er
+             WHERE er.employee_id = e.id AND er.role IN ('teachers', 'teacher')
+         ))
+    """
+
+
+def _staff_management_status_where(status):
+    status = (status or 'all').strip().lower()
+    if status == 'active':
+        return "e.status = 'active'", []
+    if status == 'pending':
+        return "e.status IN ('pending', 'pending approval')", []
+    if status == 'suspended':
+        return "e.status = 'suspended'", []
+    if status == 'other':
+        return (
+            "e.status NOT IN ('active', 'pending', 'pending approval', 'suspended') "
+            "AND COALESCE(e.status, '') != ''",
+            [],
+        )
+    return '', []
+
+
+def _staff_management_row_dict(row):
+    if isinstance(row, dict):
+        d = dict(row)
+    else:
+        d = {
+            'id': row[0],
+            'employee_id': row[1],
+            'full_name': row[2],
+            'email': row[3],
+            'phone': row[4],
+            'id_number': row[5],
+            'role': row[6],
+            'status': row[7],
+            'profile_picture': row[8] if len(row) > 8 else None,
+            'created_at': row[9] if len(row) > 9 else None,
+            'staff_employee_number': row[10] if len(row) > 10 else None,
+        }
+    for k, val in list(d.items()):
+        if isinstance(val, (datetime, date_cls)):
+            d[k] = val.isoformat() if val else None
+        elif val is not None and not isinstance(val, (bool, int, float, str, list)):
+            d[k] = str(val)
+    sn = d.get('staff_employee_number')
+    if sn is None or sn == '':
+        d['staff_employee_number'] = str(d.get('id') or '')
+    else:
+        d['staff_employee_number'] = str(sn)
+    d['allocated_roles'] = d.get('allocated_roles') or []
+    return d
+
+
+def _fetch_staff_management_stats(cursor, teachers_only=False):
+    extra = f" AND {_staff_management_teachers_sql_clause()}" if teachers_only else ''
+    cursor.execute(f"""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN e.status = 'active' THEN 1 ELSE 0 END) AS active,
+            SUM(CASE WHEN e.status IN ('pending', 'pending approval') THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN e.status = 'suspended' THEN 1 ELSE 0 END) AS suspended,
+            SUM(CASE WHEN e.status NOT IN ('active', 'pending', 'pending approval', 'suspended')
+                      AND COALESCE(e.status, '') != '' THEN 1 ELSE 0 END) AS other
+        FROM employees e
+        WHERE 1=1{extra}
+    """)
+    row = cursor.fetchone() or {}
+    if isinstance(row, dict):
+        return {
+            'total': int(row.get('total') or 0),
+            'active': int(row.get('active') or 0),
+            'pending': int(row.get('pending') or 0),
+            'suspended': int(row.get('suspended') or 0),
+            'other': int(row.get('other') or 0),
+        }
+    return {
+        'total': int(row[0] or 0),
+        'active': int(row[1] or 0),
+        'pending': int(row[2] or 0),
+        'suspended': int(row[3] or 0) if len(row) > 3 else 0,
+        'other': int(row[4] or 0) if len(row) > 4 else 0,
+    }
+
+
+def _fetch_staff_management_page(cursor, page=1, per_page=50, q='', status='all', sort='created_desc', teachers_only=False):
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    order_col, order_dir = STAFF_MANAGEMENT_LIST_SORTS.get(
+        sort, STAFF_MANAGEMENT_LIST_SORTS['created_desc']
+    )
+    where = []
+    params = []
+    if teachers_only:
+        where.append(_staff_management_teachers_sql_clause())
+    status_sql, status_params = _staff_management_status_where(status)
+    if status_sql:
+        where.append(status_sql)
+        params.extend(status_params)
+    if q:
+        like = '%' + q + '%'
+        where.append(
+            "(e.full_name LIKE %s OR e.email LIKE %s OR e.employee_id LIKE %s "
+            f"OR CAST({_employee_staff_identity_sql('e')}) LIKE %s OR e.phone LIKE %s)"
+        )
+        params.extend([like, like, like, like, like])
+    where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+    cursor.execute(f"SELECT COUNT(*) AS c FROM employees e{where_sql}", tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+    cursor.execute(
+        f"""
+        SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
+               e.profile_picture, e.created_at,
+               {_employee_staff_identity_sql('e')} AS staff_employee_number
+        FROM employees e
+        {where_sql}
+        ORDER BY {order_col} {order_dir}, e.id ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    raw = cursor.fetchall() or []
+    employees = [_staff_management_row_dict(r) for r in raw]
+    attach_allocated_roles_to_employees(cursor, employees)
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {'employees': employees, 'page': page, 'per_page': per_page, 'total': total, 'pages': pages}
+
+
+@app.route('/staff-management/stats', methods=['GET'])
+@login_required
+def staff_management_stats():
+    if not _staff_management_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    teachers_only = request.args.get('teachers_only', '').lower() in ('1', 'true', 'yes')
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            stats = _fetch_staff_management_stats(cursor, teachers_only=teachers_only)
+        return jsonify({'success': True, 'stats': stats})
+    except Exception as e:
+        print(f"staff_management_stats: {e}")
+        return jsonify({'success': False, 'message': 'Could not load statistics'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/staff-management/employees', methods=['GET'])
+@login_required
+def staff_management_employees():
+    if not _staff_management_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    status = (request.args.get('status') or 'all').strip()
+    sort = (request.args.get('sort') or 'created_desc').strip()
+    teachers_only = request.args.get('teachers_only', '').lower() in ('1', 'true', 'yes')
+    if sort not in STAFF_MANAGEMENT_LIST_SORTS:
+        sort = 'created_desc'
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_staff_management_page(
+                cursor, page=page, per_page=per_page, q=q, status=status, sort=sort,
+                teachers_only=teachers_only,
+            )
+        return jsonify({
+            'success': True,
+            'employees': payload['employees'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f"staff_management_employees: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'message': 'Could not load employees'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/staff-management')
 @login_required
 def staff_management():
-    """Staff management page for employees"""
-    user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('view_staff', 
-                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
-                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
-    
-    if not has_access:
+    """Staff management page for employees (directory loads via API)."""
+    if not _staff_management_has_access():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Check what actions the user can perform
+
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_delete = may_delete_staff_members()
-    
-    # Fetch all employees
-    connection = get_db_connection()
-    employees = []
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f"""
-                    SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
-                           e.profile_picture, e.created_at,
-                           {_employee_staff_identity_sql('e')} AS staff_employee_number
-                    FROM employees e
-                    ORDER BY e.created_at DESC
-                """)
-                employees = cursor.fetchall()
-                attach_allocated_roles_to_employees(cursor, employees)
-        except Exception as e:
-            print(f"Error fetching employees: {e}")
-            flash('Error loading employees. Please try again.', 'error')
-        finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass  # Connection might already be closed
-    
     current_user_employee_pk = resolve_session_employee_pk()
 
-    return render_template('dashboards/staff_management.html', 
-                         employees=employees,
-                         can_add=can_add,
-                         can_edit=can_edit,
-                         can_delete=can_delete,
-                         current_user_employee_pk=current_user_employee_pk,
-                         employee_role_options=list(EMPLOYEE_SUB_ROLES))
+    return render_template(
+        'dashboards/staff_management.html',
+        can_add=can_add,
+        can_edit=can_edit,
+        can_delete=can_delete,
+        current_user_employee_pk=current_user_employee_pk,
+        employee_role_options=list(EMPLOYEE_SUB_ROLES),
+    )
 
 @app.route('/dashboard/employee/teacher-management')
 @login_required
@@ -20701,50 +20779,18 @@ def teacher_management():
     can_add = check_permission_or_role('add_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_edit = check_permission_or_role('edit_staff', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_delete = may_delete_staff_members()
-    
-    # Fetch only teachers
-    connection = get_db_connection()
-    teachers = []
-    teacher_subject_pairs = []
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                ensure_employee_roles_schema(cursor)
-                cursor.execute(f"""
-                    SELECT e.id, e.employee_id, e.full_name, e.email, e.phone, e.id_number, e.role, e.status,
-                           e.profile_picture, e.created_at,
-                           {_employee_staff_identity_sql('e')} AS staff_employee_number
-                    FROM employees e
-                    WHERE e.role IN ('teachers', 'teacher')
-                       OR EXISTS (
-                           SELECT 1 FROM employee_roles er
-                           WHERE er.employee_id = e.id AND er.role IN ('teachers', 'teacher')
-                       )
-                    ORDER BY e.full_name ASC
-                """)
-                teachers = cursor.fetchall()
-                attach_allocated_roles_to_employees(cursor, teachers)
-        except Exception as e:
-            print(f"Error fetching teachers: {e}")
-            flash('Error loading teachers. Please try again.', 'error')
-        finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass
-    
     current_user_employee_pk = resolve_session_employee_pk()
 
-    return render_template('dashboards/staff_management.html', 
-                         employees=teachers,
-                         can_add=can_add,
-                         can_edit=can_edit,
-                         can_delete=can_delete,
-                         current_user_employee_pk=current_user_employee_pk,
-                         page_title='Teacher Management',
-                         filter_role='teachers',
-                         employee_role_options=list(EMPLOYEE_SUB_ROLES))
+    return render_template(
+        'dashboards/staff_management.html',
+        can_add=can_add,
+        can_edit=can_edit,
+        can_delete=can_delete,
+        current_user_employee_pk=current_user_employee_pk,
+        page_title='Teacher Management',
+        filter_role='teachers',
+        employee_role_options=list(EMPLOYEE_SUB_ROLES),
+    )
 
 @app.route('/assign-roles-approve')
 @login_required
@@ -21187,80 +21233,209 @@ def get_employee(employee_id):
     finally:
         connection.close()
 
+STUDENT_MANAGEMENT_VIEW_ROLES = [
+    'employee', 'super admin', 'head of institution', 'deputy head of institution',
+    'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+    'warden', 'transport manager', 'store manager', 'technician',
+]
+
+STUDENT_MANAGEMENT_LIST_SORTS = {
+    'registered_desc': ('s.created_at', 'DESC'),
+    'registered_asc': ('s.created_at', 'ASC'),
+    'name_asc': ('s.full_name', 'ASC'),
+    'name_desc': ('s.full_name', 'DESC'),
+    'id_asc': ('s.student_id', 'ASC'),
+    'id_desc': ('s.student_id', 'DESC'),
+    'grade_asc': ('s.current_grade', 'ASC'),
+    'grade_desc': ('s.current_grade', 'DESC'),
+    'assessment_asc': ('s.assessment_number', 'ASC'),
+    'assessment_desc': ('s.assessment_number', 'DESC'),
+    'status_asc': ('s.status', 'ASC'),
+    'status_desc': ('s.status', 'DESC'),
+}
+
+
+def _student_management_has_access():
+    return check_permission_or_role('view_students', allowed_roles=STUDENT_MANAGEMENT_VIEW_ROLES)
+
+
+def _student_management_list_row_dict(row):
+    """Lightweight row for the student register table."""
+    if isinstance(row, dict):
+        d = dict(row)
+    else:
+        d = {
+            'student_id': row[0],
+            'full_name': row[1],
+            'current_grade': row[2],
+            'assessment_number': row[3],
+            'student_category': row[4],
+            'status': row[5],
+            'created_at': row[6] if len(row) > 6 else None,
+        }
+    for k, val in list(d.items()):
+        if isinstance(val, (datetime, date_cls)):
+            d[k] = val.isoformat() if val else None
+        elif val is not None and not isinstance(val, (bool, int, float, str)):
+            d[k] = str(val)
+    return d
+
+
+def _fetch_student_management_stats(cursor):
+    cursor.execute("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN status = 'in session' THEN 1 ELSE 0 END) AS in_session,
+            SUM(CASE WHEN status = 'pending approval' THEN 1 ELSE 0 END) AS pending,
+            SUM(CASE WHEN status IN ('suspended', 'expelled') THEN 1 ELSE 0 END) AS suspended
+        FROM students
+    """)
+    row = cursor.fetchone() or {}
+    if isinstance(row, dict):
+        return {
+            'total': int(row.get('total') or 0),
+            'in_session': int(row.get('in_session') or 0),
+            'pending': int(row.get('pending') or 0),
+            'suspended': int(row.get('suspended') or 0),
+        }
+    return {
+        'total': int(row[0] or 0),
+        'in_session': int(row[1] or 0),
+        'pending': int(row[2] or 0),
+        'suspended': int(row[3] or 0) if len(row) > 3 else 0,
+    }
+
+
+def _fetch_student_management_page(cursor, page=1, per_page=50, q='', status='all', sort='registered_desc'):
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    status = (status or 'all').strip()
+    order_col, order_dir = STUDENT_MANAGEMENT_LIST_SORTS.get(
+        sort, STUDENT_MANAGEMENT_LIST_SORTS['registered_desc']
+    )
+
+    sql_from = "FROM students s"
+    where = []
+    params = []
+    if status and status != 'all':
+        where.append("s.status = %s")
+        params.append(status)
+    if q:
+        like = '%' + q + '%'
+        where.append(
+            "(s.full_name LIKE %s OR s.student_id LIKE %s OR s.current_grade LIKE %s "
+            "OR CAST(s.assessment_number AS CHAR) LIKE %s OR s.student_category LIKE %s)"
+        )
+        params.extend([like, like, like, like, like])
+
+    where_sql = (" WHERE " + " AND ".join(where)) if where else ""
+
+    cursor.execute(f"SELECT COUNT(*) AS c {sql_from}{where_sql}", tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+
+    cursor.execute(
+        f"""
+        SELECT s.student_id, s.full_name, s.current_grade, s.assessment_number,
+               s.student_category, s.status, s.created_at
+        {sql_from}{where_sql}
+        ORDER BY {order_col} {order_dir}, s.student_id ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    students = [_student_management_list_row_dict(r) for r in (cursor.fetchall() or [])]
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {
+        'students': students,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+    }
+
+
 @app.route('/student-management')
 @login_required
 def student_management():
-    """Student management page for employees"""
-    user_role = session.get('role', '').lower()
-    employee_id = session.get('employee_id') or session.get('user_id')
-    
-    # Check permission OR role-based access
-    has_access = check_permission_or_role('view_students', 
-                                         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution', 
-                                                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian', 
-                                                       'warden', 'transport manager', 'store manager', 'technician'])
-    
-    if not has_access:
+    """Student management page for employees (list loads via API)."""
+    if not _student_management_has_access():
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    
-    # Check what actions the user can perform
+
     can_add = check_permission_or_role('add_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator'])
     can_edit = check_permission_or_role('edit_students', ['head of institution', 'deputy head of institution', 'curriculum coordinator', 'teachers', 'accountant'])
     can_delete = check_permission_or_role('delete_students', ['head of institution', 'deputy head of institution'])
-    
-    # Fetch all students with parent information
+
+    return render_template(
+        'dashboards/student_management.html',
+        can_add=can_add,
+        can_edit=can_edit,
+        can_delete=can_delete,
+    )
+
+
+@app.route('/student-management/stats', methods=['GET'])
+@login_required
+def student_management_stats():
+    """Summary counts for student management cards."""
+    if not _student_management_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
     connection = get_db_connection()
-    students = []
-    if connection:
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT s.id, s.student_id, s.full_name, s.date_of_birth, s.gender,
-                           s.current_grade, s.previous_school, s.assessment_number, s.address, s.medical_info,
-                           s.special_needs, s.student_category, s.sponsor_name, s.sponsor_phone, s.sponsor_email,
-                           s.status, s.created_at, s.updated_at,
-                           p.full_name as parent_name, p.phone as parent_phone,
-                           p.email as parent_email, p.relationship, p.emergency_contact
-                    FROM students s
-                    LEFT JOIN parents p ON s.student_id = p.student_id
-                    ORDER BY s.created_at DESC
-                """)
-                rows = cursor.fetchall()
-                # Deduplicate by student_id (LEFT JOIN parents can return multiple rows per student)
-                seen_ids = set()
-                students = []
-                for row in rows:
-                    sid = row.get('student_id') if isinstance(row, dict) else row[1]
-                    if sid not in seen_ids:
-                        seen_ids.add(sid)
-                        students.append(row)
-        except Exception as e:
-            print(f"Error fetching students: {e}")
-            flash('Error loading students. Please try again.', 'error')
-        finally:
-            if connection:
-                try:
-                    connection.close()
-                except:
-                    pass  # Connection might already be closed
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            stats = _fetch_student_management_stats(cursor)
+        return jsonify({'success': True, 'stats': stats})
+    except Exception as e:
+        print(f"student_management_stats: {e}")
+        return jsonify({'success': False, 'message': 'Could not load statistics'}), 500
+    finally:
+        connection.close()
 
-    students_for_json = []
-    for row in students:
-        d = dict(row)
-        for k, val in list(d.items()):
-            if isinstance(val, (datetime, date_cls)):
-                d[k] = val.isoformat() if val else None
-            elif val is not None and not isinstance(val, (bool, int, float, str)):
-                d[k] = str(val)
-        students_for_json.append(d)
 
-    return render_template('dashboards/student_management.html', 
-                         students=students,
-                         students_for_json=students_for_json,
-                         can_add=can_add,
-                         can_edit=can_edit,
-                         can_delete=can_delete)
+@app.route('/student-management/students', methods=['GET'])
+@login_required
+def student_management_students():
+    """Paginated student register for student management."""
+    if not _student_management_has_access():
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    status = (request.args.get('status') or 'all').strip()
+    sort = (request.args.get('sort') or 'registered_desc').strip()
+    if sort not in STUDENT_MANAGEMENT_LIST_SORTS:
+        sort = 'registered_desc'
+
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_student_management_page(
+                cursor, page=page, per_page=per_page, q=q, status=status, sort=sort,
+            )
+        return jsonify({
+            'success': True,
+            'students': payload['students'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f"student_management_students: {e}")
+        return jsonify({'success': False, 'message': 'Could not load students'}), 500
+    finally:
+        connection.close()
 
 @app.route('/get-student/<student_id>', methods=['GET'])
 @login_required
@@ -21655,6 +21830,109 @@ def _get_students_by_level():
     return students_by_level
 
 
+def _get_attendance_class_level_options(is_teacher, teacher_id=None):
+    """Class names for attendance filter without loading every student."""
+    options = []
+    connection = get_db_connection()
+    if not connection:
+        return options
+    try:
+        with connection.cursor() as cursor:
+            if is_teacher and teacher_id:
+                teacher_levels = _get_teacher_level_ids(teacher_id)
+                options = sorted([str(x).strip() for x in teacher_levels if str(x).strip()])
+            else:
+                cursor.execute("""
+                    SELECT DISTINCT s.current_grade
+                    FROM students s
+                    WHERE s.status = 'in session' AND COALESCE(s.current_grade, '') != ''
+                    ORDER BY s.current_grade ASC
+                """)
+                for r in cursor.fetchall() or []:
+                    g = r.get('current_grade') if isinstance(r, dict) else r[0]
+                    if g and str(g).strip():
+                        options.append(str(g).strip())
+    except Exception as e:
+        print(f"_get_attendance_class_level_options: {e}")
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+    return options
+
+
+def _fetch_attendance_students_page(cursor, grade, page=1, per_page=50, q=''):
+    """Paginated in-session students for one class (attendance register)."""
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    grade = (grade or '').strip()
+    q = (q or '').strip()
+    if not grade:
+        return [], {'page': 1, 'per_page': per_page, 'total': 0, 'pages': 1}
+    where = ["s.status = 'in session'", 's.current_grade = %s']
+    params = [grade]
+    if q:
+        like = '%' + q + '%'
+        where.append('(s.full_name LIKE %s OR s.student_id LIKE %s)')
+        params.extend([like, like])
+    where_sql = ' WHERE ' + ' AND '.join(where)
+    cursor.execute(f'SELECT COUNT(*) AS c FROM students s{where_sql}', tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+    cursor.execute(
+        f"""
+        SELECT s.student_id, s.full_name, s.current_grade, s.status, s.gender, p.full_name AS parent_name
+        FROM students s
+        LEFT JOIN parents p ON s.student_id = p.student_id
+        {where_sql}
+        ORDER BY s.full_name ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    students = []
+    for row in cursor.fetchall() or []:
+        students.append({
+            'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+            'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+            'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+            'status': row.get('status') if isinstance(row, dict) else row[3],
+            'gender': row.get('gender') if isinstance(row, dict) else (row[4] if len(row) > 4 else ''),
+            'parent_name': row.get('parent_name') if isinstance(row, dict) else (row[5] if len(row) > 5 else ''),
+        })
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return students, {'page': page, 'per_page': per_page, 'total': total, 'pages': pages}
+
+
+def _students_by_level_for_attendance(cursor, class_level, page=1, per_page=50, q='', level_id_by_name=None):
+    """Single level group with paginated students for the register."""
+    class_level = (class_level or '').strip()
+    if not class_level:
+        return []
+    students, _meta = _fetch_attendance_students_page(cursor, class_level, page, per_page, q)
+    lid = (level_id_by_name or {}).get(class_level)
+    return [{
+        'level_name': class_level,
+        'level_category': '',
+        'students': students,
+        'id': int(lid) if lid is not None else None,
+    }]
+
+
+def _attendance_visible_student_ids(students_by_level):
+    ids = []
+    for lg in students_by_level or []:
+        for st in (lg.get('students') or []):
+            sid = st.get('student_id')
+            if sid is not None and str(sid).strip():
+                ids.append(str(sid).strip())
+    return list(dict.fromkeys(ids))
+
+
 def _build_weeks_and_days(term_start, term_end, selected_week_index=1):
     """Build list of weeks, each with its days (based on term dates). Returns (weeks_list, selected_week_days)."""
     from datetime import timedelta
@@ -21902,7 +22180,10 @@ def _attendance_filter_args_from_form(form):
     """Build query-style args from attendance POST hidden fields for register refresh."""
     from werkzeug.datastructures import ImmutableMultiDict
     pairs = []
-    for k in ('term_id', 'academic_year_id', 'filter_type', 'month', 'day', 'period_start', 'period_end', 'class_level'):
+    for k in (
+        'term_id', 'academic_year_id', 'filter_type', 'month', 'day',
+        'period_start', 'period_end', 'class_level', 'page', 'per_page', 'q',
+    ):
         v = form.get(k)
         if v is not None and str(v).strip() != '':
             pairs.append((k, str(v).strip()))
@@ -22021,7 +22302,7 @@ def _credit_subject_progress_from_attendance(cursor, level_id, subject_id, term_
         print(f"_credit_subject_progress_from_attendance: {e}")
 
 
-def _attendance_register_get_context(students_by_level, is_teacher, req_args, teacher_id=None):
+def _attendance_register_get_context(students_by_level, is_teacher, req_args, teacher_id=None, attendance_list_meta=None):
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
     academic_year_id = req_args.get('academic_year_id', type=int)
@@ -22233,12 +22514,30 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                                     cur_date += timedelta(days=1)
 
                     ensure_student_attendance_subject_column(cursor)
-                    cursor.execute("""
+                    vis_sids = _attendance_visible_student_ids(students_by_level)
+                    att_params = [term_id]
+                    att_where = ['sar.term_id = %s']
+                    if selected_week_days:
+                        date_list = [d['date_str'] for d in selected_week_days if d.get('date_str')]
+                        if date_list:
+                            att_where.append(
+                                'sar.attendance_date IN (' + ','.join(['%s'] * len(date_list)) + ')'
+                            )
+                            att_params.extend(date_list)
+                    if vis_sids:
+                        att_where.append(
+                            'sar.student_id IN (' + ','.join(['%s'] * len(vis_sids)) + ')'
+                        )
+                        att_params.extend(vis_sids)
+                    cursor.execute(
+                        f"""
                         SELECT sar.student_id, sar.attendance_date, sar.present,
                                COALESCE(sar.subject_id, 0) AS subject_id
                         FROM student_attendance_records sar
-                        WHERE sar.term_id = %s
-                    """, (term_id,))
+                        WHERE {' AND '.join(att_where)}
+                        """,
+                        tuple(att_params),
+                    )
                     for r in cursor.fetchall() or []:
                         sid = r.get('student_id') if isinstance(r, dict) else r[0]
                         dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
@@ -22254,15 +22553,29 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
                             if subj_id == 0:
                                 attendance_records[(sid, date_str)] = True
 
+                    vis_sids_summary = _attendance_visible_student_ids(students_by_level)
                     if selected_week_days:
                         date_list = [d['date_str'] for d in selected_week_days]
-                        placeholders = ",".join(["%s"] * len(date_list))
+                        placeholders = ','.join(['%s'] * len(date_list))
+                        sum_params = [term_id] + date_list
+                        sid_clause = ''
+                        if vis_sids_summary:
+                            sid_clause = ' AND student_id IN (' + ','.join(['%s'] * len(vis_sids_summary)) + ')'
+                            sum_params.extend(vis_sids_summary)
                         cursor.execute(f"""
                             SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
                             FROM student_attendance_records
-                            WHERE term_id = %s AND attendance_date IN ({placeholders})
+                            WHERE term_id = %s AND attendance_date IN ({placeholders}){sid_clause}
                             GROUP BY student_id
-                        """, tuple([term_id] + date_list))
+                        """, tuple(sum_params))
+                    elif vis_sids_summary:
+                        ph_s = ','.join(['%s'] * len(vis_sids_summary))
+                        cursor.execute(f"""
+                            SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
+                            FROM student_attendance_records
+                            WHERE term_id = %s AND student_id IN ({ph_s})
+                            GROUP BY student_id
+                        """, tuple([term_id] + vis_sids_summary))
                     else:
                         cursor.execute("""
                             SELECT student_id, SUM(present) as present_days, COUNT(*) as total_days
@@ -22348,6 +22661,7 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args, te
         'use_subject_attendance_columns': use_subject_attendance_columns,
         'attendance_columns_by_level': attendance_columns_by_level,
         'subject_progress_url': subject_progress_url,
+        'attendance_list_meta': attendance_list_meta or {},
     }
 
 
@@ -22658,24 +22972,42 @@ def student_attendance():
     else:
         teacher_id = None
 
-    # Build visible classes first (teacher sees levels from subject allocation and/or timetable)
-    students_by_level_all = _get_students_by_level()
-    if is_teacher and teacher_id:
-        teacher_levels = _get_teacher_level_ids(teacher_id)
-        # Strictly show only teacher-assigned levels (empty list if none assigned)
-        students_by_level_all = [
-            lg for lg in students_by_level_all
-            if str(lg.get('level_name') or '').strip() in teacher_levels
-        ]
-    elif is_teacher and is_technician and viewing_as in ('teachers', 'teacher') and not teacher_id:
-        students_by_level_all = []
-
-    class_level_options = [str((lg.get('level_name') or '')).strip() for lg in students_by_level_all if str((lg.get('level_name') or '')).strip()]
+    class_level_options = _get_attendance_class_level_options(is_teacher, teacher_id)
     selected_class_level = (request.values.get('class_level') or '').strip()
+    if not selected_class_level and len(class_level_options) == 1:
+        selected_class_level = class_level_options[0]
+
+    att_page = request.values.get('page', 1, type=int)
+    att_per_page = request.values.get('per_page', 50, type=int)
+    att_q = (request.values.get('q') or '').strip()
+    attendance_list_meta = {}
+    students_by_level = []
+
     if selected_class_level:
-        students_by_level = [lg for lg in students_by_level_all if str((lg.get('level_name') or '')).strip() == selected_class_level]
-    else:
-        students_by_level = students_by_level_all
+        conn_lv = get_db_connection()
+        if conn_lv:
+            try:
+                with conn_lv.cursor() as cur:
+                    level_id_by_name = {}
+                    cur.execute("SELECT id, level_name FROM academic_levels")
+                    for r in cur.fetchall() or []:
+                        lid = r.get('id') if isinstance(r, dict) else r[0]
+                        lname = r.get('level_name') if isinstance(r, dict) else r[1]
+                        if lid and lname:
+                            level_id_by_name[str(lname)] = int(lid)
+                    students_by_level = _students_by_level_for_attendance(
+                        cur, selected_class_level, att_page, att_per_page, att_q, level_id_by_name,
+                    )
+                    _, attendance_list_meta = _fetch_attendance_students_page(
+                        cur, selected_class_level, att_page, att_per_page, att_q,
+                    )
+            except Exception as e:
+                print(f"student_attendance students page: {e}")
+            finally:
+                try:
+                    conn_lv.close()
+                except Exception:
+                    pass
 
     use_subject_attendance_post = bool(is_teacher and teacher_id)
 
@@ -22849,7 +23181,10 @@ def student_attendance():
             params['class_level'] = request.form.get('class_level')
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
-    ctx = _attendance_register_get_context(students_by_level, is_teacher, request.args, teacher_id=teacher_id)
+    ctx = _attendance_register_get_context(
+        students_by_level, is_teacher, request.args, teacher_id=teacher_id,
+        attendance_list_meta=attendance_list_meta,
+    )
     merged = {
         **ctx,
         'is_teacher_view': is_teacher,
@@ -22862,6 +23197,7 @@ def student_attendance():
         return jsonify({
             'ok': True,
             'html': live_html,
+            'attendance_meta': attendance_list_meta,
             'terms': terms_json,
             'selected_term_id': ctx.get('selected_term_id'),
             'selected_academic_year_id': ctx.get('selected_academic_year_id'),
@@ -33903,6 +34239,81 @@ def _register_store_inventory_item_from_request(cursor, request):
         return {'ok': False, 'message': 'An error occurred while registering the store item.'}
 
 
+def _fetch_store_inventory_page(cursor, page=1, per_page=50, q=''):
+    """Paginated store catalog rows."""
+    ensure_store_inventory_items_table(cursor)
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    where = []
+    params = []
+    if q:
+        like = '%' + q + '%'
+        where.append(
+            '(item_category LIKE %s OR item_name LIKE %s OR reference_code LIKE %s '
+            'OR description LIKE %s OR department_station LIKE %s)'
+        )
+        params.extend([like, like, like, like, like])
+    where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+    cursor.execute(f'SELECT COUNT(*) AS c FROM store_inventory_items{where_sql}', tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+    cursor.execute(
+        f"""
+        SELECT id, reference_code, item_category, item_name, description, measure,
+               image_path, item_status, quantity_on_hand, department_station,
+               library_book_id, created_at
+        FROM store_inventory_items
+        {where_sql}
+        ORDER BY department_station ASC, item_category ASC, item_name ASC, id ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    items = _store_inventory_rows_from_fetch(cursor.fetchall() or [])
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {'items': items, 'page': page, 'per_page': per_page, 'total': total, 'pages': pages}
+
+
+def _store_inventory_row_dict(row):
+    if isinstance(row, dict):
+        return {
+            'id': int(row.get('id') or 0),
+            'reference_code': (row.get('reference_code') or '').strip(),
+            'item_category': (row.get('item_category') or '').strip(),
+            'item_name': (row.get('item_name') or '').strip(),
+            'description': (row.get('description') or '').strip() or None,
+            'measure': (row.get('measure') or '').strip(),
+            'image_path': (row.get('image_path') or '').strip() or None,
+            'item_status': (row.get('item_status') or 'active').strip(),
+            'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
+            'department_station': (row.get('department_station') or '').strip(),
+            'library_book_id': int(row.get('library_book_id') or 0) or None,
+            'created_at': row.get('created_at'),
+        }
+    return {
+        'id': int(row[0] or 0),
+        'reference_code': (row[1] or '').strip(),
+        'item_category': (row[2] or '').strip(),
+        'item_name': (row[3] or '').strip(),
+        'description': (row[4] or '').strip() or None,
+        'measure': (row[5] or '').strip(),
+        'image_path': (row[6] or '').strip() or None,
+        'item_status': (row[7] or 'active').strip(),
+        'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
+        'department_station': (row[9] or '').strip() if len(row) > 9 else '',
+        'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
+        'created_at': row[11] if len(row) > 11 else None,
+    }
+
+
+def _store_inventory_rows_from_fetch(rows):
+    return [_store_inventory_row_dict(r) for r in rows]
+
+
 def _fetch_store_inventory_items(cursor):
     """List all store inventory items for the catalog UI."""
     ensure_store_inventory_items_table(cursor)
@@ -33915,37 +34326,7 @@ def _fetch_store_inventory_items(cursor):
             FROM store_inventory_items
             ORDER BY department_station ASC, item_category ASC, item_name ASC, id ASC
         """)
-        for row in cursor.fetchall() or []:
-            if isinstance(row, dict):
-                items.append({
-                    'id': int(row.get('id') or 0),
-                    'reference_code': (row.get('reference_code') or '').strip(),
-                    'item_category': (row.get('item_category') or '').strip(),
-                    'item_name': (row.get('item_name') or '').strip(),
-                    'description': (row.get('description') or '').strip() or None,
-                    'measure': (row.get('measure') or '').strip(),
-                    'image_path': (row.get('image_path') or '').strip() or None,
-                    'item_status': (row.get('item_status') or 'active').strip(),
-                    'quantity_on_hand': int(row.get('quantity_on_hand') or 0),
-                    'department_station': (row.get('department_station') or '').strip(),
-                    'library_book_id': int(row.get('library_book_id') or 0) or None,
-                    'created_at': row.get('created_at'),
-                })
-            else:
-                items.append({
-                    'id': int(row[0] or 0),
-                    'reference_code': (row[1] or '').strip(),
-                    'item_category': (row[2] or '').strip(),
-                    'item_name': (row[3] or '').strip(),
-                    'description': (row[4] or '').strip() or None,
-                    'measure': (row[5] or '').strip(),
-                    'image_path': (row[6] or '').strip() or None,
-                    'item_status': (row[7] or 'active').strip(),
-                    'quantity_on_hand': int(row[8] or 0) if len(row) > 8 else 0,
-                    'department_station': (row[9] or '').strip() if len(row) > 9 else '',
-                    'library_book_id': int(row[10] or 0) or None if len(row) > 10 else None,
-                    'created_at': row[11] if len(row) > 11 else None,
-                })
+        items = _store_inventory_rows_from_fetch(cursor.fetchall() or [])
     except Exception as e:
         print(f"_fetch_store_inventory_items: {e}")
     return items
@@ -35054,6 +35435,402 @@ def books_inventory_stock_out():
     return redirect(employee_dash_url('books-inventory/stock') + '?stock=out')
 
 
+def _library_book_dict_from_row(row):
+    if isinstance(row, dict):
+        bp = row.get('buying_price')
+        if bp is not None:
+            try:
+                bp = float(bp)
+            except (TypeError, ValueError):
+                bp = 0.0
+        else:
+            bp = 0.0
+        try:
+            ctot = int(row.get('copies_total') if row.get('copies_total') is not None else 0)
+        except (TypeError, ValueError):
+            ctot = 0
+        if ctot < 0:
+            ctot = 0
+        sid = int(row.get('subject_id') or 0)
+        ac_cat = (row.get('academic_category') or '').upper()
+        needs_setup = _library_book_needs_librarian_setup(ac_cat, sid)
+        return {
+            'id': row['id'],
+            'book_category': (row.get('book_category') or '').upper(),
+            'book_name': (row.get('book_name') or '').upper(),
+            'description': (row.get('description') or '').upper(),
+            'buying_price': bp,
+            'created_at': row.get('created_at'),
+            'academic_category': ac_cat,
+            'subject_id': sid,
+            'subject_name': (row.get('subject_name') or '').upper(),
+            'subject_code': (row.get('subject_code') or '').upper(),
+            'library_status': (row.get('library_status') or 'active'),
+            'allocation_status': (row.get('allocation_status') or 'unallocated'),
+            'copies_total': ctot,
+            'store_item_id': int(row.get('store_item_id') or 0) or None,
+            'needs_setup': needs_setup,
+        }
+    try:
+        bp = float(row[4]) if len(row) > 4 and row[4] is not None else 0.0
+    except (TypeError, ValueError):
+        bp = 0.0
+    try:
+        sid_l = int(row[10]) if len(row) > 10 else 0
+    except (TypeError, ValueError):
+        sid_l = 0
+    try:
+        store_item_id_l = int(row[11]) if len(row) > 11 else 0
+    except (TypeError, ValueError):
+        store_item_id_l = 0
+    try:
+        ctot_t = int(row[7]) if len(row) > 7 and row[7] is not None else 0
+    except (TypeError, ValueError):
+        ctot_t = 0
+    if ctot_t < 0:
+        ctot_t = 0
+    ac_cat_t = ((row[9] or '') if len(row) > 9 else '').upper()
+    needs_setup_t = _library_book_needs_librarian_setup(ac_cat_t, sid_l)
+    return {
+        'id': row[0],
+        'book_category': ((row[1] or '') if len(row) > 1 else '').upper(),
+        'book_name': ((row[2] or '') if len(row) > 2 else '').upper(),
+        'description': ((row[3] or '') if len(row) > 3 else '').upper(),
+        'buying_price': bp,
+        'created_at': row[8] if len(row) > 8 else None,
+        'academic_category': ac_cat_t,
+        'subject_id': sid_l,
+        'subject_name': ((row[12] or '') if len(row) > 12 else '').upper(),
+        'subject_code': ((row[13] or '') if len(row) > 13 else '').upper(),
+        'library_status': (row[5] if len(row) > 5 else 'active') or 'active',
+        'allocation_status': (row[6] if len(row) > 6 else 'unallocated') or 'unallocated',
+        'copies_total': ctot_t,
+        'store_item_id': store_item_id_l or None,
+        'needs_setup': needs_setup_t,
+    }
+
+
+def _fetch_library_catalog_counts(cursor):
+    ensure_library_books_table(cursor)
+    cursor.execute('SELECT COUNT(*) AS c FROM library_books')
+    all_row = cursor.fetchone()
+    all_c = int((all_row.get('c') if isinstance(all_row, dict) else all_row[0]) or 0)
+    pending = LIBRARY_PENDING_ACADEMIC_CATEGORY
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM library_books lb
+        WHERE UPPER(TRIM(COALESCE(lb.academic_category, ''))) IN ('', 'UNKNOWN', %s)
+           OR lb.subject_id IS NULL OR lb.subject_id < 1
+        """,
+        (pending,),
+    )
+    setup_row = cursor.fetchone()
+    setup_c = int((setup_row.get('c') if isinstance(setup_row, dict) else setup_row[0]) or 0)
+    return {'all': all_c, 'setup': setup_c}
+
+
+def _fetch_library_books_page(cursor, page=1, per_page=50, catalog_filter='all', q='', ready_only=False):
+    ensure_library_books_table(cursor)
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    catalog_filter = (catalog_filter or 'all').strip().lower()
+    if catalog_filter not in ('all', 'setup'):
+        catalog_filter = 'all'
+    where = []
+    params = []
+    if ready_only:
+        pending = LIBRARY_PENDING_ACADEMIC_CATEGORY
+        where.append(
+            "UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN ('', 'UNKNOWN', %s) "
+            'AND COALESCE(lb.subject_id, 0) > 0'
+        )
+        params.append(pending)
+    if catalog_filter == 'setup':
+        pending = LIBRARY_PENDING_ACADEMIC_CATEGORY
+        where.append(
+            "(UPPER(TRIM(COALESCE(lb.academic_category, ''))) IN ('', 'UNKNOWN', %s) "
+            'OR lb.subject_id IS NULL OR lb.subject_id < 1)'
+        )
+        params.append(pending)
+    if q:
+        like = '%' + q + '%'
+        where.append('(lb.book_name LIKE %s OR lb.book_category LIKE %s)')
+        params.extend([like, like])
+    where_sql = (' WHERE ' + ' AND '.join(where)) if where else ''
+    cursor.execute(f'SELECT COUNT(*) AS c FROM library_books lb{where_sql}', tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+    cursor.execute(
+        f"""
+        SELECT lb.id, lb.book_category, lb.book_name, lb.description, lb.buying_price,
+               lb.library_status, lb.allocation_status, lb.copies_total, lb.created_at,
+               lb.academic_category, lb.subject_id, lb.store_item_id,
+               s.subject_name, s.subject_code
+        FROM library_books lb
+        LEFT JOIN subjects s ON s.id = lb.subject_id
+        {where_sql}
+        ORDER BY lb.created_at DESC, lb.book_name ASC
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    books = [_library_book_dict_from_row(r) for r in (cursor.fetchall() or [])]
+    _library_enrich_books_with_allocations(cursor, books)
+    for b in books:
+        b['allocation_status'] = 'allocated' if b.get('allocated_level_ids') else 'unallocated'
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {'books': books, 'page': page, 'per_page': per_page, 'total': total, 'pages': pages}
+
+
+def _library_book_client_dict(b):
+    """Shape for Alpine library-books-client / API."""
+    return {
+        'id': b['id'],
+        'book_category': b.get('book_category') or '',
+        'book_name': b.get('book_name') or '',
+        'description': b.get('description') or '',
+        'buying_price': float(b['buying_price']) if b.get('buying_price') is not None else 0.0,
+        'academic_category': b.get('academic_category') or '',
+        'subject_id': int(b.get('subject_id') or 0),
+        'subject_name': b.get('subject_name') or '',
+        'subject_code': b.get('subject_code') or '',
+        'copies_total': int(b.get('copies_total') or 1),
+        'allocated_level_ids': list(b.get('allocated_level_ids') or []),
+        'allocations_detail': list(b.get('allocations_detail') or []),
+        'allocated_copies_sum': int(b.get('allocated_copies_sum') or 0),
+        'remaining_stock': int(b.get('remaining_stock') or 0),
+        'allocation_status': b.get('allocation_status') or 'unallocated',
+        'store_item_id': b.get('store_item_id'),
+        'needs_setup': bool(b.get('needs_setup')),
+    }
+
+
+def _fetch_library_configured_books_count(cursor):
+    ensure_library_books_table(cursor)
+    pending = LIBRARY_PENDING_ACADEMIC_CATEGORY
+    cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM library_books lb
+        WHERE UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN ('', 'UNKNOWN', %s)
+          AND COALESCE(lb.subject_id, 0) > 0
+        """,
+        (pending,),
+    )
+    row = cursor.fetchone()
+    return int((row.get('c') if isinstance(row, dict) else row[0]) or 0)
+
+
+def _fetch_library_stock_in_records_page(cursor, page=1, per_page=50, q=''):
+    """Paginated stock-in history (filters in memory after capped fetch)."""
+    all_rows = _library_stock_in_records(cursor, limit=500)
+    q = (q or '').strip().upper()
+    if q:
+        filtered = []
+        for r in all_rows:
+            student_hay = ' '.join(
+                (s.get('student_id') or '') + ' ' + (s.get('student_name') or '') + ' ' + (s.get('copy_code') or '')
+                for s in (r.get('student_allocations') or [])
+            )
+            hay = ' '.join([
+                str(r.get('book_name') or ''),
+                str(r.get('level_name') or ''),
+                str(r.get('level_category') or ''),
+                str(r.get('supplier_company') or ''),
+                str(r.get('supplier_phone') or ''),
+                str(r.get('notes') or ''),
+                student_hay,
+            ]).upper()
+            if q in hay:
+                filtered.append(r)
+        all_rows = filtered
+    total = len(all_rows)
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    offset = (page - 1) * per_page
+    return {
+        'records': all_rows[offset:offset + per_page],
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+    }
+
+
+def _books_inventory_json_guard():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    effective = viewing_as_role if is_technician and viewing_as_role else user_role
+    if effective != 'librarian':
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    return None
+
+
+@app.route('/dashboard/employee/books-inventory/books', methods=['GET'])
+@login_required
+def books_inventory_books_api():
+    denied = _books_inventory_json_guard()
+    if denied:
+        return denied
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    catalog_filter = (request.args.get('filter') or 'all').strip().lower()
+    ready_only = request.args.get('ready_only', '').lower() in ('1', 'true', 'yes')
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_library_books_page(
+                cursor, page=page, per_page=per_page, catalog_filter=catalog_filter, q=q, ready_only=ready_only,
+            )
+            client = [_library_book_client_dict(b) for b in payload['books']]
+        return jsonify({
+            'success': True,
+            'books': client,
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f'books_inventory_books_api: {e}')
+        return jsonify({'success': False, 'message': 'Could not load books'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/books/<int:book_id>', methods=['GET'])
+@login_required
+def books_inventory_book_api(book_id):
+    denied = _books_inventory_json_guard()
+    if denied:
+        return denied
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            ensure_library_books_table(cursor)
+            cursor.execute(
+                """
+                SELECT lb.id, lb.book_category, lb.book_name, lb.description, lb.buying_price,
+                       lb.library_status, lb.allocation_status, lb.copies_total, lb.created_at,
+                       lb.academic_category, lb.subject_id, lb.store_item_id,
+                       s.subject_name, s.subject_code
+                FROM library_books lb
+                LEFT JOIN subjects s ON s.id = lb.subject_id
+                WHERE lb.id = %s
+                """,
+                (book_id,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify({'success': False, 'message': 'Book not found'}), 404
+            book = _library_book_dict_from_row(row)
+            _library_enrich_books_with_allocations(cursor, [book])
+            book['allocation_status'] = 'allocated' if book.get('allocated_level_ids') else 'unallocated'
+        return jsonify({'success': True, 'book': _library_book_client_dict(book)})
+    except Exception as e:
+        print(f'books_inventory_book_api: {e}')
+        return jsonify({'success': False, 'message': 'Could not load book'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/stock-lines', methods=['GET'])
+@login_required
+def books_inventory_stock_lines_api():
+    denied = _books_inventory_json_guard()
+    if denied:
+        return denied
+    level_id = request.args.get('level_id', type=int)
+    if not level_id:
+        return jsonify({'success': False, 'message': 'level_id is required'}), 400
+    subject_id = request.args.get('subject_id', type=int)
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            lines = _library_stock_allocation_lines(
+                cursor, level_id=level_id, subject_id=subject_id or None,
+            )
+        return jsonify({'success': True, 'lines': lines, 'total': len(lines)})
+    except Exception as e:
+        print(f'books_inventory_stock_lines_api: {e}')
+        return jsonify({'success': False, 'message': 'Could not load stock lines'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/stock-stats', methods=['GET'])
+@login_required
+def books_inventory_stock_stats_api():
+    denied = _books_inventory_json_guard()
+    if denied:
+        return denied
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            configured = _fetch_library_configured_books_count(cursor)
+            counts = _fetch_library_catalog_counts(cursor)
+        return jsonify({
+            'success': True,
+            'configured_count': configured,
+            'catalog_counts': counts,
+        })
+    except Exception as e:
+        print(f'books_inventory_stock_stats_api: {e}')
+        return jsonify({'success': False, 'message': 'Could not load stats'}), 500
+    finally:
+        connection.close()
+
+
+@app.route('/dashboard/employee/books-inventory/stock-in-records', methods=['GET'])
+@login_required
+def books_inventory_stock_in_records_api():
+    denied = _books_inventory_json_guard()
+    if denied:
+        return denied
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_library_stock_in_records_page(cursor, page=page, per_page=per_page, q=q)
+        return jsonify({
+            'success': True,
+            'records': payload['records'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f'books_inventory_stock_in_records_api: {e}')
+        return jsonify({'success': False, 'message': 'Could not load records'}), 500
+    finally:
+        connection.close()
+
+
 @app.route('/dashboard/employee/books-inventory', methods=['GET', 'POST'])
 @login_required
 def books_inventory():
@@ -35184,121 +35961,55 @@ def books_inventory():
                     flash('An error occurred while updating the book.', 'error')
                     return redirect(employee_dash_url('books-inventory') + '?edit=%s' % book_id_update)
 
-            cursor.execute("""
-                SELECT lb.id, lb.book_category, lb.book_name, lb.description, lb.buying_price,
-                       lb.library_status, lb.allocation_status, lb.copies_total, lb.created_at,
-                       lb.academic_category, lb.subject_id, lb.store_item_id,
-                       s.subject_name, s.subject_code
-                FROM library_books lb
-                LEFT JOIN subjects s ON s.id = lb.subject_id
-                ORDER BY lb.created_at DESC, lb.book_name ASC
-            """)
-            for row in cursor.fetchall() or []:
-                if isinstance(row, dict):
-                    bp = row.get('buying_price')
-                    if bp is not None:
-                        try:
-                            bp = float(bp)
-                        except (TypeError, ValueError):
-                            bp = 0.0
-                    else:
-                        bp = 0.0
-                    try:
-                        ctot = int(row.get('copies_total') if row.get('copies_total') is not None else 0)
-                    except (TypeError, ValueError):
-                        ctot = 0
-                    if ctot < 0:
-                        ctot = 0
-                    sid = int(row.get('subject_id') or 0)
-                    ac_cat = (row.get('academic_category') or '').upper()
-                    needs_setup = _library_book_needs_librarian_setup(ac_cat, sid)
-                    books.append({
-                        'id': row['id'],
-                        'book_category': (row.get('book_category') or '').upper(),
-                        'book_name': (row.get('book_name') or '').upper(),
-                        'description': (row.get('description') or '').upper(),
-                        'buying_price': bp,
-                        'created_at': row.get('created_at'),
-                        'academic_category': ac_cat,
-                        'subject_id': sid,
-                        'subject_name': (row.get('subject_name') or '').upper(),
-                        'subject_code': (row.get('subject_code') or '').upper(),
-                        'library_status': (row.get('library_status') or 'active'),
-                        'allocation_status': (row.get('allocation_status') or 'unallocated'),
-                        'copies_total': ctot,
-                        'store_item_id': int(row.get('store_item_id') or 0) or None,
-                        'needs_setup': needs_setup,
-                    })
-                else:
-                    try:
-                        bp = float(row[4]) if len(row) > 4 and row[4] is not None else 0.0
-                    except (TypeError, ValueError):
-                        bp = 0.0
-                    try:
-                        sid_l = int(row[10]) if len(row) > 10 else 0
-                    except (TypeError, ValueError):
-                        sid_l = 0
-                    try:
-                        store_item_id_l = int(row[11]) if len(row) > 11 else 0
-                    except (TypeError, ValueError):
-                        store_item_id_l = 0
-                    try:
-                        ctot_t = int(row[7]) if len(row) > 7 and row[7] is not None else 0
-                    except (TypeError, ValueError):
-                        ctot_t = 0
-                    if ctot_t < 0:
-                        ctot_t = 0
-                    ac_cat_t = ((row[9] or '') if len(row) > 9 else '').upper()
-                    needs_setup_t = _library_book_needs_librarian_setup(ac_cat_t, sid_l)
-                    books.append({
-                        'id': row[0],
-                        'book_category': ((row[1] or '') if len(row) > 1 else '').upper(),
-                        'book_name': ((row[2] or '') if len(row) > 2 else '').upper(),
-                        'description': ((row[3] or '') if len(row) > 3 else '').upper(),
-                        'buying_price': bp,
-                        'created_at': row[8] if len(row) > 8 else None,
-                        'academic_category': ac_cat_t,
-                        'subject_id': sid_l,
-                        'subject_name': ((row[12] or '') if len(row) > 12 else '').upper(),
-                        'subject_code': ((row[13] or '') if len(row) > 13 else '').upper(),
-                        'library_status': (row[5] if len(row) > 5 else 'active') or 'active',
-                        'allocation_status': (row[6] if len(row) > 6 else 'unallocated') or 'unallocated',
-                        'copies_total': ctot_t,
-                        'store_item_id': store_item_id_l or None,
-                        'needs_setup': needs_setup_t,
-                    })
-            _library_enrich_books_with_allocations(cursor, books)
             inventory_academic_levels = _library_inventory_academic_levels(cursor)
             library_levels_by_category, library_level_combinations, _lib_combo_member_ids = (
                 build_academic_levels_picker_grouping(inventory_academic_levels, cursor)
             )
             library_level_allocation_summary = _library_allocation_stock_by_level(cursor)
-            library_stock_lines = _library_stock_allocation_lines(cursor)
+            if inventory_view != 'stock':
+                library_stock_lines = _library_stock_allocation_lines(cursor)
+                library_stock_in_records = _library_stock_in_records(cursor, limit=100)
             library_stock_movements_recent = _library_recent_stock_movements(cursor, limit=20)
-            library_stock_in_records = _library_stock_in_records(cursor, limit=100)
             library_level_subjects = _library_subjects_by_level_map(cursor)
-            for b in books:
-                b['allocation_status'] = 'allocated' if b.get('allocated_level_ids') else 'unallocated'
-                qty_by_level = {}
-                for ad in b.get('allocations_detail') or []:
-                    try:
-                        qty_by_level[int(ad.get('id'))] = max(1, int(ad.get('quantity') or 1))
-                    except (TypeError, ValueError):
-                        pass
-                b['alloc_qty_by_level'] = qty_by_level
-            books_all = list(books)
             catalog_filter = (request.args.get('filter') or 'all').strip().lower()
             if catalog_filter not in ('all', 'setup'):
                 catalog_filter = 'all'
-            catalog_counts = {
-                'all': len(books_all),
-                'setup': sum(1 for b in books_all if b.get('needs_setup')),
-            }
-            if catalog_filter == 'setup':
-                books = [b for b in books_all if b.get('needs_setup')]
+            catalog_counts = _fetch_library_catalog_counts(cursor)
+            catalog_page_meta = {'page': 1, 'pages': 1, 'total': 0, 'per_page': 50}
+
+            def _library_apply_alloc_qty(book_list):
+                for b in book_list:
+                    b['allocation_status'] = 'allocated' if b.get('allocated_level_ids') else 'unallocated'
+                    qty_by_level = {}
+                    for ad in b.get('allocations_detail') or []:
+                        try:
+                            qty_by_level[int(ad.get('id'))] = max(1, int(ad.get('quantity') or 1))
+                        except (TypeError, ValueError):
+                            pass
+                    b['alloc_qty_by_level'] = qty_by_level
+
+            if inventory_view == 'catalog':
+                cat_payload = _fetch_library_books_page(
+                    cursor,
+                    page=request.args.get('page', 1, type=int),
+                    per_page=50,
+                    catalog_filter=catalog_filter,
+                    q=(request.args.get('q') or '').strip(),
+                )
+                books = cat_payload['books']
+                _library_apply_alloc_qty(books)
+                books_all = []
+                catalog_page_meta = {
+                    'page': cat_payload['page'],
+                    'pages': cat_payload['pages'],
+                    'total': cat_payload['total'],
+                    'per_page': cat_payload['per_page'],
+                }
             else:
-                catalog_filter = 'all'
-                books = books_all
+                books = []
+                books_all = []
+                library_stock_lines = []
+                library_stock_in_records = []
     except Exception as e:
         print(f"books_inventory: {e}")
         flash('Could not load the book inventory.', 'error')
@@ -35306,40 +36017,44 @@ def books_inventory():
         books_all = []
         catalog_filter = 'all'
         catalog_counts = {'all': 0, 'setup': 0}
+        catalog_page_meta = {'page': 1, 'pages': 1, 'total': 0, 'per_page': 50}
     finally:
         connection.close()
 
     open_edit_book_id = request.args.get('edit', type=int) if request.method == 'GET' else None
-    if open_edit_book_id is not None and open_edit_book_id not in {b['id'] for b in books_all}:
-        flash('Book not found.', 'error')
-        open_edit_book_id = None
+    if open_edit_book_id is not None and request.method == 'GET':
+        conn_bk = get_db_connection()
+        bk_found = False
+        if conn_bk:
+            try:
+                with conn_bk.cursor() as cb:
+                    ensure_library_books_table(cb)
+                    cb.execute('SELECT id FROM library_books WHERE id = %s', (open_edit_book_id,))
+                    bk_found = bool(cb.fetchone())
+            finally:
+                conn_bk.close()
+        if not bk_found:
+            flash('Book not found.', 'error')
+            open_edit_book_id = None
     open_setup_book_id = request.args.get('setup', type=int) if request.method == 'GET' else None
-    if open_setup_book_id is not None and open_setup_book_id not in {b['id'] for b in books_all}:
-        flash('Book not found.', 'error')
-        open_setup_book_id = None
+    if open_setup_book_id is not None and request.method == 'GET':
+        conn_bk2 = get_db_connection()
+        bk2_found = False
+        if conn_bk2:
+            try:
+                with conn_bk2.cursor() as cb2:
+                    ensure_library_books_table(cb2)
+                    cb2.execute('SELECT id FROM library_books WHERE id = %s', (open_setup_book_id,))
+                    bk2_found = bool(cb2.fetchone())
+            finally:
+                conn_bk2.close()
+        if not bk2_found:
+            flash('Book not found.', 'error')
+            open_setup_book_id = None
 
-    library_books_client = [
-        {
-            'id': b['id'],
-            'book_category': b.get('book_category') or '',
-            'book_name': b.get('book_name') or '',
-            'description': b.get('description') or '',
-            'buying_price': float(b['buying_price']) if b.get('buying_price') is not None else 0.0,
-            'academic_category': b.get('academic_category') or '',
-            'subject_id': int(b.get('subject_id') or 0),
-            'subject_name': b.get('subject_name') or '',
-            'subject_code': b.get('subject_code') or '',
-            'copies_total': int(b.get('copies_total') or 1),
-            'allocated_level_ids': list(b.get('allocated_level_ids') or []),
-            'allocations_detail': list(b.get('allocations_detail') or []),
-            'allocated_copies_sum': int(b.get('allocated_copies_sum') or 0),
-            'remaining_stock': int(b.get('remaining_stock') or 0),
-            'allocation_status': b.get('allocation_status') or 'unallocated',
-            'store_item_id': b.get('store_item_id'),
-            'needs_setup': bool(b.get('needs_setup')),
-        }
-        for b in books_all
-    ]
+    library_books_client = (
+        [_library_book_client_dict(b) for b in books_all] if books_all else []
+    )
     if request.method == 'GET' and inventory_view == 'stock':
         stock_q = (request.args.get('allocate') or request.args.get('stock') or '').strip().lower()
         if stock_q in ('class', 'in'):
@@ -35375,6 +36090,7 @@ def books_inventory():
         books_all=books_all,
         catalog_filter=catalog_filter,
         catalog_counts=catalog_counts,
+        catalog_page_meta=catalog_page_meta,
         library_books_client=library_books_client,
         open_edit_book_id=open_edit_book_id,
         open_setup_book_id=open_setup_book_id,
@@ -35392,6 +36108,53 @@ def books_inventory():
         last_stock_in_labels=last_stock_in_labels,
         last_stock_out_labels=last_stock_out_labels,
     )
+
+
+@app.route('/dashboard/employee/store-inventory/items', methods=['GET'])
+@login_required
+def store_inventory_items_api():
+    if _store_inventory_effective_role() != 'store manager':
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_store_inventory_page(cursor, page=page, per_page=per_page, q=q)
+        client_items = [
+            {
+                'id': it['id'],
+                'reference_code': it.get('reference_code') or '',
+                'item_category': it.get('item_category') or '',
+                'item_name': it.get('item_name') or '',
+                'description': it.get('description') or '',
+                'measure': it.get('measure') or '',
+                'image_path': it.get('image_path') or '',
+                'item_status': it.get('item_status') or 'active',
+                'department_station': it.get('department_station') or '',
+                'library_book_id': it.get('library_book_id'),
+                'quantity_on_hand': int(it.get('quantity_on_hand') or 0),
+            }
+            for it in payload['items']
+        ]
+        return jsonify({
+            'success': True,
+            'items': client_items,
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
+    except Exception as e:
+        print(f"store_inventory_items_api: {e}")
+        return jsonify({'success': False, 'message': 'Could not load items'}), 500
+    finally:
+        connection.close()
 
 
 @app.route('/dashboard/employee/store-inventory/<int:item_id>/delete', methods=['POST'])
@@ -35616,14 +36379,17 @@ def store_inventory():
                         return redirect(employee_dash_url('store-inventory'))
                     flash(result.get('message', 'Could not register the store item.'), 'error')
 
-            items = _fetch_store_inventory_items(cursor)
-            seen_cats = set()
-            for it in items:
-                cat = (it.get('item_category') or '').strip()
-                if cat and cat not in seen_cats:
-                    seen_cats.add(cat)
+            cursor.execute("""
+                SELECT DISTINCT item_category FROM store_inventory_items
+                WHERE COALESCE(item_category, '') != ''
+                ORDER BY item_category ASC
+            """)
+            for r in cursor.fetchall() or []:
+                cat = (r.get('item_category') if isinstance(r, dict) else r[0]) or ''
+                cat = str(cat).strip()
+                if cat:
                     category_suggestions.append(cat)
-            category_suggestions.sort(key=lambda x: x.lower())
+            items = []
     except Exception as e:
         print(f"store_inventory: {e}")
         flash('An error occurred loading store inventory.', 'error')
@@ -35631,26 +36397,22 @@ def store_inventory():
         connection.close()
 
     open_edit_item_id = request.args.get('edit', type=int) if request.method == 'GET' else None
-    if open_edit_item_id is not None and open_edit_item_id not in {it['id'] for it in items}:
-        flash('Store item not found.', 'error')
-        open_edit_item_id = None
+    if open_edit_item_id is not None and request.method == 'GET':
+        conn_chk = get_db_connection()
+        found = False
+        if conn_chk:
+            try:
+                with conn_chk.cursor() as cchk:
+                    ensure_store_inventory_items_table(cchk)
+                    cchk.execute('SELECT id FROM store_inventory_items WHERE id = %s', (open_edit_item_id,))
+                    found = bool(cchk.fetchone())
+            finally:
+                conn_chk.close()
+        if not found:
+            flash('Store item not found.', 'error')
+            open_edit_item_id = None
 
-    store_items_client = [
-        {
-            'id': it['id'],
-            'reference_code': it.get('reference_code') or '',
-            'item_category': it.get('item_category') or '',
-            'item_name': it.get('item_name') or '',
-            'description': it.get('description') or '',
-            'measure': it.get('measure') or '',
-            'image_path': it.get('image_path') or '',
-            'item_status': it.get('item_status') or 'active',
-            'department_station': it.get('department_station') or '',
-            'library_book_id': it.get('library_book_id'),
-            'quantity_on_hand': int(it.get('quantity_on_hand') or 0),
-        }
-        for it in items
-    ]
+    store_items_client = []
     inventory_form_open_default = bool(
         request.method == 'POST' and not request.form.get('item_id', type=int)
     )
@@ -42921,11 +43683,21 @@ def _reports_compute_student_fee_balance(cursor, student_id, student_category, a
             'total_amount': total_amount_due,
             'paid_amount': paid_applied,
             'balance': balance,
+            'carry_forward': carry_forward,
+            'previous_term_balance': previous_term_balance,
+            'total_paid_current': total_paid,
         }
     except Exception as e:
         print(f"_reports_compute_student_fee_balance: {e}")
         ta = float(fee_structure.get('total_amount', 0))
-        return {'total_amount': ta, 'paid_amount': 0.0, 'balance': ta}
+        return {
+            'total_amount': ta,
+            'paid_amount': 0.0,
+            'balance': ta,
+            'carry_forward': 0.0,
+            'previous_term_balance': 0.0,
+            'total_paid_current': 0.0,
+        }
 
 
 def _class_fees_accounts_bundle(cursor, level_id, level_name):
@@ -43190,6 +43962,197 @@ def _finance_overview_class_summaries(student_rows):
     for class_name in sorted(agg.keys(), key=lambda x: str(x).lower()):
         out.append({'class_name': class_name, **agg[class_name]})
     return out
+
+
+FINANCE_OVERVIEW_LIST_SORTS = {
+    'name_asc': ('full_name', 'ASC'),
+    'name_desc': ('full_name', 'DESC'),
+    'class_asc': ('current_grade', 'ASC'),
+    'class_desc': ('current_grade', 'DESC'),
+    'id_asc': ('student_id', 'ASC'),
+    'id_desc': ('student_id', 'DESC'),
+}
+
+
+def _finance_overview_has_access():
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_technician = user_role == 'technician'
+    is_secretary = user_role == 'secretary' or viewing_as_role == 'secretary'
+    has_view = check_permission_or_role('view_student_fees', ['accountant', 'head of institution'])
+    has_manage = check_permission_or_role('manage_fees', ['accountant', 'head of institution'])
+    return is_technician or has_view or has_manage or is_secretary
+
+
+def _finance_overview_class_filter_options(cursor):
+    options = []
+    cursor.execute(
+        """
+        SELECT level_name FROM academic_levels
+        WHERE level_status = 'active'
+        ORDER BY level_name ASC
+        """
+    )
+    for r in cursor.fetchall() or []:
+        ln = r.get('level_name') if isinstance(r, dict) else r[0]
+        if ln:
+            options.append(ln)
+    return options
+
+
+def _finance_overview_payment_maps(cursor, student_ids):
+    payment_counts = {}
+    latest_payment = {}
+    if not student_ids:
+        return payment_counts, latest_payment
+    ph = ','.join(['%s'] * len(student_ids))
+    try:
+        cursor.execute(
+            f"""
+            SELECT student_id, COUNT(*) AS c
+            FROM student_payments
+            WHERE student_id IN ({ph})
+            GROUP BY student_id
+            """,
+            student_ids,
+        )
+        for row in cursor.fetchall() or []:
+            payment_counts[row.get('student_id') if isinstance(row, dict) else row[0]] = int(
+                (row.get('c') if isinstance(row, dict) else row[1]) or 0
+            )
+    except Exception as e:
+        print(f"_finance_overview_payment_maps counts: {e}")
+    try:
+        cursor.execute(
+            f"""
+            SELECT id, student_id, payment_date
+            FROM student_payments
+            WHERE student_id IN ({ph})
+            ORDER BY payment_date DESC, id DESC
+            """,
+            student_ids,
+        )
+        for row in cursor.fetchall() or []:
+            sid = row.get('student_id') if isinstance(row, dict) else row[1]
+            pid = row.get('id') if isinstance(row, dict) else row[0]
+            if sid not in latest_payment:
+                latest_payment[sid] = pid
+    except Exception as e:
+        print(f"_finance_overview_payment_maps latest: {e}")
+    return payment_counts, latest_payment
+
+
+def _finance_overview_row_from_student(cursor, row, cy, ct, level_by_name, payment_counts, latest_payment):
+    student_id = row.get('student_id') if isinstance(row, dict) else row[0]
+    full_name = row.get('full_name') if isinstance(row, dict) else row[1]
+    student_category = row.get('student_category') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')
+    current_grade = row.get('current_grade') if isinstance(row, dict) else (row[3] if len(row) > 3 else '')
+    current_grade = (current_grade or '') or ''
+    level_id = level_by_name.get(current_grade) if current_grade else None
+    fs = None
+    amounts = None
+    if level_id:
+        fs = _reports_select_fee_structure_for_student(cursor, level_id, student_category, cy, ct)
+        if fs:
+            amounts = _reports_compute_student_fee_balance(cursor, student_id, student_category, level_id, fs)
+    if amounts:
+        bal = amounts['balance']
+        total_amt = amounts['total_amount']
+        paid_amt = amounts['paid_amount']
+    else:
+        bal = None
+        total_amt = None
+        paid_amt = None
+    return {
+        'student_id': student_id,
+        'full_name': full_name or '—',
+        'class_name': current_grade or '—',
+        'total_amount': total_amt,
+        'paid_amount': paid_amt,
+        'balance': bal,
+        'payment_count': payment_counts.get(student_id, 0),
+        'latest_payment_id': latest_payment.get(student_id),
+    }
+
+
+def _fetch_finance_overview_students_page(cursor, page=1, per_page=50, q='', grade='', sort='name_asc'):
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
+    q = (q or '').strip()
+    grade = (grade or '').strip()
+    order_col, order_dir = FINANCE_OVERVIEW_LIST_SORTS.get(sort, FINANCE_OVERVIEW_LIST_SORTS['name_asc'])
+    if order_col == 'full_name':
+        order_sql = f's.full_name {order_dir}'
+    elif order_col == 'current_grade':
+        order_sql = f's.current_grade {order_dir}, s.full_name ASC'
+    else:
+        order_sql = f's.student_id {order_dir}'
+
+    cy, ct = _reports_current_year_term_ids(cursor)
+    level_by_name = {}
+    cursor.execute("SELECT id, level_name FROM academic_levels WHERE level_status = 'active'")
+    for r in cursor.fetchall() or []:
+        lid = r.get('id') if isinstance(r, dict) else r[0]
+        ln = r.get('level_name') if isinstance(r, dict) else r[1]
+        if ln:
+            level_by_name[ln] = lid
+
+    where = ["s.status = 'in session'"]
+    params = []
+    if grade:
+        where.append('s.current_grade = %s')
+        params.append(grade)
+    if q:
+        like = '%' + q + '%'
+        where.append('(s.full_name LIKE %s OR s.student_id LIKE %s OR s.current_grade LIKE %s)')
+        params.extend([like, like, like])
+    where_sql = ' WHERE ' + ' AND '.join(where)
+
+    cursor.execute(f'SELECT COUNT(*) AS c FROM students s{where_sql}', tuple(params))
+    count_row = cursor.fetchone()
+    total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+
+    cursor.execute(
+        f"""
+        SELECT s.student_id, s.full_name, s.student_category, s.current_grade
+        FROM students s
+        {where_sql}
+        ORDER BY {order_sql}
+        LIMIT %s OFFSET %s
+        """,
+        tuple(params) + (per_page, offset),
+    )
+    raw = cursor.fetchall() or []
+    sids = []
+    for r in raw:
+        sid = r.get('student_id') if isinstance(r, dict) else r[0]
+        if sid:
+            sids.append(sid)
+    payment_counts, latest_payment = _finance_overview_payment_maps(cursor, sids)
+    students = [
+        _finance_overview_row_from_student(cursor, r, cy, ct, level_by_name, payment_counts, latest_payment)
+        for r in raw
+    ]
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    if page > pages:
+        page = pages
+    return {'students': students, 'page': page, 'per_page': per_page, 'total': total, 'pages': pages}
+
+
+def _fetch_finance_overview_summary_payload(cursor):
+    """School-wide totals + per-class roll-up (computed once per request)."""
+    bundle = _finance_overview_student_fee_bundle(cursor)
+    summaries = _finance_overview_class_summaries(bundle.get('student_rows') or [])
+    return {
+        'totals': {
+            'student_count': len(bundle.get('student_rows') or []),
+            'total_outstanding': bundle.get('total_outstanding', 0.0),
+            'sum_total_amount': bundle.get('sum_total_amount', 0.0),
+            'sum_paid_amount': bundle.get('sum_paid_amount', 0.0),
+        },
+        'class_summaries': summaries,
+    }
 
 
 def _build_class_exam_performance_bundle(cursor, lev, term_id=None, academic_year_id=None):

@@ -81,17 +81,8 @@
 {% block content %}
 {% set staff_label = 'teacher' if filter_role == 'teachers' else 'employee' %}
 {% set staff_label_plural = staff_label ~ 's' %}
-{% set ns = namespace(active=0, pending=0, suspended=0, other=0) %}
-{% for e in employees %}
-  {% set st = (e.status or '')|lower %}
-  {% if st == 'active' %}{% set ns.active = ns.active + 1 %}
-  {% elif st in ['pending', 'pending approval'] %}{% set ns.pending = ns.pending + 1 %}
-  {% elif st == 'suspended' %}{% set ns.suspended = ns.suspended + 1 %}
-  {% else %}{% set ns.other = ns.other + 1 %}
-  {% endif %}
-{% endfor %}
 
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="staffManagement()" x-init="init()">
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="staffManagement()" x-init="init(); initStaffList()">
 
     <!-- Hero -->
     <div class="page-hero mb-6 sm:mb-8">
@@ -165,26 +156,26 @@
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Search, filter by status, and manage records in one view.</p>
             </div>
             <p class="text-xs text-gray-500 dark:text-gray-400 sm:text-right">
-                <span class="font-semibold text-gray-700 dark:text-gray-300">{{ employees|length }}</span> {{ staff_label_plural }} on file
+                <span id="staff-on-file-count" class="font-semibold text-gray-700 dark:text-gray-300">—</span> {{ staff_label_plural }} on file
             </p>
         </div>
         <div class="grid lg:grid-cols-12 lg:divide-x lg:divide-gray-100 dark:lg:divide-gray-700">
             <div class="lg:col-span-4 grid grid-cols-2 border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
                 <div class="staff-mini-stat border-r border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
                     <p class="staff-mini-stat__label">Total</p>
-                    <p class="staff-mini-stat__value text-gray-900 dark:text-white">{{ employees|length }}</p>
+                    <p id="staff-stat-total" class="staff-mini-stat__value text-gray-900 dark:text-white">—</p>
                 </div>
                 <div class="staff-mini-stat border-b border-gray-100 dark:border-gray-700 lg:border-b-0">
                     <p class="staff-mini-stat__label">Active</p>
-                    <p class="staff-mini-stat__value text-green-700 dark:text-green-400">{{ ns.active }}</p>
+                    <p id="staff-stat-active" class="staff-mini-stat__value text-green-700 dark:text-green-400">—</p>
                 </div>
                 <div class="staff-mini-stat border-r border-gray-100 dark:border-gray-700">
                     <p class="staff-mini-stat__label">Pending</p>
-                    <p class="staff-mini-stat__value text-amber-700 dark:text-amber-400">{{ ns.pending }}</p>
+                    <p id="staff-stat-pending" class="staff-mini-stat__value text-amber-700 dark:text-amber-400">—</p>
                 </div>
                 <div class="staff-mini-stat">
                     <p class="staff-mini-stat__label">Suspended</p>
-                    <p class="staff-mini-stat__value text-red-700 dark:text-red-400">{{ ns.suspended }}</p>
+                    <p id="staff-stat-suspended" class="staff-mini-stat__value text-red-700 dark:text-red-400">—</p>
                 </div>
             </div>
             <div class="lg:col-span-8 p-4 sm:p-5">
@@ -193,6 +184,7 @@
                         <i class="fas fa-search text-sm"></i>
                         <input type="search"
                                x-model="searchQuery"
+                               @input.debounce.350ms="staffFetchList(1)"
                                placeholder="Search by name, email, staff #, or portal ID…"
                                autocomplete="off"
                                aria-label="Search staff">
@@ -200,29 +192,38 @@
                     <div>
                         <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Status</p>
                         <div class="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-                            <button type="button" @click="statusFilter = 'all'"
+                            <button type="button" @click="statusFilter = 'all'; staffFetchList(1)"
                                     :class="statusFilter === 'all' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">
-                                All <span class="opacity-80" x-text="'(' + visibleCount + ')'"></span>
+                                All <span class="opacity-80" x-text="'(' + (totalCount || 0) + ')'"></span>
                             </button>
-                            <button type="button" @click="statusFilter = 'active'"
+                            <button type="button" @click="statusFilter = 'active'; staffFetchList(1)"
                                     :class="statusFilter === 'active' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Active</button>
-                            <button type="button" @click="statusFilter = 'pending'"
+                            <button type="button" @click="statusFilter = 'pending'; staffFetchList(1)"
                                     :class="statusFilter === 'pending' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Pending</button>
-                            <button type="button" @click="statusFilter = 'suspended'"
+                            <button type="button" @click="statusFilter = 'suspended'; staffFetchList(1)"
                                     :class="statusFilter === 'suspended' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Suspended</button>
-                            <button type="button" @click="statusFilter = 'other'"
+                            <button type="button" @click="statusFilter = 'other'; staffFetchList(1)"
                                     :class="statusFilter === 'other' ? 'staff-filter-chip staff-filter-chip--active' : 'staff-filter-chip'">Other</button>
                         </div>
                     </div>
                 </div>
-                <p x-show="searchQuery.trim() || statusFilter !== 'all'" x-cloak class="mt-4 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
-                    Showing <span class="font-semibold text-gray-700 dark:text-gray-300" x-text="visibleCount"></span> of {{ employees|length }} {{ staff_label_plural }}
+                <p x-show="listLoading" x-cloak class="mt-4 text-xs text-gray-500">Loading…</p>
+                <p x-show="!listLoading && totalCount > 0" class="mt-4 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-100 dark:border-gray-700 pt-3">
+                    Page <span x-text="page"></span> of <span x-text="pages"></span> · <span x-text="totalCount"></span> {{ staff_label_plural }} total
                 </p>
             </div>
         </div>
     </section>
 
-    {% if employees %}
+    <div id="staff-pagination-bar" class="hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <p id="staff-page-hint" class="text-xs text-gray-500"></p>
+        <div class="flex gap-2">
+            <button type="button" id="staff-prev-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40">Previous</button>
+            <button type="button" id="staff-next-page" class="touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 disabled:opacity-40">Next</button>
+        </div>
+    </div>
+
+    <div>
     <!-- Desktop table -->
     <div class="hidden md:block modern-card staff-directory-card mb-6">
         <div class="table-responsive-wrapper">
@@ -239,227 +240,19 @@
                         <th class="text-right w-[1%] whitespace-nowrap">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for employee in employees %}
-                    {% set role_list = employee.allocated_roles if employee.allocated_roles else [employee.role] %}
-                    {% set st_norm = (employee.status or '')|lower %}
-                    {% set is_self = (current_user_employee_pk is defined and current_user_employee_pk is not none and employee.id == current_user_employee_pk) %}
-                    {% set ca = employee.created_at %}
-                    <tr id="employee-row-{{ employee.id }}"
-                        data-employee-id="{{ employee.id }}"
-                        x-show="matchesEmployee({{ employee.full_name|tojson }}, {{ (employee.email or '')|tojson }}, {{ (employee.employee_id or '')|tojson }}, {{ (employee.staff_employee_number|string if employee.staff_employee_number is not none else employee.id|string)|tojson }}, {{ st_norm|tojson }})"
-                        x-transition.opacity.duration.150ms>
-                        <td>
-                            <div class="flex items-center gap-3 min-w-0">
-                                <div class="staff-avatar">
-                                    {% if employee.get('profile_picture') %}
-                                    <img src="{{ url_for('static', filename=employee.profile_picture) }}" alt="" class="w-full h-full object-cover">
-                                    {% else %}
-                                    <i class="fas fa-user text-white text-sm"></i>
-                                    {% endif %}
-                                </div>
-                                <div class="min-w-0">
-                                    <p class="font-semibold text-gray-900 dark:text-white truncate max-w-[200px] lg:max-w-[220px]">{{ employee.full_name }}</p>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px] lg:max-w-[220px]">{{ employee.email }}</p>
-                                    {% if role_list and role_list[0] %}
-                                    <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 capitalize truncate max-w-[200px] lg:max-w-[220px]">Primary: {{ role_list[0] }}</p>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </td>
-                        <td><span class="font-mono text-sm text-gray-800 dark:text-gray-200">{{ employee.staff_employee_number | default(employee.id|string, true) }}</span></td>
-                        <td><span class="font-mono text-sm text-gray-600 dark:text-gray-400">{{ employee.employee_id or '—' }}</span></td>
-                        <td><span class="text-sm text-gray-600 dark:text-gray-400">{{ employee.phone or '—' }}</span></td>
-                        <td>
-                            <div class="flex flex-wrap gap-1 max-w-[180px]">
-                                {% for r in role_list[:2] %}
-                                <span class="modern-badge bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 capitalize">{{ r }}</span>
-                                {% endfor %}
-                                {% if role_list|length > 2 %}
-                                <span class="modern-badge bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">+{{ role_list|length - 2 }}</span>
-                                {% endif %}
-                            </div>
-                        </td>
-                        <td>
-                            {% if st_norm == 'active' %}
-                            <span class="staff-status-pill bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300" id="status-{{ employee.id }}">Active</span>
-                            {% elif st_norm in ['pending', 'pending approval'] %}
-                            <span class="staff-status-pill bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300" id="status-{{ employee.id }}">Pending</span>
-                            {% elif st_norm == 'suspended' %}
-                            <span class="staff-status-pill bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300" id="status-{{ employee.id }}">Suspended</span>
-                            {% elif st_norm == 'fired' %}
-                            <span class="staff-status-pill bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300" id="status-{{ employee.id }}">Fired</span>
-                            {% elif st_norm == 'retired' %}
-                            <span class="staff-status-pill bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300" id="status-{{ employee.id }}">Retired</span>
-                            {% else %}
-                            <span class="staff-status-pill bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300" id="status-{{ employee.id }}">{{ employee.status|title }}</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                            {% if ca %}
-                                {% if ca is string %}
-                                    {{ ca[:10] }}
-                                {% else %}
-                                    {{ ca.strftime('%d %b %Y') }}
-                                {% endif %}
-                            {% else %}—{% endif %}
-                        </td>
-                        <td>
-                            <div class="flex items-center justify-end gap-0.5 flex-nowrap">
-                                {% if can_edit|default(true) %}
-                                <button type="button" @click="openEditModal({{ employee.id }})"
-                                        class="staff-action-icon-btn text-blue-600 dark:text-blue-400"
-                                        title="Edit" aria-label="Edit {{ employee.full_name }}">
-                                    <i class="fas fa-pen"></i>
-                                </button>
-                                {% endif %}
-                                {% if can_delete|default(false) and not is_self %}
-                                <button type="button" @click="openDeleteModal({{ employee.id }}, {{ employee.full_name|tojson }})"
-                                        class="staff-action-icon-btn text-red-600 dark:text-red-400"
-                                        title="Delete employee" aria-label="Delete {{ employee.full_name }}">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                                {% elif can_delete|default(false) and is_self %}
-                                <span class="staff-action-icon-btn text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-60" title="You cannot delete your own account">
-                                    <i class="fas fa-trash-alt"></i>
-                                </span>
-                                {% endif %}
-                                {% if employee.status != 'fired' and employee.status != 'retired' and can_edit|default(true) %}
-                                <label class="staff-action-icon-btn cursor-pointer {% if st_norm == 'suspended' %}text-red-500{% else %}text-gray-400{% endif %}" title="Suspend">
-                                    <input type="checkbox" class="sr-only"
-                                           :checked="{{ 'true' if st_norm == 'suspended' else 'false' }}"
-                                           @change="toggleSuspend({{ employee.id }})">
-                                    <i class="fas fa-pause-circle"></i>
-                                </label>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                <tbody></tbody>
             </table>
         </div>
     </div>
 
     <!-- Mobile cards -->
-    <div class="md:hidden space-y-3 mb-6">
-        {% for employee in employees %}
-        {% set role_list = employee.allocated_roles if employee.allocated_roles else [employee.role] %}
-        {% set st_norm = (employee.status or '')|lower %}
-        {% set is_self = (current_user_employee_pk is defined and current_user_employee_pk is not none and employee.id == current_user_employee_pk) %}
-        {% set ca = employee.created_at %}
-        <article id="employee-{{ employee.id }}"
-                 class="staff-mobile-card"
-                 x-show="matchesEmployee({{ employee.full_name|tojson }}, {{ (employee.email or '')|tojson }}, {{ (employee.employee_id or '')|tojson }}, {{ (employee.staff_employee_number|string if employee.staff_employee_number is not none else employee.id|string)|tojson }}, {{ st_norm|tojson }})"
-                 x-transition.opacity.duration.150ms>
-            <div class="flex items-start gap-3">
-                <div class="staff-avatar">
-                    {% if employee.get('profile_picture') %}
-                    <img src="{{ url_for('static', filename=employee.profile_picture) }}" alt="" class="w-full h-full object-cover">
-                    {% else %}
-                    <i class="fas fa-user text-white"></i>
-                    {% endif %}
-                </div>
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-start justify-between gap-2">
-                        <p class="font-semibold text-gray-900 dark:text-white truncate">{{ employee.full_name }}</p>
-                        {% if st_norm == 'active' %}
-                        <span class="staff-status-pill bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 flex-shrink-0">Active</span>
-                        {% elif st_norm in ['pending', 'pending approval'] %}
-                        <span class="staff-status-pill bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 flex-shrink-0">Pending</span>
-                        {% elif st_norm == 'suspended' %}
-                        <span class="staff-status-pill bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 flex-shrink-0">Suspended</span>
-                        {% else %}
-                        <span class="staff-status-pill bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 flex-shrink-0">{{ employee.status|title }}</span>
-                        {% endif %}
-                    </div>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{{ employee.email }}</p>
-                    <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                        <div>
-                            <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Staff #</dt>
-                            <dd class="font-mono text-gray-800 dark:text-gray-200 mt-0.5">{{ employee.staff_employee_number | default(employee.id|string, true) }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Portal ID</dt>
-                            <dd class="font-mono text-gray-800 dark:text-gray-200 mt-0.5">{{ employee.employee_id or '—' }}</dd>
-                        </div>
-                        <div>
-                            <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Joined</dt>
-                            <dd class="text-gray-800 dark:text-gray-200 mt-0.5">
-                                {% if ca %}
-                                    {% if ca is string %}{{ ca[:10] }}{% else %}{{ ca.strftime('%d %b %Y') }}{% endif %}
-                                {% else %}—{% endif %}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt class="text-gray-400 dark:text-gray-500 uppercase tracking-wide font-semibold">Phone</dt>
-                            <dd class="text-gray-700 dark:text-gray-300 mt-0.5">{{ employee.phone or '—' }}</dd>
-                        </div>
-                    </dl>
-                    <div class="flex flex-wrap gap-1.5 mt-3">
-                        {% for r in role_list %}
-                        <span class="modern-badge bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 capitalize">{{ r }}</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                {% if can_edit|default(true) %}
-                <button type="button" @click="openEditModal({{ employee.id }})"
-                        class="touch-btn flex-1 min-w-[7rem] text-sm font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/25 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">
-                    <i class="fas fa-pen mr-1.5"></i>Edit
-                </button>
-                {% endif %}
-                {% if can_delete|default(false) and not is_self %}
-                <button type="button" @click="openDeleteModal({{ employee.id }}, {{ employee.full_name|tojson }})"
-                        class="touch-btn flex-1 min-w-[7rem] text-sm font-semibold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/25 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
-                    <i class="fas fa-trash-alt mr-1.5"></i>Delete
-                </button>
-                {% elif can_delete|default(false) and is_self %}
-                <span class="touch-btn flex-1 min-w-[7rem] text-sm font-semibold text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg cursor-not-allowed text-center py-2.5" title="You cannot delete your own account">Delete</span>
-                {% endif %}
-                {% if employee.status != 'fired' and employee.status != 'retired' and can_edit|default(true) %}
-                <label class="touch-btn flex-1 min-w-[7rem] inline-flex items-center justify-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer">
-                    <input type="checkbox" class="sr-only"
-                           :checked="{{ 'true' if st_norm == 'suspended' else 'false' }}"
-                           @change="toggleSuspend({{ employee.id }})">
-                    <i class="fas fa-pause-circle {% if st_norm == 'suspended' %}text-red-500{% else %}text-gray-400{% endif %}"></i>
-                    <span>Suspend</span>
-                </label>
-                {% endif %}
-            </div>
-        </article>
-        {% endfor %}
-    </div>
+    <div id="staff-mobile-list" class="md:hidden space-y-3 mb-6"></div>
 
-    <!-- No filter matches -->
-    <div x-show="visibleCount === 0" x-cloak class="modern-card empty-state mb-6">
-        <div class="empty-state-icon">
-            <i class="fas fa-search text-2xl text-gray-400"></i>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">No matches found</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto">Try a different search term or clear your status filter.</p>
-        <button type="button" @click="searchQuery = ''; statusFilter = 'all'"
-                class="touch-btn mt-4 px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold text-sm">
-            Clear filters
-        </button>
+    <div x-show="!listLoading && totalCount === 0" x-cloak class="modern-card empty-state mb-6">
+        <div class="empty-state-icon"><i class="fas fa-users text-2xl text-gray-400"></i></div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">No {{ staff_label_plural }} found</h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400">Try another search or status filter.</p>
     </div>
-
-    {% else %}
-    <div class="modern-card empty-state">
-        <div class="empty-state-icon">
-            <i class="fas fa-users text-2xl text-gray-400"></i>
-        </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">No {{ staff_label_plural }} yet</h3>
-        <p class="text-sm text-gray-500 dark:text-gray-400">When staff register or are added, they will appear in this directory.</p>
-        {% if filter_role != 'teachers' %}
-        <a href="{{ employee_dash_url('assign-roles-approve') }}"
-           class="touch-btn inline-flex mt-4 px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold text-sm">
-            <i class="fas fa-user-check mr-2"></i>Review pending approvals
-        </a>
-        {% endif %}
-    </div>
-    {% endif %}
 
     <!-- Delete confirmation -->
     <div x-show="deleteModal.open"
@@ -636,22 +429,37 @@
 
 <script>
 const _staffEmpPrefix = {{ employee_dash_url()|tojson }};
+const _staffTeachersOnly = {{ (filter_role == 'teachers')|tojson }};
+const _staffCurrentPk = {{ current_user_employee_pk|tojson }};
+const _staffCanEdit = {{ (can_edit|default(true))|tojson }};
+const _staffCanDelete = {{ (can_delete|default(false))|tojson }};
+window.staffOpenEdit = function (id) {
+    var root = document.querySelector('[x-data*="staffManagement"]');
+    if (root && root._x_dataStack && root._x_dataStack[0]) root._x_dataStack[0].openEditModal(id);
+};
+window.staffOpenDelete = function (id, name) {
+    var root = document.querySelector('[x-data*="staffManagement"]');
+    if (root && root._x_dataStack && root._x_dataStack[0]) root._x_dataStack[0].openDeleteModal(id, name);
+};
+window.staffToggleSuspend = function (id) {
+    var root = document.querySelector('[x-data*="staffManagement"]');
+    if (root && root._x_dataStack && root._x_dataStack[0]) root._x_dataStack[0].toggleSuspend(id);
+};
 function staffManagement() {
     return {
         searchQuery: '',
         statusFilter: 'all',
-        employeeRows: [
-            {% for employee in employees %}
-            {
-                id: {{ employee.id }},
-                name: {{ employee.full_name|tojson }},
-                email: {{ (employee.email or '')|tojson }},
-                portalId: {{ (employee.employee_id or '')|tojson }},
-                staffNum: {{ (employee.staff_employee_number|string if employee.staff_employee_number is not none else employee.id|string)|tojson }},
-                status: {{ (employee.status or '')|lower|tojson }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ],
+        employeesList: [],
+        stats: { total: 0, active: 0, pending: 0, suspended: 0, other: 0 },
+        page: 1,
+        pages: 1,
+        totalCount: 0,
+        listLoading: false,
+        visibleCount: 0,
+        initStaffList() {},
+        staffFetchList(page) {
+            if (typeof window.staffFetchList === 'function') window.staffFetchList(page);
+        },
         message: { show: false, text: '', type: 'success' },
         staffNumberCheck: { status: 'idle', message: '' },
         _staffNumberDebounce: null,
@@ -670,12 +478,6 @@ function staffManagement() {
             }
         },
         deleteModal: { open: false, id: null, name: '', confirmText: '', loading: false },
-
-        get visibleCount() {
-            return this.employeeRows.filter((row) =>
-                this.matchesEmployee(row.name, row.email, row.portalId, row.staffNum, row.status)
-            ).length;
-        },
 
         init() {
             this.$watch('editModal.open', (open) => {
@@ -837,7 +639,10 @@ function staffManagement() {
                 if (result.success) {
                     this.showMessage(result.message, 'success');
                     this.editModal.open = false;
-                    setTimeout(() => window.location.reload(), 1000);
+                    if (typeof window.staffFetchList === 'function') {
+                        window.staffFetchStats();
+                        window.staffFetchList(this.page || 1);
+                    }
                 } else {
                     this.showMessage(result.message || 'Failed to update employee', 'error');
                 }
@@ -909,7 +714,10 @@ function staffManagement() {
                     setTimeout(() => el.remove(), 300);
                 }
             });
-            this.employeeRows = this.employeeRows.filter((r) => r.id !== employeeId);
+            if (typeof window.staffFetchList === 'function') {
+                window.staffFetchStats();
+                window.staffFetchList(this.page || 1);
+            }
         },
 
         async toggleSuspend(employeeId) {
@@ -918,18 +726,22 @@ function staffManagement() {
                 const result = await response.json();
                 if (result.success) {
                     this.showMessage(result.message, 'success');
-                    setTimeout(() => window.location.reload(), 1000);
+                    if (typeof window.staffFetchList === 'function') {
+                        window.staffFetchStats();
+                        window.staffFetchList(this.page || 1);
+                    }
                 } else {
                     this.showMessage(result.message || 'Failed to update employee status', 'error');
-                    setTimeout(() => window.location.reload(), 1000);
                 }
             } catch (error) {
                 console.error('Error toggling suspend:', error);
                 this.showMessage('Error updating employee status', 'error');
-                setTimeout(() => window.location.reload(), 1000);
             }
         }
     };
 }
+</script>
+<script>
+{% include 'dashboards/includes/staff_management_loader.js' %}
 </script>
 {% endblock %}

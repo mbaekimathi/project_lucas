@@ -7,6 +7,11 @@
   'setupUrlZero': url_for('books_inventory_setup', book_id=0),
   'catalogFilter': catalog_filter|default('all'),
   'inventoryView': inventory_view|default('catalog'),
+  'booksApi': employee_dash_url('books-inventory/books'),
+  'bookApiZero': employee_dash_url('books-inventory/books/0'),
+  'stockLinesApi': employee_dash_url('books-inventory/stock-lines'),
+  'stockStatsApi': employee_dash_url('books-inventory/stock-stats'),
+  'stockInRecordsApi': employee_dash_url('books-inventory/stock-in-records'),
   'stockSupplierLookupUrl': employee_dash_url('books-inventory/supplier-lookup'),
   'stockInUrl': employee_dash_url('books-inventory/stock-in'),
   'stockOutUrl': employee_dash_url('books-inventory/stock-out'),
@@ -30,6 +35,17 @@
     return {
       byCategory: {},
       registeredBooks: [],
+      configuredCount: 0,
+      stockLinesLoading: false,
+      stockInRecordsLoading: false,
+      stockInPage: 1,
+      stockInPages: 1,
+      stockInTotal: 0,
+      booksApi: cfg.booksApi || '',
+      bookApiZero: cfg.bookApiZero || '',
+      stockLinesApi: cfg.stockLinesApi || '',
+      stockStatsApi: cfg.stockStatsApi || '',
+      stockInRecordsApi: cfg.stockInRecordsApi || '',
       inventoryPostUrl: cfg.inventoryPostUrl || '',
       inventoryBaseUrl: cfg.inventoryBaseUrl || '',
       editModalOpen: false,
@@ -122,18 +138,9 @@
         } catch (e2) {
           this.registeredBooks = [];
         }
-        if (!this.registeredBooks.length) {
-          var rowNodes = document.querySelectorAll('[data-book-row]');
-          var fromDom = [];
-          rowNodes.forEach(function (el) {
-            var raw = el.getAttribute('data-book-row');
-            if (!raw) return;
-            try {
-              var r = JSON.parse(raw);
-              if (r && r.id != null) fromDom.push(r);
-            } catch (eDom) {}
-          });
-          if (fromDom.length) this.registeredBooks = fromDom;
+        if (this.inventoryView === 'stock') {
+          this.fetchStockStats();
+          this.fetchStockInRecords(1);
         }
         var levEl = document.getElementById('inventory-academic-levels');
         try {
@@ -147,10 +154,14 @@
         } catch (e4) {
           this.libraryLevelAllocationSummary = [];
         }
-        var stockLinesEl = document.getElementById('library-stock-lines');
-        try {
-          this.stockLines = stockLinesEl && stockLinesEl.textContent ? JSON.parse(stockLinesEl.textContent) : [];
-        } catch (e5) {
+        if (this.inventoryView !== 'stock') {
+          var stockLinesEl = document.getElementById('library-stock-lines');
+          try {
+            this.stockLines = stockLinesEl && stockLinesEl.textContent ? JSON.parse(stockLinesEl.textContent) : [];
+          } catch (e5) {
+            this.stockLines = [];
+          }
+        } else {
           this.stockLines = [];
         }
         var stockMovEl = document.getElementById('library-stock-movements');
@@ -159,12 +170,32 @@
         } catch (e6) {
           this.stockMovementsRecent = [];
         }
-        var stockInRecEl = document.getElementById('library-stock-in-records');
-        try {
-          this.stockInRecords = stockInRecEl && stockInRecEl.textContent ? JSON.parse(stockInRecEl.textContent) : [];
-        } catch (e6b) {
+        if (this.inventoryView !== 'stock') {
+          var stockInRecEl = document.getElementById('library-stock-in-records');
+          try {
+            this.stockInRecords = stockInRecEl && stockInRecEl.textContent ? JSON.parse(stockInRecEl.textContent) : [];
+          } catch (e6b) {
+            this.stockInRecords = [];
+          }
+        } else {
           this.stockInRecords = [];
         }
+        this.$watch('stockLevelId', function () {
+          this.stockBookKey = '';
+          this.fetchStockLinesForLevel();
+        });
+        this.$watch('stockSubjectId', function () {
+          this.stockBookKey = '';
+          if (this.stockPageMode === 'in') this.fetchStockLinesForLevel();
+        });
+        var stockInSearchTimer;
+        this.$watch('stockInListSearch', function () {
+          var self = this;
+          clearTimeout(stockInSearchTimer);
+          stockInSearchTimer = setTimeout(function () {
+            self.fetchStockInRecords(1);
+          }, 350);
+        });
         var lastInEl = document.getElementById('last-stock-in-labels');
         try {
           this.lastStockInLabels = lastInEl && lastInEl.textContent ? JSON.parse(lastInEl.textContent) : null;
@@ -377,21 +408,115 @@
           if (pnl) pnl.focus();
         }.bind(this));
       },
-      findBookRow: function (id) {
+      fetchStockStats: function () {
+        var self = this;
+        if (!this.stockStatsApi) return;
+        fetch(this.stockStatsApi, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.success) {
+              self.configuredCount = data.configured_count || 0;
+            }
+          })
+          .catch(function () {});
+      },
+      fetchStockLinesForLevel: function () {
+        var self = this;
+        var lid = String(this.stockLevelId || '');
+        if (!lid || !this.stockLinesApi) {
+          this.stockLines = [];
+          return;
+        }
+        this.stockLinesLoading = true;
+        var url = this.stockLinesApi + '?level_id=' + encodeURIComponent(lid);
+        if (this.stockPageMode === 'in' && this.stockSubjectId) {
+          url += '&subject_id=' + encodeURIComponent(String(this.stockSubjectId));
+        }
+        fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.stockLinesLoading = false;
+            self.stockLines = (data && data.success && data.lines) ? data.lines : [];
+          })
+          .catch(function () {
+            self.stockLinesLoading = false;
+            self.stockLines = [];
+          });
+      },
+      fetchStockInRecords: function (page) {
+        var self = this;
+        if (!this.stockInRecordsApi) return;
+        this.stockInRecordsLoading = true;
+        var p = new URLSearchParams();
+        p.set('page', String(page || 1));
+        p.set('per_page', '50');
+        var q = (this.stockInListSearch || '').trim();
+        if (q) p.set('q', q);
+        fetch(this.stockInRecordsApi + '?' + p.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.stockInRecordsLoading = false;
+            if (data && data.success) {
+              self.stockInRecords = data.records || [];
+              var meta = data.meta || {};
+              self.stockInPage = meta.page || 1;
+              self.stockInPages = meta.pages || 1;
+              self.stockInTotal = meta.total || 0;
+            }
+          })
+          .catch(function () {
+            self.stockInRecordsLoading = false;
+          });
+      },
+      findBookRow: function (id, callback) {
         var sid = String(id);
         var row = (this.registeredBooks || []).find(function (x) { return String(x.id) === sid; });
-        if (row) return row;
+        if (row) {
+          if (callback) callback(row);
+          return row;
+        }
         var el = document.querySelector('[data-book-row-id="' + sid + '"]');
         if (el) {
           var raw = el.getAttribute('data-book-row');
           if (raw) {
-            try { return JSON.parse(raw); } catch (e) {}
+            try {
+              row = JSON.parse(raw);
+              if (row) {
+                if (callback) callback(row);
+                return row;
+              }
+            } catch (e) {}
           }
         }
+        if (!this.bookApiZero) {
+          if (callback) callback(null);
+          return null;
+        }
+        var url = this.bookApiZero.replace('/0', '/' + encodeURIComponent(sid));
+        var self = this;
+        fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data && data.success && data.book) {
+              var b = data.book;
+              var exists = (self.registeredBooks || []).some(function (x) {
+                return String(x.id) === String(b.id);
+              });
+              if (!exists) self.registeredBooks = (self.registeredBooks || []).concat([b]);
+              if (callback) callback(b);
+            } else if (callback) callback(null);
+          })
+          .catch(function () { if (callback) callback(null); });
         return null;
       },
       openSetupModalFromId: function (id) {
-        var row = this.findBookRow(id);
+        var self = this;
+        var row = this.findBookRow(id, function (b) {
+          if (b) self.openSetupModal(b);
+        });
         if (row) {
           this.openSetupModal(row);
           return;
@@ -565,6 +690,12 @@
           );
         }
       },
+      stockLevelOptions: function () {
+        if (this.inventoryView === 'stock' && (this.allInventoryLevels || []).length) {
+          return this.allInventoryLevels;
+        }
+        return this.stockActiveLevels();
+      },
       stockActiveLevels: function () {
         var seen = {};
         var out = [];
@@ -648,6 +779,9 @@
           });
       },
       configuredBooksCount: function () {
+        if (this.inventoryView === 'stock') {
+          return this.configuredCount || 0;
+        }
         return (this.registeredBooks || []).filter(function (b) {
           return b && !b.needs_setup;
         }).length;
@@ -704,6 +838,9 @@
         this.lastStockOutLabels = null;
       },
       filteredStockInRecords: function () {
+        if (this.inventoryView === 'stock') {
+          return this.stockInRecords || [];
+        }
         var q = (this.stockInListSearch || '').trim().toUpperCase();
         var list = this.stockInRecords || [];
         if (!q) return list;
@@ -1271,21 +1408,29 @@
                     <input type="hidden" name="academic_level_id" :value="stockHiddenLevelId()" />
                     <input type="hidden" name="stock_subject_id" :value="stockPageMode === 'in' ? stockSubjectId : ''" />
                     <p class="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
-                       x-show="!stockLines.length && !configuredBooksCount()">
+                       x-show="!configuredBooksCount()">
                         No books ready to allocate yet. Complete <strong>Needs setup</strong> in the catalog (academic category and subject) first.
                     </p>
+                    <p class="rounded-xl border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-100"
+                       x-show="configuredBooksCount() && !stockLevelId" x-cloak>
+                        Select an <strong>academic level</strong> below. Books for that class load when you pick the level (not all classes at once).
+                    </p>
+                    <p class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+                       x-show="stockLevelId && stockLinesLoading" x-cloak>
+                        <i class="fas fa-spinner fa-spin mr-1"></i> Loading books for this class…
+                    </p>
                     <p class="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
-                       x-show="!stockLines.length && configuredBooksCount()" x-cloak>
-                        No class levels match your configured books yet. Link each book's subject to classes under <strong>Subject &amp; Class Allocation</strong>, using the same academic category as the book.
+                       x-show="stockLevelId && !stockLinesLoading && !stockLines.length && configuredBooksCount()" x-cloak>
+                        No books match this class and subject. Check <strong>Subject &amp; Class Allocation</strong> and that the book uses the same academic category as the class.
                     </p>
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
                             <label for="stock_page_level" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Academic level</label>
-                            <select id="stock_page_level" x-model="stockLevelId" required :disabled="!stockLines.length"
+                            <select id="stock_page_level" x-model="stockLevelId" required
                                     @change="loadStockSubjectsForLevel(stockLevelId)"
                                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
                                 <option value="">Select level</option>
-                                <template x-for="lvl in stockActiveLevels()" :key="lvl.id">
+                                <template x-for="lvl in stockLevelOptions()" :key="lvl.id">
                                     <option :value="String(lvl.id)" x-text="(lvl.level_category || '') + ' Â· ' + (lvl.level_name || '')"></option>
                                 </template>
                             </select>
@@ -1400,7 +1545,7 @@
                     <div class="flex flex-wrap gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
                         <button type="submit"
                                 class="inline-flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 sm:flex-none uppercase tracking-wide"
-                                :disabled="!stockLines.length">
+                                :disabled="!stockBookKey || stockLinesLoading">
                             <i class="fas fa-school"></i>
                             <span>Confirm allocate to class</span>
                         </button>
@@ -1539,6 +1684,24 @@
                             </li>
                         </template>
                     </ul>
+                    <nav class="flex flex-wrap items-center justify-between gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-800"
+                         x-show="stockInPages > 1" x-cloak>
+                        <p class="text-xs text-gray-500">
+                            Page <span x-text="stockInPage"></span> of <span x-text="stockInPages"></span>
+                            · <span x-text="stockInTotal"></span> allocation(s)
+                        </p>
+                        <div class="flex gap-2">
+                            <button type="button" class="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                                    :disabled="stockInRecordsLoading || stockInPage <= 1"
+                                    @click="fetchStockInRecords(stockInPage - 1)">Previous</button>
+                            <button type="button" class="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                                    :disabled="stockInRecordsLoading || stockInPage >= stockInPages"
+                                    @click="fetchStockInRecords(stockInPage + 1)">Next</button>
+                        </div>
+                    </nav>
+                    <p x-show="stockInRecordsLoading" class="text-center text-xs text-gray-500 py-4">
+                        <i class="fas fa-spinner fa-spin"></i> Loading allocations…
+                    </p>
                 </div>
             </div>
         </section>

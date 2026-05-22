@@ -7,7 +7,13 @@
 
     {% include 'dashboards/_attendance_register_analytics_partial.html' %}
 
-    {% if students_by_level %}
+    {% if not selected_class_level|default('', true) and not is_parent_view|default(false) %}
+    <div class="modern-card p-8 text-center text-gray-600 dark:text-gray-400">
+        <i class="fas fa-graduation-cap text-3xl text-gray-300 mb-3"></i>
+        <p class="font-medium text-gray-800 dark:text-gray-200">Select a class to open the register</p>
+        <p class="text-sm mt-1 max-w-md mx-auto">Students load 50 per page. Choose class, term, and dates above, then click Apply filters.</p>
+    </div>
+    {% elif students_by_level %}
     {% if selected_week_days %}
     {% if is_parent_view|default(false) %}
     <div id="attendance-form">
@@ -64,7 +70,7 @@
                         <i class="fas fa-graduation-cap mr-2"></i>
                         {{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}
                     </span>
-                    <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
+                    <span class="text-white/90 text-sm font-normal">{% set am = attendance_list_meta|default({}) %}{% if am.total %}{{ am.total }} total · page {{ am.page }}/{{ am.pages }}{% else %}{{ level_group.students|length }} on page{% endif %}</span>
                 </h2>
             </div>
             {% if use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length == 0 %}
@@ -148,6 +154,20 @@
         </div>
         {% endfor %}
     </div>
+        {% set am = attendance_list_meta|default({}) %}
+        {% if am.pages and am.pages > 1 %}
+        <nav class="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4 px-2" id="att-page-nav" aria-label="Student pages">
+            <p class="text-xs text-gray-500">Page {{ am.page }} of {{ am.pages }} · {{ am.total }} students in class</p>
+            <div class="flex gap-2">
+                {% if am.page > 1 %}
+                <button type="button" class="att-page-btn touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600" data-att-page="{{ am.page - 1 }}">Previous</button>
+                {% endif %}
+                {% if am.page < am.pages %}
+                <button type="button" class="att-page-btn touch-btn px-3 py-2 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-600" data-att-page="{{ am.page + 1 }}">Next</button>
+                {% endif %}
+            </div>
+        </nav>
+        {% endif %}
         {% if not is_parent_view|default(false) %}
         <div class="mt-4 text-xs text-gray-500 dark:text-gray-400">
             <i class="fas fa-info-circle mr-1" aria-hidden="true"></i>
