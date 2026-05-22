@@ -302,9 +302,34 @@
         vertical-align: middle !important;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-mark {
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade {
+        display: inline-flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 2px 4px;
+        line-height: 1.2;
+        min-width: 0;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
+        opacity: 0.55;
+        font-weight: 600;
+        font-size: 0.75em;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-pct {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    #ar-preview-wrap table.ar-marks-matrix .ar-subj-mark-grade .ar-subj-grd {
+        font-size: 0.82em;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
     }
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-sum,
     #ar-preview-wrap table.ar-marks-matrix tbody td.ar-col-grade {
@@ -1043,6 +1068,11 @@
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-mark {
         max-width: none !important;
         width: auto !important;
+        white-space: normal !important;
+    }
+    html.ar-print-marks-matrix #ar-preview-wrap .ar-subj-mark-grade .ar-subj-grd {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
     }
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix .ar-col-grade,
     html.ar-print-marks-matrix #ar-preview-wrap table.ar-marks-matrix col.ar-col-grade {
@@ -1210,8 +1240,31 @@
     box-sizing: border-box;
 }
 #ar-details-list .ar-marks-matrix tbody td.ar-col-mark {
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade {
+    display: inline-flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 2px 4px;
+    line-height: 1.2;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-sep {
+    opacity: 0.55;
+    font-weight: 600;
+    font-size: 0.75em;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-pct {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+#ar-details-list .ar-marks-matrix .ar-subj-mark-grade .ar-subj-grd {
+    font-size: 0.82em;
+    font-weight: 700;
 }
 #ar-details-list .ar-marks-matrix .ar-col-mark,
 #ar-details-list .ar-marks-matrix .ar-col-sum,
@@ -2574,7 +2627,7 @@
       label: 'Exams',
       hint: 'Select a class/level (required for most performance reports). Academic year and term narrow results.',
       reports: [
-        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: subject marks on a 0–100 scale (raw ÷ exam total × 100 from Exam subject settings); grade allocation points from the row mean (Grades Registration). Spreadsheet export adds class subject means and class mean total at the bottom (no per-student mean column).' },
+        { id: 'exam_all_students_performance', label: 'All students performance', desc: 'Every student in the class: each subject column shows scaled mark % and grade code together (Grades Registration), on screen, PDF, and spreadsheet (e.g. 85 EE22). Footer rows show class subject means the same way.' },
         { id: 'exam_individual_performance', label: 'Individual student performance', desc: 'One student’s scaled marks (/100) in the selected class — enter Student ID.' },
       ],
     },
@@ -3732,6 +3785,23 @@
     return String(Math.abs(p - Math.round(p)) < 1e-9 ? Math.round(p) : Math.round(p * 100) / 100);
   }
 
+  /** Mark % and grade code in one cell (class matrix, PDF, screen). */
+  function subjectMarkGradeCellHtml(mark, bandsList) {
+    var markStr = formatReportMark(mark);
+    if (markStr === '' || markStr === '—') return '—';
+    var code = gradeCodeFromMark(mark, bandsList);
+    if (!code || code === '—') {
+      return '<span class="ar-subj-mark-grade"><span class="ar-subj-pct">' + escapeHtml(markStr) + '</span></span>';
+    }
+    var pill = gradePillClass(code);
+    return '' +
+      '<span class="ar-subj-mark-grade">' +
+        '<span class="ar-subj-pct">' + escapeHtml(markStr) + '</span>' +
+        '<span class="ar-subj-sep" aria-hidden="true">·</span>' +
+        '<span class="ar-subj-grd inline-flex items-center px-0.5 rounded ' + pill + '">' + escapeHtml(code) + '</span>' +
+      '</span>';
+  }
+
   function markValueForSubject(row, subjectName) {
     if (!row) return null;
     var key = String(subjectName || '');
@@ -4102,7 +4172,8 @@
     var _rowMetaKeys = {
       position: 1, admission_number: 1, student_id: 1, full_name: 1, level_name: 1,
       current_grade: 1, home_class: 1, student_photo: 1, total_marks: 1, mean: 1, grade: 1, grade_points: 1,
-      subject_marks: 1, class_subject_columns: 1, rank_sort_total: 1, rank_sort_mean: 1,
+      subject_marks: 1, subject_grades: 1, class_subject_columns: 1,
+      rank_sort_total: 1, rank_sort_mean: 1, academic_level_id: 1,
     };
 
     function subjectColumnsForClass(className, list) {
@@ -4134,7 +4205,9 @@
         Object.keys(row).forEach(function(key) {
           if (!key || _rowMetaKeys[key]) return;
           var v = row[key];
-          if (v !== '' && v !== null && v !== undefined) fromRows[key] = true;
+          if (v === '' || v === null || v === undefined) return;
+          if (typeof v === 'object') return;
+          fromRows[key] = true;
         });
         var sm = row.subject_marks;
         if (sm && typeof sm === 'object') {
@@ -4323,7 +4396,7 @@
             classSubjectColumns.map(function(subjectName) {
               var full = escapeHtml(subjectName);
               var short = escapeHtml(marksMatrixSubjectLabel(subjectName, classSubjectColumns.length));
-              return '<th scope="col" class="ar-col-subj" title="' + full + '">' + short + '</th>';
+              return '<th scope="col" class="ar-col-subj" title="' + full + ' — mark % · grade">' + short + '</th>';
             }).join('') +
             '<th scope="col" class="ar-col-sum">Tot</th>' +
             '<th scope="col" class="ar-col-sum" title="Grade points (allocation from mean %, Grades Registration)">GP</th>' +
@@ -4357,6 +4430,11 @@
         return String(Math.round(x));
       }
 
+      function footerBandsForRows(subset) {
+        if (!subset || !subset.length) return bands;
+        return bandsForLevel(subset[0].academic_level_id);
+      }
+
       function buildMeanFooterRow(label, classColText, subset, opts) {
         opts = opts || {};
         var rowCls = opts.emphasis
@@ -4364,9 +4442,13 @@
           : 'bg-slate-100/95 dark:bg-slate-800/70 border-t border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100';
         var totalMeanStr = meanOfList(subset, function(row) { return numOrNull(row.total_marks); });
         var rowMeanPointsStr = meanOfList(subset, function(row) { return rowMeanPointsNum(row); });
+        var fBands = footerBandsForRows(subset);
         var subjectFooterCells = classSubjectColumns.map(function(subjectName) {
-          var m = meanOfList(subset, function(row) { return numOrNull(row[subjectName]); });
-          return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
+          var m = meanOfList(subset, function(row) { return numOrNull(markValueForSubject(row, subjectName)); });
+          var cellHtml = (m === '—')
+            ? '—'
+            : subjectMarkGradeCellHtml(m, fBands);
+          return '<td class="' + subjectMeanCellClass(m) + '">' + cellHtml + '</td>';
         }).join('');
         return '' +
           '<tr class="' + rowCls + '">' +
@@ -4461,8 +4543,9 @@
               : '') +
             classSubjectColumns.map(function(subjectName) {
               const mark = markValueForSubject(row, subjectName);
+              const rowBands = bandsForLevel(row.academic_level_id);
               return '<td class="ar-col-mark text-slate-800 dark:text-slate-200">' +
-                escapeHtml(formatReportMark(mark)) +
+                subjectMarkGradeCellHtml(mark, rowBands) +
               '</td>';
             }).join('') +
             '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(formatReportMark(row.total_marks)) + '</td>' +

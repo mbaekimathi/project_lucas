@@ -45378,11 +45378,48 @@ def _group_class_list_rows(rows, is_combined_level=False, combined_display_name=
     return sections
 
 
-def _academic_report_export_cell_value(col_key, row):
+def _academic_report_mark_with_grade_text(mark, grade_code):
+    """Single cell text: scaled mark and grade code together (e.g. '85 EE22')."""
+    if mark is None or mark == '':
+        return ''
+    if isinstance(mark, (int, float)):
+        mstr = round_mark_display(mark)
+        if mstr is None:
+            mstr = str(mark)
+    else:
+        mstr = str(mark).strip()
+    if not mstr:
+        return ''
+    g = (grade_code or '').strip()
+    return f'{mstr} {g}' if g else mstr
+
+
+def _academic_report_subject_cell_export_value(row, subject_key, meta):
+    """Mark + grade in one export cell for exam all-students performance."""
+    mark = row.get(subject_key)
+    if mark is None or mark == '':
+        sm = row.get('subject_marks')
+        if isinstance(sm, dict):
+            mark = sm.get(subject_key, '')
+    grades = row.get('subject_grades')
+    if isinstance(grades, dict) and subject_key in grades:
+        code = (grades.get(subject_key) or '').strip()
+    else:
+        code = _academic_report_grade_code_for_pct(
+            mark, meta, row.get('academic_level_id'),
+        )
+    return _academic_report_mark_with_grade_text(mark, code)
+
+
+def _academic_report_export_cell_value(col_key, row, meta=None, report_type=None):
     """Scalar value for CSV/Excel cells: skip nested dict/list (e.g. internal row payloads)."""
     if not isinstance(row, dict):
         return row
     ck = str(col_key) if col_key is not None else ''
+    if report_type == 'exam_all_students_performance' and meta:
+        subject_cols = meta.get('subject_columns') or []
+        if ck in subject_cols:
+            return _academic_report_subject_cell_export_value(row, ck, meta)
     if ck in row:
         v = row[ck]
     else:
@@ -45557,6 +45594,8 @@ def _academic_report_export_column_header_label(col_key):
     ck = str(col_key or '')
     if ck == 'grade_points':
         return 'GP'
+    if ck == 'grade':
+        return 'Overall Grd'
     if ck in ('home_class', 'current_grade'):
         return 'Class'
     return ck.replace('_', ' ').title()
@@ -45613,6 +45652,43 @@ def _academic_report_bundle_summary_lines(bundle, report_type):
     return out
 
 
+def _academic_report_subject_mark_cols_for_export(columns, meta):
+    """Subject column keys for exam all-students footer / summaries."""
+    colset = set(columns or [])
+    subject_cols = [c for c in (meta.get('subject_columns') or []) if c in colset]
+    if subject_cols:
+        return subject_cols
+    fixed = _exam_all_students_performance_fixed_col_keys()
+    return [c for c in (columns or []) if c not in fixed]
+
+
+def _exam_all_students_performance_fixed_col_keys():
+    return {
+        'position', 'admission_number', 'full_name', 'student_id', 'total_marks',
+        'grade', 'grade_points', 'mean', 'level_name', 'current_grade', 'home_class',
+        'student_photo', 'subject_marks', 'subject_grades', 'class_subject_columns',
+        'rank_sort_total', 'rank_sort_mean', 'academic_level_id',
+    }
+
+
+def _academic_report_grade_code_for_pct(marks_value, meta, level_id=None):
+    """Grade code for a percentage using meta grade_bands / class_grade_bands."""
+    if marks_value is None or marks_value == '':
+        return ''
+    default_bands = meta.get('grade_bands') or []
+    class_bands_raw = meta.get('class_grade_bands') or {}
+    class_bands = {}
+    if isinstance(class_bands_raw, dict):
+        for k, v in class_bands_raw.items():
+            try:
+                class_bands[int(k)] = v
+            except (TypeError, ValueError):
+                continue
+    bands = resolve_grade_bands(level_id, class_bands, default_bands)
+    code, _ = grade_code_and_points_from_pct(marks_value, bands)
+    return (code or '').strip()
+
+
 def _exam_all_students_performance_footer_rows(columns, meta, student_rows):
     """
     Summary rows for CSV/Excel after student rows:
@@ -45658,14 +45734,7 @@ def _exam_all_students_performance_footer_pair(columns, meta, student_rows, clas
     if not columns or not student_rows:
         return []
     colset = set(columns)
-    subject_cols = [c for c in (meta.get('subject_columns') or []) if c in colset]
-    if not subject_cols:
-        fixed = {
-            'position', 'admission_number', 'full_name', 'student_id', 'total_marks',
-            'grade', 'grade_points', 'mean', 'level_name', 'current_grade', 'home_class',
-            'student_photo', 'subject_marks', 'class_subject_columns',
-        }
-        subject_cols = [c for c in columns if c not in fixed]
+    subject_cols = _academic_report_subject_mark_cols_for_export(columns, meta)
 
     def _fnum(row, key):
         if not isinstance(row, dict):
@@ -45695,10 +45764,21 @@ def _exam_all_students_performance_footer_pair(columns, meta, student_rows, clas
             row_subj[c] = class_label
         elif c in ('position', 'admission_number'):
             row_subj[c] = ''
+    footer_level_id = None
+    for r in student_rows:
+        if isinstance(r, dict) and r.get('academic_level_id') is not None:
+            footer_level_id = r.get('academic_level_id')
+            break
     for sc in subject_cols:
         vals = [_fnum(r, sc) for r in student_rows]
         vals = [x for x in vals if x is not None]
-        row_subj[sc] = round_mark_display(sum(vals) / len(vals)) if vals else ''
+        mean_mark = round_mark_display(sum(vals) / len(vals)) if vals else ''
+        mean_grade = (
+            _academic_report_grade_code_for_pct(mean_mark, meta, footer_level_id)
+            if mean_mark != '' and mean_mark is not None
+            else ''
+        )
+        row_subj[sc] = _academic_report_mark_with_grade_text(mean_mark, mean_grade)
 
     if 'grade_points' in colset:
         gp_vals = [_fnum(r, 'grade_points') for r in student_rows]
@@ -45728,7 +45808,12 @@ def _write_exam_all_students_performance_footers(writer, columns, meta, student_
         return
     writer.writerow([])
     for fr in footers:
-        writer.writerow([_academic_report_export_cell_value(c, fr) for c in columns])
+        writer.writerow([
+            _academic_report_export_cell_value(
+                c, fr, meta=meta, report_type='exam_all_students_performance',
+            )
+            for c in columns
+        ])
 
 
 def _make_academic_report_csv_response(bundle, report_type):
@@ -45754,12 +45839,18 @@ def _make_academic_report_csv_response(bundle, report_type):
             writer.writerow([_academic_report_export_section_heading_row(sec)])
             sec_rows = sec.get('rows') or []
             for row in sec_rows:
-                writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
+                writer.writerow([
+                    _academic_report_export_cell_value(c, row, meta=meta, report_type=report_type)
+                    for c in columns
+                ])
             if report_type == 'exam_all_students_performance' and sec_rows:
                 _write_exam_all_students_performance_footers(writer, columns, meta, sec_rows)
     else:
         for row in rows:
-            writer.writerow([_academic_report_export_cell_value(c, row) for c in columns])
+            writer.writerow([
+                _academic_report_export_cell_value(c, row, meta=meta, report_type=report_type)
+                for c in columns
+            ])
         if report_type == 'exam_all_students_performance' and rows:
             _write_exam_all_students_performance_footers(writer, columns, meta, rows)
     output = make_response(si.getvalue())
@@ -45908,7 +45999,9 @@ def _make_academic_report_excel_response(bundle, report_type):
         from decimal import Decimal
 
         for ci, col_key in enumerate(columns, start=1):
-            val = _academic_report_export_cell_value(col_key, row_dict)
+            val = _academic_report_export_cell_value(
+                col_key, row_dict, meta=meta, report_type=report_type,
+            )
             cell = ws.cell(row=nrow, column=ci)
             if val is None:
                 cell.value = None
@@ -47119,8 +47212,18 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'rank_sort_total': item.get('_rank_total'),
                 'rank_sort_mean': item.get('_rank_mean'),
             }
+            student_level_id = item.get('academic_level_id')
+            subject_grades_map = {}
             for subject_name in row_cols:
-                flat_row[subject_name] = item['subject_marks'].get(subject_name, '')
+                mark = item['subject_marks'].get(subject_name, '')
+                flat_row[subject_name] = mark
+                if mark != '' and mark is not None:
+                    subject_grades_map[subject_name] = _academic_report_grade_code_for_pct(
+                        mark, meta, student_level_id,
+                    )
+                else:
+                    subject_grades_map[subject_name] = ''
+            flat_row['subject_grades'] = subject_grades_map
             flat_row['total_marks'] = item['total_marks']
             flat_row['mean'] = item['mean']
             flat_row['grade'] = item['grade']
