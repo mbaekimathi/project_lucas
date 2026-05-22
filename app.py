@@ -4148,6 +4148,169 @@ def _registered_subject_labels_by_level_id(cursor):
     return out
 
 
+def _merged_registered_subject_labels_by_level_id(cursor):
+    """
+    Registered subject columns per level with exam-subject-settings combinations merged
+    (one column per combination, e.g. MATH/SCI joined with '/').
+    Returns (labels_by_level_id, plan_by_level_id).
+    plan_by_level_id[lid] = {
+        'sid_to_label': {subject_id: column_label},
+        'label_members': {column_label: [member subject_ids]},
+        'edo_by_label': {column_label: exam_display_order int},
+    }
+    """
+    lib = _library_subjects_by_level_map(cursor)
+    if not lib:
+        return {}, {}
+    combinations = fetch_subject_exam_combinations(cursor)
+    all_sids = []
+    for subs in lib.values():
+        for s in subs:
+            try:
+                all_sids.append(int(s['id']))
+            except (TypeError, ValueError):
+                pass
+    all_sids = list(set(all_sids))
+    edo_by_sid = {}
+    exam_total_by_sid = {}
+    if all_sids:
+        try:
+            ph = ','.join(['%s'] * len(all_sids))
+            cursor.execute(
+                f"SELECT id, exam_display_order, exam_total_marks FROM subjects WHERE id IN ({ph})",
+                tuple(all_sids),
+            )
+            for er in cursor.fetchall() or []:
+                eid = er.get('id') if isinstance(er, dict) else er[0]
+                if eid is None:
+                    continue
+                sid_i = int(eid)
+                edo_by_sid[sid_i] = (
+                    er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+                )
+                etm = er.get('exam_total_marks') if isinstance(er, dict) else (er[2] if len(er) > 2 else None)
+                exam_total_by_sid[sid_i] = subject_exam_max_raw_marks(etm)
+        except Exception as e:
+            print(f"_merged_registered_subject_labels_by_level_id meta: {e}")
+
+    labels_by_lid = {}
+    plan_by_lid = {}
+    for lid_key, subs in lib.items():
+        try:
+            lid_i = int(lid_key)
+        except (TypeError, ValueError):
+            continue
+        subjects_flat = []
+        for s in subs:
+            try:
+                sid = int(s.get('id') or 0)
+            except (TypeError, ValueError):
+                continue
+            if sid <= 0:
+                continue
+            subjects_flat.append({
+                'id': sid,
+                'subject_name': s.get('subject_name'),
+                'subject_code': s.get('subject_code'),
+                'exam_display_order': edo_by_sid.get(sid),
+                'exam_total_marks': exam_total_by_sid.get(sid, 100),
+            })
+        if not subjects_flat:
+            labels_by_lid[lid_i] = []
+            plan_by_lid[lid_i] = {'sid_to_label': {}, 'label_members': {}, 'edo_by_label': {}}
+            continue
+        id_to_gc, section_order = sort_subjects_list_for_exam_columns(cursor, subjects_flat)
+        merged = merge_subjects_with_exam_combinations(
+            subjects_flat,
+            combinations,
+            id_to_gc=id_to_gc,
+            section_order=section_order,
+        )
+        labels = []
+        sid_to_label = {}
+        label_members = {}
+        edo_by_label = {}
+        seen = set()
+        for row in merged or []:
+            label = subject_display_label(row.get('subject_code'), row.get('subject_name'))
+            if not label or label in seen:
+                continue
+            seen.add(label)
+            labels.append(label)
+            try:
+                edo_by_label[label] = int(row.get('exam_display_order') or 10**9)
+            except (TypeError, ValueError):
+                edo_by_label[label] = 10**9
+            if row.get('combination_id'):
+                mids = [int(x) for x in (row.get('member_subject_ids') or [])]
+                label_members[label] = mids
+                for mid in mids:
+                    sid_to_label[mid] = label
+            else:
+                try:
+                    sid = int(row.get('id') or 0)
+                except (TypeError, ValueError):
+                    sid = 0
+                if sid > 0:
+                    label_members[label] = [sid]
+                    sid_to_label[sid] = label
+        labels_by_lid[lid_i] = labels
+        plan_by_lid[lid_i] = {
+            'sid_to_label': sid_to_label,
+            'label_members': label_members,
+            'edo_by_label': edo_by_label,
+        }
+    return labels_by_lid, plan_by_lid, exam_total_by_sid
+
+
+def _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_sid):
+    """Weighted mean of scaled % across combination members (matches exams-assessments marks sheet)."""
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    for mid in member_ids or []:
+        marks_list = marks_by_sid.get(mid) or []
+        if not marks_list:
+            continue
+        try:
+            avg_pct = sum(float(m) for m in marks_list) / len(marks_list)
+        except (TypeError, ValueError):
+            continue
+        w = float(exam_total_by_sid.get(mid) or 100) or 100.0
+        weighted_sum += avg_pct * w
+        weight_sum += w
+    if not weight_sum:
+        return None
+    return weighted_sum / weight_sum
+
+
+def _rollup_student_marks_with_exam_combinations(grouped, plan_by_lid, level_name_to_id, exam_total_by_sid):
+    """Replace per-paper marks with merged combination columns on each student row."""
+    for student in grouped.values():
+        marks_by_sid = student.pop('_marks_by_sid', None) or {}
+        class_key = str(student.get('current_grade') or '').strip() or str(student.get('level_name') or '').strip()
+        lid_val = level_name_to_id.get(class_key)
+        plan = plan_by_lid.get(lid_val) if lid_val is not None else None
+        subject_marks = {}
+        if plan and plan.get('label_members'):
+            for col_label, member_ids in plan['label_members'].items():
+                wm = _exam_combo_scaled_pct_for_column(marks_by_sid, member_ids, exam_total_by_sid)
+                if wm is not None:
+                    subject_marks[col_label] = [wm]
+        else:
+            for sid_i, mlist in marks_by_sid.items():
+                if not mlist:
+                    continue
+                try:
+                    avg_pct = sum(float(m) for m in mlist) / len(mlist)
+                except (TypeError, ValueError):
+                    continue
+                lbl = (plan or {}).get('sid_to_label', {}).get(sid_i)
+                if not lbl:
+                    continue
+                subject_marks.setdefault(lbl, []).append(avg_pct)
+        student['subject_marks'] = subject_marks
+
+
 def ensure_library_book_copy_units_table(cursor):
     """Individual physical copies with short tally IDs (e.g. A001)."""
     try:
@@ -46676,7 +46839,7 @@ def _build_academic_report_payload(cursor, report_type, f):
         q_no_image += " ORDER BY st.full_name, sub.subject_name"
         # Load class subject lists before the marks query — PyMySQL replaces the active
         # result set on cursor.execute(), so running other SQL between execute and fetchall loses marks.
-        reg_labels_by_lid = _registered_subject_labels_by_level_id(cursor)
+        reg_labels_by_lid, combo_plan_by_lid, exam_total_by_sid = _merged_registered_subject_labels_by_level_id(cursor)
         level_name_to_id = _level_name_to_id_map(cursor)
         grouped = {}
         subject_names_set = set()
@@ -46695,10 +46858,10 @@ def _build_academic_report_payload(cursor, report_type, f):
             return str(level_nm or '').strip()
 
         def _registered_labels_for_class_key(class_key):
-            lid_val = level_name_to_id.get(class_key)
-            if lid_val is None:
+            level_id = level_name_to_id.get(class_key)
+            if level_id is None:
                 return []
-            return reg_labels_by_lid.get(lid_val, [])
+            return reg_labels_by_lid.get(level_id, [])
 
         merged_reg_labels = []
         if is_combined_level and level_ids:
@@ -46750,10 +46913,6 @@ def _build_academic_report_payload(cursor, report_type, f):
                 eo_i = int(eo_raw)
             except (TypeError, ValueError):
                 eo_i = 1000000000
-            if subject_label and sid_i:
-                prev = subject_meta.get(subject_label)
-                if not prev or eo_i < prev.get('edo', 1000000000):
-                    subject_meta[subject_label] = {'sid': sid_i, 'edo': eo_i}
             if admission_number not in grouped:
                 grouped[admission_number] = {
                     'admission_number': admission_number,
@@ -46772,22 +46931,34 @@ def _build_academic_report_payload(cursor, report_type, f):
                 if cur_grade and not (g0.get('current_grade') or '').strip():
                     g0['current_grade'] = cur_grade
             class_key = _student_class_key(cur_grade, level_nm)
+            student_level_id = level_name_to_id.get(class_key)
             if is_combined_level and merged_reg_labels:
                 reg_labels = merged_reg_labels
             else:
                 reg_labels = _registered_labels_for_class_key(class_key)
-            if reg_labels and subject_label and subject_label not in reg_labels:
+            col_label = subject_label
+            if sid_i and student_level_id is not None:
+                plan_row = combo_plan_by_lid.get(student_level_id) or {}
+                col_label = (plan_row.get('sid_to_label') or {}).get(sid_i) or subject_label
+                eo_i = (plan_row.get('edo_by_label') or {}).get(col_label, eo_i)
+            if col_label and sid_i:
+                prev = subject_meta.get(col_label)
+                if not prev or eo_i < prev.get('edo', 1000000000):
+                    subject_meta[col_label] = {'sid': sid_i, 'edo': eo_i}
+            if reg_labels and col_label and col_label not in reg_labels:
                 continue
-            if subject_label:
-                subject_names_set.add(subject_label)
-            if mark_val is not None and subject_label:
-                if subject_label not in grouped[admission_number]['subject_marks']:
-                    grouped[admission_number]['subject_marks'][subject_label] = []
-                grouped[admission_number]['subject_marks'][subject_label].append(mark_val)
+            if col_label:
+                subject_names_set.add(col_label)
+            if mark_val is not None and sid_i:
+                grouped[admission_number].setdefault('_marks_by_sid', {}).setdefault(sid_i, []).append(mark_val)
+
+        _rollup_student_marks_with_exam_combinations(
+            grouped, combo_plan_by_lid, level_name_to_id, exam_total_by_sid
+        )
 
         subject_columns_by_class = {}
-        for ln, lid_val in level_name_to_id.items():
-            labels = reg_labels_by_lid.get(lid_val, [])
+        for ln, level_id in level_name_to_id.items():
+            labels = reg_labels_by_lid.get(level_id, [])
             if labels:
                 subject_columns_by_class[ln] = labels
 
