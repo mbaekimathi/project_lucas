@@ -4279,24 +4279,49 @@ def _library_copy_units_for_stock_lines(cursor, book_level_pairs):
     if not book_level_pairs:
         return out
     ensure_library_book_copy_units_table(cursor)
+    pairs = []
     for book_id, level_id in book_level_pairs:
+        try:
+            pairs.append((int(book_id), int(level_id)))
+        except (TypeError, ValueError):
+            continue
+    if not pairs:
+        return out
+    for bid, lid in pairs:
+        out[(bid, lid)] = {'in_stock': 0, 'codes': []}
+    conditions = []
+    params = []
+    for bid, lid in pairs:
+        conditions.append('(library_book_id = %s AND academic_level_id = %s)')
+        params.extend([bid, lid])
+    try:
         cursor.execute(
-            """
-            SELECT copy_code FROM library_book_copy_units
-            WHERE library_book_id = %s AND academic_level_id = %s AND status = 'in_stock'
+            f"""
+            SELECT library_book_id, academic_level_id, copy_code
+            FROM library_book_copy_units
+            WHERE status = 'in_stock' AND ({' OR '.join(conditions)})
             ORDER BY copy_code ASC
             """,
-            (book_id, level_id),
+            tuple(params),
         )
-        codes = []
         for row in cursor.fetchall() or []:
-            c = row.get('copy_code') if isinstance(row, dict) else row[0]
-            if c:
-                codes.append(str(c).strip().upper())
-        out[(int(book_id), int(level_id))] = {
-            'in_stock': len(codes),
-            'codes': codes,
-        }
+            if isinstance(row, dict):
+                bid = row.get('library_book_id')
+                lid = row.get('academic_level_id')
+                c = row.get('copy_code')
+            else:
+                bid = row[0] if len(row) > 0 else None
+                lid = row[1] if len(row) > 1 else None
+                c = row[2] if len(row) > 2 else None
+            if bid is None or lid is None or not c:
+                continue
+            key = (int(bid), int(lid))
+            if key not in out:
+                out[key] = {'in_stock': 0, 'codes': []}
+            out[key]['codes'].append(str(c).strip().upper())
+            out[key]['in_stock'] = len(out[key]['codes'])
+    except Exception as e:
+        print(f'_library_copy_units_for_stock_lines: {e}')
     return out
 
 
@@ -5545,116 +5570,219 @@ def _library_enrich_books_with_allocations(cursor, books):
         ) if lst else ''
 
 
-def _library_stock_allocation_lines(cursor, level_id=None, subject_id=None):
+_LIBRARY_STOCK_LINE_SUBJECT_AT_LEVEL_SQL = """
+AND (
+  EXISTS (
+    SELECT 1 FROM subject_academic_levels sal
+    INNER JOIN subjects s ON s.id = sal.subject_id
+      AND COALESCE(s.status, 'active') = 'active'
+    WHERE sal.academic_level_id = al.id AND sal.subject_id = lb.subject_id
+  )
+  OR EXISTS (
+    SELECT 1 FROM teacher_subject_assignments tsa
+    INNER JOIN subjects s2 ON s2.id = tsa.subject_id
+      AND COALESCE(s2.status, 'active') = 'active'
+    WHERE tsa.academic_level_id = al.id AND tsa.subject_id = lb.subject_id
+  )
+)
+"""
+
+
+def _library_stock_allocation_line_from_row(row):
+    """One book×level stock line dict from SELECT row."""
+    if isinstance(row, dict):
+        bid = row.get('book_id')
+        lid = row.get('level_id')
+        qty = row.get('quantity')
+        ctot = row.get('copies_total')
+        bname = row.get('book_name')
+        bsub = row.get('book_subject_id')
+        acat = row.get('academic_category')
+        lname = row.get('level_name')
+        lcat = row.get('level_category')
+    else:
+        bid = row[0] if len(row) > 0 else None
+        bname = row[1] if len(row) > 1 else ''
+        bsub = row[2] if len(row) > 2 else None
+        acat = row[3] if len(row) > 3 else ''
+        ctot = row[4] if len(row) > 4 else 1
+        lid = row[5] if len(row) > 5 else None
+        lname = row[6] if len(row) > 6 else ''
+        lcat = row[7] if len(row) > 7 else ''
+        qty = row[8] if len(row) > 8 else 0
+    if bid is None or lid is None:
+        return None
+    try:
+        bid_i = int(bid)
+        lid_i = int(lid)
+        qty_i = max(0, int(qty or 0))
+        ctot_i = int(ctot or 1)
+        bsub_i = int(bsub) if bsub is not None else 0
+    except (TypeError, ValueError):
+        return None
+    if bsub_i < 1:
+        return None
+    if ctot_i < 1:
+        ctot_i = 1
+    return {
+        'book_id': bid_i,
+        'book_name': (bname or '').strip().upper(),
+        'book_subject_id': bsub_i,
+        'academic_category': (acat or '').strip().upper(),
+        'copies_total': ctot_i,
+        'level_id': lid_i,
+        'level_name': (lname or '').strip().upper(),
+        'level_category': (lcat or '').strip().upper(),
+        'quantity': qty_i,
+    }
+
+
+def _library_stock_allocation_lines_sql(level_id=None, subject_id=None, q='', book_id=None):
+    """Build FROM/WHERE/params for stock allocation line queries."""
+    extra_where = []
+    extra_params = [LIBRARY_PENDING_ACADEMIC_CATEGORY]
+    if level_id is not None:
+        try:
+            extra_where.append('al.id = %s')
+            extra_params.append(int(level_id))
+        except (TypeError, ValueError):
+            pass
+    if subject_id is not None:
+        try:
+            sid = int(subject_id)
+            if sid > 0:
+                extra_where.append('lb.subject_id = %s')
+                extra_params.append(sid)
+        except (TypeError, ValueError):
+            pass
+    if book_id is not None:
+        try:
+            bid = int(book_id)
+            if bid > 0:
+                extra_where.append('lb.id = %s')
+                extra_params.append(bid)
+        except (TypeError, ValueError):
+            pass
+    q = (q or '').strip()
+    if q:
+        extra_where.append('lb.book_name LIKE %s')
+        extra_params.append('%' + q + '%')
+    extra_sql = (' AND ' + ' AND '.join(extra_where)) if extra_where else ''
+    base_from = """
+        FROM library_books lb
+        INNER JOIN academic_levels al
+          ON UPPER(TRIM(al.level_category)) = UPPER(TRIM(lb.academic_category))
+        LEFT JOIN library_book_allocations lba
+          ON lba.library_book_id = lb.id AND lba.academic_level_id = al.id
+        WHERE COALESCE(lb.library_status, 'active') = 'active'
+          AND COALESCE(al.level_status, 'active') = 'active'
+          AND UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN (%s, 'UNKNOWN', '')
+          AND COALESCE(lb.subject_id, 0) > 0
+    """ + _LIBRARY_STOCK_LINE_SUBJECT_AT_LEVEL_SQL + extra_sql
+    select_sql = """
+        SELECT lb.id AS book_id,
+               lb.book_name,
+               lb.subject_id AS book_subject_id,
+               UPPER(TRIM(lb.academic_category)) AS academic_category,
+               COALESCE(lb.copies_total, 1) AS copies_total,
+               al.id AS level_id,
+               UPPER(TRIM(al.level_name)) AS level_name,
+               UPPER(TRIM(al.level_category)) AS level_category,
+               COALESCE(lba.quantity, 0) AS quantity
+    """
+    order_sql = ' ORDER BY al.level_category, al.level_name, lb.book_name '
+    return select_sql, base_from, tuple(extra_params), order_sql
+
+
+def _library_stock_allocation_lines_enrich(cursor, rows):
+    if not rows:
+        return rows
+    pairs = [(r['book_id'], r['level_id']) for r in rows]
+    copy_map = _library_copy_units_for_stock_lines(cursor, pairs)
+    for r in rows:
+        info = copy_map.get((r['book_id'], r['level_id']), {'in_stock': 0, 'codes': []})
+        r['tagged_in_stock'] = info['in_stock']
+        r['copy_codes'] = info['codes']
+    return rows
+
+
+def _fetch_library_stock_allocation_lines_page(
+    cursor, level_id, subject_id=None, page=1, per_page=50, q='', book_id=None,
+):
+    """Paginated book×class lines for one level — COUNT + LIMIT/OFFSET in SQL."""
+    rows = []
+    total = 0
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    pages = 1
+    try:
+        ensure_library_books_table(cursor)
+        ensure_library_book_allocations_table(cursor)
+        migrate_library_books_copies_and_allocation_qty(cursor)
+        select_sql, base_from, params, order_sql = _library_stock_allocation_lines_sql(
+            level_id=level_id, subject_id=subject_id, q=q, book_id=book_id,
+        )
+        count_sql = 'SELECT COUNT(*) AS c ' + base_from
+        cursor.execute(count_sql, params)
+        count_row = cursor.fetchone()
+        total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+        pages = max(1, (total + per_page - 1) // per_page) if total else 1
+        if page > pages:
+            page = pages
+        offset = (page - 1) * per_page
+        list_sql = select_sql + base_from + order_sql + ' LIMIT %s OFFSET %s'
+        cursor.execute(list_sql, params + (per_page, offset))
+        for raw in cursor.fetchall() or []:
+            line = _library_stock_allocation_line_from_row(raw)
+            if line:
+                rows.append(line)
+        rows = _library_stock_allocation_lines_enrich(cursor, rows)
+    except Exception as e:
+        print(f'_fetch_library_stock_allocation_lines_page: {e}')
+        import traceback
+        traceback.print_exc()
+        rows = []
+        total = 0
+        pages = 1
+    return {
+        'lines': rows,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+    }
+
+
+def _library_stock_allocation_lines(cursor, level_id=None, subject_id=None, limit=None):
     """
     Eligible book × class lines for stock in/out: configured catalog titles matched to
     active levels in the same academic category where the class teaches the book's subject.
     Pass level_id (and optional subject_id) to load one class at a time instead of the whole school.
     """
+    if level_id is not None:
+        lim = max(1, min(int(limit or 500), 500)) if limit is not None else 500
+        return _fetch_library_stock_allocation_lines_page(
+            cursor, level_id=level_id, subject_id=subject_id, page=1, per_page=lim,
+        )['lines']
     rows = []
     try:
         ensure_library_books_table(cursor)
         ensure_library_book_allocations_table(cursor)
         migrate_library_books_copies_and_allocation_qty(cursor)
-        level_subjects_map = _library_subjects_by_level_map(cursor)
-        extra_where = []
-        extra_params = []
-        if level_id is not None:
-            try:
-                extra_where.append('al.id = %s')
-                extra_params.append(int(level_id))
-            except (TypeError, ValueError):
-                pass
-        if subject_id is not None:
-            try:
-                sid = int(subject_id)
-                if sid > 0:
-                    extra_where.append('lb.subject_id = %s')
-                    extra_params.append(sid)
-            except (TypeError, ValueError):
-                pass
-        extra_sql = (' AND ' + ' AND '.join(extra_where)) if extra_where else ''
-        cursor.execute(
-            f"""
-            SELECT lb.id AS book_id,
-                   lb.book_name,
-                   lb.subject_id AS book_subject_id,
-                   UPPER(TRIM(lb.academic_category)) AS academic_category,
-                   COALESCE(lb.copies_total, 1) AS copies_total,
-                   al.id AS level_id,
-                   UPPER(TRIM(al.level_name)) AS level_name,
-                   UPPER(TRIM(al.level_category)) AS level_category,
-                   COALESCE(lba.quantity, 0) AS quantity
-            FROM library_books lb
-            INNER JOIN academic_levels al
-              ON UPPER(TRIM(al.level_category)) = UPPER(TRIM(lb.academic_category))
-            LEFT JOIN library_book_allocations lba
-              ON lba.library_book_id = lb.id AND lba.academic_level_id = al.id
-            WHERE COALESCE(lb.library_status, 'active') = 'active'
-              AND COALESCE(al.level_status, 'active') = 'active'
-              AND UPPER(TRIM(COALESCE(lb.academic_category, ''))) NOT IN (%s, 'UNKNOWN', '')
-              AND COALESCE(lb.subject_id, 0) > 0
-              {extra_sql}
-            ORDER BY al.level_category, al.level_name, lb.book_name
-            """,
-            tuple([LIBRARY_PENDING_ACADEMIC_CATEGORY] + extra_params),
+        select_sql, base_from, params, order_sql = _library_stock_allocation_lines_sql(
+            level_id=None, subject_id=subject_id,
         )
-        for row in cursor.fetchall() or []:
-            if isinstance(row, dict):
-                bid = row.get('book_id')
-                lid = row.get('level_id')
-                qty = row.get('quantity')
-                ctot = row.get('copies_total')
-                bname = row.get('book_name')
-                bsub = row.get('book_subject_id')
-                acat = row.get('academic_category')
-                lname = row.get('level_name')
-                lcat = row.get('level_category')
-            else:
-                bid = row[0] if len(row) > 0 else None
-                bname = row[1] if len(row) > 1 else ''
-                bsub = row[2] if len(row) > 2 else None
-                acat = row[3] if len(row) > 3 else ''
-                ctot = row[4] if len(row) > 4 else 1
-                lid = row[5] if len(row) > 5 else None
-                lname = row[6] if len(row) > 6 else ''
-                lcat = row[7] if len(row) > 7 else ''
-                qty = row[8] if len(row) > 8 else 0
-            if bid is None or lid is None:
-                continue
-            try:
-                bid_i = int(bid)
-                lid_i = int(lid)
-                qty_i = max(0, int(qty or 0))
-                ctot_i = int(ctot or 1)
-                bsub_i = int(bsub) if bsub is not None else 0
-            except (TypeError, ValueError):
-                continue
-            if bsub_i < 1:
-                continue
-            if ctot_i < 1:
-                ctot_i = 1
-            subs_at_level = level_subjects_map.get(str(lid_i)) or level_subjects_map.get(lid_i) or []
-            if not any(int(s.get('id') or 0) == bsub_i for s in subs_at_level):
-                continue
-            rows.append({
-                'book_id': bid_i,
-                'book_name': (bname or '').strip().upper(),
-                'book_subject_id': bsub_i,
-                'academic_category': (acat or '').strip().upper(),
-                'copies_total': ctot_i,
-                'level_id': lid_i,
-                'level_name': (lname or '').strip().upper(),
-                'level_category': (lcat or '').strip().upper(),
-                'quantity': qty_i,
-            })
-        if rows:
-            pairs = [(r['book_id'], r['level_id']) for r in rows]
-            copy_map = _library_copy_units_for_stock_lines(cursor, pairs)
-            for r in rows:
-                info = copy_map.get((r['book_id'], r['level_id']), {'in_stock': 0, 'codes': []})
-                r['tagged_in_stock'] = info['in_stock']
-                r['copy_codes'] = info['codes']
+        list_sql = select_sql + base_from + order_sql
+        if limit is not None:
+            lim = max(1, min(int(limit), 500))
+            list_sql += ' LIMIT %s'
+            params = params + (lim,)
+        cursor.execute(list_sql, params)
+        for raw in cursor.fetchall() or []:
+            line = _library_stock_allocation_line_from_row(raw)
+            if line:
+                rows.append(line)
+        rows = _library_stock_allocation_lines_enrich(cursor, rows)
     except Exception as e:
         print(f"_library_stock_allocation_lines: {e}")
     return rows
@@ -5751,187 +5879,279 @@ def _library_format_stock_datetime(dt):
     return str(dt)[:16] if dt else ''
 
 
-def _library_stock_in_records(cursor, limit=100):
-    """Stock-in movements with copy reference IDs for librarian stock page."""
-    from collections import defaultdict
+_library_stock_in_sql_ctx_cache = None
 
-    rows = []
-    try:
-        ensure_library_book_stock_movements_table(cursor)
-        ensure_library_book_copy_units_table(cursor)
-        migrate_library_stock_movements_supplier_id(cursor)
-        migrate_library_stock_movements_stock_subject_id(cursor)
-        migrate_library_stock_movements_buying_price(cursor)
-        lim = max(1, min(int(limit), 200))
-        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'supplier_id'")
-        has_supplier = bool(cursor.fetchone())
-        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'stock_subject_id'")
-        has_stock_subject = bool(cursor.fetchone())
-        cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'buying_price'")
-        has_mov_buying_price = bool(cursor.fetchone())
-        buying_price_sel = (
-            'COALESCE(m.buying_price, lb.buying_price) AS buying_price'
-            if has_mov_buying_price
-            else 'lb.buying_price'
-        )
+
+def _library_stock_in_sql_context(cursor):
+    """Cached JOIN/SELECT fragments for stock-in list queries."""
+    global _library_stock_in_sql_ctx_cache
+    if _library_stock_in_sql_ctx_cache is not None:
+        return _library_stock_in_sql_ctx_cache
+    ensure_library_book_stock_movements_table(cursor)
+    ensure_library_book_copy_units_table(cursor)
+    migrate_library_stock_movements_supplier_id(cursor)
+    migrate_library_stock_movements_stock_subject_id(cursor)
+    migrate_library_stock_movements_buying_price(cursor)
+    cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'supplier_id'")
+    has_supplier = bool(cursor.fetchone())
+    cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'stock_subject_id'")
+    has_stock_subject = bool(cursor.fetchone())
+    cursor.execute("SHOW COLUMNS FROM library_book_stock_movements LIKE 'buying_price'")
+    has_mov_buying_price = bool(cursor.fetchone())
+    buying_price_sel = (
+        'COALESCE(m.buying_price, lb.buying_price) AS buying_price'
+        if has_mov_buying_price
+        else 'lb.buying_price AS buying_price'
+    )
+    if has_stock_subject:
         stock_subject_sel = (
-            "m.stock_subject_id, "
-            "UPPER(TRIM(COALESCE(stock_sub.subject_name, sub.subject_name))) AS subject_name, "
+            'm.stock_subject_id, '
+            'UPPER(TRIM(COALESCE(stock_sub.subject_name, sub.subject_name))) AS subject_name, '
             "UPPER(TRIM(COALESCE(stock_sub.subject_code, sub.subject_code, ''))) AS subject_code, "
-            if has_stock_subject else
-            "NULL AS stock_subject_id, "
-            "UPPER(TRIM(sub.subject_name)) AS subject_name, "
+        )
+        stock_subject_join = 'LEFT JOIN subjects stock_sub ON stock_sub.id = m.stock_subject_id '
+    else:
+        stock_subject_sel = (
+            'NULL AS stock_subject_id, '
+            'UPPER(TRIM(sub.subject_name)) AS subject_name, '
             "UPPER(TRIM(COALESCE(sub.subject_code, ''))) AS subject_code, "
         )
-        stock_subject_join = (
-            "LEFT JOIN subjects stock_sub ON stock_sub.id = m.stock_subject_id "
-            if has_stock_subject else ""
+        stock_subject_join = ''
+    base_from = f"""
+        FROM library_book_stock_movements m
+        INNER JOIN library_books lb ON lb.id = m.library_book_id
+        LEFT JOIN subjects sub ON sub.id = lb.subject_id
+        {stock_subject_join}
+        INNER JOIN academic_levels al ON al.id = m.academic_level_id
+    """
+    if has_supplier:
+        base_from += ' LEFT JOIN library_book_suppliers sup ON sup.id = m.supplier_id '
+        supplier_sel = (
+            'UPPER(TRIM(sup.company_name)) AS supplier_company, sup.phone AS supplier_phone'
         )
-        if has_supplier:
-            stock_in_sql = f"""
-            SELECT m.id, m.library_book_id, m.academic_level_id, m.quantity, m.notes, m.created_at,
-                   lb.book_name, lb.book_category, {buying_price_sel},
-                   {stock_subject_sel}
-                   UPPER(TRIM(al.level_name)) AS level_name,
-                   UPPER(TRIM(al.level_category)) AS level_category,
-                   UPPER(TRIM(sup.company_name)) AS supplier_company,
-                   sup.phone AS supplier_phone
-            FROM library_book_stock_movements m
-            INNER JOIN library_books lb ON lb.id = m.library_book_id
-            LEFT JOIN subjects sub ON sub.id = lb.subject_id
-            {stock_subject_join}
-            INNER JOIN academic_levels al ON al.id = m.academic_level_id
-            LEFT JOIN library_book_suppliers sup ON sup.id = m.supplier_id
-            WHERE m.movement_type = 'in'
-            ORDER BY m.created_at DESC
-            LIMIT %s
-            """
+    else:
+        supplier_sel = 'NULL AS supplier_company, NULL AS supplier_phone'
+    select_sql = f"""
+        SELECT m.id, m.library_book_id, m.academic_level_id, m.quantity, m.notes, m.created_at,
+               lb.book_name, lb.book_category, {buying_price_sel},
+               {stock_subject_sel}
+               UPPER(TRIM(al.level_name)) AS level_name,
+               UPPER(TRIM(al.level_category)) AS level_category,
+               {supplier_sel}
+    """
+    _library_stock_in_sql_ctx_cache = {
+        'has_supplier': has_supplier,
+        'has_stock_subject': has_stock_subject,
+        'select_sql': select_sql,
+        'base_from': base_from,
+        'where_base': " WHERE m.movement_type = 'in' ",
+    }
+    return _library_stock_in_sql_ctx_cache
+
+
+def _library_stock_in_search_clause(q, ctx):
+    """SQL AND (...) for stock-in list search (book, level, supplier, copy, student)."""
+    q = (q or '').strip()
+    if not q:
+        return '', []
+    like = '%' + q + '%'
+    parts = [
+        'lb.book_name LIKE %s',
+        'lb.book_category LIKE %s',
+        'al.level_name LIKE %s',
+        'al.level_category LIKE %s',
+        'm.notes LIKE %s',
+    ]
+    params = [like, like, like, like, like]
+    if ctx.get('has_supplier'):
+        parts.append('sup.company_name LIKE %s')
+        parts.append('sup.phone LIKE %s')
+        params.extend([like, like])
+    parts.append(
+        """
+        EXISTS (
+            SELECT 1 FROM library_book_copy_units cu
+            WHERE cu.stock_in_movement_id = m.id AND cu.copy_code LIKE %s
+        )
+        """
+    )
+    params.append(like)
+    parts.append(
+        """
+        EXISTS (
+            SELECT 1 FROM library_book_copy_units cu2
+            INNER JOIN library_book_student_issues si ON si.copy_unit_id = cu2.id
+            INNER JOIN students st ON st.student_id = si.student_id
+            WHERE cu2.stock_in_movement_id = m.id
+              AND (st.full_name LIKE %s OR si.student_id LIKE %s OR si.copy_code LIKE %s)
+        )
+        """
+    )
+    params.extend([like, like, like])
+    return ' AND (' + ' OR '.join(parts) + ') ', params
+
+
+def _library_stock_in_row_from_db(row, ctx):
+    """One movement row dict from SELECT (dict or tuple)."""
+    has_stock_subject = ctx.get('has_stock_subject')
+    if isinstance(row, dict):
+        created_raw = row.get('created_at')
+        mid = row.get('id')
+        ssid = row.get('stock_subject_id')
+        return {
+            'id': mid,
+            'book_id': row.get('library_book_id'),
+            'level_id': row.get('academic_level_id'),
+            'stock_subject_id': int(ssid) if ssid is not None else None,
+            'quantity': int(row.get('quantity') or 0),
+            'notes': row.get('notes') or '',
+            'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+            'created_at_display': _library_format_stock_datetime(created_raw),
+            'book_name': (row.get('book_name') or '').strip().upper(),
+            'book_category': (row.get('book_category') or '').strip().upper(),
+            'buying_price': float(row.get('buying_price') or 0),
+            'subject_name': (row.get('subject_name') or '').strip().upper(),
+            'subject_code': (row.get('subject_code') or '').strip().upper(),
+            'level_name': (row.get('level_name') or '').strip().upper(),
+            'level_category': (row.get('level_category') or '').strip().upper(),
+            'supplier_company': (row.get('supplier_company') or '').strip().upper(),
+            'supplier_phone': row.get('supplier_phone') or '',
+            'copy_codes': [],
+        }
+    created_raw = row[5] if len(row) > 5 else None
+    mid = row[0] if len(row) > 0 else None
+    ssid = row[9] if has_stock_subject and len(row) > 9 else None
+    sub_name_i = 10 if has_stock_subject else 9
+    sub_code_i = 11 if has_stock_subject else 10
+    lvl_name_i = 12 if has_stock_subject else 11
+    lvl_cat_i = 13 if has_stock_subject else 12
+    sup_co_i = 14 if has_stock_subject else 13
+    sup_ph_i = 15 if has_stock_subject else 14
+    return {
+        'id': mid,
+        'book_id': row[1] if len(row) > 1 else None,
+        'level_id': row[2] if len(row) > 2 else None,
+        'stock_subject_id': int(ssid) if ssid is not None else None,
+        'quantity': int(row[3] or 0) if len(row) > 3 else 0,
+        'notes': row[4] if len(row) > 4 else '',
+        'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
+        'created_at_display': _library_format_stock_datetime(created_raw),
+        'book_name': ((row[6] or '') if len(row) > 6 else '').strip().upper(),
+        'book_category': ((row[7] or '') if len(row) > 7 else '').strip().upper(),
+        'buying_price': float(row[8] or 0) if len(row) > 8 else 0.0,
+        'subject_name': ((row[sub_name_i] or '') if len(row) > sub_name_i else '').strip().upper(),
+        'subject_code': ((row[sub_code_i] or '') if len(row) > sub_code_i else '').strip().upper(),
+        'level_name': ((row[lvl_name_i] or '') if len(row) > lvl_name_i else '').strip().upper(),
+        'level_category': ((row[lvl_cat_i] or '') if len(row) > lvl_cat_i else '').strip().upper(),
+        'supplier_company': ((row[sup_co_i] or '') if len(row) > sup_co_i else '').strip().upper(),
+        'supplier_phone': row[sup_ph_i] if len(row) > sup_ph_i else '',
+        'copy_codes': [],
+    }
+
+
+def _library_stock_in_enrich_records(cursor, rows):
+    """Attach copy codes, teacher distributions, and student issues for the current page only."""
+    from collections import defaultdict
+
+    if not rows:
+        return rows
+    mov_ids = [int(r['id']) for r in rows if r.get('id') is not None]
+    if not mov_ids:
+        return rows
+    codes_by_mov = defaultdict(list)
+    placeholders = ','.join(['%s'] * len(mov_ids))
+    cursor.execute(
+        f"""
+        SELECT stock_in_movement_id, copy_code
+        FROM library_book_copy_units
+        WHERE stock_in_movement_id IN ({placeholders})
+        ORDER BY copy_code ASC
+        """,
+        tuple(mov_ids),
+    )
+    for crow in cursor.fetchall() or []:
+        if isinstance(crow, dict):
+            mov_id = crow.get('stock_in_movement_id')
+            code = crow.get('copy_code')
         else:
-            stock_in_sql = f"""
-            SELECT m.id, m.library_book_id, m.academic_level_id, m.quantity, m.notes, m.created_at,
-                   lb.book_name, lb.book_category, {buying_price_sel},
-                   {stock_subject_sel}
-                   UPPER(TRIM(al.level_name)) AS level_name,
-                   UPPER(TRIM(al.level_category)) AS level_category,
-                   NULL AS supplier_company,
-                   NULL AS supplier_phone
-            FROM library_book_stock_movements m
-            INNER JOIN library_books lb ON lb.id = m.library_book_id
-            LEFT JOIN subjects sub ON sub.id = lb.subject_id
-            {stock_subject_join}
-            INNER JOIN academic_levels al ON al.id = m.academic_level_id
-            WHERE m.movement_type = 'in'
-            ORDER BY m.created_at DESC
-            LIMIT %s
-            """
-        cursor.execute(stock_in_sql, (lim,))
-        mov_rows = cursor.fetchall() or []
-        if not mov_rows:
-            return rows
-
-        mov_ids = []
-        for row in mov_rows:
-            if isinstance(row, dict):
-                mid = row.get('id')
-            else:
-                mid = row[0] if len(row) > 0 else None
-            if mid is not None:
-                mov_ids.append(int(mid))
-
-        codes_by_mov = defaultdict(list)
-        if mov_ids:
-            placeholders = ','.join(['%s'] * len(mov_ids))
-            cursor.execute(
-                f"""
-                SELECT stock_in_movement_id, copy_code
-                FROM library_book_copy_units
-                WHERE stock_in_movement_id IN ({placeholders})
-                ORDER BY copy_code ASC
-                """,
-                tuple(mov_ids),
-            )
-            for crow in cursor.fetchall() or []:
-                if isinstance(crow, dict):
-                    mov_id = crow.get('stock_in_movement_id')
-                    code = crow.get('copy_code')
-                else:
-                    mov_id = crow[0] if len(crow) > 0 else None
-                    code = crow[1] if len(crow) > 1 else None
-                if mov_id is not None and code:
-                    codes_by_mov[int(mov_id)].append(str(code).strip().upper())
-
-        for row in mov_rows:
-            if isinstance(row, dict):
-                created_raw = row.get('created_at')
-                mid = row.get('id')
-                ssid = row.get('stock_subject_id')
-                rows.append({
-                    'id': mid,
-                    'book_id': row.get('library_book_id'),
-                    'level_id': row.get('academic_level_id'),
-                    'stock_subject_id': int(ssid) if ssid is not None else None,
-                    'quantity': int(row.get('quantity') or 0),
-                    'notes': row.get('notes') or '',
-                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
-                    'created_at_display': _library_format_stock_datetime(created_raw),
-                    'book_name': (row.get('book_name') or '').strip().upper(),
-                    'book_category': (row.get('book_category') or '').strip().upper(),
-                    'buying_price': float(row.get('buying_price') or 0),
-                    'subject_name': (row.get('subject_name') or '').strip().upper(),
-                    'subject_code': (row.get('subject_code') or '').strip().upper(),
-                    'level_name': (row.get('level_name') or '').strip().upper(),
-                    'level_category': (row.get('level_category') or '').strip().upper(),
-                    'supplier_company': (row.get('supplier_company') or '').strip().upper(),
-                    'supplier_phone': row.get('supplier_phone') or '',
-                    'copy_codes': codes_by_mov.get(int(mid), []) if mid is not None else [],
-                })
-            else:
-                created_raw = row[5] if len(row) > 5 else None
-                mid = row[0] if len(row) > 0 else None
-                ssid = row[9] if has_stock_subject and len(row) > 9 else None
-                sub_name_i = 10 if has_stock_subject else 9
-                sub_code_i = 11 if has_stock_subject else 10
-                lvl_name_i = 12 if has_stock_subject else 11
-                lvl_cat_i = 13 if has_stock_subject else 12
-                sup_co_i = 14 if has_stock_subject else 13
-                sup_ph_i = 15 if has_stock_subject else 14
-                rows.append({
-                    'id': mid,
-                    'book_id': row[1] if len(row) > 1 else None,
-                    'level_id': row[2] if len(row) > 2 else None,
-                    'stock_subject_id': int(ssid) if ssid is not None else None,
-                    'quantity': int(row[3] or 0) if len(row) > 3 else 0,
-                    'notes': row[4] if len(row) > 4 else '',
-                    'created_at': created_raw.isoformat() if hasattr(created_raw, 'isoformat') else (str(created_raw) if created_raw else ''),
-                    'created_at_display': _library_format_stock_datetime(created_raw),
-                    'book_name': ((row[6] or '') if len(row) > 6 else '').strip().upper(),
-                    'book_category': ((row[7] or '') if len(row) > 7 else '').strip().upper(),
-                    'buying_price': float(row[8] or 0) if len(row) > 8 else 0.0,
-                    'subject_name': ((row[sub_name_i] or '') if len(row) > sub_name_i else '').strip().upper(),
-                    'subject_code': ((row[sub_code_i] or '') if len(row) > sub_code_i else '').strip().upper(),
-                    'level_name': ((row[lvl_name_i] or '') if len(row) > lvl_name_i else '').strip().upper(),
-                    'level_category': ((row[lvl_cat_i] or '') if len(row) > lvl_cat_i else '').strip().upper(),
-                    'supplier_company': ((row[sup_co_i] or '') if len(row) > sup_co_i else '').strip().upper(),
-                    'supplier_phone': row[sup_ph_i] if len(row) > sup_ph_i else '',
-                    'copy_codes': codes_by_mov.get(int(mid), []) if mid is not None else [],
-                })
-        for r in rows:
-            r['copy_count'] = len(r.get('copy_codes') or [])
-        dist_by_mov = _library_teacher_distributions_by_movements(cursor, mov_ids)
-        students_by_mov = _library_student_issues_by_movements(cursor, mov_ids)
-        for r in rows:
-            mid = r.get('id')
-            dists = dist_by_mov.get(int(mid), []) if mid is not None else []
-            r['teacher_distributions'] = dists
-            allocated = sum(d.get('quantity', 0) for d in dists)
-            r['teacher_allocated_total'] = allocated
-            r['remaining_stock'] = max(0, int(r.get('quantity') or 0) - allocated)
-            student_issues = students_by_mov.get(int(mid), []) if mid is not None else []
-            r['student_allocations'] = student_issues
-            r['students_allocated_count'] = len(student_issues)
-    except Exception as e:
-        print(f"_library_stock_in_records: {e}")
+            mov_id = crow[0] if len(crow) > 0 else None
+            code = crow[1] if len(crow) > 1 else None
+        if mov_id is not None and code:
+            codes_by_mov[int(mov_id)].append(str(code).strip().upper())
+    dist_by_mov = _library_teacher_distributions_by_movements(cursor, mov_ids)
+    students_by_mov = _library_student_issues_by_movements(cursor, mov_ids)
+    for r in rows:
+        mid = r.get('id')
+        if mid is None:
+            continue
+        mid_i = int(mid)
+        r['copy_codes'] = codes_by_mov.get(mid_i, [])
+        r['copy_count'] = len(r['copy_codes'])
+        dists = dist_by_mov.get(mid_i, [])
+        r['teacher_distributions'] = dists
+        allocated = sum(d.get('quantity', 0) for d in dists)
+        r['teacher_allocated_total'] = allocated
+        r['remaining_stock'] = max(0, int(r.get('quantity') or 0) - allocated)
+        student_issues = students_by_mov.get(mid_i, [])
+        r['student_allocations'] = student_issues
+        r['students_allocated_count'] = len(student_issues)
     return rows
+
+
+def _fetch_library_stock_in_records_page(cursor, page=1, per_page=50, q=''):
+    """Paginated stock-in history — COUNT + LIMIT/OFFSET in SQL (large-school safe)."""
+    rows = []
+    total = 0
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    pages = 1
+    try:
+        ctx = _library_stock_in_sql_context(cursor)
+        search_sql, search_params = _library_stock_in_search_clause(q, ctx)
+        count_sql = (
+            'SELECT COUNT(DISTINCT m.id) AS c '
+            + ctx['base_from']
+            + ctx['where_base']
+            + search_sql
+        )
+        cursor.execute(count_sql, tuple(search_params))
+        count_row = cursor.fetchone()
+        total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+        pages = max(1, (total + per_page - 1) // per_page) if total else 1
+        if page > pages:
+            page = pages
+        offset = (page - 1) * per_page
+        list_sql = (
+            ctx['select_sql']
+            + ctx['base_from']
+            + ctx['where_base']
+            + search_sql
+            + ' ORDER BY m.created_at DESC LIMIT %s OFFSET %s'
+        )
+        cursor.execute(list_sql, tuple(search_params) + (per_page, offset))
+        for raw in cursor.fetchall() or []:
+            rows.append(_library_stock_in_row_from_db(raw, ctx))
+        rows = _library_stock_in_enrich_records(cursor, rows)
+    except Exception as e:
+        print(f'_fetch_library_stock_in_records_page: {e}')
+        import traceback
+        traceback.print_exc()
+        rows = []
+        total = 0
+        pages = 1
+    return {
+        'records': rows,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+    }
+
+
+def _library_stock_in_records(cursor, limit=100):
+    """Stock-in movements (first page only — prefer _fetch_library_stock_in_records_page)."""
+    lim = max(1, min(int(limit or 100), 200))
+    return _fetch_library_stock_in_records_page(cursor, page=1, per_page=lim, q='')['records']
 
 
 def _library_apply_stock_movement(cursor, book_id, level_id, movement_type, quantity, notes='', performed_by=None, performed_by_name='', supplier_id=None, stock_subject_id=None, buying_price=None):
@@ -35624,45 +35844,6 @@ def _fetch_library_configured_books_count(cursor):
     return int((row.get('c') if isinstance(row, dict) else row[0]) or 0)
 
 
-def _fetch_library_stock_in_records_page(cursor, page=1, per_page=50, q=''):
-    """Paginated stock-in history (filters in memory after capped fetch)."""
-    all_rows = _library_stock_in_records(cursor, limit=500)
-    q = (q or '').strip().upper()
-    if q:
-        filtered = []
-        for r in all_rows:
-            student_hay = ' '.join(
-                (s.get('student_id') or '') + ' ' + (s.get('student_name') or '') + ' ' + (s.get('copy_code') or '')
-                for s in (r.get('student_allocations') or [])
-            )
-            hay = ' '.join([
-                str(r.get('book_name') or ''),
-                str(r.get('level_name') or ''),
-                str(r.get('level_category') or ''),
-                str(r.get('supplier_company') or ''),
-                str(r.get('supplier_phone') or ''),
-                str(r.get('notes') or ''),
-                student_hay,
-            ]).upper()
-            if q in hay:
-                filtered.append(r)
-        all_rows = filtered
-    total = len(all_rows)
-    per_page = max(1, min(int(per_page or 50), 100))
-    page = max(1, int(page or 1))
-    pages = max(1, (total + per_page - 1) // per_page) if total else 1
-    if page > pages:
-        page = pages
-    offset = (page - 1) * per_page
-    return {
-        'records': all_rows[offset:offset + per_page],
-        'page': page,
-        'per_page': per_page,
-        'total': total,
-        'pages': pages,
-    }
-
-
 def _books_inventory_json_guard():
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
@@ -35758,15 +35939,43 @@ def books_inventory_stock_lines_api():
     if not level_id:
         return jsonify({'success': False, 'message': 'level_id is required'}), 400
     subject_id = request.args.get('subject_id', type=int)
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    book_id = request.args.get('book_id', type=int)
     connection = get_db_connection()
     if not connection:
         return jsonify({'success': False, 'message': 'Database unavailable'}), 500
     try:
         with connection.cursor() as cursor:
-            lines = _library_stock_allocation_lines(
-                cursor, level_id=level_id, subject_id=subject_id or None,
-            )
-        return jsonify({'success': True, 'lines': lines, 'total': len(lines)})
+            if book_id:
+                payload = _fetch_library_stock_allocation_lines_page(
+                    cursor,
+                    level_id=level_id,
+                    subject_id=subject_id or None,
+                    page=1,
+                    per_page=1,
+                    book_id=book_id,
+                )
+            else:
+                payload = _fetch_library_stock_allocation_lines_page(
+                    cursor,
+                    level_id=level_id,
+                    subject_id=subject_id or None,
+                    page=page,
+                    per_page=per_page,
+                    q=q,
+                )
+        return jsonify({
+            'success': True,
+            'lines': payload['lines'],
+            'meta': {
+                'page': payload['page'],
+                'per_page': payload['per_page'],
+                'total': payload['total'],
+                'pages': payload['pages'],
+            },
+        })
     except Exception as e:
         print(f'books_inventory_stock_lines_api: {e}')
         return jsonify({'success': False, 'message': 'Could not load stock lines'}), 500
@@ -35967,7 +36176,7 @@ def books_inventory():
             )
             library_level_allocation_summary = _library_allocation_stock_by_level(cursor)
             if inventory_view != 'stock':
-                library_stock_lines = _library_stock_allocation_lines(cursor)
+                library_stock_lines = _library_stock_allocation_lines(cursor, limit=200)
                 library_stock_in_records = _library_stock_in_records(cursor, limit=100)
             library_stock_movements_recent = _library_recent_stock_movements(cursor, limit=20)
             library_level_subjects = _library_subjects_by_level_map(cursor)

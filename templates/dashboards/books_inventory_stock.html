@@ -37,6 +37,10 @@
       registeredBooks: [],
       configuredCount: 0,
       stockLinesLoading: false,
+      stockLinesPage: 1,
+      stockLinesPages: 1,
+      stockLinesTotal: 0,
+      stockLinesSearch: '',
       stockInRecordsLoading: false,
       stockInPage: 1,
       stockInPages: 1,
@@ -182,11 +186,27 @@
         }
         this.$watch('stockLevelId', function () {
           this.stockBookKey = '';
-          this.fetchStockLinesForLevel();
+          this.stockLinesSearch = '';
+          this.fetchStockLinesForLevel(1);
         });
         this.$watch('stockSubjectId', function () {
           this.stockBookKey = '';
-          if (this.stockPageMode === 'in') this.fetchStockLinesForLevel();
+          if (this.stockPageMode === 'in') this.fetchStockLinesForLevel(1);
+        });
+        var stockLinesSearchTimer;
+        this.$watch('stockLinesSearch', function () {
+          var self = this;
+          clearTimeout(stockLinesSearchTimer);
+          stockLinesSearchTimer = setTimeout(function () {
+            self.fetchStockLinesForLevel(1);
+          }, 350);
+        });
+        this.$watch('stockBookKey', function () {
+          var self = this;
+          if (!self.stockBookKey || self.stockSelectedLine()) return;
+          var parts = String(self.stockBookKey).split(':');
+          if (parts.length !== 2) return;
+          self.fetchStockLineByBookId(parts[0]);
         });
         var stockInSearchTimer;
         this.$watch('stockInListSearch', function () {
@@ -420,28 +440,73 @@
           })
           .catch(function () {});
       },
-      fetchStockLinesForLevel: function () {
+      fetchStockLinesForLevel: function (page) {
         var self = this;
         var lid = String(this.stockLevelId || '');
         if (!lid || !this.stockLinesApi) {
           this.stockLines = [];
+          this.stockLinesPage = 1;
+          this.stockLinesPages = 1;
+          this.stockLinesTotal = 0;
           return;
         }
         this.stockLinesLoading = true;
-        var url = this.stockLinesApi + '?level_id=' + encodeURIComponent(lid);
+        var p = new URLSearchParams();
+        p.set('level_id', lid);
+        p.set('page', String(page || this.stockLinesPage || 1));
+        p.set('per_page', '50');
         if (this.stockPageMode === 'in' && this.stockSubjectId) {
-          url += '&subject_id=' + encodeURIComponent(String(this.stockSubjectId));
+          p.set('subject_id', String(this.stockSubjectId));
         }
-        fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        var sq = (this.stockLinesSearch || '').trim();
+        if (sq) p.set('q', sq);
+        fetch(this.stockLinesApi + '?' + p.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        })
           .then(function (r) { return r.json(); })
           .then(function (data) {
             self.stockLinesLoading = false;
-            self.stockLines = (data && data.success && data.lines) ? data.lines : [];
+            if (data && data.success) {
+              self.stockLines = data.lines || [];
+              var meta = data.meta || {};
+              self.stockLinesPage = meta.page || 1;
+              self.stockLinesPages = meta.pages || 1;
+              self.stockLinesTotal = meta.total || 0;
+            } else {
+              self.stockLines = [];
+            }
           })
           .catch(function () {
             self.stockLinesLoading = false;
             self.stockLines = [];
           });
+      },
+      fetchStockLineByBookId: function (bookId) {
+        var self = this;
+        var lid = String(this.stockLevelId || '');
+        if (!lid || !bookId || !this.stockLinesApi) return;
+        var p = new URLSearchParams();
+        p.set('level_id', lid);
+        p.set('book_id', String(bookId));
+        if (this.stockPageMode === 'in' && this.stockSubjectId) {
+          p.set('subject_id', String(this.stockSubjectId));
+        }
+        fetch(this.stockLinesApi + '?' + p.toString(), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data || !data.success || !(data.lines && data.lines.length)) return;
+            var ln = data.lines[0];
+            var key = self.stockBookOptionKey(ln);
+            var exists = (self.stockLines || []).some(function (x) {
+              return self.stockBookOptionKey(x) === key;
+            });
+            if (!exists) self.stockLines = (self.stockLines || []).concat([ln]);
+          })
+          .catch(function () {});
       },
       fetchStockInRecords: function (page) {
         var self = this;
@@ -787,6 +852,9 @@
         }).length;
       },
       stockBooksForLevel: function () {
+        if (this.inventoryView === 'stock') {
+          return this.stockLines || [];
+        }
         var lid = String(this.stockLevelId || '');
         if (!lid) return [];
         var lines = (this.stockLines || []).filter(function (ln) {
@@ -927,6 +995,7 @@
         } else {
           this.teacherBatchPickId = '';
         }
+        if (this.stockLevelId) this.fetchStockLinesForLevel(1);
         this.$nextTick(function () {
           var panel = this.$refs.stockFormPanel;
           if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1420,7 +1489,7 @@
                         <i class="fas fa-spinner fa-spin mr-1"></i> Loading books for this class…
                     </p>
                     <p class="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100"
-                       x-show="stockLevelId && !stockLinesLoading && !stockLines.length && configuredBooksCount()" x-cloak>
+                       x-show="stockLevelId && !stockLinesLoading && !stockLinesTotal && configuredBooksCount()" x-cloak>
                         No books match this class and subject. Check <strong>Subject &amp; Class Allocation</strong> and that the book uses the same academic category as the class.
                     </p>
                     <div class="grid gap-4 sm:grid-cols-2">
@@ -1435,16 +1504,38 @@
                                 </template>
                             </select>
                         </div>
-                        <div>
+                        <div class="sm:col-span-2">
+                            <label for="stock_lines_search" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Search book</label>
+                            <input type="search" id="stock_lines_search" x-model="stockLinesSearch"
+                                   placeholder="Filter by book name…"
+                                   :disabled="!stockLevelId"
+                                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm normal-case text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        </div>
+                        <div class="sm:col-span-2">
                             <label for="stock_page_book" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-700 dark:text-gray-300">Book at level</label>
                             <select id="stock_page_book" x-model="stockBookKey" required
-                                    :disabled="!stockLevelId || !stockBooksForLevel().length"
+                                    :disabled="!stockLevelId || stockLinesLoading || (!stockLinesTotal && !stockBooksForLevel().length)"
                                     class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm uppercase text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
                                 <option value="">SELECT BOOK?</option>
                                 <template x-for="ln in stockBooksForLevel()" :key="stockBookOptionKey(ln)">
                                     <option :value="stockBookOptionKey(ln)" x-text="stockBookOptionLabel(ln)"></option>
                                 </template>
                             </select>
+                            <nav class="mt-2 flex flex-wrap items-center justify-between gap-2"
+                                 x-show="stockLevelId && stockLinesPages > 1" x-cloak>
+                                <p class="text-[11px] text-gray-500 dark:text-gray-400">
+                                    Page <span x-text="stockLinesPage"></span> of <span x-text="stockLinesPages"></span>
+                                    · <span x-text="stockLinesTotal"></span> book(s)
+                                </p>
+                                <div class="flex gap-2">
+                                    <button type="button" class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-40"
+                                            :disabled="stockLinesLoading || stockLinesPage <= 1"
+                                            @click="fetchStockLinesForLevel(stockLinesPage - 1)">Previous</button>
+                                    <button type="button" class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold disabled:opacity-40"
+                                            :disabled="stockLinesLoading || stockLinesPage >= stockLinesPages"
+                                            @click="fetchStockLinesForLevel(stockLinesPage + 1)">Next</button>
+                                </div>
+                            </nav>
                         </div>
                     </div>
                     <div x-show="stockPageMode === 'in'" x-cloak>
