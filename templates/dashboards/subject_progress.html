@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Subject Progress - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+{% block sidebar_content %}
+{% if nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'classes' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'classes' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto">
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = 'Classes' %}
+    {% set role_hero_title = 'Subject progress' %}
+    {% if current_term_name %}
+    {% set role_hero_subtitle = 'Session coverage trends per subject · ' ~ current_term_name ~ '.' %}
+    {% else %}
+    {% set role_hero_subtitle = 'Session coverage trends per subject — open any class to see details.' %}
+    {% endif %}
+    {% set role_hero_icon_class = 'fa-chart-line' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if academic_levels %}
+    <div class="mb-4 max-w-md">
+        <label for="sp-search" class="sr-only">Search levels or subjects</label>
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" aria-hidden="true"></i>
+            <input id="sp-search" type="search" autocomplete="off" placeholder="Search level or subject…"
+                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm pl-9 pr-3 py-2.5 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
+        </div>
+    </div>
+
+    <div id="sp-levels" class="space-y-5">
+        {% set cat_ns = namespace(prev='') %}
+        {% for level in academic_levels %}
+        {% set subs = level.subject_allocations|default([]) %}
+        <section class="sp-level-block rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden"
+                 data-level-name="{{ (level.level_name or '')|lower }}"
+                 data-level-category="{{ (level.level_category or '')|lower }}"
+                 data-subject-names="{% for s in subs %}{{ (s.subject_name or '')|lower }} {{ (s.subject_code or '')|lower }} {% endfor %}">
+            <header class="px-4 sm:px-5 py-3 border-b border-gray-100 dark:border-gray-700/80 bg-gray-50/80 dark:bg-gray-900/40 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    {% if level.level_category != cat_ns.prev %}
+                    <p class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-0.5">{{ level.level_category }}</p>
+                    {% endif %}
+                    <h2 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white">{{ level.level_name }}</h2>
+                </div>
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400 tabular-nums">{{ subs|length }} subject{% if subs|length != 1 %}s{% endif %}</span>
+            </header>
+            <div class="p-4 sm:p-5">
+                {% if subs %}
+                <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 list-none m-0 p-0">
+                    {% for subj in subs %}
+                    <li>
+                        <a href="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ subj.subject_id) }}"
+                           class="sp-subject-link group flex flex-col rounded-lg border border-gray-200 dark:border-gray-600 px-3 py-2.5 hover:border-brand-primary/50 hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition-colors h-full">
+                            <span class="flex items-center gap-3">
+                                <span class="w-9 h-9 rounded-lg bg-gradient-to-br from-brand-primary/90 to-brand-secondary text-white flex items-center justify-center shrink-0 text-sm shadow-sm">
+                                    <i class="fas fa-book-open" aria-hidden="true"></i>
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block font-semibold text-sm text-gray-900 dark:text-white truncate group-hover:text-brand-primary dark:group-hover:text-brand-secondary">{{ subj.subject_name }}</span>
+                                    {% if subj.subject_code %}
+                                    <span class="block text-xs text-gray-500 dark:text-gray-400 truncate">{{ subj.subject_code }}</span>
+                                    {% endif %}
+                                </span>
+                                <i class="fas fa-chevron-right text-xs text-gray-400 group-hover:text-brand-primary shrink-0" aria-hidden="true"></i>
+                            </span>
+                            {% with coverage=subj.coverage, compact=true %}
+                            {% include 'dashboards/_subject_progress_coverage.html' %}
+                            {% endwith %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-sm text-gray-500 dark:text-gray-400 m-0">No subjects registered for this level yet.</p>
+                {% endif %}
+            </div>
+        </section>
+        {% set cat_ns.prev = level.level_category %}
+        {% endfor %}
+    </div>
+    <p id="sp-no-results" class="hidden text-sm text-center text-gray-500 dark:text-gray-400 py-8">No levels or subjects match your search.</p>
+    {% else %}
+    <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 py-12 text-center text-gray-500 dark:text-gray-400">
+        <i class="fas fa-layer-group text-3xl mb-3 opacity-50" aria-hidden="true"></i>
+        <p class="font-medium">No active academic levels found.</p>
+        <a href="{{ employee_dash_url('academic-subject-registration') }}" class="inline-flex items-center mt-3 text-sm text-brand-primary hover:underline dark:text-brand-secondary">
+            Register subjects
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% if academic_levels %}
+<script>
+(function () {
+    var input = document.getElementById('sp-search');
+    var blocks = [].slice.call(document.querySelectorAll('.sp-level-block'));
+    var noResults = document.getElementById('sp-no-results');
+    if (!input || !blocks.length) return;
+    function apply() {
+        var q = (input.value || '').toLowerCase().trim();
+        var visible = 0;
+        blocks.forEach(function (el) {
+            var hay = (el.getAttribute('data-level-name') || '') + ' ' +
+                (el.getAttribute('data-level-category') || '') + ' ' +
+                (el.getAttribute('data-subject-names') || '');
+            var show = !q || hay.indexOf(q) !== -1;
+            el.style.display = show ? '' : 'none';
+            if (show) visible += 1;
+        });
+        if (noResults) noResults.classList.toggle('hidden', visible > 0);
+    }
+    input.addEventListener('input', apply);
+})();
+</script>
+{% endif %}
+{% endblock %}

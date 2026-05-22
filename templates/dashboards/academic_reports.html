@@ -3951,6 +3951,12 @@
     return cg || '-';
   }
 
+  /** Combined cohort from API meta or active Class view filter (Combined levels). */
+  function isCombinedReportBundle(meta) {
+    meta = meta || {};
+    return !!(meta.is_combined_level_view || meta.merge_single_cohort || isCombinedLevelView());
+  }
+
   function marksMatrixTableClass(subjectCount) {
     var n = subjectCount || 0;
     var cls = 'ar-marks-matrix ar-fit-table';
@@ -4006,8 +4012,14 @@
   }
 
   function renderTable(bundle) {
-    const columns = Array.isArray(bundle.columns) ? bundle.columns : [];
+    let columns = Array.isArray(bundle.columns) ? bundle.columns.slice() : [];
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
+    const meta = bundle.meta || {};
+    if (isCombinedReportBundle(meta) && columns.indexOf('home_class') === -1) {
+      var insertAt = columns.indexOf('full_name');
+      if (insertAt === -1) insertAt = columns.length - 1;
+      columns.splice(insertAt + 1, 0, 'home_class');
+    }
     if (!rows.length || !columns.length) {
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-8 text-center">No data found for this report and filters.</p>';
     }
@@ -4017,7 +4029,10 @@
     const body = rows.map(function(row, ri) {
       const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/40' : ' bg-white dark:bg-slate-900';
       const cells = columns.map(function(c) {
-        return '<td class="py-2 px-2 align-middle text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800">' + escapeHtml(row[c]) + '</td>';
+        var cellVal = (c === 'home_class' || c === 'current_grade')
+          ? rowHomeClassLabel(row)
+          : row[c];
+        return '<td class="py-2 px-2 align-middle text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-800">' + escapeHtml(cellVal) + '</td>';
       }).join('');
       return '<tr class="' + zebra + '">' + cells + '</tr>';
     }).join('');
@@ -4046,17 +4061,26 @@
     const meta = bundle.meta || {};
     const af = meta.applied_filters || {};
     const ew = meta.exam_window || {};
-    const mergeSingleCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    const mergeSingleCohort = isCombinedReportBundle(meta);
     const combinedCohortName = String(
       meta.combined_display_name || af.class_level || filterSelectText('gf-level') || 'Combined class'
     ).trim();
     const examsCovered = (ew.exam_count != null && ew.exam_count !== '') ? String(ew.exam_count) : '-';
     const bands = Array.isArray(meta.grade_bands) ? meta.grade_bands : [];
-    function gradeMeaning(code) {
+    const classGradeBands = (meta.class_grade_bands && typeof meta.class_grade_bands === 'object')
+      ? meta.class_grade_bands
+      : {};
+    function bandsForLevel(levelId) {
+      if (levelId == null || levelId === '') return bands;
+      const perClass = classGradeBands[String(levelId)] || classGradeBands[levelId] || [];
+      return Array.isArray(perClass) && perClass.length ? perClass : bands;
+    }
+    function gradeMeaning(code, levelId) {
       const c = String(code || '').trim().toLowerCase();
       if (!c) return '';
-      for (let i = 0; i < bands.length; i++) {
-        const b = bands[i] || {};
+      const rowBands = bandsForLevel(levelId);
+      for (let i = 0; i < rowBands.length; i++) {
+        const b = rowBands[i] || {};
         const bc = String(b.code || b.label || '').trim().toLowerCase();
         if (bc && bc === c) return String(b.meaning || '').trim();
       }
@@ -4216,7 +4240,8 @@
     function renderStudentCard(row, classPosition, studentSheetIndex) {
       if (studentSheetIndex === undefined) studentSheetIndex = 0;
       const grade = String(row.grade || '-');
-      const meaning = gradeMeaning(grade);
+      const rowBands = bandsForLevel(row.academic_level_id);
+      const meaning = gradeMeaning(grade, row.academic_level_id);
       const cardSubjectColumns = subjectColumnsForClass(classKeyForRow(row), [row]);
       const homeClass = (row.home_class && String(row.home_class).trim())
         ? row.home_class
@@ -4233,11 +4258,11 @@
         : '<div class="ar-rc-photo mx-auto flex items-center justify-center text-[9px] text-gray-400 text-center leading-tight">Student photo</div>';
       const overallPoints = (row.grade_points !== undefined && row.grade_points !== null && String(row.grade_points).trim() !== '')
         ? String(row.grade_points)
-        : gradePointsFromMark(row.mean, bands);
+        : gradePointsFromMark(row.mean, rowBands);
       const subjectRows = cardSubjectColumns.map(function(subjectName) {
         const mark = markValueForSubject(row, subjectName);
-        const subGrade = gradeCodeFromMark(mark, bands);
-        const subPoints = gradePointsFromMark(mark, bands);
+        const subGrade = gradeCodeFromMark(mark, rowBands);
+        const subPoints = gradePointsFromMark(mark, rowBands);
         return '' +
           '<tr>' +
             '<td class="ar-rc-td-subj">' + escapeHtml(subjectName) + '</td>' +
@@ -4316,20 +4341,86 @@
       function rowMeanPointsNum(row) {
         var gp = numOrNull(row.grade_points);
         if (gp !== null) return gp;
-        var s = String(gradePointsFromMark(row.mean, bands));
+        var s = String(gradePointsFromMark(row.mean, bandsForLevel(row.academic_level_id)));
         var n = parseFloat(s);
         return isNaN(n) ? null : n;
       }
 
-      function meanOf(getter) {
+      function meanOfList(rows, getter) {
         var vals = [];
-        list.forEach(function(row) {
+        (rows || []).forEach(function(row) {
           var n = getter(row);
           if (n !== null) vals.push(n);
         });
         if (!vals.length) return '—';
         var x = vals.reduce(function(a, b) { return a + b; }, 0) / vals.length;
         return String(Math.round(x));
+      }
+
+      function buildMeanFooterRow(label, classColText, subset, opts) {
+        opts = opts || {};
+        var rowCls = opts.emphasis
+          ? 'bg-slate-200/95 dark:bg-slate-800 border-t-2 border-slate-400 dark:border-slate-500 text-slate-900 dark:text-slate-100'
+          : 'bg-slate-100/95 dark:bg-slate-800/70 border-t border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100';
+        var totalMeanStr = meanOfList(subset, function(row) { return numOrNull(row.total_marks); });
+        var rowMeanPointsStr = meanOfList(subset, function(row) { return rowMeanPointsNum(row); });
+        var subjectFooterCells = classSubjectColumns.map(function(subjectName) {
+          var m = meanOfList(subset, function(row) { return numOrNull(row[subjectName]); });
+          return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
+        }).join('');
+        return '' +
+          '<tr class="' + rowCls + '">' +
+            '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100">' + escapeHtml(label) + '</td>' +
+            (showHomeClassCol
+              ? '<td class="ar-col-class font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">' + escapeHtml(classColText) + '</td>'
+              : '') +
+            subjectFooterCells +
+            '<td class="' + summaryMeanCellClass(totalMeanStr) + '">' + escapeHtml(totalMeanStr) + '</td>' +
+            '<td class="ar-col-sum font-semibold tabular-nums text-slate-900 dark:text-slate-100">' + escapeHtml(rowMeanPointsStr) + '</td>' +
+            '<td class="ar-col-grade text-center text-slate-500 dark:text-slate-400">—</td>' +
+          '</tr>';
+      }
+
+      function buildMeanFooterHtml() {
+        if (!list.length || !classSubjectColumns.length) return '';
+        if (!showHomeClassCol) {
+          return '<tfoot>' + buildMeanFooterRow('Mean', '—', list, { emphasis: true }) + '</tfoot>';
+        }
+        var byClass = {};
+        list.forEach(function(row) {
+          var ck = rowHomeClassLabel(row);
+          if (!ck || ck === '-') ck = '—';
+          if (!byClass[ck]) byClass[ck] = [];
+          byClass[ck].push(row);
+        });
+        var classOrder = [];
+        var memberNames = Array.isArray(meta.combined_member_level_names) ? meta.combined_member_level_names : [];
+        if (memberNames.length) {
+          memberNames.forEach(function(n) {
+            var k = String(n || '').trim();
+            if (k && byClass[k] && byClass[k].length) classOrder.push(k);
+          });
+          Object.keys(byClass).sort(function(a, b) {
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+          }).forEach(function(k) {
+            if (classOrder.indexOf(k) === -1) classOrder.push(k);
+          });
+        } else {
+          classOrder = Object.keys(byClass).sort(function(a, b) {
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+          });
+        }
+        var footRows = '';
+        classOrder.forEach(function(className) {
+          footRows += buildMeanFooterRow('Mean', className, byClass[className], { emphasis: false });
+        });
+        footRows += buildMeanFooterRow(
+          'Mean',
+          combinedCohortName || 'Combined',
+          list,
+          { emphasis: true }
+        );
+        return '<tfoot>' + footRows + '</tfoot>';
       }
 
       /** Subject columns: left-aligned to match header + body marks. */
@@ -4359,13 +4450,14 @@
         const gradePill = grade === '-' ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' : gradePillClass(grade);
         const zebra = ri % 2 === 1 ? ' bg-slate-50/90 dark:bg-slate-800/35' : ' bg-white dark:bg-slate-900';
         const studentTitle = escapeHtml(row.full_name || '-');
+        const homeClassLabel = escapeHtml(rowHomeClassLabel(row));
         return '' +
           '<tr class="' + zebra + ' border-b border-slate-100 dark:border-slate-800">' +
-            '<td class="ar-col-student text-slate-900 dark:text-white" title="' + studentTitle + '">' +
+            '<td class="ar-col-student text-slate-900 dark:text-white" title="' + studentTitle + (showHomeClassCol ? ' · ' + homeClassLabel : '') + '">' +
               '<span class="font-semibold">' + studentTitle + '</span>' +
             '</td>' +
             (showHomeClassCol
-              ? '<td class="ar-col-class text-slate-700 dark:text-slate-300 whitespace-nowrap">' + escapeHtml(rowHomeClassLabel(row)) + '</td>'
+              ? '<td class="ar-col-class text-slate-700 dark:text-slate-300 whitespace-nowrap">' + homeClassLabel + '</td>'
               : '') +
             classSubjectColumns.map(function(subjectName) {
               const mark = markValueForSubject(row, subjectName);
@@ -4377,32 +4469,13 @@
             '<td class="ar-col-sum text-slate-900 dark:text-white font-bold">' + escapeHtml(String(
               (row.grade_points !== undefined && row.grade_points !== null && String(row.grade_points).trim() !== '')
                 ? row.grade_points
-                : gradePointsFromMark(row.mean, bands)
+                : gradePointsFromMark(row.mean, bandsForLevel(row.academic_level_id))
             )) + '</td>' +
             '<td class="ar-col-grade"><span class="inline-flex items-center px-1 py-0.5 rounded text-[0.95em] font-bold ' + gradePill + '">' + escapeHtml(grade) + '</span></td>' +
           '</tr>';
       }).join('');
 
-      var totalMeanStr = meanOf(function(row) { return numOrNull(row.total_marks); });
-      var rowMeanPointsStr = meanOf(function(row) { return rowMeanPointsNum(row); });
-
-      var subjectFooterCells = classSubjectColumns.map(function(subjectName) {
-        var m = meanOf(function(row) { return numOrNull(row[subjectName]); });
-        return '<td class="' + subjectMeanCellClass(m) + '">' + escapeHtml(m) + '</td>';
-      }).join('');
-
-      const foot = list.length && classSubjectColumns.length
-        ? '<tfoot>' +
-            '<tr class="bg-slate-200/95 dark:bg-slate-800 border-t-2 border-slate-400 dark:border-slate-500 text-slate-900 dark:text-slate-100">' +
-              '<td class="ar-col-student font-bold text-left text-slate-900 dark:text-slate-100">Mean</td>' +
-              (showHomeClassCol ? '<td class="ar-col-class text-center text-slate-500 dark:text-slate-400">—</td>' : '') +
-              subjectFooterCells +
-              '<td class="' + summaryMeanCellClass(totalMeanStr) + '">' + escapeHtml(totalMeanStr) + '</td>' +
-              '<td class="ar-col-sum font-semibold tabular-nums text-slate-900 dark:text-slate-100">' + escapeHtml(rowMeanPointsStr) + '</td>' +
-              '<td class="ar-col-grade text-center text-slate-500 dark:text-slate-400">—</td>' +
-            '</tr>' +
-          '</tfoot>'
-        : '';
+      const foot = buildMeanFooterHtml();
 
       var classSubtitle = [reportSchoolYearLabel(af), reportTermExamLine(af, ew)].filter(function(x) { return x && x !== '-'; }).join(' · ');
       return renderReportCardClassBanner(className, classSubtitle) +
@@ -4465,7 +4538,7 @@
     const meta = bundle.meta || {};
     const rows = Array.isArray(bundle.rows) ? bundle.rows : [];
     const secs = meta.class_sections;
-    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    const mergeCohort = isCombinedReportBundle(meta);
     if (mergeCohort && Array.isArray(secs) && secs.length > 1) {
       const merged = [];
       secs.forEach(function(sec) {
@@ -4512,7 +4585,7 @@
     const omitClassColumn = !!opts.omitClassColumn;
     const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
     const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
-    const mergeCohort = !!((bundle.meta || {}).is_combined_level_view || (bundle.meta || {}).merge_single_cohort);
+    const mergeCohort = isCombinedReportBundle(bundle.meta || {});
 
     const registerDate = (document.getElementById('gf-register-date') || {}).value
       || ((bundle.meta || {}).applied_filters || {}).date_from
@@ -4599,7 +4672,7 @@
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
     const meta = bundle.meta || {};
-    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    const mergeCohort = isCombinedReportBundle(meta);
     const sections = registerSectionsFromBundle(bundle);
     const blocks = [];
     let rendered = 0;
@@ -4609,7 +4682,7 @@
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
       blocks.push(renderAttendanceRegisterSection(bundle, secRows, {
-        omitClassColumn: title.length > 0 && !mergeCohort,
+        omitClassColumn: !mergeCohort && title.length > 0,
         sectionTitle: title.length ? title : null,
         sectionIndex: rendered,
       }));
@@ -4627,7 +4700,7 @@
     const sectionTitleRaw = opts.sectionTitle != null ? String(opts.sectionTitle).trim() : '';
     const sectionIndex = opts.sectionIndex != null ? opts.sectionIndex : 0;
     const ENTRY_COLS = 5;
-    const mergeCohort = !!((bundle.meta || {}).is_combined_level_view || (bundle.meta || {}).merge_single_cohort);
+    const mergeCohort = isCombinedReportBundle(bundle.meta || {});
 
     const hasClass = !omitClassColumn && (
       mergeCohort || sectionRows.some(function(r) {
@@ -4722,7 +4795,7 @@
       return '<p class="text-sm text-slate-500 dark:text-slate-400 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-4 py-8 text-center">No students found for this class and filters.</p>';
     }
     const meta = bundle.meta || {};
-    const mergeCohort = !!(meta.is_combined_level_view || meta.merge_single_cohort);
+    const mergeCohort = isCombinedReportBundle(meta);
     const sections = registerSectionsFromBundle(bundle);
     const blocks = [];
     let rendered = 0;
@@ -4732,7 +4805,7 @@
       const secRows = Array.isArray(sec.rows) ? sec.rows : [];
       if (!secRows.length) continue;
       blocks.push(renderExamEntryRegisterSection(bundle, secRows, {
-        omitClassColumn: title.length > 0 && !mergeCohort,
+        omitClassColumn: !mergeCohort && title.length > 0,
         sectionTitle: title.length ? title : null,
         sectionIndex: rendered,
       }));
@@ -5259,14 +5332,20 @@
     const bySubject = {};
     const allMarks = [];
     const defaultBands = Array.isArray((bundle.meta || {}).grade_bands) ? (bundle.meta || {}).grade_bands : [];
-    const subjectBands = ((bundle.meta || {}).subject_grade_bands && typeof (bundle.meta || {}).subject_grade_bands === 'object')
-      ? (bundle.meta || {}).subject_grade_bands
+    const classGradeBandsInd = ((bundle.meta || {}).class_grade_bands && typeof (bundle.meta || {}).class_grade_bands === 'object')
+      ? (bundle.meta || {}).class_grade_bands
       : {};
+    const studentLevelId = (first.academic_level_id != null && first.academic_level_id !== '')
+      ? first.academic_level_id
+      : null;
+    const studentBands = (studentLevelId != null)
+      ? (classGradeBandsInd[String(studentLevelId)] || classGradeBandsInd[studentLevelId] || [])
+      : [];
+    const activeBands = Array.isArray(studentBands) && studentBands.length ? studentBands : defaultBands;
     function gradeFromSettings(subjectId, mark) {
       const n = Number(mark);
       if (!Number.isFinite(n)) return '-';
-      const perSubject = subjectId != null ? (subjectBands[String(subjectId)] || subjectBands[Number(subjectId)] || []) : [];
-      const bands = Array.isArray(perSubject) && perSubject.length ? perSubject : defaultBands;
+      const bands = activeBands;
       for (let i = 0; i < bands.length; i++) {
         const b = bands[i] || {};
         const start = Number(b.start);
@@ -5299,7 +5378,7 @@
       const avg = marks.length ? (marks.reduce((a, b) => a + b, 0) / marks.length) : null;
       const markVal = avg === null ? '-' : String(Math.round(avg));
       const grade = avg === null ? '-' : gradeFromSettings(subjectId, avg);
-      const points = avg === null ? '-' : gradePointsFromMark(avg, defaultBands);
+      const points = avg === null ? '-' : gradePointsFromMark(avg, activeBands);
       const trendValues = bySubject[subject].history
         .slice()
         .sort(function(a, b) { return String(a.examDate || '').localeCompare(String(b.examDate || '')); })
@@ -5319,7 +5398,7 @@
 
     const overallAvg = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length) : null;
     const overallGrade = overallAvg === null ? '-' : gradeFromSettings(null, overallAvg);
-    const overallPoints = overallAvg === null ? '-' : gradePointsFromMark(overallAvg, defaultBands);
+    const overallPoints = overallAvg === null ? '-' : gradePointsFromMark(overallAvg, activeBands);
     const overallAvgText = overallAvg === null ? '-' : String(Math.round(overallAvg));
     const passCount = subjects.filter(function(s) { return s.grade !== 'F' && s.grade !== '-'; }).length;
 

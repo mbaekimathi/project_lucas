@@ -1,0 +1,148 @@
+{% set tsp = teacher_subject_progress | default({}, true) %}
+{% if tsp.has_assignments %}
+{% set pace = tsp.pace_status | default('none') %}
+{% if pace == 'ahead' %}
+{% set pace_color = 'text-emerald-600 dark:text-emerald-400' %}
+{% set pace_bg = 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200/60 dark:border-emerald-800/50' %}
+{% set bar_color = 'bg-emerald-500' %}
+{% elif pace == 'on_track' %}
+{% set pace_color = 'text-indigo-600 dark:text-indigo-400' %}
+{% set pace_bg = 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200/60 dark:border-indigo-800/50' %}
+{% set bar_color = 'bg-indigo-500' %}
+{% elif pace == 'steady' %}
+{% set pace_color = 'text-amber-600 dark:text-amber-400' %}
+{% set pace_bg = 'bg-amber-50 dark:bg-amber-900/30 border-amber-200/60 dark:border-amber-800/50' %}
+{% set bar_color = 'bg-amber-500' %}
+{% elif pace == 'behind' %}
+{% set pace_color = 'text-rose-600 dark:text-rose-400' %}
+{% set pace_bg = 'bg-rose-50 dark:bg-rose-900/30 border-rose-200/60 dark:border-rose-800/50' %}
+{% set bar_color = 'bg-rose-500' %}
+{% else %}
+{% set pace_color = 'text-gray-500 dark:text-gray-400' %}
+{% set pace_bg = 'bg-gray-50 dark:bg-gray-900/40 border-gray-200/60 dark:border-gray-700/60' %}
+{% set bar_color = 'bg-brand-primary' %}
+{% endif %}
+
+<section class="relative rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm overflow-hidden"
+         x-data="{ expanded: false }" aria-labelledby="tdp-progress-heading">
+    <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-primary via-emerald-500 to-teal-500 pointer-events-none" aria-hidden="true"></div>
+    <button type="button"
+            @click="expanded = !expanded"
+            class="w-full text-left px-4 sm:px-5 py-4 flex flex-wrap items-center gap-3 hover:bg-gray-50/80 dark:hover:bg-gray-700/30 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/40"
+            :aria-expanded="expanded">
+        <span class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white flex items-center justify-center shrink-0 shadow-sm">
+            <i class="fas fa-chart-line text-lg" aria-hidden="true"></i>
+        </span>
+        <div class="flex-1 min-w-[12rem]">
+            <h2 id="tdp-progress-heading" class="text-lg font-bold text-gray-900 dark:text-white m-0">Teaching progress</h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 m-0 mt-0.5">Session coverage across {{ tsp.subject_count }} subject{% if tsp.subject_count != 1 %}s{% endif %} · {{ tsp.level_count }} class{% if tsp.level_count != 1 %}es{% endif %}</p>
+        </div>
+        <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold shrink-0 {{ pace_bg }} {{ pace_color }}">
+            <i class="fas {{ tsp.pace_icon }}" aria-hidden="true"></i>
+            {{ tsp.pace_label }}
+        </span>
+        <div class="flex flex-wrap items-center gap-4 sm:gap-6 text-sm shrink-0">
+            <span class="inline-flex items-center gap-1.5 font-semibold text-gray-700 dark:text-gray-200 tabular-nums">
+                <i class="fas fa-chalkboard-teacher text-brand-primary dark:text-brand-secondary text-xs" aria-hidden="true"></i>
+                {{ tsp.sessions_done }}/{{ tsp.sessions_planned_term or '—' }}
+                <span class="text-xs font-normal text-gray-500 dark:text-gray-400">sessions</span>
+            </span>
+            {% if tsp.curriculum_pct is not none %}
+            <span class="inline-flex items-center gap-1.5 font-semibold text-gray-700 dark:text-gray-200 tabular-nums">
+                <i class="fas fa-book-open text-emerald-500 text-xs" aria-hidden="true"></i>
+                {{ tsp.curriculum_pct }}%
+                <span class="text-xs font-normal text-gray-500 dark:text-gray-400">curriculum</span>
+            </span>
+            {% endif %}
+        </div>
+        <span class="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-600 flex items-center justify-center text-gray-500 shrink-0 transition-transform"
+              :class="expanded ? 'rotate-180' : ''">
+            <i class="fas fa-chevron-down text-sm" aria-hidden="true"></i>
+        </span>
+    </button>
+
+    {% if tsp.trend_weeks %}
+    <div class="px-4 sm:px-5 pb-3 border-t border-gray-100 dark:border-gray-700/80">
+        <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 m-0 mb-2 mt-3 flex items-center gap-1.5">
+            <i class="fas fa-wave-square" aria-hidden="true"></i> Combined weekly sessions
+        </p>
+        <div class="flex items-end gap-1 h-10 max-w-md" role="img" aria-label="Weekly sessions across all subjects">
+            {% for w in tsp.trend_weeks[-6:] %}
+            <div class="flex-1 flex flex-col items-center justify-end h-full gap-0.5 min-w-0">
+                <div class="w-full rounded-t-md {{ bar_color }} opacity-85" style="height: {{ w.height_pct }}%; min-height: 3px;"
+                     title="{{ w.label }}: {{ w.count }}"></div>
+                <span class="text-[8px] text-gray-400">{{ w.label }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div x-show="expanded" x-cloak class="border-t border-gray-200 dark:border-gray-700">
+        <div class="px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2 bg-gray-50/80 dark:bg-gray-900/40">
+            <p class="text-xs text-gray-500 dark:text-gray-400 m-0">Expand a class to see each subject. Open a subject for full topic list and trend.</p>
+            <a href="{{ employee_dash_url('subject-progress') }}"
+               class="text-xs font-semibold text-brand-primary dark:text-brand-secondary hover:underline inline-flex items-center gap-1">
+                All subject progress <i class="fas fa-arrow-right text-[10px]" aria-hidden="true"></i>
+            </a>
+        </div>
+        <div class="divide-y divide-gray-200 dark:divide-gray-700">
+            {% for lvl in tsp.levels %}
+            <details class="group/tdp-level">
+                <summary class="cursor-pointer list-none px-4 sm:px-5 py-3 flex flex-wrap items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700/25 transition-colors [&::-webkit-details-marker]:hidden">
+                    <span class="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-200 flex items-center justify-center shrink-0 text-sm">
+                        <i class="fas fa-layer-group" aria-hidden="true"></i>
+                    </span>
+                    <span class="flex-1 min-w-0">
+                        <span class="block font-semibold text-sm text-gray-900 dark:text-white">{{ lvl.level_name }}</span>
+                        {% if lvl.level_category %}
+                        <span class="block text-xs text-gray-500 dark:text-gray-400">{{ lvl.level_category }}</span>
+                        {% endif %}
+                    </span>
+                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300 tabular-nums shrink-0">
+                        {{ lvl.sessions_done }}/{{ lvl.sessions_planned_term or '—' }} sessions
+                        {% if lvl.curriculum_pct is not none %} · {{ lvl.curriculum_pct }}%{% endif %}
+                    </span>
+                    <span class="text-[10px] font-bold uppercase text-gray-400 group-open/tdp-level:rotate-180 transition-transform shrink-0">
+                        <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                    </span>
+                </summary>
+                <ul class="list-none m-0 p-0 pb-3 px-3 sm:px-4 space-y-2">
+                    {% for subj in lvl.subjects %}
+                    <li class="rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50/50 dark:bg-gray-900/30 overflow-hidden">
+                        <a href="{{ employee_dash_url('subject-progress/level/' ~ subj.level_id ~ '/subject/' ~ subj.subject_id) }}"
+                           class="flex flex-col px-3 py-2.5 hover:border-brand-primary/40 hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition-colors">
+                            <span class="flex items-center gap-2 mb-1">
+                                <span class="w-7 h-7 rounded-md bg-gradient-to-br from-brand-primary/90 to-brand-secondary text-white flex items-center justify-center text-xs shrink-0">
+                                    <i class="fas fa-book-open" aria-hidden="true"></i>
+                                </span>
+                                <span class="flex-1 min-w-0">
+                                    <span class="block text-sm font-semibold text-gray-900 dark:text-white truncate">{{ subj.subject_name }}</span>
+                                    {% if subj.subject_code %}
+                                    <span class="block text-xs text-gray-500 dark:text-gray-400 truncate">{{ subj.subject_code }}</span>
+                                    {% endif %}
+                                </span>
+                                <i class="fas fa-external-link-alt text-[10px] text-gray-400 shrink-0" aria-hidden="true"></i>
+                            </span>
+                            {% with coverage=subj.coverage, compact=true %}
+                            {% include 'dashboards/_subject_progress_coverage.html' %}
+                            {% endwith %}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </details>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% else %}
+<section class="rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 py-8 px-5 text-center">
+    <i class="fas fa-chart-line text-3xl text-gray-300 dark:text-gray-600 mb-2" aria-hidden="true"></i>
+    <p class="text-sm font-medium text-gray-600 dark:text-gray-300 m-0">No class subjects assigned yet</p>
+    <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">Teaching progress appears when you have subject assignments this term.</p>
+    <a href="{{ employee_dash_url('subject-progress') }}" class="inline-flex items-center gap-1 mt-3 text-xs font-semibold text-brand-primary dark:text-brand-secondary hover:underline">
+        Open subject progress <i class="fas fa-arrow-right text-[10px]"></i>
+    </a>
+</section>
+{% endif %}

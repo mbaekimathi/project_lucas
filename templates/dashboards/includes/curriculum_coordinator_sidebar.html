@@ -8,6 +8,12 @@
     <span>Classes &amp; subjects</span>
     {% if request.endpoint in ('classes_subjects', 'classes_subjects_level_detail') or request.path.endswith('/classes-subjects') %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
 </a>
+<a href="{{ employee_dash_url('subject-progress') }}"
+   class="sidebar-item {% if request.endpoint in ('subject_progress', 'subject_progress_subject') or '/subject-progress' in request.path %}sidebar-item-active{% endif %}">
+    <i class="fas fa-chart-line w-5"></i>
+    <span>Subject progress</span>
+    {% if request.endpoint in ('subject_progress', 'subject_progress_subject') or '/subject-progress' in request.path %}<i class="fas fa-check-circle ml-auto text-green-500"></i>{% endif %}
+</a>
 <a href="{{ employee_dash_url('subject-class-allocation') }}"
    class="sidebar-item {% if request.endpoint == 'subject_class_allocation' or request.path.endswith('/subject-class-allocation') %}sidebar-item-active{% endif %}">
     <i class="fas fa-tasks w-5"></i>

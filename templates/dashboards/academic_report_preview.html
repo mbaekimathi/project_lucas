@@ -419,7 +419,9 @@
         {% for st in exam_by_student %}
         {% set ns = namespace(subject_map={}, all_marks=[], exam_label='-') %}
         {% set default_grade_bands = meta.grade_bands if meta and meta.grade_bands else [] %}
-        {% set subject_grade_bands = meta.subject_grade_bands if meta and meta.subject_grade_bands else {} %}
+        {% set class_grade_bands = meta.class_grade_bands if meta and meta.class_grade_bands else {} %}
+        {% set lid_key = (st.academic_level_id ~ '') if st.academic_level_id is not none else '' %}
+        {% set student_grade_bands = class_grade_bands[lid_key] if lid_key and class_grade_bands and lid_key in class_grade_bands else default_grade_bands %}
         {% for m in st.marks %}
             {% set subj = (m.subject_code or m.subject_name or 'Subject')|trim %}
             {% if subj not in ns.subject_map %}
@@ -439,7 +441,7 @@
         {% set overall_avg = ((ns.all_marks|sum) / (ns.all_marks|length)) if ns.all_marks|length else none %}
         {% set overall_grade = '-' %}
         {% if overall_avg is not none %}
-            {% for gb in default_grade_bands %}
+            {% for gb in student_grade_bands %}
                 {% set gb_start = gb.start|float if gb.start is not none else none %}
                 {% set gb_end = gb.end|float if gb.end is not none else none %}
                 {% if gb_start is not none and gb_end is not none and overall_avg >= gb_start and overall_avg <= gb_end %}
@@ -453,9 +455,7 @@
             {% if marks|length %}
                 {% set avg = (marks|sum) / (marks|length) %}
                 {% set subject_grade = '-' %}
-                {% set sid_key = (subdata['subject_id'] ~ '') if subdata['subject_id'] is not none else '' %}
-                {% set bands = subject_grade_bands[sid_key] if sid_key and subject_grade_bands and sid_key in subject_grade_bands else default_grade_bands %}
-                {% for gb in bands %}
+                {% for gb in student_grade_bands %}
                     {% set gb_start = gb.start|float if gb.start is not none else none %}
                     {% set gb_end = gb.end|float if gb.end is not none else none %}
                     {% if gb_start is not none and gb_end is not none and avg >= gb_start and avg <= gb_end %}
@@ -545,9 +545,7 @@
                             {% set avg = ((marks|sum) / (marks|length)) if marks|length else none %}
                             {% set grade = '-' %}
                             {% if avg is not none %}
-                                {% set sid_key = (subdata['subject_id'] ~ '') if subdata['subject_id'] is not none else '' %}
-                                {% set bands = subject_grade_bands[sid_key] if sid_key and subject_grade_bands and sid_key in subject_grade_bands else default_grade_bands %}
-                                {% for gb in bands %}
+                                {% for gb in student_grade_bands %}
                                     {% set gb_start = gb.start|float if gb.start is not none else none %}
                                     {% set gb_end = gb.end|float if gb.end is not none else none %}
                                     {% if gb_start is not none and gb_end is not none and avg >= gb_start and avg <= gb_end %}
@@ -668,7 +666,7 @@
                 <div class="ar-rc-meta-panel">
                 <div class="ar-rc-meta-grid">
                     <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Student name</span><span class="ar-rc-meta-value">{{ row.full_name }}</span></div>
-                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Class / section</span><span class="ar-rc-meta-value">{{ row.level_name or row.current_grade or af.class_level or '-' }}</span></div>
+                    <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Class / section</span><span class="ar-rc-meta-value">{% if meta and meta.is_combined_level_view %}{{ row.home_class or row.current_grade or '—' }}{% else %}{{ row.level_name or row.current_grade or af.class_level or '-' }}{% endif %}</span></div>
                     <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">School year</span><span class="ar-rc-meta-value">{% if af.academic_year and 'Year ID' not in af.academic_year %}{{ af.academic_year }}{% else %}-{% endif %}</span></div>
                     <div class="ar-rc-meta-item"><span class="ar-rc-meta-label">Term / exam</span><span class="ar-rc-meta-value">
                         {%- set term_val = af.term if af.term and 'Term ID' not in af.term else '' -%}

@@ -836,6 +836,8 @@ function marksSheet() {
         terms: {{ (terms or [])|tojson|safe }},
         defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
         subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
+        classGradeBands: {{ (class_grade_bands or {})|tojson|safe }},
+        academicLevelId: {{ academic_level_id|default('null') }},
         subjectExamMax: {{ (subject_exam_max_map or {})|tojson|safe }},
         columnMembers: {{ (combination_column_members or {})|tojson|safe }},
 
@@ -1516,8 +1518,11 @@ function marksSheet() {
             if (marksValue === null || marksValue === undefined || marksValue === '' || isNaN(marksValue)) return '';
             const mv = this.pctForGradeBandMatch(marksValue);
             if (mv === null) return '';
-            const subjectBands = this.subjectGradeBands[String(subjectId)] || this.subjectGradeBands[subjectId] || [];
-            const bands = subjectBands.length ? subjectBands : this.defaultGradeBands;
+            const lid = this.academicLevelId;
+            const classBands = (lid != null && lid !== '')
+                ? (this.classGradeBands[String(lid)] || this.classGradeBands[lid] || [])
+                : [];
+            const bands = classBands.length ? classBands : this.defaultGradeBands;
             for (const band of bands) {
                 const start = Number(band.start ?? 0);
                 const end = Number(band.end ?? 0);

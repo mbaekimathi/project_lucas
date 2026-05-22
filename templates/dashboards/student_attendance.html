@@ -70,7 +70,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}">
+<div class="p-3 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }} student-attendance-page">
     {% if is_parent_view|default(false) and is_technician|default(false) and current_view_role|default('') == 'parent' %}
     <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -126,8 +126,8 @@
         </div>
     </div>
 
-    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ url_for('student_attendance') }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="filter-bar mb-6 modern-card p-4 sm:p-5">
-        <div class="flex-1 min-w-[180px]">
+    <form method="GET" action="{% if is_parent_view|default(false) %}{{ parent_dash_url('attendance/' ~ parent_student_id) }}{% else %}{{ employee_dash_url('student-management/student-attendance') }}{% endif %}" id="{% if not is_parent_view|default(false) %}student-attendance-filter-form{% endif %}" class="filter-bar attendance-filter-bar mb-4 sm:mb-6 modern-card p-3 sm:p-5">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
             <label for="academic_year_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Academic Year</label>
             <select name="academic_year_id" id="academic_year_id"
                     class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
@@ -137,7 +137,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="flex-1 min-w-[180px]">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
             <label for="term_id" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Term</label>
             <select name="term_id" id="term_id"
                     class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
@@ -147,7 +147,7 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="flex-1 min-w-[180px]">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]">
             <label for="class_level" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Class</label>
             <select name="class_level" id="class_level"
                     class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
@@ -157,52 +157,57 @@
                 {% endfor %}
             </select>
         </div>
-        <div class="flex-1 min-w-[150px]">
+        <div class="w-full sm:flex-1 sm:min-w-[8rem]">
             <label for="filter_type" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Filter</label>
             <select name="filter_type" id="filter_type"
                     class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="month" {% if selected_filter_type == 'month' %}selected{% endif %}>Month</option>
                 <option value="day" {% if selected_filter_type == 'day' %}selected{% endif %}>Single Day</option>
+                <option value="month" {% if selected_filter_type == 'month' %}selected{% endif %}>Month</option>
                 <option value="period" {% if selected_filter_type == 'period' %}selected{% endif %}>Period</option>
             </select>
         </div>
-        <div class="flex-1 min-w-[180px]" id="month-wrap">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="month-wrap">
             <label for="month" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Month</label>
             <input type="month" name="month" id="month" value="{{ selected_month }}"
                    {% if calendar_month_min %}min="{{ calendar_month_min }}"{% endif %} {% if calendar_month_max %}max="{{ calendar_month_max }}"{% endif %}
                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
-        <div class="flex-1 min-w-[180px]" id="day-wrap">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="day-wrap">
             <label for="day" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Day</label>
             <input type="date" name="day" id="day" value="{{ selected_day }}"
                    {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
-        <div class="flex-1 min-w-[180px]" id="period-start-wrap">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="period-start-wrap">
             <label for="period_start" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Period From</label>
             <input type="date" name="period_start" id="period_start" value="{{ selected_period_start }}"
                    {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
-        <div class="flex-1 min-w-[180px]" id="period-end-wrap">
+        <div class="w-full sm:flex-1 sm:min-w-[10rem]" id="period-end-wrap">
             <label for="period_end" class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">Period To</label>
             <input type="date" name="period_end" id="period_end" value="{{ selected_period_end }}"
                    {% if calendar_date_min %}min="{{ calendar_date_min }}"{% endif %} {% if calendar_date_max %}max="{{ calendar_date_max }}"{% endif %}
                    class="w-full modern-input px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
         </div>
-        <div class="flex items-end">
-            <button type="submit" class="touch-btn px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 transition-all shadow-md hover:shadow-lg">
-                <i class="fas fa-sync-alt mr-2"></i>Apply
+        <div class="w-full sm:w-auto flex items-end pt-0 sm:pt-0">
+            <button type="submit" class="touch-btn w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-brand-primary to-brand-secondary text-white rounded-xl font-semibold hover:opacity-95 transition-all shadow-md hover:shadow-lg">
+                <i class="fas fa-sync-alt mr-2"></i>Apply filters
             </button>
         </div>
     </form>
 
-    {% if not is_parent_view|default(false) %}
-    <div id="attendance-save-float" class="attendance-save-float" role="status" aria-live="polite" aria-hidden="true">
-        <span class="attendance-save-float__pill">
-            <i class="fas fa-check-circle attendance-save-float__icon" aria-hidden="true"></i>
-            <span class="attendance-save-float__text">Saved</span>
-        </span>
+    {% if is_teacher_view|default(false) and not is_parent_view|default(false) %}
+    <div class="mb-4 sm:mb-6 rounded-xl border border-violet-200/80 dark:border-violet-800/50 bg-gradient-to-r from-violet-50/90 to-indigo-50/50 dark:from-violet-950/30 dark:to-indigo-950/20 p-3 sm:p-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-3">
+        <div class="text-sm text-gray-700 dark:text-gray-300 min-w-0">
+            <i class="fas fa-link text-violet-600 dark:text-violet-400 mr-2" aria-hidden="true"></i>
+            Marking attendance for a subject column updates <strong>Subject progress</strong> (one class completed per session with present students).
+        </div>
+        <a href="{{ subject_progress_url|default(employee_dash_url('subject-progress')) }}"
+           class="inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 w-full sm:w-auto shrink-0 touch-btn">
+            <i class="fas fa-tasks" aria-hidden="true"></i>
+            Subject progress
+        </a>
     </div>
     {% endif %}
 
@@ -219,64 +224,163 @@
     .att-pct-fair:hover { background: rgba(245, 158, 11, 0.1); }
     .att-pct-poor { background: rgba(239, 68, 68, 0.06); }
     .att-pct-poor:hover { background: rgba(239, 68, 68, 0.1); }
-    .attendance-cb { transition: accent-color 0.2s; }
-    {% if not is_parent_view|default(false) %}
-    .attendance-save-float {
-        position: fixed;
-        left: 50%;
-        top: calc(var(--app-header-offset, 4.5rem) + 10px);
-        z-index: 95;
-        transform: translateX(-50%) translateY(-6px);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.28s ease, transform 0.28s ease;
+    .attendance-cb { transition: accent-color 0.2s; min-width: 1.25rem; min-height: 1.25rem; }
+
+    /* Mobile-first attendance layout */
+    .student-attendance-page .attendance-filter-bar > div {
+        flex: 1 1 100%;
+        min-width: 0;
     }
-    .attendance-save-float.attendance-save-float--visible {
-        opacity: 1;
-        transform: translateX(-50%) translateY(0);
+    @media (min-width: 640px) {
+        .student-attendance-page .attendance-filter-bar > div {
+            flex: 1 1 auto;
+        }
     }
-    .attendance-save-float__pill {
-        display: inline-flex;
+
+    .student-attendance-page .att-register-scroll {
+        position: relative;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        margin: 0 -0.75rem;
+        padding: 0 0.75rem 0.25rem;
+    }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-register-scroll {
+            margin: 0;
+            padding: 0;
+        }
+    }
+    .student-attendance-page .att-scroll-hint {
+        display: flex;
         align-items: center;
-        gap: 0.45rem;
-        padding: 0.45rem 0.95rem 0.45rem 0.65rem;
-        border-radius: 9999px;
-        background: rgb(255 255 255);
-        border: 1px solid rgb(167 243 208);
-        box-shadow: 0 10px 28px -8px rgba(16, 185, 129, 0.35), 0 4px 12px rgba(15, 23, 42, 0.08);
+        gap: 0.35rem;
+        font-size: 0.6875rem;
+        color: #6b7280;
+        padding: 0.35rem 0.75rem 0.5rem;
+        margin: 0;
     }
-    .dark .attendance-save-float__pill {
-        background: rgb(17 24 39);
-        border-color: rgb(6 95 70);
-        box-shadow: 0 10px 28px -8px rgba(16, 185, 129, 0.25), 0 4px 12px rgba(0, 0, 0, 0.35);
+    .dark .student-attendance-page .att-scroll-hint { color: #9ca3af; }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-scroll-hint { display: none; }
     }
-    .attendance-save-float__icon {
-        color: rgb(22 163 74);
-        font-size: 1.125rem;
-        line-height: 1;
+
+    .student-attendance-page .att-register-table { min-width: 32rem; }
+    @media (min-width: 768px) {
+        .student-attendance-page .att-register-table { min-width: 100%; }
     }
-    .dark .attendance-save-float__icon {
-        color: rgb(74 222 128);
+
+    .student-attendance-page .att-sticky-student {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: #fff;
+        box-shadow: 4px 0 8px -4px rgba(0,0,0,0.12);
     }
-    .attendance-save-float__text {
-        font-size: 0.8125rem;
-        font-weight: 700;
-        letter-spacing: 0.02em;
-        color: rgb(21 128 61);
+    .dark .student-attendance-page .att-sticky-student { background: rgb(31 41 55); }
+    .student-attendance-page .attendance-row.att-pct-excellent .att-sticky-student { background: rgba(34, 197, 94, 0.08); }
+    .student-attendance-page .attendance-row.att-pct-good .att-sticky-student { background: rgba(59, 130, 246, 0.06); }
+    .student-attendance-page .attendance-row.att-pct-fair .att-sticky-student { background: rgba(245, 158, 11, 0.06); }
+    .student-attendance-page .attendance-row.att-pct-poor .att-sticky-student { background: rgba(239, 68, 68, 0.06); }
+    .student-attendance-page thead .att-sticky-student {
+        z-index: 3;
+        background: rgb(249 250 251);
     }
-    .dark .attendance-save-float__text {
-        color: rgb(134 239 172);
+    .dark .student-attendance-page thead .att-sticky-student { background: rgba(17, 24, 39, 0.5); }
+
+    .student-attendance-page .level-header-card h2 {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.35rem;
     }
-    {% endif %}
+    @media (min-width: 480px) {
+        .student-attendance-page .level-header-card h2 {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+        }
+    }
+
+    .student-attendance-page .att-level-save-btn {
+        width: 100%;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-level-save-btn {
+            width: auto;
+        }
+    }
+
+    .student-attendance-page .att-bulk-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    @media (min-width: 640px) {
+        .student-attendance-page .att-bulk-actions {
+            display: flex;
+            flex-wrap: wrap;
+            width: auto;
+        }
+    }
+
+    .student-attendance-page #attendance-register-analytics .overflow-x-auto {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .student-attendance-page .att-day-all-present,
+    .student-attendance-page .att-day-all-absent {
+        min-width: 1.75rem;
+        min-height: 1.75rem;
+        padding: 0.25rem 0.35rem !important;
+    }
+
+    @media (max-width: 639px) {
+        .student-attendance-page .attendance-cb {
+            width: 1.375rem;
+            height: 1.375rem;
+        }
+        .student-attendance-page .attendance-pct {
+            display: block;
+            width: 100%;
+            margin-left: 0 !important;
+            margin-top: 0.15rem;
+        }
+        .student-attendance-page .att-student-cell-inner {
+            flex-wrap: wrap;
+        }
+        .student-attendance-page .att-student-avatar {
+            display: none;
+        }
+    }
     </style>
 
     {% if not is_parent_view|default(false) %}
     <script>
     (function() {
+        var ATTENDANCE_REGISTER_URL = {{ employee_dash_url('student-management/student-attendance')|tojson }};
+        var ATTENDANCE_REGISTER_URL_FALLBACK = {{ url_for('student_attendance')|tojson }};
+
         function attendanceLiveEndpoint() {
+            if (ATTENDANCE_REGISTER_URL) return ATTENDANCE_REGISTER_URL;
             var p = window.location.pathname || '';
             while (p.length > 1 && p.slice(-1) === '/') p = p.slice(0, -1);
-            return p || {{ url_for('student_attendance')|tojson }};
+            return p || ATTENDANCE_REGISTER_URL_FALLBACK;
+        }
+
+        function classListAdd(el, classNames) {
+            if (!el || !classNames) return;
+            String(classNames).split(/\s+/).forEach(function(c) {
+                if (c) el.classList.add(c);
+            });
+        }
+
+        function classListRemove(el, classNames) {
+            if (!el || !classNames) return;
+            var list = Array.isArray(classNames) ? classNames : String(classNames).split(/\s+/);
+            list.forEach(function(c) {
+                if (c) el.classList.remove(c);
+            });
         }
         window.__applyAttendanceFilterBounds = function(d) {
             if (!d) return;
@@ -332,6 +436,7 @@
             var form = document.getElementById('student-attendance-filter-form');
             var shell = document.getElementById('attendance-live-shell');
             if (!form || !shell) return;
+            window.__fetchAttendanceLiveShell = fetchAttendanceLiveShell;
             var fd = new FormData(form);
             var q = new URLSearchParams();
             fd.forEach(function(v, k) { if (v !== null && v !== '') q.set(k, v); });
@@ -362,209 +467,279 @@
             attendanceLiveTimer = setTimeout(fetchAttendanceLiveShell, 350);
         }
 
-        window.__initStudentAttendanceRegister = function() {
-            const form = document.getElementById('attendance-form');
-            const statusEl = document.getElementById('save-status');
-            const saveFloatEl = document.getElementById('attendance-save-float');
-            let saveFloatHideTimer = null;
+        var attSaveSeq = 0;
+
+        function getAttendanceForm() {
+            var f = document.getElementById('attendance-form');
+            return (f && f.tagName === 'FORM') ? f : null;
+        }
+
+        function getLevelSaveStatusEl(levelCard) {
+            if (!levelCard) return null;
+            return levelCard.querySelector('.att-level-save-status');
+        }
+
+        function getRowColorClass(pct) {
+            if (pct >= 80) return 'att-pct-excellent';
+            if (pct >= 60) return 'att-pct-good';
+            if (pct >= 40) return 'att-pct-fair';
+            if (pct > 0) return 'att-pct-poor';
+            return '';
+        }
+
+        function getAccentColor(pct) {
+            if (pct >= 80) return '#22c55e';
+            if (pct >= 60) return '#3b82f6';
+            if (pct >= 40) return '#f59e0b';
+            if (pct > 0) return '#ef4444';
+            return '#9ca3af';
+        }
+
+        function updateRowStyles(row) {
+            const cbs = row.querySelectorAll('.attendance-cb');
+            const total = cbs.length;
+            let checked = 0;
+            cbs.forEach(function(cb) { if (cb.checked) checked++; });
+            const pct = total ? Math.round(100 * checked / total) : 0;
+            row.classList.remove('att-pct-excellent', 'att-pct-good', 'att-pct-fair', 'att-pct-poor');
+            var rowPctClass = getRowColorClass(pct);
+            if (rowPctClass) row.classList.add(rowPctClass);
+            const pctSpan = row.querySelector('.attendance-pct');
+            if (pctSpan) pctSpan.textContent = total ? checked + '/' + total + ' (' + pct + '%)' : '';
+            const color = getAccentColor(pct);
+            cbs.forEach(function(cb) { cb.style.accentColor = color; });
+        }
+
+        function showAttendanceStatus(msg, isError, levelCard) {
+            var statusEl = getLevelSaveStatusEl(levelCard) || document.querySelector('.att-level-save-status');
+            if (!statusEl) return;
+            statusEl.classList.remove('hidden');
+            statusEl.textContent = msg;
+            classListRemove(statusEl, ['text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400']);
+            classListAdd(statusEl, isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+        }
+
+        function refreshAllAttendanceRows() {
+            var form = getAttendanceForm();
             if (!form) return;
-            if (form.tagName === 'FORM' && typeof attendanceLiveEndpoint === 'function') {
-                form.action = attendanceLiveEndpoint();
-            }
-            let saveTimeout = null;
-            let saveSeq = 0;
+            form.querySelectorAll('.attendance-row').forEach(updateRowStyles);
+        }
 
-            function getRowColorClass(pct) {
-                if (pct >= 80) return 'att-pct-excellent';
-                if (pct >= 60) return 'att-pct-good';
-                if (pct >= 40) return 'att-pct-fair';
-                if (pct > 0) return 'att-pct-poor';
-                return '';
-            }
+        function attendanceCheckboxesIn(root) {
+            if (!root) return [];
+            return root.querySelectorAll('input[type="checkbox"].attendance-cb:not(:disabled)');
+        }
 
-            function getAccentColor(pct) {
-                if (pct >= 80) return '#22c55e';
-                if (pct >= 60) return '#3b82f6';
-                if (pct >= 40) return '#f59e0b';
-                if (pct > 0) return '#ef4444';
-                return '#9ca3af';
-            }
+        function studentIdsInLevelCard(levelCard) {
+            var ids = [];
+            if (!levelCard) return '';
+            levelCard.querySelectorAll('.attendance-row[data-student-id]').forEach(function(row) {
+                var sid = (row.getAttribute('data-student-id') || '').trim();
+                if (sid && ids.indexOf(sid) === -1) ids.push(sid);
+            });
+            return ids.join(',');
+        }
 
-            function updateRowStyles(row) {
-                const cbs = row.querySelectorAll('.attendance-cb');
-                const total = cbs.length;
-                let checked = 0;
-                cbs.forEach(function(cb) { if (cb.checked) checked++; });
-                const pct = total ? Math.round(100 * checked / total) : 0;
-                row.classList.remove('att-pct-excellent', 'att-pct-good', 'att-pct-fair', 'att-pct-poor');
-                row.classList.add(getRowColorClass(pct));
-                const pctSpan = row.querySelector('.attendance-pct');
-                if (pctSpan) pctSpan.textContent = total ? checked + '/' + total + ' (' + pct + '%)' : '';
-                const color = getAccentColor(pct);
-                cbs.forEach(function(cb) { cb.style.accentColor = color; });
-            }
-
-            function hideSaveFloat() {
-                if (!saveFloatEl) return;
-                if (saveFloatHideTimer) {
-                    clearTimeout(saveFloatHideTimer);
-                    saveFloatHideTimer = null;
+        function appendAttendanceCellsInRoot(formData, root) {
+            attendanceCheckboxesIn(root).forEach(function(cb) {
+                if (cb.name) {
+                    formData.set(cb.name, cb.checked ? 'on' : 'off');
                 }
-                saveFloatEl.classList.remove('attendance-save-float--visible');
-                saveFloatEl.setAttribute('aria-hidden', 'true');
-            }
+            });
+        }
 
-            function flashSaveFloat() {
-                if (!saveFloatEl) return;
-                if (saveFloatHideTimer) clearTimeout(saveFloatHideTimer);
-                saveFloatEl.setAttribute('aria-hidden', 'false');
-                requestAnimationFrame(function() {
-                    saveFloatEl.classList.add('attendance-save-float--visible');
-                });
-                saveFloatHideTimer = setTimeout(function() {
-                    hideSaveFloat();
-                }, 2400);
-            }
+        function copyAttendanceHiddenFields(formData, form) {
+            form.querySelectorAll('input[type="hidden"]').forEach(function(h) {
+                if (h.name) formData.set(h.name, h.value);
+            });
+        }
 
-            function showStatus(msg, isError) {
-                if (!statusEl) return;
-                statusEl.classList.remove('hidden');
-                statusEl.textContent = msg;
-                statusEl.classList.remove('text-green-600', 'text-green-400', 'text-red-600', 'text-red-400', 'dark:text-green-400', 'dark:text-red-400');
-                statusEl.classList.add(isError ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400');
+        function replaceAttendanceFragment(id, html) {
+            if (!html || typeof html !== 'string') return;
+            var existing = document.getElementById(id);
+            if (!existing) return;
+            var wrap = document.createElement('div');
+            wrap.innerHTML = html.trim();
+            var next = wrap.firstElementChild;
+            if (next && next.id === id) {
+                existing.replaceWith(next);
             }
+        }
 
-            function refreshAllRows() {
-                form.querySelectorAll('.attendance-row').forEach(updateRowStyles);
+        function applyAttendanceSaveFragments(data) {
+            if (!data) return;
+            replaceAttendanceFragment('attendance-register-analytics', data.register_analytics_html);
+        }
+
+        function syncAttendanceHiddenFromFilters() {
+            var attForm = getAttendanceForm();
+            var filtForm = document.getElementById('student-attendance-filter-form');
+            if (!attForm || !filtForm) return;
+            ['term_id', 'academic_year_id', 'filter_type', 'month', 'day', 'period_start', 'period_end', 'class_level'].forEach(function(name) {
+                var src = filtForm.elements[name];
+                var dst = attForm.elements[name];
+                if (src && dst && typeof src.value !== 'undefined') {
+                    dst.value = src.value;
+                }
+            });
+        }
+
+        function saveAttendance(levelCard) {
+            var form = getAttendanceForm();
+            if (!form || !levelCard) return;
+            var saveBtn = levelCard.querySelector('.att-level-save-btn');
+            try {
+            syncAttendanceHiddenFromFilters();
+            var mySeq = ++attSaveSeq;
+            var formData = new FormData();
+            copyAttendanceHiddenFields(formData, form);
+            var levelName = (levelCard.getAttribute('data-level-name') || '').trim();
+            if (levelName) {
+                formData.set('class_level', levelName);
             }
-
-            function saveAttendance() {
-                var mySeq = ++saveSeq;
-                const formData = new FormData(form);
-                hideSaveFloat();
-                showStatus('Saving…', false);
-                form.setAttribute('data-attendance-saving', '1');
-                fetch(form.action, {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'same-origin',
-                    redirect: 'manual',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(function(r) {
-                    if (r.status === 301 || r.status === 302) {
-                        var loc = r.headers.get('Location');
-                        if (loc) window.location.href = loc;
-                        return Promise.reject(new Error('redirect'));
-                    }
-                    if (!r.ok) return Promise.reject(new Error('Save failed'));
-                    return r.json();
-                })
-                .then(function(data) {
-                    if (mySeq !== saveSeq) return;
-                    if (!data || data.ok !== true) {
-                        hideSaveFloat();
-                        showStatus((data && data.message) ? String(data.message) : 'Could not save changes.', true);
-                        return;
-                    }
-                    showStatus('All changes saved', false);
-                    flashSaveFloat();
-                    setTimeout(function() {
-                        if (statusEl && statusEl.textContent === 'All changes saved') {
-                            statusEl.classList.add('hidden');
-                        }
-                    }, 2200);
-                })
-                .catch(function(err) {
-                    if (mySeq !== saveSeq) return;
-                    if (err && err.message === 'redirect') return;
-                    hideSaveFloat();
-                    showStatus('Error saving. Please try again.', true);
-                })
-                .finally(function() {
-                    form.removeAttribute('data-attendance-saving');
-                });
+            var studentIdsCsv = studentIdsInLevelCard(levelCard);
+            if (!studentIdsCsv) {
+                showAttendanceStatus('No students in this class to save.', true, levelCard);
+                return;
             }
-
-            function scheduleSave() {
-                if (saveTimeout) clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(saveAttendance, 450);
-            }
-
-            function allAttendanceCheckboxes() {
-                return form.querySelectorAll('input[type="checkbox"].attendance-cb:not(:disabled)');
-            }
-
-            function setAllPresent(present) {
-                var boxes = allAttendanceCheckboxes();
-                if (!boxes.length) {
-                    if (statusEl) {
-                        showStatus('No attendance cells in this view. Apply filters and ensure students are listed.', true);
-                        setTimeout(function() { statusEl.classList.add('hidden'); }, 3500);
-                    }
+            formData.set('student_ids', studentIdsCsv);
+            appendAttendanceCellsInRoot(formData, levelCard);
+            showAttendanceStatus('Saving…', false, levelCard);
+            if (saveBtn) saveBtn.disabled = true;
+            form.setAttribute('data-attendance-saving', '1');
+            var postUrl = attendanceLiveEndpoint();
+            fetch(postUrl, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+                redirect: 'manual',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(function(r) {
+                if (r.status === 301 || r.status === 302) {
+                    var loc = r.headers.get('Location');
+                    if (loc) window.location.href = loc;
+                    return Promise.reject(new Error('redirect'));
+                }
+                if (!r.ok) return Promise.reject(new Error('Save failed'));
+                return r.json();
+            })
+            .then(function(data) {
+                if (mySeq !== attSaveSeq) return;
+                if (!data || data.ok !== true) {
+                    showAttendanceStatus((data && data.message) ? String(data.message) : 'Could not save changes.', true, levelCard);
                     return;
                 }
-                for (var i = 0; i < boxes.length; i++) {
-                    boxes[i].checked = present;
-                }
-                refreshAllRows();
-                scheduleSave();
-            }
-
-            function setColumnForDate(dateStr, present) {
-                if (!dateStr) return;
-                var suffix = '_' + dateStr;
-                allAttendanceCheckboxes().forEach(function(cb) {
-                    if (cb.name && cb.name.slice(-suffix.length) === suffix) {
-                        cb.checked = present;
+                showAttendanceStatus('Attendance saved for this class.', false, levelCard);
+                applyAttendanceSaveFragments(data);
+                var statusEl = getLevelSaveStatusEl(levelCard);
+                setTimeout(function() {
+                    if (statusEl && statusEl.textContent.indexOf('saved') !== -1) {
+                        statusEl.classList.add('hidden');
                     }
-                });
-                refreshAllRows();
-                scheduleSave();
+                }, 4000);
+            })
+            .catch(function(err) {
+                if (mySeq !== attSaveSeq) return;
+                if (err && err.message === 'redirect') return;
+                showAttendanceStatus('Error saving. Please try again.', true, levelCard);
+            })
+            .finally(function() {
+                var f = getAttendanceForm();
+                if (f) f.removeAttribute('data-attendance-saving');
+                if (saveBtn) saveBtn.disabled = false;
+            });
+            } catch (err) {
+                console.error('saveAttendance', err);
+                showAttendanceStatus('Could not start save. Refresh the page and try again.', true, levelCard);
+                if (saveBtn) saveBtn.disabled = false;
             }
+        }
 
-            refreshAllRows();
+        function setAllAttendancePresent(present, levelCard) {
+            var root = levelCard || getAttendanceForm();
+            var boxes = attendanceCheckboxesIn(root);
+            if (!boxes.length) {
+                showAttendanceStatus('No attendance cells in this class.', true, levelCard);
+                return;
+            }
+            for (var i = 0; i < boxes.length; i++) {
+                boxes[i].checked = present;
+            }
+            if (levelCard) {
+                levelCard.querySelectorAll('.attendance-row').forEach(updateRowStyles);
+            } else {
+                refreshAllAttendanceRows();
+            }
+        }
 
-            form.addEventListener('click', function(e) {
-                var t = e.target;
+        function setAttendanceColumnForDate(dateStr, subjectId, present, levelCard) {
+            if (!dateStr) return;
+            var subj = String(subjectId || '0');
+            var root = levelCard || getAttendanceForm();
+            attendanceCheckboxesIn(root).forEach(function(cb) {
+                if (cb.getAttribute('data-date') === dateStr &&
+                    String(cb.getAttribute('data-subject-id') || '0') === subj) {
+                    cb.checked = present;
+                }
+            });
+            if (levelCard) {
+                levelCard.querySelectorAll('.attendance-row').forEach(updateRowStyles);
+            } else {
+                refreshAllAttendanceRows();
+            }
+        }
+
+        function wireAttendanceShellEvents() {
+            var shell = document.getElementById('attendance-live-shell');
+            if (!shell || shell.getAttribute('data-att-shell-wired') === '1') return;
+            shell.setAttribute('data-att-shell-wired', '1');
+            shell.addEventListener('click', function(e) {
+                if (!getAttendanceForm()) return;
+                var levelCard = e.target.closest ? e.target.closest('.attendance-level-card') : null;
+                var saveBtn = e.target.closest ? e.target.closest('.att-level-save-btn') : null;
+                if (saveBtn && levelCard) {
+                    e.preventDefault();
+                    saveAttendance(levelCard);
+                    return;
+                }
                 if (e.target.closest('#att-mark-all-present')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    setAllPresent(true);
+                    setAllAttendancePresent(true, null);
                     return;
                 }
                 if (e.target.closest('#att-mark-all-absent')) {
                     e.preventDefault();
                     e.stopPropagation();
-                    e.stopImmediatePropagation();
-                    setAllPresent(false);
+                    setAllAttendancePresent(false, null);
                     return;
                 }
-                var dayP = t && t.closest ? t.closest('.att-day-all-present') : null;
-                var dayA = t && t.closest ? t.closest('.att-day-all-absent') : null;
+                var dayP = e.target.closest ? e.target.closest('.att-day-all-present') : null;
+                var dayA = e.target.closest ? e.target.closest('.att-day-all-absent') : null;
                 if (dayP) {
                     e.preventDefault();
-                    setColumnForDate(dayP.getAttribute('data-date'), true);
+                    setAttendanceColumnForDate(dayP.getAttribute('data-date'), dayP.getAttribute('data-subject-id'), true, levelCard);
                 } else if (dayA) {
                     e.preventDefault();
-                    setColumnForDate(dayA.getAttribute('data-date'), false);
+                    setAttendanceColumnForDate(dayA.getAttribute('data-date'), dayA.getAttribute('data-subject-id'), false, levelCard);
                 }
             });
+            shell.addEventListener('change', function(e) {
+                if (!e.target || !e.target.classList || !e.target.classList.contains('attendance-cb')) return;
+                var row = e.target.closest ? e.target.closest('.attendance-row') : null;
+                if (row) updateRowStyles(row);
+            });
+        }
 
-            form.addEventListener('change', function(e) {
-                if (e.target && e.target.classList.contains('attendance-cb')) {
-                    var row = e.target.closest ? e.target.closest('.attendance-row') : e.target.parentElement;
-                    while (row && !row.classList.contains('attendance-row')) row = row.parentElement;
-                    if (row) {
-                        updateRowStyles(row);
-                        scheduleSave();
-                    }
-                }
-            });
+        window.__initStudentAttendanceRegister = function() {
+            var form = getAttendanceForm();
+            if (!form) return;
+            form.action = attendanceLiveEndpoint();
+            refreshAllAttendanceRows();
         };
 
         function wireAttendanceLiveFilters() {
@@ -596,9 +771,9 @@
                 calendar_month_min: {{ (calendar_month_min or '')|tojson }},
                 calendar_month_max: {{ (calendar_month_max or '')|tojson }}
             });
+            wireAttendanceShellEvents();
             wireAttendanceLiveFilters();
             window.__initStudentAttendanceRegister();
-            setTimeout(fetchAttendanceLiveShell, 0);
         }
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', bootAttendanceEmployeePage);

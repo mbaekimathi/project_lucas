@@ -1022,8 +1022,10 @@
                             <span class="hidden sm:inline text-sm font-medium text-slate-200 truncate">
                                 {% if viewing_as_employee_info %}
                                     {{ viewing_as_employee_info.full_name }}
+                                {% elif portal_display_name and is_technician_viewing_as_employee %}
+                                    {{ portal_display_name }}
                                 {% else %}
-                                    Select Employee
+                                    Select employee
                                 {% endif %}
                             </span>
                             <i class="fas fa-chevron-down text-xs text-slate-400"></i>
@@ -1078,8 +1080,11 @@
                                     </div>
                             {% endif %}
                             <span class="hidden sm:inline text-sm font-medium text-slate-800 dark:text-slate-100 max-w-[10rem] truncate">
-                                {{ session.get('full_name', 'User') }}
+                                {{ portal_display_name|default(session.get('full_name', 'User')) }}
                                 </span>
+                            {% if is_technician_viewing_as_employee and viewing_as_employee_info %}
+                            <span class="hidden md:inline text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90 shrink-0">Viewing</span>
+                            {% endif %}
                             <i class="fas fa-chevron-down text-[10px] text-slate-400 hidden sm:inline"></i>
                             </button>
                         

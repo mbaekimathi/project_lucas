@@ -130,6 +130,21 @@ def normalize_allocated_role(role: str) -> str:
     return r if r in EMPLOYEE_SUB_ROLES_SET else ''
 
 
+def employee_role_db_match_values(role):
+    """Values for SQL IN (...) matching employees.role (handles teacher vs teachers)."""
+    canon = normalize_allocated_role(role) or str(role or '').strip().lower().replace('-', ' ')
+    if not canon:
+        return tuple()
+    vals = {canon}
+    if canon == 'teachers':
+        vals.add('teacher')
+    elif canon == 'teacher':
+        vals.add('teachers')
+    elif not canon.endswith('s'):
+        vals.add(canon + 's')
+    return tuple(vals)
+
+
 def parse_allocated_roles_payload(data, fallback_single_role=None):
     """Parse roles from JSON body: roles[] and/or legacy role string."""
     roles = []
@@ -359,6 +374,48 @@ def normalize_employee_dashboard_content_role(user_role, is_technician, viewing_
     if base == 'academic coordinator':
         return 'curriculum coordinator'
     return base or 'employee'
+
+
+def _technician_portal_preview_role():
+    """When a technician opens /teachers, /parent, etc., preview that portal role."""
+    if not has_request_context():
+        return None
+    if (session.get('role') or '').lower().strip() != 'technician':
+        return None
+    pr = portal_role_from_request_path()
+    if pr in ('teacher', 'teachers'):
+        return 'teachers'
+    if pr == 'parent':
+        return 'parent'
+    return None
+
+
+def _fetch_teachers_for_technician_preview(cursor):
+    """Active teachers for technician test picker on /teachers."""
+    rows = []
+    try:
+        cursor.execute("""
+            SELECT e.id, e.full_name, e.employee_id
+            FROM employees e
+            WHERE LOWER(TRIM(COALESCE(e.role, ''))) IN ('teachers', 'teacher')
+            ORDER BY e.full_name ASC
+        """)
+        for r in cursor.fetchall() or []:
+            if isinstance(r, dict):
+                rows.append({
+                    'id': r.get('id'),
+                    'full_name': (r.get('full_name') or '').strip(),
+                    'employee_id': (r.get('employee_id') or '').strip(),
+                })
+            else:
+                rows.append({
+                    'id': r[0] if len(r) > 0 else None,
+                    'full_name': (r[1] if len(r) > 1 else '') or '',
+                    'employee_id': (r[2] if len(r) > 2 else '') or '',
+                })
+    except Exception as ex:
+        print(f"_fetch_teachers_for_technician_preview: {ex}")
+    return rows
 
 
 def employee_dashboard_path(subpath: str = '') -> str:
@@ -756,13 +813,18 @@ def inject_school_settings():
                     # For technicians viewing as a role, get employees list for that role
                     if user_role == 'technician' and session.get('viewing_as_employee_role'):
                         viewing_as_role = session.get('viewing_as_employee_role', '').lower()
-                        cursor.execute("""
-                            SELECT id, employee_id, full_name, email, role
-                            FROM employees
-                            WHERE (role = %s OR role = %s) AND status = 'active'
-                            ORDER BY full_name ASC
-                        """, (viewing_as_role, viewing_as_role + 's'))
-                        employees_results = cursor.fetchall()
+                        role_vals = employee_role_db_match_values(viewing_as_role)
+                        employees_results = []
+                        if role_vals:
+                            ph = ','.join(['%s'] * len(role_vals))
+                            cursor.execute(f"""
+                                SELECT id, employee_id, full_name, email, role
+                                FROM employees
+                                WHERE LOWER(TRIM(role)) IN ({ph})
+                                  AND LOWER(TRIM(COALESCE(status, 'active'))) = 'active'
+                                ORDER BY full_name ASC
+                            """, role_vals)
+                            employees_results = cursor.fetchall()
                         
                         for row in employees_results:
                             employees_list.append({
@@ -777,7 +839,7 @@ def inject_school_settings():
                         viewing_as_employee_id = session.get('viewing_as_employee_id')
                         if viewing_as_employee_id:
                             cursor.execute("""
-                                SELECT id, employee_id, full_name, email, role
+                                SELECT id, employee_id, full_name, email, role, profile_picture
                                 FROM employees
                                 WHERE id = %s
                             """, (viewing_as_employee_id,))
@@ -788,7 +850,12 @@ def inject_school_settings():
                                     'employee_id': employee_result.get('employee_id') if isinstance(employee_result, dict) else employee_result[1],
                                     'full_name': employee_result.get('full_name') if isinstance(employee_result, dict) else employee_result[2],
                                     'email': employee_result.get('email') if isinstance(employee_result, dict) else employee_result[3],
-                                    'role': employee_result.get('role') if isinstance(employee_result, dict) else employee_result[4]
+                                    'role': employee_result.get('role') if isinstance(employee_result, dict) else employee_result[4],
+                                    'profile_picture': (
+                                        employee_result.get('profile_picture')
+                                        if isinstance(employee_result, dict)
+                                        else (employee_result[5] if len(employee_result) > 5 else None)
+                                    ),
                                 }
         except Exception as e:
             # Table might not exist yet, that's okay
@@ -805,9 +872,31 @@ def inject_school_settings():
     )
     if has_request_context():
         path_role = portal_role_from_request_path()
-        if path_role:
-            dashboard_content_role = path_role
-    
+        path_norm = normalize_allocated_role(path_role) if path_role else ''
+        ve_norm = normalize_allocated_role(viewing_as_employee) if viewing_as_employee else ''
+        if is_technician and ve_norm:
+            if path_norm and (
+                path_norm == ve_norm
+                or (path_norm in ('teacher', 'teachers') and ve_norm in ('teacher', 'teachers'))
+            ):
+                dashboard_content_role = 'teachers' if path_norm in ('teacher', 'teachers') else path_norm
+            else:
+                dashboard_content_role = ve_norm
+        elif path_norm:
+            dashboard_content_role = path_norm
+
+    portal_display_name = session.get('full_name', 'User')
+    portal_display_role = user_role
+    if is_technician and viewing_as_employee_info:
+        portal_display_name = viewing_as_employee_info.get('full_name') or portal_display_name
+        portal_display_role = (
+            viewing_as_employee_info.get('role')
+            or viewing_as_employee
+            or portal_display_role
+        )
+    elif is_technician and ve_norm:
+        portal_display_role = ve_norm
+
     settings = get_school_settings()
     active_font = settings.get('font_family', 'Inter')
     return {
@@ -815,6 +904,11 @@ def inject_school_settings():
         'academic_levels': academic_levels,
         'employees_list': employees_list,
         'viewing_as_employee_info': viewing_as_employee_info,
+        'portal_display_name': portal_display_name,
+        'portal_display_role': portal_display_role,
+        'is_technician_viewing_as_employee': bool(
+            is_technician and viewing_as_employee_info
+        ),
         'dashboard_content_role': dashboard_content_role,
         'portal_font_families': PORTAL_FONT_FAMILIES,
         'portal_fonts_grouped': portal_fonts_grouped(),
@@ -1147,10 +1241,1075 @@ def grade_code_and_points_from_pct(marks_value, bands):
     return code, points
 
 
+def ensure_grade_setting_profile_tables(cursor):
+    """Reusable grading settings (profiles) assignable to one or more classes."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS grade_setting_profiles (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                description TEXT NULL,
+                created_by INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES employees(id) ON DELETE SET NULL,
+                UNIQUE KEY uniq_grade_setting_profile_name (name),
+                INDEX idx_grade_setting_profile_name (name)
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS grade_setting_profile_bands (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                profile_id INT NOT NULL,
+                code VARCHAR(20) NOT NULL,
+                level_label VARCHAR(255) NULL,
+                meaning VARCHAR(255) NULL,
+                start_mark DECIMAL(5,2) NOT NULL,
+                end_mark DECIMAL(5,2) NOT NULL,
+                allocation_points DECIMAL(6,2) NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (profile_id) REFERENCES grade_setting_profiles(id) ON DELETE CASCADE,
+                UNIQUE KEY uniq_profile_band_code (profile_id, code),
+                INDEX idx_profile_band_profile (profile_id)
+            )
+        """)
+        try:
+            cursor.execute(
+                "ALTER TABLE grade_setting_profile_bands ADD COLUMN rank_order INT NULL AFTER profile_id"
+            )
+        except Exception:
+            pass
+        try:
+            cursor.execute(
+                "ALTER TABLE grade_setting_profile_bands ADD COLUMN description TEXT NULL AFTER meaning"
+            )
+        except Exception:
+            pass
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS class_grade_setting_assignments (
+                academic_level_id INT NOT NULL PRIMARY KEY,
+                profile_id INT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE,
+                FOREIGN KEY (profile_id) REFERENCES grade_setting_profiles(id) ON DELETE CASCADE,
+                INDEX idx_class_grade_setting_profile (profile_id)
+            )
+        """)
+    except Exception as e:
+        print(f"ensure_grade_setting_profile_tables: {e}")
+
+
+SUBJECT_PROGRESS_DURATION_UNITS = frozenset({'classes'})
+SUBJECT_PROGRESS_LEGACY_DURATION_UNITS = frozenset({'days', 'weeks', 'hours'})
+
+
+def ensure_subject_progress_topics_table(cursor):
+    """Topics and expected coverage (number of timetable classes) per subject + academic level."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subject_progress_topics (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                academic_level_id INT NOT NULL,
+                subject_id INT NOT NULL,
+                topic_name VARCHAR(500) NOT NULL,
+                expected_duration_value DECIMAL(10, 2) NOT NULL DEFAULT 1,
+                duration_unit VARCHAR(20) NOT NULL DEFAULT 'classes',
+                classes_completed INT NOT NULL DEFAULT 0,
+                sort_order INT NOT NULL DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_spt_level_subject (academic_level_id, subject_id),
+                INDEX idx_spt_sort (academic_level_id, subject_id, sort_order)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        try:
+            cursor.execute("""
+                ALTER TABLE subject_progress_topics
+                MODIFY COLUMN duration_unit VARCHAR(20) NOT NULL DEFAULT 'classes'
+            """)
+        except Exception:
+            pass
+        try:
+            cursor.execute("""
+                ALTER TABLE subject_progress_topics
+                ADD COLUMN classes_completed INT NOT NULL DEFAULT 0
+            """)
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"ensure_subject_progress_topics_table: {e}")
+
+
+def ensure_subject_progress_session_log_table(cursor):
+    """One row per class session credited from attendance (per level, subject, date, term)."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subject_progress_session_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                academic_level_id INT NOT NULL,
+                subject_id INT NOT NULL,
+                term_id INT NOT NULL,
+                session_date DATE NOT NULL,
+                topic_id INT NULL,
+                recorded_by_employee_id INT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uniq_sp_session (academic_level_id, subject_id, term_id, session_date),
+                INDEX idx_sp_session_topic (topic_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception as e:
+        print(f"ensure_subject_progress_session_log_table: {e}")
+
+
+def ensure_student_attendance_subject_column(cursor):
+    """Per-subject attendance cells (subject_id=0 = legacy whole-day column)."""
+    try:
+        cursor.execute("""
+            ALTER TABLE student_attendance_records
+            ADD COLUMN subject_id INT NOT NULL DEFAULT 0
+        """)
+    except Exception:
+        pass
+    try:
+        cursor.execute("""
+            ALTER TABLE student_attendance_records
+            DROP INDEX unique_student_date_level_term
+        """)
+    except Exception:
+        pass
+    try:
+        cursor.execute("""
+            ALTER TABLE student_attendance_records
+            ADD UNIQUE KEY unique_student_date_level_term_subject (
+                student_id, attendance_date, academic_level_id, term_id, subject_id
+            )
+        """)
+    except Exception:
+        pass
+
+
+def _get_current_academic_year_and_term(cursor):
+    """Return (year_id, year_name, term_id, term_name) for the active year/term, or Nones."""
+    cursor.execute("""
+        SELECT id, year_name FROM academic_years
+        WHERE is_current = TRUE AND status = 'active'
+        LIMIT 1
+    """)
+    year_row = cursor.fetchone()
+    if not year_row:
+        return None, None, None, None
+    year_id = year_row.get('id') if isinstance(year_row, dict) else year_row[0]
+    year_name = (year_row.get('year_name', '') if isinstance(year_row, dict) else (year_row[1] if len(year_row) > 1 else '')) or ''
+    cursor.execute("""
+        SELECT id, term_name FROM terms
+        WHERE is_current = TRUE AND status = 'active' AND academic_year_id = %s
+        LIMIT 1
+    """, (year_id,))
+    term_row = cursor.fetchone()
+    if not term_row:
+        return year_id, year_name, None, None
+    term_id = term_row.get('id') if isinstance(term_row, dict) else term_row[0]
+    term_name = (term_row.get('term_name', '') if isinstance(term_row, dict) else (term_row[1] if len(term_row) > 1 else '')) or ''
+    return year_id, year_name, term_id, term_name
+
+
+def _coerce_to_date(value):
+    """Normalize DB date/datetime/str values to datetime.date."""
+    if value is None:
+        return None
+    if isinstance(value, date_cls):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:10], '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _term_teaching_weeks_from_dates(start_date, end_date):
+    """Inclusive calendar weeks between term start and end (minimum 1 when valid)."""
+    start = _coerce_to_date(start_date)
+    end = _coerce_to_date(end_date)
+    if not start or not end:
+        return 0
+    if end < start:
+        start, end = end, start
+    days = (end - start).days + 1
+    return max(1, (days + 6) // 7)
+
+
+def _format_date_short(value):
+    d = _coerce_to_date(value)
+    if not d:
+        return None
+    return d.strftime('%d %b %Y')
+
+
+def _subject_timetable_allocation_empty():
+    return {
+        'count': 0,
+        'by_day': {},
+        'by_day_ordered': [],
+        'slots': [],
+        'term_weeks': 0,
+        'total_term': 0,
+        'term_start_date': None,
+        'term_end_date': None,
+        'term_date_range': None,
+    }
+
+
+def _subject_session_coverage_empty():
+    return {
+        'has_data': False,
+        'sessions_done': 0,
+        'sessions_per_week': 0,
+        'sessions_planned_term': 0,
+        'sessions_expected_by_now': 0,
+        'curriculum_done': 0,
+        'curriculum_planned': 0,
+        'curriculum_pct': None,
+        'sessions_term_pct': None,
+        'pace_pct': None,
+        'pace_status': 'none',
+        'pace_label': 'No data yet',
+        'pace_icon': 'fa-circle-notch',
+        'trend_weeks': [],
+        'topics_complete': 0,
+        'topics_total': 0,
+    }
+
+
+def _count_subject_timetable_classes(cursor, level_id, subject_id, term_id):
+    """Weekly timetable periods for this subject at this class level (current term)."""
+    return _fetch_subject_timetable_allocation(cursor, level_id, subject_id, term_id).get('count', 0)
+
+
+def _fetch_subject_timetable_allocation(cursor, level_id, subject_id, term_id):
+    """
+    Timetable slots allocated to this subject for this class in the current term.
+    Returns weekly count, term total (per week × teaching weeks), and slot breakdown.
+    """
+    empty = _subject_timetable_allocation_empty()
+    if not term_id:
+        return empty
+    days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    term_weeks = 0
+    term_start = None
+    term_end = None
+    term_date_range = None
+    try:
+        cursor.execute("""
+            SELECT start_date, end_date FROM terms WHERE id = %s LIMIT 1
+        """, (term_id,))
+        term_row = cursor.fetchone()
+        if term_row:
+            raw_start = term_row.get('start_date') if isinstance(term_row, dict) else (term_row[0] if len(term_row) > 0 else None)
+            raw_end = term_row.get('end_date') if isinstance(term_row, dict) else (term_row[1] if len(term_row) > 1 else None)
+            term_start = _format_date_short(raw_start)
+            term_end = _format_date_short(raw_end)
+            term_weeks = _term_teaching_weeks_from_dates(raw_start, raw_end)
+            if term_start and term_end:
+                term_date_range = f'{term_start} – {term_end}'
+
+        cursor.execute("""
+            SELECT day_of_week, time_slot
+            FROM timetables
+            WHERE academic_level_id = %s AND subject_id = %s AND term_id = %s
+            ORDER BY FIELD(day_of_week,
+                'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'),
+                time_slot
+        """, (level_id, subject_id, term_id))
+        by_day = {}
+        slots = []
+        for row in cursor.fetchall() or []:
+            day = (row.get('day_of_week') if isinstance(row, dict) else (row[0] if len(row) > 0 else '')) or ''
+            time_slot = (row.get('time_slot') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')) or ''
+            day = day.strip()
+            time_slot = time_slot.strip()
+            if not day:
+                continue
+            by_day[day] = by_day.get(day, 0) + 1
+            slots.append({'day_of_week': day, 'time_slot': time_slot})
+        by_day_ordered = [(d, by_day[d]) for d in days_order if d in by_day]
+        for d in sorted(by_day.keys()):
+            if d not in days_order:
+                by_day_ordered.append((d, by_day[d]))
+        per_week = len(slots)
+        total_term = per_week * term_weeks if term_weeks and per_week else 0
+        return {
+            'count': per_week,
+            'by_day': by_day,
+            'by_day_ordered': by_day_ordered,
+            'slots': slots,
+            'term_weeks': term_weeks,
+            'total_term': total_term,
+            'term_start_date': term_start,
+            'term_end_date': term_end,
+            'term_date_range': term_date_range,
+        }
+    except Exception as e:
+        print(f"_fetch_subject_timetable_allocation: {e}")
+        return empty
+
+
+def _subject_progress_legacy_duration_label(value, unit):
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = 0.0
+    u = (unit or 'days').strip().lower()
+    if v == int(v):
+        vstr = str(int(v))
+    else:
+        vstr = f'{v:g}'
+    if u == 'weeks':
+        return f'{vstr} week' + ('' if v == 1 else 's')
+    if u == 'hours':
+        return f'{vstr} hour' + ('' if v == 1 else 's')
+    return f'{vstr} day' + ('' if v == 1 else 's')
+
+
+def _subject_progress_duration_label(value, unit):
+    u = (unit or 'classes').strip().lower()
+    if u in SUBJECT_PROGRESS_LEGACY_DURATION_UNITS:
+        return _subject_progress_legacy_duration_label(value, unit) + ' (update to classes)'
+    try:
+        v = int(round(float(value)))
+    except (TypeError, ValueError):
+        v = 0
+    if v <= 0:
+        return '0 classes'
+    return f'{v} class' + ('' if v == 1 else 'es')
+
+
+def _fetch_subject_progress_topics(cursor, level_id, subject_id):
+    ensure_subject_progress_topics_table(cursor)
+    cursor.execute("""
+        SELECT id, topic_name, expected_duration_value, duration_unit, sort_order, classes_completed
+        FROM subject_progress_topics
+        WHERE academic_level_id = %s AND subject_id = %s
+        ORDER BY sort_order ASC, id ASC
+    """, (level_id, subject_id))
+    topics = []
+    for row in cursor.fetchall() or []:
+        val = row.get('expected_duration_value') if isinstance(row, dict) else row[2]
+        unit = (row.get('duration_unit', 'classes') if isinstance(row, dict) else (row[3] if len(row) > 3 else 'classes')) or 'classes'
+        unit = unit.strip().lower() if isinstance(unit, str) else 'classes'
+        if unit not in SUBJECT_PROGRESS_DURATION_UNITS and unit not in SUBJECT_PROGRESS_LEGACY_DURATION_UNITS:
+            unit = 'classes'
+        try:
+            class_count = max(1, int(round(float(val)))) if val is not None else 1
+        except (TypeError, ValueError):
+            class_count = 1
+        completed = row.get('classes_completed') if isinstance(row, dict) else (row[5] if len(row) > 5 else 0)
+        try:
+            completed = max(0, int(completed or 0))
+        except (TypeError, ValueError):
+            completed = 0
+        topics.append({
+            'id': row.get('id') if isinstance(row, dict) else row[0],
+            'topic_name': (row.get('topic_name', '') if isinstance(row, dict) else row[1]) or '',
+            'expected_duration_value': class_count,
+            'duration_unit': unit,
+            'duration_label': _subject_progress_duration_label(val, unit),
+            'is_legacy_duration': unit in SUBJECT_PROGRESS_LEGACY_DURATION_UNITS,
+            'classes_completed': completed,
+            'is_complete': unit == 'classes' and completed >= class_count,
+            'sort_order': row.get('sort_order') if isinstance(row, dict) else (row[4] if len(row) > 4 else 0),
+        })
+    for t in topics:
+        exp = int(t.get('expected_duration_value') or 0)
+        done = int(t.get('classes_completed') or 0)
+        t['progress_pct'] = min(100, round(100 * done / exp)) if exp > 0 else 0
+    return topics
+
+
+def _compute_subject_session_coverage(cursor, level_id, subject_id, term_id, timetable_allocation=None):
+    """
+    Coverage from attendance-credited sessions vs timetable, plus curriculum topic progress.
+    Returns dict for templates (trend bars, icons, percentages).
+    """
+    empty = _subject_session_coverage_empty()
+    if not level_id or not subject_id:
+        return empty
+    if timetable_allocation is None:
+        timetable_allocation = _fetch_subject_timetable_allocation(cursor, level_id, subject_id, term_id)
+    topics = _fetch_subject_progress_topics(cursor, level_id, subject_id)
+    curriculum_planned = 0
+    curriculum_done = 0
+    topics_complete = 0
+    for t in topics:
+        if (t.get('duration_unit') or 'classes') != 'classes':
+            continue
+        exp = int(t.get('expected_duration_value') or 0)
+        done = int(t.get('classes_completed') or 0)
+        curriculum_planned += exp
+        curriculum_done += done
+        if t.get('is_complete'):
+            topics_complete += 1
+    sessions_per_week = int(timetable_allocation.get('count') or 0)
+    sessions_planned_term = int(timetable_allocation.get('total_term') or 0)
+    term_weeks = int(timetable_allocation.get('term_weeks') or 0)
+    sessions_done = 0
+    trend_weeks = []
+    sessions_expected_by_now = 0
+    if term_id:
+        ensure_subject_progress_session_log_table(cursor)
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) AS c FROM subject_progress_session_log
+                WHERE academic_level_id = %s AND subject_id = %s AND term_id = %s
+            """, (int(level_id), int(subject_id), int(term_id)))
+            crow = cursor.fetchone()
+            sessions_done = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0)
+            cursor.execute("""
+                SELECT session_date FROM subject_progress_session_log
+                WHERE academic_level_id = %s AND subject_id = %s AND term_id = %s
+                ORDER BY session_date ASC
+            """, (int(level_id), int(subject_id), int(term_id)))
+            week_counts = defaultdict(int)
+            for row in cursor.fetchall() or []:
+                dt = row.get('session_date') if isinstance(row, dict) else row[0]
+                d = _coerce_to_date(dt)
+                if d:
+                    iso = d.isocalendar()
+                    week_counts[(iso[0], iso[1])] += 1
+            if week_counts:
+                keys = sorted(week_counts.keys())[-8:]
+                max_c = max(week_counts[k] for k in keys) or 1
+                for y, w in keys:
+                    c = week_counts[(y, w)]
+                    trend_weeks.append({
+                        'label': f'W{w}',
+                        'count': c,
+                        'max_count': max_c,
+                        'height_pct': max(8, round(100 * c / max_c)),
+                    })
+        except Exception as e:
+            print(f"_compute_subject_session_coverage sessions: {e}")
+        cursor.execute("SELECT start_date, end_date FROM terms WHERE id = %s LIMIT 1", (int(term_id),))
+        tr = cursor.fetchone()
+        if tr:
+            raw_start = tr.get('start_date') if isinstance(tr, dict) else tr[0]
+            raw_end = tr.get('end_date') if isinstance(tr, dict) else tr[1]
+            start_d = _coerce_to_date(raw_start)
+            end_d = _coerce_to_date(raw_end)
+            today = date_cls.today()
+            if start_d and end_d and sessions_per_week > 0:
+                if today < start_d:
+                    weeks_elapsed = 0
+                elif today > end_d:
+                    weeks_elapsed = _term_teaching_weeks_from_dates(start_d, end_d)
+                else:
+                    weeks_elapsed = max(1, (today - start_d).days // 7 + 1)
+                sessions_expected_by_now = min(
+                    sessions_planned_term,
+                    weeks_elapsed * sessions_per_week,
+                ) if sessions_planned_term else weeks_elapsed * sessions_per_week
+    curriculum_pct = min(100, round(100 * curriculum_done / curriculum_planned)) if curriculum_planned else None
+    sessions_term_pct = min(100, round(100 * sessions_done / sessions_planned_term)) if sessions_planned_term else None
+    if sessions_expected_by_now > 0:
+        pace_pct = min(150, round(100 * sessions_done / sessions_expected_by_now))
+    elif sessions_done > 0:
+        pace_pct = 100
+    else:
+        pace_pct = 0
+    has_data = bool(
+        sessions_done or curriculum_planned or sessions_planned_term or trend_weeks
+    )
+    if not has_data:
+        return empty
+    if pace_pct >= 105:
+        pace_status, pace_label, pace_icon = 'ahead', 'Ahead of pace', 'fa-rocket'
+    elif pace_pct >= 75:
+        pace_status, pace_label, pace_icon = 'on_track', 'On track', 'fa-chart-line'
+    elif pace_pct >= 40:
+        pace_status, pace_label, pace_icon = 'steady', 'Building momentum', 'fa-hourglass-half'
+    else:
+        pace_status, pace_label, pace_icon = 'behind', 'Behind pace', 'fa-triangle-exclamation'
+    return {
+        'has_data': True,
+        'sessions_done': sessions_done,
+        'sessions_per_week': sessions_per_week,
+        'sessions_planned_term': sessions_planned_term,
+        'sessions_expected_by_now': sessions_expected_by_now,
+        'curriculum_done': curriculum_done,
+        'curriculum_planned': curriculum_planned,
+        'curriculum_pct': curriculum_pct,
+        'sessions_term_pct': sessions_term_pct,
+        'pace_pct': min(100, pace_pct),
+        'pace_status': pace_status,
+        'pace_label': pace_label,
+        'pace_icon': pace_icon,
+        'trend_weeks': trend_weeks,
+        'topics_complete': topics_complete,
+        'topics_total': len([t for t in topics if (t.get('duration_unit') or 'classes') == 'classes']),
+    }
+
+
+def _enrich_academic_levels_subject_coverage(cursor, academic_levels, term_id):
+    """Attach session_coverage to each subject_allocation on list page."""
+    if not academic_levels or not term_id:
+        return academic_levels
+    for level in academic_levels:
+        lid = level.get('id')
+        for subj in level.get('subject_allocations') or []:
+            sid = subj.get('subject_id')
+            if lid and sid:
+                subj['coverage'] = _compute_subject_session_coverage(
+                    cursor, lid, sid, term_id
+                )
+            else:
+                subj['coverage'] = _subject_session_coverage_empty()
+    return academic_levels
+
+
+def _teacher_dashboard_subject_progress_empty():
+    return {
+        'has_assignments': False,
+        'subject_count': 0,
+        'level_count': 0,
+        'sessions_done': 0,
+        'sessions_planned_term': 0,
+        'sessions_term_pct': None,
+        'curriculum_done': 0,
+        'curriculum_planned': 0,
+        'curriculum_pct': None,
+        'topics_complete': 0,
+        'topics_total': 0,
+        'sessions_expected_by_now': 0,
+        'pace_pct': None,
+        'pace_status': 'none',
+        'pace_label': 'No teaching assignments',
+        'pace_icon': 'fa-circle-notch',
+        'trend_weeks': [],
+        'levels': [],
+    }
+
+
+def _fetch_teacher_dashboard_subject_progress(cursor, teacher_id, term_id):
+    """Overall + per-level subject coverage for the teacher home dashboard."""
+    empty = _teacher_dashboard_subject_progress_empty()
+    if not teacher_id or not term_id:
+        return empty
+    levels = _fetch_teacher_subject_progress_levels(cursor, teacher_id)
+    if not levels:
+        return empty
+    levels = _enrich_academic_levels_subject_coverage(cursor, levels, term_id)
+    sessions_done = 0
+    sessions_planned_term = 0
+    sessions_expected_by_now = 0
+    curriculum_done = 0
+    curriculum_planned = 0
+    topics_complete = 0
+    topics_total = 0
+    subject_count = 0
+    week_totals = defaultdict(int)
+    dashboard_levels = []
+    for level in levels:
+        lid = level.get('id')
+        lvl_sessions_done = 0
+        lvl_sessions_planned = 0
+        lvl_curriculum_done = 0
+        lvl_curriculum_planned = 0
+        subjects_out = []
+        for subj in level.get('subject_allocations') or []:
+            sid = subj.get('subject_id')
+            cov = subj.get('coverage') or _subject_session_coverage_empty()
+            subject_count += 1
+            sd = int(cov.get('sessions_done') or 0)
+            sp = int(cov.get('sessions_planned_term') or 0)
+            se = int(cov.get('sessions_expected_by_now') or 0)
+            cd = int(cov.get('curriculum_done') or 0)
+            cp = int(cov.get('curriculum_planned') or 0)
+            sessions_done += sd
+            sessions_planned_term += sp
+            sessions_expected_by_now += se
+            curriculum_done += cd
+            curriculum_planned += cp
+            topics_complete += int(cov.get('topics_complete') or 0)
+            topics_total += int(cov.get('topics_total') or 0)
+            lvl_sessions_done += sd
+            lvl_sessions_planned += sp
+            lvl_curriculum_done += cd
+            lvl_curriculum_planned += cp
+            for w in cov.get('trend_weeks') or []:
+                lbl = w.get('label')
+                if lbl:
+                    week_totals[lbl] += int(w.get('count') or 0)
+            subjects_out.append({
+                'subject_id': sid,
+                'subject_name': subj.get('subject_name', ''),
+                'subject_code': subj.get('subject_code', ''),
+                'level_id': lid,
+                'coverage': cov,
+            })
+        lvl_curriculum_pct = (
+            min(100, round(100 * lvl_curriculum_done / lvl_curriculum_planned))
+            if lvl_curriculum_planned else None
+        )
+        dashboard_levels.append({
+            'id': lid,
+            'level_name': level.get('level_name', ''),
+            'level_category': level.get('level_category', ''),
+            'subject_count': len(subjects_out),
+            'sessions_done': lvl_sessions_done,
+            'sessions_planned_term': lvl_sessions_planned,
+            'curriculum_pct': lvl_curriculum_pct,
+            'subjects': subjects_out,
+        })
+    trend_weeks = []
+    if week_totals:
+        labels = sorted(week_totals.keys(), key=lambda x: int(x.lstrip('W') or 0))[-8:]
+        max_c = max(week_totals[l] for l in labels) or 1
+        for lbl in labels:
+            c = week_totals[lbl]
+            trend_weeks.append({
+                'label': lbl,
+                'count': c,
+                'max_count': max_c,
+                'height_pct': max(8, round(100 * c / max_c)),
+            })
+    curriculum_pct = (
+        min(100, round(100 * curriculum_done / curriculum_planned))
+        if curriculum_planned else None
+    )
+    sessions_term_pct = (
+        min(100, round(100 * sessions_done / sessions_planned_term))
+        if sessions_planned_term else None
+    )
+    if sessions_expected_by_now > 0:
+        pace_pct = min(150, round(100 * sessions_done / sessions_expected_by_now))
+    elif sessions_done > 0:
+        pace_pct = 100
+    else:
+        pace_pct = 0
+    if subject_count and (sessions_done or curriculum_planned):
+        if pace_pct >= 105:
+            pace_status, pace_label, pace_icon = 'ahead', 'Ahead of pace', 'fa-rocket'
+        elif pace_pct >= 75:
+            pace_status, pace_label, pace_icon = 'on_track', 'On track', 'fa-chart-line'
+        elif pace_pct >= 40:
+            pace_status, pace_label, pace_icon = 'steady', 'Building momentum', 'fa-hourglass-half'
+        else:
+            pace_status, pace_label, pace_icon = 'behind', 'Behind pace', 'fa-triangle-exclamation'
+    else:
+        pace_status, pace_label, pace_icon = 'none', 'Mark attendance to start', 'fa-circle-notch'
+    return {
+        'has_assignments': True,
+        'subject_count': subject_count,
+        'level_count': len(dashboard_levels),
+        'sessions_done': sessions_done,
+        'sessions_planned_term': sessions_planned_term,
+        'sessions_term_pct': sessions_term_pct,
+        'curriculum_done': curriculum_done,
+        'curriculum_planned': curriculum_planned,
+        'curriculum_pct': curriculum_pct,
+        'topics_complete': topics_complete,
+        'topics_total': topics_total,
+        'sessions_expected_by_now': sessions_expected_by_now,
+        'pace_pct': min(100, pace_pct),
+        'pace_status': pace_status,
+        'pace_label': pace_label,
+        'pace_icon': pace_icon,
+        'trend_weeks': trend_weeks,
+        'levels': dashboard_levels,
+    }
+
+
+def _load_subject_progress_level_subject(cursor, level_id, subject_id):
+    """Return (level dict, subject dict) or (None, None) if invalid."""
+    cursor.execute("""
+        SELECT id, level_category, level_name, level_description
+        FROM academic_levels
+        WHERE id = %s AND COALESCE(level_status, 'active') = 'active'
+        LIMIT 1
+    """, (level_id,))
+    lrow = cursor.fetchone()
+    if not lrow:
+        return None, None
+    level = {
+        'id': lrow.get('id') if isinstance(lrow, dict) else lrow[0],
+        'level_category': lrow.get('level_category', '') if isinstance(lrow, dict) else (lrow[1] if len(lrow) > 1 else ''),
+        'level_name': lrow.get('level_name', '') if isinstance(lrow, dict) else (lrow[2] if len(lrow) > 2 else ''),
+        'level_description': lrow.get('level_description', '') if isinstance(lrow, dict) else (lrow[3] if len(lrow) > 3 else ''),
+    }
+    ensure_subject_exam_total_marks_column(cursor)
+    cursor.execute("""
+        SELECT s.id, s.subject_name, s.subject_code, COALESCE(s.exam_total_marks, 100) AS exam_total_marks
+        FROM subjects s
+        INNER JOIN subject_academic_levels sal ON sal.subject_id = s.id AND sal.academic_level_id = %s
+        WHERE s.id = %s AND COALESCE(s.status, 'active') = 'active'
+        LIMIT 1
+    """, (level_id, subject_id))
+    srow = cursor.fetchone()
+    if not srow:
+        cursor.execute("""
+            SELECT s.id, s.subject_name, s.subject_code, COALESCE(s.exam_total_marks, 100) AS exam_total_marks
+            FROM subjects s
+            INNER JOIN teacher_subject_assignments tsa
+                ON tsa.subject_id = s.id AND tsa.academic_level_id = %s
+            WHERE s.id = %s AND COALESCE(s.status, 'active') = 'active'
+            LIMIT 1
+        """, (level_id, subject_id))
+        srow = cursor.fetchone()
+    if not srow:
+        return level, None
+    subject = {
+        'id': srow.get('id') if isinstance(srow, dict) else srow[0],
+        'subject_name': (srow.get('subject_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else '')) or 'Subject',
+        'subject_code': (srow.get('subject_code', '') if isinstance(srow, dict) else (srow[2] if len(srow) > 2 else '')) or '',
+        'exam_total_marks': float(srow.get('exam_total_marks') if isinstance(srow, dict) else (srow[3] if len(srow) > 3 else 100)) or 100.0,
+    }
+    return level, subject
+
+
+def _grade_band_dict_for_template(
+    code, level_label, meaning, start_mark, end_mark, allocation_points,
+    rank_order=None, description=None,
+):
+    return {
+        'rank_order': rank_order,
+        'code': code,
+        'level_label': level_label,
+        'meaning': meaning,
+        'description': description,
+        'start_mark': start_mark,
+        'end_mark': end_mark,
+        'allocation_points': allocation_points,
+    }
+
+
+def _grade_band_dict_for_runtime(code, level_label, start_mark, end_mark, allocation_points):
+    return {
+        'code': (code or '').strip(),
+        'label': (level_label or '').strip(),
+        'start': float(start_mark or 0),
+        'end': float(end_mark or 0),
+        'allocation_points': float(allocation_points) if allocation_points is not None else None,
+    }
+
+
+def _migrate_legacy_class_grade_overrides_to_profiles(cursor):
+    """One-time style migration: per-class overrides -> named profile + assignment."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'class_grade_mark_overrides'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("""
+            SELECT DISTINCT cgo.academic_level_id, al.level_name
+            FROM class_grade_mark_overrides cgo
+            LEFT JOIN academic_levels al ON al.id = cgo.academic_level_id
+            WHERE cgo.academic_level_id IS NOT NULL
+        """)
+        legacy_levels = cursor.fetchall() or []
+        for row in legacy_levels:
+            if isinstance(row, dict):
+                lid = int(row.get('academic_level_id') or 0)
+                lname = (row.get('level_name') or '').strip() or f'Class {lid}'
+            else:
+                lid = int(row[0] or 0)
+                lname = (row[1] if len(row) > 1 else '').strip() or f'Class {lid}'
+            if lid <= 0:
+                continue
+            cursor.execute(
+                "SELECT 1 FROM class_grade_setting_assignments WHERE academic_level_id = %s LIMIT 1",
+                (lid,),
+            )
+            if cursor.fetchone():
+                continue
+            pname = f'{lname} (migrated)'[:255]
+            cursor.execute(
+                "SELECT id FROM grade_setting_profiles WHERE name = %s LIMIT 1",
+                (pname,),
+            )
+            existing = cursor.fetchone()
+            if existing:
+                pid = existing.get('id') if isinstance(existing, dict) else existing[0]
+            else:
+                cursor.execute(
+                    "INSERT INTO grade_setting_profiles (name, description, created_by) VALUES (%s, %s, %s)",
+                    (pname, 'Migrated from per-class grade overrides', session.get('user_id')),
+                )
+                pid = cursor.lastrowid
+                cursor.execute("""
+                    SELECT code, level_label, meaning, start_mark, end_mark, allocation_points
+                    FROM class_grade_mark_overrides
+                    WHERE academic_level_id = %s
+                    ORDER BY COALESCE(start_mark, -1) DESC, COALESCE(end_mark, -1) DESC, code
+                """, (lid,))
+                for brow in (cursor.fetchall() or []):
+                    if isinstance(brow, dict):
+                        c = brow.get('code')
+                        ll = brow.get('level_label')
+                        mn = brow.get('meaning')
+                        sm = brow.get('start_mark')
+                        em = brow.get('end_mark')
+                        ap = brow.get('allocation_points')
+                    else:
+                        c = brow[0]
+                        ll = brow[1] if len(brow) > 1 else None
+                        mn = brow[2] if len(brow) > 2 else None
+                        sm = brow[3] if len(brow) > 3 else None
+                        em = brow[4] if len(brow) > 4 else None
+                        ap = brow[5] if len(brow) > 5 else None
+                    if not c or sm is None or em is None:
+                        continue
+                    cursor.execute("""
+                        INSERT INTO grade_setting_profile_bands (
+                            profile_id, code, level_label, meaning, start_mark, end_mark,
+                            allocation_points, rank_order, description
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, NULL)
+                    """, (pid, (c or '').strip().upper(), ll, mn, sm, em, ap))
+            cursor.execute("""
+                INSERT INTO class_grade_setting_assignments (academic_level_id, profile_id)
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id)
+            """, (lid, pid))
+    except Exception as e:
+        print(f"Note: legacy class grade override migration skipped: {e}")
+
+
+def build_class_grade_bands_from_profiles(cursor):
+    """Map academic_level_id -> runtime grade bands from assigned grading settings."""
+    class_grade_bands = {}
+    try:
+        ensure_grade_setting_profile_tables(cursor)
+        cursor.execute("""
+            SELECT a.academic_level_id, b.code, b.level_label, b.start_mark, b.end_mark, b.allocation_points
+            FROM class_grade_setting_assignments a
+            INNER JOIN grade_setting_profile_bands b ON b.profile_id = a.profile_id
+            WHERE b.start_mark IS NOT NULL AND b.end_mark IS NOT NULL
+            ORDER BY a.academic_level_id ASC,
+                     COALESCE(b.rank_order, 9999) ASC, b.start_mark DESC, b.end_mark DESC, b.code
+        """)
+        for row in (cursor.fetchall() or []):
+            if isinstance(row, dict):
+                lid = int(row.get('academic_level_id') or 0)
+                band = _grade_band_dict_for_runtime(
+                    row.get('code'), row.get('level_label'),
+                    row.get('start_mark'), row.get('end_mark'), row.get('allocation_points'),
+                )
+            else:
+                lid = int(row[0] or 0)
+                band = _grade_band_dict_for_runtime(row[1], row[2], row[3], row[4], row[5] if len(row) > 5 else None)
+            if lid <= 0:
+                continue
+            class_grade_bands.setdefault(lid, []).append(band)
+    except Exception as e:
+        print(f"Note: class grade setting profiles lookup skipped: {e}")
+    return class_grade_bands
+
+
+def load_grade_setting_profiles_for_page(cursor, default_bands_template=None):
+    """Profiles with bands and assigned class names for the grades registration UI."""
+    ensure_grade_setting_profile_tables(cursor)
+    _migrate_legacy_class_grade_overrides_to_profiles(cursor)
+    profiles = []
+    cursor.execute("""
+        SELECT id, name, description
+        FROM grade_setting_profiles
+        ORDER BY name ASC
+    """)
+    profile_rows = cursor.fetchall() or []
+    if not profile_rows:
+        return profiles
+
+    profile_ids = []
+    profile_meta = {}
+    for row in profile_rows:
+        if isinstance(row, dict):
+            pid = int(row.get('id') or 0)
+            profile_meta[pid] = {
+                'id': pid,
+                'name': row.get('name') or '',
+                'description': row.get('description') or '',
+            }
+        else:
+            pid = int(row[0] or 0)
+            profile_meta[pid] = {
+                'id': pid,
+                'name': row[1] if len(row) > 1 else '',
+                'description': row[2] if len(row) > 2 else '',
+            }
+        if pid > 0:
+            profile_ids.append(pid)
+
+    bands_by_profile = {pid: [] for pid in profile_ids}
+    if profile_ids:
+        ph = ','.join(['%s'] * len(profile_ids))
+        cursor.execute(f"""
+            SELECT profile_id, rank_order, code, level_label, meaning, description,
+                   start_mark, end_mark, allocation_points
+            FROM grade_setting_profile_bands
+            WHERE profile_id IN ({ph})
+            ORDER BY profile_id, COALESCE(rank_order, 9999) ASC,
+                     COALESCE(start_mark, -1) DESC, COALESCE(end_mark, -1) DESC, code
+        """, tuple(profile_ids))
+        for brow in (cursor.fetchall() or []):
+            if isinstance(brow, dict):
+                pid = int(brow.get('profile_id') or 0)
+                bands_by_profile.setdefault(pid, []).append(_grade_band_dict_for_template(
+                    brow.get('code'), brow.get('level_label'), brow.get('meaning'),
+                    brow.get('start_mark'), brow.get('end_mark'), brow.get('allocation_points'),
+                    brow.get('rank_order'), brow.get('description'),
+                ))
+            else:
+                pid = int(brow[0] or 0)
+                bands_by_profile.setdefault(pid, []).append(_grade_band_dict_for_template(
+                    brow[2] if len(brow) > 2 else None,
+                    brow[3] if len(brow) > 3 else None,
+                    brow[4] if len(brow) > 4 else None,
+                    brow[6] if len(brow) > 6 else None,
+                    brow[7] if len(brow) > 7 else None,
+                    brow[8] if len(brow) > 8 else None,
+                    brow[1] if len(brow) > 1 else None,
+                    brow[5] if len(brow) > 5 else None,
+                ))
+
+    classes_by_profile = {pid: [] for pid in profile_ids}
+    cursor.execute("""
+        SELECT a.profile_id, al.level_name, al.level_category
+        FROM class_grade_setting_assignments a
+        INNER JOIN academic_levels al ON al.id = a.academic_level_id
+        ORDER BY al.level_category, al.level_name
+    """)
+    for row in (cursor.fetchall() or []):
+        if isinstance(row, dict):
+            pid = int(row.get('profile_id') or 0)
+            lname = row.get('level_name') or ''
+            lcat = row.get('level_category') or ''
+        else:
+            pid = int(row[0] or 0)
+            lname = row[1] if len(row) > 1 else ''
+            lcat = row[2] if len(row) > 2 else ''
+        if pid > 0:
+            classes_by_profile.setdefault(pid, []).append({'level_name': lname, 'level_category': lcat})
+
+    for pid in profile_ids:
+        meta = profile_meta.get(pid, {})
+        profiles.append({
+            'id': pid,
+            'name': meta.get('name') or '',
+            'description': meta.get('description') or '',
+            'bands': bands_by_profile.get(pid) or [],
+            'default_bands': default_bands_template or [],
+            'assigned_classes': classes_by_profile.get(pid) or [],
+            'class_count': len(classes_by_profile.get(pid) or []),
+        })
+    return profiles
+
+
+def load_class_grade_setting_assignments_map(cursor):
+    """academic_level_id -> profile_id."""
+    ensure_grade_setting_profile_tables(cursor)
+    out = {}
+    try:
+        cursor.execute("""
+            SELECT academic_level_id, profile_id
+            FROM class_grade_setting_assignments
+        """)
+        for row in (cursor.fetchall() or []):
+            if isinstance(row, dict):
+                lid = int(row.get('academic_level_id') or 0)
+                pid = int(row.get('profile_id') or 0)
+            else:
+                lid = int(row[0] or 0)
+                pid = int(row[1] or 0)
+            if lid > 0 and pid > 0:
+                out[lid] = pid
+    except Exception as e:
+        print(f"Note: class_grade_setting_assignments lookup skipped: {e}")
+    return out
+
+
+def parse_grade_band_rows_from_form():
+    """Parse parallel form lists into validated grade band rows (full custom labels)."""
+    codes = request.form.getlist('code')
+    level_labels = request.form.getlist('level_label')
+    meanings = request.form.getlist('meaning')
+    descriptions = request.form.getlist('description')
+    start_marks = request.form.getlist('start_mark')
+    end_marks = request.form.getlist('end_mark')
+    allocation_points_list = request.form.getlist('allocation_points')
+    rank_orders = request.form.getlist('rank_order')
+    if not (codes and len(codes) == len(start_marks) == len(end_marks)):
+        raise ValueError('invalid_payload')
+    if not (len(level_labels) == len(meanings) == len(codes)):
+        raise ValueError('invalid_payload')
+    if len(allocation_points_list) < len(codes):
+        allocation_points_list = list(allocation_points_list) + [''] * (len(codes) - len(allocation_points_list))
+    if len(level_labels) < len(codes):
+        level_labels = list(level_labels) + [''] * (len(codes) - len(level_labels))
+    if len(meanings) < len(codes):
+        meanings = list(meanings) + [''] * (len(codes) - len(meanings))
+    if len(descriptions) < len(codes):
+        descriptions = list(descriptions) + [''] * (len(codes) - len(descriptions))
+    if len(rank_orders) < len(codes):
+        rank_orders = list(rank_orders) + [''] * (len(codes) - len(rank_orders))
+
+    rows = []
+    seen_codes = set()
+    for idx, code in enumerate(codes):
+        c = (code or '').strip().upper()
+        sm = float((start_marks[idx] or '').strip())
+        em = float((end_marks[idx] or '').strip())
+        level_label = (level_labels[idx] if idx < len(level_labels) else '').strip()
+        meaning = (meanings[idx] if idx < len(meanings) else '').strip()
+        desc = (descriptions[idx] if idx < len(descriptions) else '').strip() or None
+        if not c:
+            raise ValueError('missing_code')
+        if c in seen_codes:
+            raise ValueError('duplicate_code')
+        seen_codes.add(c)
+        if sm > em:
+            raise ValueError('mark_range')
+        if not (level_label and meaning):
+            raise ValueError('missing_label')
+        ap_raw = (allocation_points_list[idx] if idx < len(allocation_points_list) else '').strip()
+        ap = None
+        if ap_raw:
+            ap = float(ap_raw)
+        rk_raw = (rank_orders[idx] if idx < len(rank_orders) else '').strip()
+        rk = None
+        if rk_raw:
+            try:
+                rk = int(float(rk_raw))
+            except (TypeError, ValueError):
+                raise ValueError('invalid_rank')
+        rows.append((c, level_label.upper(), meaning.upper(), sm, em, ap, rk, desc))
+    return rows
+
+
+def resolve_grade_bands(level_id, class_grade_bands, default_grade_bands):
+    """Use the class's assigned grading setting when present; otherwise school default bands."""
+    try:
+        lid = int(level_id or 0)
+    except (TypeError, ValueError):
+        lid = 0
+    if lid and class_grade_bands and class_grade_bands.get(lid):
+        return class_grade_bands[lid]
+    return default_grade_bands or []
+
+
+def grade_bands_for_level(level_id, class_grade_bands, default_grade_bands):
+    """Alias for templates and reports (allocated profile overrides default)."""
+    return resolve_grade_bands(level_id, class_grade_bands, default_grade_bands)
+
+
 def load_grade_bands_from_db(cursor):
-    """Load default and per-subject grade bands (marks sheet / reports)."""
+    """Load default, per-class, and per-subject grade bands (marks sheet / reports)."""
     default_grade_bands = []
     subject_grade_bands = {}
+    class_grade_bands = {}
     try:
         cursor.execute("""
             SELECT code, level_label, start_mark, end_mark, allocation_points
@@ -1212,7 +2371,8 @@ def load_grade_bands_from_db(cursor):
             subject_grade_bands.setdefault(sid, []).append(band)
     except Exception as se:
         print(f"Note: subject_grade_mark_overrides lookup skipped: {se}")
-    return default_grade_bands, subject_grade_bands
+    class_grade_bands = build_class_grade_bands_from_profiles(cursor)
+    return default_grade_bands, subject_grade_bands, class_grade_bands
 
 
 def sql_scaled_exam_mark_pct(sm_alias='sm', sub_alias='sub'):
@@ -6083,6 +7243,29 @@ def init_db():
                 cursor.execute("ALTER TABLE subject_grade_mark_overrides ADD COLUMN meaning VARCHAR(255) NULL AFTER level_label")
             except Exception as e:
                 print(f"Note: subject_grade_mark_overrides.meaning may already exist: {e}")
+
+            ensure_grade_setting_profile_tables(cursor)
+
+            # Legacy per-class overrides (migrated into grade_setting_profiles on first use).
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS class_grade_mark_overrides (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    academic_level_id INT NOT NULL,
+                    code VARCHAR(20) NOT NULL,
+                    start_mark DECIMAL(5,2) NOT NULL,
+                    end_mark DECIMAL(5,2) NOT NULL,
+                    allocation_points DECIMAL(6,2) NULL,
+                    level_label VARCHAR(255) NULL,
+                    meaning VARCHAR(255) NULL,
+                    created_by INT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (academic_level_id) REFERENCES academic_levels(id) ON DELETE CASCADE,
+                    FOREIGN KEY (created_by) REFERENCES employees(id) ON DELETE SET NULL,
+                    UNIQUE KEY uniq_class_code_mark_override (academic_level_id, code),
+                    INDEX idx_class_mark_override_level (academic_level_id)
+                )
+            """)
             
             # Create fee_structures table
             cursor.execute("""
@@ -7131,14 +8314,357 @@ def _student_display_initials(full_name):
     return name[:2].upper()
 
 
+def _parent_child_linked_to_email(cursor, student_id, parent_email):
+    """True if student_id is linked to this parent portal email."""
+    sid = (student_id or '').strip()
+    pem = (parent_email or '').strip()
+    if not sid or not pem:
+        return False
+    try:
+        cursor.execute(
+            "SELECT 1 FROM parents WHERE student_id = %s AND email = %s LIMIT 1",
+            (sid, pem),
+        )
+        return bool(cursor.fetchone())
+    except Exception:
+        return False
+
+
+def _fetch_parent_linked_children(cursor, parent_email, user_id=None):
+    """In-session children for parent dashboard switcher."""
+    children = []
+    pem = (parent_email or '').strip()
+    if pem:
+        try:
+            cursor.execute(
+                """
+                SELECT s.student_id, s.full_name, s.current_grade, s.gender, s.status,
+                       p.full_name AS parent_name, p.phone AS parent_phone
+                FROM students s
+                INNER JOIN parents p ON s.student_id = p.student_id
+                WHERE p.email = %s AND s.status = 'in session'
+                ORDER BY s.full_name ASC
+                """,
+                (pem,),
+            )
+            for row in cursor.fetchall() or []:
+                children.append({
+                    'student_id': (row.get('student_id') or '').strip(),
+                    'full_name': (row.get('full_name') or '').strip(),
+                    'current_grade': (row.get('current_grade') or '').strip(),
+                    'gender': (row.get('gender') or '').strip(),
+                    'status': (row.get('status') or '').strip(),
+                    'parent_name': (row.get('parent_name') or '').strip(),
+                    'parent_phone': (row.get('parent_phone') or '').strip(),
+                })
+        except Exception as ex:
+            print(f"_fetch_parent_linked_children: {ex}")
+    if not children and user_id:
+        try:
+            cursor.execute(
+                "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
+                (user_id,),
+            )
+            ur = cursor.fetchone()
+            usid = (ur.get('student_id') or '').strip() if ur else ''
+            if usid:
+                cursor.execute(
+                    """
+                    SELECT student_id, full_name, current_grade, gender, status
+                    FROM students WHERE student_id = %s AND status = 'in session' LIMIT 1
+                    """,
+                    (usid,),
+                )
+                sr = cursor.fetchone()
+                if sr:
+                    children.append({
+                        'student_id': (sr.get('student_id') or '').strip(),
+                        'full_name': (sr.get('full_name') or '').strip(),
+                        'current_grade': (sr.get('current_grade') or '').strip(),
+                        'gender': (sr.get('gender') or '').strip(),
+                        'status': (sr.get('status') or '').strip(),
+                        'parent_name': '',
+                        'parent_phone': '',
+                    })
+        except Exception:
+            pass
+    return children
+
+
+def _fetch_parent_guardian_profile(cursor, parent_email, student_id=None):
+    """Parent/guardian row for profile dropdown."""
+    pem = (parent_email or '').strip()
+    sid = (student_id or '').strip()
+    row = None
+    try:
+        if sid:
+            cursor.execute(
+                """
+                SELECT full_name, email, phone, relationship, student_id
+                FROM parents WHERE student_id = %s LIMIT 1
+                """,
+                (sid,),
+            )
+            row = cursor.fetchone()
+        if not row and pem:
+            cursor.execute(
+                """
+                SELECT full_name, email, phone, relationship, student_id
+                FROM parents WHERE email = %s ORDER BY id ASC LIMIT 1
+                """,
+                (pem,),
+            )
+            row = cursor.fetchone()
+    except Exception as ex:
+        print(f"_fetch_parent_guardian_profile: {ex}")
+        return None
+    if not row:
+        return {
+            'full_name': '',
+            'email': pem,
+            'phone': '',
+            'relationship': 'Guardian',
+        }
+    return {
+        'full_name': (row.get('full_name') or '').strip(),
+        'email': (row.get('email') or pem).strip(),
+        'phone': (row.get('phone') or '').strip(),
+        'relationship': (row.get('relationship') or 'Guardian').strip(),
+        'student_id': (row.get('student_id') or '').strip(),
+    }
+
+
+def _spotlight_attendance_summary_for_student(cursor, student_id, term_id=None):
+    """Compact attendance stats for parent home (current term)."""
+    empty = {
+        'has_data': False,
+        'term_label': '',
+        'total_recorded': 0,
+        'present': 0,
+        'absent': 0,
+        'pct': 0.0,
+        'category': 'none',
+        'recent_weeks': [],
+    }
+    sid = (student_id or '').strip()
+    if not sid:
+        return empty
+    if not term_id:
+        _y, _yn, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    else:
+        term_name = ''
+        cursor.execute("SELECT term_name FROM terms WHERE id = %s LIMIT 1", (int(term_id),))
+        tr = cursor.fetchone()
+        if tr:
+            term_name = (tr.get('term_name') if isinstance(tr, dict) else tr[0]) or ''
+    if not term_id:
+        return empty
+    term_label = term_name or 'Current term'
+    try:
+        cursor.execute(
+            """
+            SELECT sar.attendance_date, sar.present
+            FROM student_attendance_records sar
+            WHERE sar.student_id = %s AND sar.term_id = %s
+            ORDER BY sar.attendance_date ASC
+            """,
+            (sid, int(term_id)),
+        )
+        raw_rows = cursor.fetchall() or []
+    except Exception as ex:
+        print(f"_spotlight_attendance_summary_for_student: {ex}")
+        return empty
+    pts = []
+    for r in raw_rows:
+        dt = r.get('attendance_date') if isinstance(r, dict) else r[0]
+        pres = r.get('present') if isinstance(r, dict) else r[1]
+        d = _coerce_to_date(dt)
+        if not d:
+            continue
+        is_present = bool(int(pres)) if pres is not None else False
+        pts.append({'date': d, 'present': is_present})
+    total = len(pts)
+    present = sum(1 for p in pts if p['present'])
+    absent = total - present
+    pct = round(100.0 * present / total, 1) if total else 0.0
+    if total == 0:
+        category = 'none'
+    elif pct >= 80:
+        category = 'excellent'
+    elif pct >= 60:
+        category = 'good'
+    elif pct >= 40:
+        category = 'fair'
+    elif pct > 0:
+        category = 'poor'
+    else:
+        category = 'none'
+    week_acc = defaultdict(lambda: [0, 0])
+    for pt in pts:
+        iso = pt['date'].isocalendar()
+        key = (iso[0], iso[1])
+        week_acc[key][1] += 1
+        if pt['present']:
+            week_acc[key][0] += 1
+    recent_weeks = []
+    for (y, wnum) in sorted(week_acc.keys())[-6:]:
+        pr, tot = week_acc[(y, wnum)]
+        recent_weeks.append({
+            'label': f'W{wnum}',
+            'present': pr,
+            'total': tot,
+            'pct': round(100 * pr / tot, 1) if tot else 0,
+            'height_pct': max(8, round(100 * pr / tot)) if tot else 8,
+        })
+    return {
+        'has_data': total > 0,
+        'term_label': term_label,
+        'total_recorded': total,
+        'present': present,
+        'absent': absent,
+        'pct': pct,
+        'category': category,
+        'recent_weeks': recent_weeks,
+    }
+
+
+def _spotlight_subject_progress_for_student(cursor, student_id, term_id=None):
+    """Per-subject class curriculum coverage for parent dashboard."""
+    sid = (student_id or '').strip()
+    if not sid:
+        return []
+    if not term_id:
+        _y, _yn, term_id, _tn = _get_current_academic_year_and_term(cursor)
+    cursor.execute("SELECT current_grade FROM students WHERE student_id = %s LIMIT 1", (sid,))
+    rw = cursor.fetchone()
+    grade = (rw.get('current_grade') or '').strip() if rw else ''
+    level_id = _spotlight_academic_level_id(cursor, grade)
+    if not level_id or not term_id:
+        return _spotlight_subjects_for_student(cursor, sid)
+    subjects = []
+    try:
+        cursor.execute(
+            """
+            SELECT s.id AS subject_id, s.subject_name, COALESCE(s.subject_code, '') AS subject_code
+            FROM subject_academic_levels sal
+            INNER JOIN subjects s ON s.id = sal.subject_id
+            WHERE sal.academic_level_id = %s AND COALESCE(s.status, 'active') = 'active'
+            ORDER BY s.subject_name
+            """,
+            (int(level_id),),
+        )
+        rows = cursor.fetchall() or []
+        seen_ids = set()
+        if not rows:
+            try:
+                cursor.execute(
+                    """
+                    SELECT DISTINCT s.id AS subject_id, s.subject_name, COALESCE(s.subject_code, '') AS subject_code
+                    FROM teacher_subject_assignments tsa
+                    INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+                    INNER JOIN subjects s ON s.id = tsa.subject_id
+                    WHERE al.level_name = %s AND COALESCE(s.status, 'active') = 'active'
+                    ORDER BY s.subject_name
+                    """,
+                    (grade,),
+                )
+                rows = cursor.fetchall() or []
+            except Exception:
+                rows = []
+        if not rows:
+            base = _spotlight_subjects_for_student(cursor, sid)
+            for b in base:
+                subjects.append({**b, 'subject_id': None, 'coverage': _subject_session_coverage_empty()})
+            return subjects
+        for row in rows:
+            subj_id = row.get('subject_id')
+            if subj_id in seen_ids:
+                continue
+            seen_ids.add(subj_id)
+            cov = _compute_subject_session_coverage(cursor, level_id, subj_id, term_id)
+            subjects.append({
+                'subject_id': subj_id,
+                'subject_name': (row.get('subject_name') or 'Subject').strip(),
+                'subject_code': (row.get('subject_code') or '').strip(),
+                'coverage': cov,
+            })
+    except Exception as ex:
+        print(f"_spotlight_subject_progress_for_student: {ex}")
+        return []
+    return subjects
+
+
+def _parent_class_subject_progress_bundle(cursor, student_id, term_id=None, term_name=None):
+    """Structured class subject progress for parent dashboard (list + summary)."""
+    sid = (student_id or '').strip()
+    empty = {
+        'grade': '',
+        'term_label': term_name or '',
+        'subject_count': 0,
+        'subjects_with_data': 0,
+        'avg_curriculum_pct': None,
+        'total_sessions_done': 0,
+        'total_sessions_planned': 0,
+        'subjects': [],
+    }
+    if not sid:
+        return empty
+    if not term_id or not term_name:
+        _y, _yn, term_id, term_name = _get_current_academic_year_and_term(cursor)
+    cursor.execute(
+        "SELECT current_grade FROM students WHERE student_id = %s LIMIT 1",
+        (sid,),
+    )
+    rw = cursor.fetchone()
+    grade = (rw.get('current_grade') or '').strip() if rw else ''
+    subjects = _spotlight_subject_progress_for_student(cursor, sid, term_id)
+    total_done = 0
+    total_planned = 0
+    curriculum_pcts = []
+    with_data = 0
+    for subj in subjects:
+        cov = subj.get('coverage') or _subject_session_coverage_empty()
+        if cov.get('has_data'):
+            with_data += 1
+        sd = int(cov.get('sessions_done') or 0)
+        sp = int(cov.get('sessions_planned_term') or 0)
+        total_done += sd
+        total_planned += sp
+        cp = cov.get('curriculum_pct')
+        if cp is not None:
+            curriculum_pcts.append(int(cp))
+    avg_curriculum = (
+        round(sum(curriculum_pcts) / len(curriculum_pcts))
+        if curriculum_pcts else None
+    )
+    return {
+        'grade': grade,
+        'term_label': term_name or '',
+        'subject_count': len(subjects),
+        'subjects_with_data': with_data,
+        'avg_curriculum_pct': avg_curriculum,
+        'total_sessions_done': total_done,
+        'total_sessions_planned': total_planned,
+        'subjects': subjects,
+    }
+
+
+def _parent_portal_technician_preview(user_role):
+    """Technician using /parent to preview a guardian view (with or without role-switch)."""
+    return (user_role or '').lower().strip() == 'technician'
+
+
 def _parent_dashboard_spotlight_student(
     cursor, *, is_technician, viewing_as_parent, selected_student_id, parent_email, user_id
 ):
     """One student row for /parent header: technician selection, else users.student_id, else first child by parent email."""
     target_sid = ''
-    if is_technician and viewing_as_parent:
+    if is_technician:
         target_sid = (selected_student_id or '').strip()
     else:
+        sel = (selected_student_id or '').strip()
+        if sel and _parent_child_linked_to_email(cursor, sel, parent_email):
+            target_sid = sel
         if user_id:
             cursor.execute(
                 "SELECT student_id FROM users WHERE id = %s AND role = 'parent' LIMIT 1",
@@ -9727,24 +11253,25 @@ def dashboard_parent():
     user_role = session.get('role', '').lower()
     viewing_as = session.get('viewing_as_role', '')
     
-    # Allow access if user is parent OR if technician is viewing as parent
-    if user_role != 'parent' and not (user_role == 'technician' and viewing_as == 'parent'):
-        if user_role != 'technician':
-            flash('You do not have permission to access this page.', 'error')
-            return redirect(url_for('home'))
+    # Parents and technicians (parent portal preview with student picker)
+    if user_role not in ('parent', 'technician'):
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(url_for('home'))
     
-    # Check if technician is viewing as parent
-    is_technician = user_role == 'technician'
-    current_view_role = viewing_as if is_technician and viewing_as else user_role
+    is_technician = _parent_portal_technician_preview(user_role)
+    # Technicians on /parent always use parent UI; role-switch may also set viewing_as_role
+    current_view_role = 'parent' if is_technician else user_role
+    if is_technician and viewing_as != 'parent':
+        session['viewing_as_role'] = 'parent'
     
     # Get parent's email from session
     parent_email = session.get('email', '')
     
     # For technicians, fetch all students for selection
     all_students = []
-    selected_student_id = request.args.get('student_id', '') or session.get('parent_view_student_id', '')
+    selected_student_id = (request.args.get('student_id', '') or session.get('parent_view_student_id', '')).strip()
     
-    if is_technician and viewing_as == 'parent':
+    if is_technician:
         connection = get_db_connection()
         if connection:
             try:
@@ -9754,7 +11281,9 @@ def dashboard_parent():
                                p.full_name as parent_name, p.email as parent_email
                         FROM students s
                         LEFT JOIN parents p ON s.student_id = p.student_id
-                        WHERE s.status = 'in session'
+                        WHERE LOWER(TRIM(COALESCE(s.status, 'in session'))) IN (
+                            'in session', 'active', ''
+                        )
                         ORDER BY s.full_name ASC
                     """)
                     all_students = cursor.fetchall()
@@ -9792,19 +11321,70 @@ def dashboard_parent():
                         except:
                             pass
     
+    if selected_student_id and not is_technician:
+        session['parent_view_student_id'] = selected_student_id
+
     # Parent home (/parent): spotlight student + analytics (fees, subjects, exams).
     spotlight_student = None
     spotlight_fee = None
     spotlight_subjects = []
-    spotlight_exam = None
+    spotlight_subject_progress = []
+    parent_class_progress = {
+        'grade': '',
+        'term_label': '',
+        'subject_count': 0,
+        'subjects_with_data': 0,
+        'avg_curriculum_pct': None,
+        'total_sessions_done': 0,
+        'total_sessions_planned': 0,
+        'subjects': [],
+    }
+    spotlight_attendance = None
+    parent_children = []
+    parent_guardian = None
+    current_term_name = None
+    current_term_id = None
     spotlight_conn = get_db_connection()
     if spotlight_conn:
         try:
             with spotlight_conn.cursor() as spotlight_cursor:
+                if not is_technician:
+                    parent_children = _fetch_parent_linked_children(
+                        spotlight_cursor, parent_email, session.get('user_id')
+                    )
+                elif all_students:
+                    for st in all_students:
+                        if not st:
+                            continue
+                        if isinstance(st, dict):
+                            parent_children.append({
+                                'student_id': (st.get('student_id') or '').strip(),
+                                'full_name': (st.get('full_name') or '').strip(),
+                                'current_grade': (st.get('current_grade') or '').strip(),
+                                'gender': '',
+                                'status': (st.get('status') or 'in session').strip(),
+                                'parent_name': (st.get('parent_name') or '').strip(),
+                                'parent_phone': '',
+                            })
+                        else:
+                            parent_children.append({
+                                'student_id': (st[1] if len(st) > 1 else '') or '',
+                                'full_name': (st[2] if len(st) > 2 else '') or '',
+                                'current_grade': (st[3] if len(st) > 3 else '') or '',
+                                'gender': '',
+                                'status': 'in session',
+                                'parent_name': '',
+                                'parent_phone': '',
+                            })
+
+                _yid, _yname, current_term_id, current_term_name = _get_current_academic_year_and_term(
+                    spotlight_cursor
+                )
+
                 raw = _parent_dashboard_spotlight_student(
                     spotlight_cursor,
                     is_technician=is_technician,
-                    viewing_as_parent=(viewing_as == 'parent'),
+                    viewing_as_parent=is_technician or (viewing_as == 'parent'),
                     selected_student_id=selected_student_id,
                     parent_email=parent_email,
                     user_id=session.get('user_id'),
@@ -9820,6 +11400,9 @@ def dashboard_parent():
                     row.pop('profile_image', None)
                     spotlight_student = row
                     sid = spotlight_student.get('student_id')
+                    parent_guardian = _fetch_parent_guardian_profile(
+                        spotlight_cursor, parent_email, sid
+                    )
                     if sid:
                         try:
                             spotlight_fee = _spotlight_fee_balance_for_student(spotlight_cursor, sid)
@@ -9827,10 +11410,38 @@ def dashboard_parent():
                             print(f"dashboard_parent spotlight fee: {fe}")
                             spotlight_fee = {'has_structure': False}
                         try:
-                            spotlight_subjects = _spotlight_subjects_for_student(spotlight_cursor, sid)
+                            parent_class_progress = _parent_class_subject_progress_bundle(
+                                spotlight_cursor, sid, current_term_id, current_term_name
+                            )
+                            spotlight_subject_progress = parent_class_progress.get('subjects') or []
+                            spotlight_subjects = [
+                                {
+                                    'subject_name': s.get('subject_name'),
+                                    'subject_code': s.get('subject_code'),
+                                }
+                                for s in spotlight_subject_progress
+                            ]
                         except Exception as se:
                             print(f"dashboard_parent spotlight subjects: {se}")
+                            spotlight_subject_progress = []
                             spotlight_subjects = []
+                            parent_class_progress = {
+                                'grade': (spotlight_student or {}).get('current_grade', ''),
+                                'term_label': current_term_name or '',
+                                'subject_count': 0,
+                                'subjects_with_data': 0,
+                                'avg_curriculum_pct': None,
+                                'total_sessions_done': 0,
+                                'total_sessions_planned': 0,
+                                'subjects': [],
+                            }
+                        try:
+                            spotlight_attendance = _spotlight_attendance_summary_for_student(
+                                spotlight_cursor, sid, current_term_id
+                            )
+                        except Exception as ae:
+                            print(f"dashboard_parent spotlight attendance: {ae}")
+                            spotlight_attendance = None
         except Exception as e:
             print(f"dashboard_parent spotlight: {e}")
             spotlight_student = None
@@ -9840,18 +11451,13 @@ def dashboard_parent():
             except Exception:
                 pass
 
-    if spotlight_student and spotlight_student.get('student_id'):
-        try:
-            ep = _fetch_student_progress_payload(spotlight_student['student_id'])
-            by_ex = ep.get('by_exam') or []
-            spotlight_exam = {
-                'summary': ep.get('summary'),
-                'by_subject': ep.get('by_subject') or [],
-                'by_exam_recent': list(reversed(by_ex[-8:])) if by_ex else [],
-            }
-        except Exception as ee:
-            print(f"dashboard_parent spotlight exam: {ee}")
-            spotlight_exam = None
+    if not parent_guardian:
+        parent_guardian = {
+            'full_name': session.get('full_name', 'Parent'),
+            'email': parent_email,
+            'phone': '',
+            'relationship': 'Guardian',
+        }
 
     library_student_id = (selected_student_id or '').strip()
     if not library_student_id and spotlight_student:
@@ -9860,13 +11466,19 @@ def dashboard_parent():
     return render_template('dashboards/dashboard_parent.html',
                          is_technician=is_technician,
                          current_view_role=current_view_role,
-                         all_students=all_students if is_technician and viewing_as == 'parent' else [],
+                         all_students=all_students if is_technician else [],
+                         is_technician_parent_preview=is_technician,
                          selected_student_id=selected_student_id,
                          library_student_id=library_student_id,
+                         parent_children=parent_children,
+                         parent_guardian=parent_guardian,
+                         current_term_name=current_term_name,
                          spotlight_student=spotlight_student,
                          spotlight_fee=spotlight_fee,
                          spotlight_subjects=spotlight_subjects,
-                         spotlight_exam=spotlight_exam)
+                         spotlight_subject_progress=spotlight_subject_progress,
+                         parent_class_progress=parent_class_progress,
+                         spotlight_attendance=spotlight_attendance)
 
 @app.route('/dashboard/parent/student-fees')
 @login_required
@@ -11284,6 +12896,14 @@ def dashboard_employee():
     dashboard_content_role = normalize_employee_dashboard_content_role(
         user_role, is_technician, session.get('viewing_as_employee_role')
     )
+    technician_portal_preview = _technician_portal_preview_role()
+    is_technician_teacher_preview = bool(
+        is_technician and technician_portal_preview in ('teacher', 'teachers')
+    )
+    if technician_portal_preview:
+        dashboard_content_role = technician_portal_preview
+        if is_technician and not (session.get('viewing_as_employee_role') or '').strip():
+            session['viewing_as_employee_role'] = technician_portal_preview
     is_teacher_view = dashboard_content_role in ('teacher', 'teachers')
     
     # List of all employee roles for technician to view
@@ -11296,7 +12916,11 @@ def dashboard_employee():
     teacher_timetable_grid = {}
     teacher_exam_timetable = []
     teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
+    teacher_subject_progress = _teacher_dashboard_subject_progress_empty()
     timetable_days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    all_teachers = []
+    selected_teacher_id = None
+    teacher_profile = None
 
     is_coordinator_view = dashboard_content_role == 'curriculum coordinator'
     coordinator_dashboard = _curriculum_coordinator_dashboard_analytics_empty()
@@ -11319,15 +12943,45 @@ def dashboard_employee():
                 cc_conn.close()
 
     if is_teacher_view:
-        sess_teacher_ref = session.get('viewing_as_employee_id') if is_technician else session.get('user_id')
+        if is_technician_teacher_preview:
+            tid_raw = (request.args.get('teacher_id') or '').strip()
+            if tid_raw:
+                try:
+                    selected_teacher_id = int(tid_raw)
+                    session['teacher_view_employee_id'] = selected_teacher_id
+                    session['viewing_as_employee_id'] = selected_teacher_id
+                except (TypeError, ValueError):
+                    selected_teacher_id = None
+            elif session.get('teacher_view_employee_id'):
+                try:
+                    selected_teacher_id = int(session.get('teacher_view_employee_id'))
+                except (TypeError, ValueError):
+                    selected_teacher_id = None
+        sess_teacher_ref = None
+        if is_technician:
+            sess_teacher_ref = (
+                session.get('viewing_as_employee_id')
+                or selected_teacher_id
+                or session.get('teacher_view_employee_id')
+            )
+        else:
+            sess_teacher_ref = session.get('user_id')
         portal_employee_code = session.get('employee_id')
-        if sess_teacher_ref or portal_employee_code:
+        if is_technician_teacher_preview:
+            tconn = get_db_connection()
+            if tconn:
+                try:
+                    with tconn.cursor() as tc:
+                        all_teachers = _fetch_teachers_for_technician_preview(tc)
+                finally:
+                    tconn.close()
+        if sess_teacher_ref or portal_employee_code or (not is_technician):
             teacher_conn = get_db_connection()
             if teacher_conn:
                 try:
                     with teacher_conn.cursor() as cursor:
                         cursor.execute("""
-                            SELECT id, full_name
+                            SELECT id, full_name, employee_id, email, phone, role
                             FROM employees
                             WHERE id = %s OR employee_id = %s
                             LIMIT 1
@@ -11361,6 +13015,24 @@ def dashboard_employee():
                             teacher_dashboard_name = (
                                 teacher_row.get('full_name') if isinstance(teacher_row, dict) else teacher_row[1]
                             )
+                            if isinstance(teacher_row, dict):
+                                teacher_profile = {
+                                    'id': teacher_id,
+                                    'full_name': teacher_dashboard_name,
+                                    'employee_id': (teacher_row.get('employee_id') or '').strip(),
+                                    'email': (teacher_row.get('email') or '').strip(),
+                                    'phone': (teacher_row.get('phone') or '').strip(),
+                                    'role': (teacher_row.get('role') or 'teachers').strip(),
+                                }
+                            else:
+                                teacher_profile = {
+                                    'id': teacher_id,
+                                    'full_name': teacher_dashboard_name,
+                                    'employee_id': (teacher_row[2] if len(teacher_row) > 2 else '') or '',
+                                    'email': (teacher_row[3] if len(teacher_row) > 3 else '') or '',
+                                    'phone': (teacher_row[4] if len(teacher_row) > 4 else '') or '',
+                                    'role': (teacher_row[5] if len(teacher_row) > 5 else 'teachers') or 'teachers',
+                                }
                         if teacher_id is None and sess_teacher_ref is not None:
                             try:
                                 teacher_id = int(sess_teacher_ref)
@@ -11453,6 +13125,13 @@ def dashboard_employee():
                                 print(f"Error computing teacher dashboard analytics (early): {ae}")
                                 print(traceback.format_exc())
                                 teacher_dashboard_analytics = _teacher_dashboard_analytics_empty()
+                            try:
+                                teacher_subject_progress = _fetch_teacher_dashboard_subject_progress(
+                                    cursor, teacher_id, current_term_id
+                                )
+                            except Exception as spe:
+                                print(f"Teacher dashboard subject progress: {spe}")
+                                teacher_subject_progress = _teacher_dashboard_subject_progress_empty()
 
                             cursor.execute("""
                                 SELECT DISTINCT t.id, t.day_of_week, t.time_slot, al.level_name,
@@ -11572,6 +13251,15 @@ def dashboard_employee():
                     print(traceback.format_exc())
                 finally:
                     teacher_conn.close()
+        if not teacher_profile and not is_technician and isinstance(employee_data, dict) and employee_data:
+            teacher_profile = {
+                'id': employee_data.get('id'),
+                'full_name': employee_data.get('full_name') or session.get('full_name', ''),
+                'employee_id': (employee_data.get('employee_id') or '').strip(),
+                'email': (employee_data.get('email') or session.get('email', '')).strip(),
+                'phone': (employee_data.get('phone') or '').strip(),
+                'role': (employee_data.get('role') or 'teachers').strip(),
+            }
 
     accountant_dashboard = _accountant_dashboard_analytics_empty()
     if dashboard_content_role == 'accountant':
@@ -11602,6 +13290,11 @@ def dashboard_employee():
                          timetable_days_order=timetable_days_order,
                          teacher_exam_timetable=teacher_exam_timetable,
                          teacher_dashboard_analytics=teacher_dashboard_analytics,
+                         teacher_subject_progress=teacher_subject_progress,
+                         is_technician_teacher_preview=is_technician_teacher_preview,
+                         all_teachers=all_teachers,
+                         selected_teacher_id=selected_teacher_id,
+                         teacher_profile=teacher_profile,
                          coordinator_dashboard=coordinator_dashboard,
                          coordinator_dashboard_name=coordinator_dashboard_name,
                          accountant_dashboard=accountant_dashboard)
@@ -11662,12 +13355,15 @@ def grades_registration():
     default_grades = []
     subject_overrides = []
     active_subjects = []
-    subject_grade_mark_overrides = []
-    subject_grade_allocations = []
+    grading_settings = []
+    classes_by_category = []
+    total_class_allocations = 0
+    default_bands_for_settings = []
 
     if connection:
         try:
             with connection.cursor() as cursor:
+                ensure_grade_setting_profile_tables(cursor)
                 # Load levels robustly across old/new schemas.
                 try:
                     cursor.execute("""
@@ -11728,21 +13424,6 @@ def grades_registration():
                 default_grades = cursor.fetchall() or []
 
                 cursor.execute("""
-                    SELECT id, subject_name, subject_code
-                    FROM subjects
-                    WHERE COALESCE(status, 'active') = 'active'
-                    ORDER BY subject_name ASC
-                """)
-                active_subjects = cursor.fetchall() or []
-
-                cursor.execute("""
-                    SELECT subject_id, code, level_label, meaning, start_mark, end_mark, allocation_points
-                    FROM subject_grade_mark_overrides
-                    ORDER BY subject_id, COALESCE(start_mark, -1) DESC, COALESCE(end_mark, -1) DESC, code
-                """)
-                subject_grade_mark_overrides = cursor.fetchall() or []
-
-                cursor.execute("""
                     SELECT
                         sgo.id,
                         sgo.academic_level_id,
@@ -11782,79 +13463,65 @@ def grades_registration():
                             'allocation_points': row[9] if len(row) > 9 else None,
                         })
 
-                overrides_by_subject = {}
-                subjects_with_custom = set()
-                for row in subject_grade_mark_overrides:
-                    if isinstance(row, dict):
-                        sid = row.get('subject_id')
-                        code = row.get('code')
-                        level_label = row.get('level_label')
-                        meaning = row.get('meaning')
-                        sm = row.get('start_mark')
-                        em = row.get('end_mark')
-                        ap = row.get('allocation_points')
-                    else:
-                        sid = row[0]
-                        code = row[1]
-                        level_label = row[2] if len(row) > 2 else None
-                        meaning = row[3] if len(row) > 3 else None
-                        sm = row[4] if len(row) > 4 else None
-                        em = row[5] if len(row) > 5 else None
-                        ap = row[6] if len(row) > 6 else None
-                    if sid is None or not code:
-                        continue
-                    subjects_with_custom.add(sid)
-                    overrides_by_subject.setdefault(sid, []).append({
-                        'code': code,
-                        'level_label': level_label,
-                        'meaning': meaning,
-                        'start_mark': sm,
-                        'end_mark': em,
-                        'allocation_points': ap,
-                    })
-
-                default_bands_for_subjects = []
-                for d in defaults_as_dict:
-                    default_bands_for_subjects.append({
+                default_bands_for_settings = []
+                for rank_i, d in enumerate(defaults_as_dict, start=1):
+                    default_bands_for_settings.append({
+                        'rank_order': rank_i,
                         'code': d.get('code'),
                         'level_label': d.get('level_label'),
                         'meaning': d.get('meaning'),
+                        'description': d.get('description'),
                         'start_mark': d.get('start_mark'),
                         'end_mark': d.get('end_mark'),
                         'allocation_points': d.get('allocation_points'),
                     })
 
-                for srow in active_subjects:
-                    if isinstance(srow, dict):
-                        sid = srow.get('id')
-                        sname = srow.get('subject_name')
-                        scode = srow.get('subject_code')
+                grading_settings = load_grade_setting_profiles_for_page(cursor, default_bands_for_settings)
+                profile_name_by_id = {p['id']: p['name'] for p in grading_settings}
+                assignments_map = load_class_grade_setting_assignments_map(cursor)
+
+                allocations_by_level = []
+                for lvl in academic_levels:
+                    if isinstance(lvl, dict):
+                        lid = lvl.get('id')
+                        lname = lvl.get('level_name')
+                        lcat = (lvl.get('level_category') or '').strip() or 'Uncategorized'
                     else:
-                        sid = srow[0]
-                        sname = srow[1]
-                        scode = srow[2] if len(srow) > 2 else None
-                    uses_default = sid not in subjects_with_custom
-                    if uses_default:
-                        merged_bands = list(default_bands_for_subjects)
-                    else:
-                        merged_bands = []
-                        for ov in overrides_by_subject.get(sid, []):
-                            merged_bands.append({
-                                'code': ov.get('code'),
-                                'level_label': ov.get('level_label'),
-                                'meaning': ov.get('meaning'),
-                                'start_mark': ov.get('start_mark'),
-                                'end_mark': ov.get('end_mark'),
-                                'allocation_points': ov.get('allocation_points'),
-                            })
-                    subject_grade_allocations.append({
-                        'subject_id': sid,
-                        'subject_name': sname,
-                        'subject_code': scode,
-                        'uses_default': uses_default,
-                        'bands': merged_bands,
-                        'default_bands': default_bands_for_subjects,
+                        lid = lvl[0]
+                        lname = lvl[1]
+                        lcat = (lvl[2] if len(lvl) > 2 else '').strip() or 'Uncategorized'
+                    pid = assignments_map.get(lid)
+                    allocations_by_level.append({
+                        'level_id': lid,
+                        'level_name': lname,
+                        'level_category': lcat,
+                        'profile_id': pid,
+                        'profile_name': profile_name_by_id.get(pid) if pid else None,
+                        'uses_default': not pid,
                     })
+
+                total_class_allocations = len(allocations_by_level)
+                category_order = fetch_base_academic_level_category_order(cursor)
+                by_cat = {}
+                for item in allocations_by_level:
+                    cat = item.get('level_category') or 'Uncategorized'
+                    by_cat.setdefault(cat, []).append(item)
+                for cat in by_cat:
+                    by_cat[cat].sort(key=lambda x: (x.get('level_name') or '').lower())
+                seen_cats = set()
+                for cat in category_order:
+                    if cat in by_cat:
+                        classes_by_category.append({
+                            'category': cat,
+                            'classes': by_cat[cat],
+                        })
+                        seen_cats.add(cat)
+                for cat in sorted(by_cat.keys()):
+                    if cat not in seen_cats:
+                        classes_by_category.append({
+                            'category': cat,
+                            'classes': by_cat[cat],
+                        })
         except Exception as e:
             print(f"Error loading grades registration: {e}")
             flash('Error loading grades registration.', 'error')
@@ -11868,7 +13535,10 @@ def grades_registration():
         level_subjects=level_subjects,
         default_grades=default_grades,
         subject_overrides=subject_overrides,
-        subject_grade_allocations=subject_grade_allocations
+        grading_settings=grading_settings,
+        classes_by_category=classes_by_category,
+        total_class_allocations=total_class_allocations,
+        default_bands_for_settings=default_bands_for_settings,
     )
 
 
@@ -12296,6 +13966,218 @@ def reset_subject_grade_to_default():
         print(f"Error resetting subject grade allocation: {e}")
         connection.rollback()
         flash('Error reverting subject to default grading.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/settings/create', methods=['POST'])
+@login_required
+def create_grade_setting_profile():
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    name = (request.form.get('name') or '').strip()
+    description = (request.form.get('description') or '').strip() or None
+    copy_defaults = (request.form.get('copy_defaults') or '').strip() == '1'
+    if not name:
+        flash('Enter a name for the grading setting.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_setting_profile_tables(cursor)
+            cursor.execute(
+                "INSERT INTO grade_setting_profiles (name, description, created_by) VALUES (%s, %s, %s)",
+                (name, description, session.get('user_id')),
+            )
+            profile_id = cursor.lastrowid
+            if copy_defaults:
+                cursor.execute("""
+                    SELECT code, level_label, meaning, description, start_mark, end_mark, allocation_points
+                    FROM grade_registrations
+                    WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
+                    ORDER BY start_mark DESC, end_mark DESC
+                """)
+                for rank_i, grow in enumerate(cursor.fetchall() or [], start=1):
+                    if isinstance(grow, dict):
+                        c = (grow.get('code') or '').strip().upper()
+                        ll = grow.get('level_label')
+                        mn = grow.get('meaning')
+                        desc = grow.get('description')
+                        sm = grow.get('start_mark')
+                        em = grow.get('end_mark')
+                        ap = grow.get('allocation_points')
+                    else:
+                        c = ((grow[0] if len(grow) > 0 else '') or '').strip().upper()
+                        ll = grow[1] if len(grow) > 1 else None
+                        mn = grow[2] if len(grow) > 2 else None
+                        desc = grow[3] if len(grow) > 3 else None
+                        sm = grow[4] if len(grow) > 4 else None
+                        em = grow[5] if len(grow) > 5 else None
+                        ap = grow[6] if len(grow) > 6 else None
+                    if not c or sm is None or em is None:
+                        continue
+                    cursor.execute("""
+                        INSERT INTO grade_setting_profile_bands (
+                            profile_id, rank_order, code, level_label, meaning, description,
+                            start_mark, end_mark, allocation_points
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (profile_id, rank_i, c, ll, mn, desc, sm, em, ap))
+            connection.commit()
+        flash(f'Grading setting "{name}" created.', 'success')
+    except Exception as e:
+        print(f"Error creating grade setting profile: {e}")
+        connection.rollback()
+        if 'uniq_grade_setting_profile_name' in str(e).lower() or 'duplicate' in str(e).lower():
+            flash('A grading setting with that name already exists.', 'error')
+        else:
+            flash('Error creating grading setting.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/settings/save-bands/<int:profile_id>', methods=['POST'])
+@login_required
+def save_grade_setting_profile_bands(profile_id):
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    try:
+        rows = parse_grade_band_rows_from_form()
+    except ValueError as ve:
+        msg = str(ve)
+        if msg == 'duplicate_code':
+            flash('Each grade code must be unique within this setting.', 'error')
+        elif msg == 'mark_range':
+            flash('Start mark must be less than or equal to end mark.', 'error')
+        elif msg == 'invalid_rank':
+            flash('Please enter a valid rank (whole number) for each grade row.', 'error')
+        else:
+            flash('Please provide valid rank, code, mark level, meaning, marks range, and other fields for every grade row.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    if not rows:
+        flash('Add at least one grade band before saving.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_setting_profile_tables(cursor)
+            cursor.execute("SELECT id FROM grade_setting_profiles WHERE id = %s", (profile_id,))
+            if not cursor.fetchone():
+                flash('Grading setting not found.', 'error')
+                return redirect(employee_dashboard_path('grades-registration'))
+            cursor.execute("DELETE FROM grade_setting_profile_bands WHERE profile_id = %s", (profile_id,))
+            for c, level_label, meaning, sm, em, ap, rk, desc in rows:
+                cursor.execute("""
+                    INSERT INTO grade_setting_profile_bands (
+                        profile_id, rank_order, code, level_label, meaning, description,
+                        start_mark, end_mark, allocation_points
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (profile_id, rk, c, level_label, meaning, desc, sm, em, ap))
+            connection.commit()
+        flash('Grading setting bands saved.', 'success')
+    except Exception as e:
+        print(f"Error saving grade setting bands: {e}")
+        connection.rollback()
+        flash('Error saving grading setting.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/settings/delete/<int:profile_id>', methods=['POST'])
+@login_required
+def delete_grade_setting_profile(profile_id):
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_setting_profile_tables(cursor)
+            cursor.execute("DELETE FROM grade_setting_profiles WHERE id = %s", (profile_id,))
+            connection.commit()
+        flash('Grading setting deleted. Assigned classes now use school default grading.', 'success')
+    except Exception as e:
+        print(f"Error deleting grade setting profile: {e}")
+        connection.rollback()
+        flash('Error deleting grading setting.', 'error')
+    finally:
+        connection.close()
+    return redirect(employee_dashboard_path('grades-registration'))
+
+
+@app.route('/dashboard/employee/grades-registration/assign-classes', methods=['POST'])
+@login_required
+def assign_grade_settings_to_classes():
+    """Assign grading settings to classes (empty profile = school default)."""
+    effective_role, schedule_management_roles = _grades_registration_schedule_roles()
+    if effective_role not in schedule_management_roles:
+        flash('You do not have permission to perform this action.', 'error')
+        return redirect(employee_dashboard_path())
+
+    level_ids = request.form.getlist('level_id')
+    profile_ids = request.form.getlist('profile_id')
+    if len(level_ids) != len(profile_ids):
+        flash('Invalid class allocation payload.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection error.', 'error')
+        return redirect(employee_dashboard_path('grades-registration'))
+    try:
+        with connection.cursor() as cursor:
+            ensure_grade_setting_profile_tables(cursor)
+            for lid_raw, pid_raw in zip(level_ids, profile_ids):
+                if not str(lid_raw).isdigit():
+                    continue
+                lid = int(lid_raw)
+                pid_raw = (pid_raw or '').strip()
+                if not pid_raw:
+                    cursor.execute(
+                        "DELETE FROM class_grade_setting_assignments WHERE academic_level_id = %s",
+                        (lid,),
+                    )
+                    continue
+                if not pid_raw.isdigit():
+                    continue
+                pid = int(pid_raw)
+                cursor.execute("SELECT id FROM grade_setting_profiles WHERE id = %s", (pid,))
+                if not cursor.fetchone():
+                    continue
+                cursor.execute("""
+                    INSERT INTO class_grade_setting_assignments (academic_level_id, profile_id)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id)
+                """, (lid, pid))
+            connection.commit()
+        flash('Class grading allocations saved.', 'success')
+    except Exception as e:
+        print(f"Error assigning grade settings to classes: {e}")
+        connection.rollback()
+        flash('Error saving class allocations.', 'error')
     finally:
         connection.close()
     return redirect(employee_dashboard_path('grades-registration'))
@@ -20013,11 +21895,137 @@ def _compute_register_aggregate_analytics(cursor, term_id, selected_week_days, s
     return out
 
 
-def _attendance_register_get_context(students_by_level, is_teacher, req_args):
+_ATTENDANCE_FIELD_KEY_RE = re.compile(r'^(.+)_(\d{4}-\d{2}-\d{2})(?:_(\d+))?$')
+
+
+def _attendance_filter_args_from_form(form):
+    """Build query-style args from attendance POST hidden fields for register refresh."""
+    from werkzeug.datastructures import ImmutableMultiDict
+    pairs = []
+    for k in ('term_id', 'academic_year_id', 'filter_type', 'month', 'day', 'period_start', 'period_end', 'class_level'):
+        v = form.get(k)
+        if v is not None and str(v).strip() != '':
+            pairs.append((k, str(v).strip()))
+    return ImmutableMultiDict(pairs)
+
+
+def _attendance_register_refresh_html(students_by_level, is_teacher, teacher_id):
+    """Render summary + register analytics fragments after a successful save."""
+    ctx = _attendance_register_get_context(
+        students_by_level, is_teacher, _attendance_filter_args_from_form(request.form), teacher_id=teacher_id
+    )
+    tpl_ctx = {
+        **ctx,
+        'is_teacher_view': is_teacher,
+        'is_parent_view': False,
+    }
+    return {
+        'register_analytics_html': render_template(
+            'dashboards/_attendance_register_analytics_partial.html', **tpl_ctx
+        ),
+    }
+
+
+def _parse_attendance_checkbox_key(key):
+    """Parse att_{student_id}_{date} or att_{student_id}_{date}_{subject_id}. Returns (sid, date_str, subject_id)."""
+    if not key or not key.startswith('att_'):
+        return None
+    m = _ATTENDANCE_FIELD_KEY_RE.match(key[4:])
+    if not m:
+        return None
+    sid = m.group(1)
+    date_str = m.group(2)
+    subj_raw = m.group(3)
+    try:
+        subject_id = int(subj_raw) if subj_raw is not None else 0
+    except (TypeError, ValueError):
+        subject_id = 0
+    return sid, date_str, subject_id
+
+
+def _build_teacher_level_attendance_columns(cursor, teacher_id, term_id, level_id, selected_week_days):
+    """One column per subject scheduled on each visible day (teacher timetable)."""
+    columns = []
+    if not teacher_id or not term_id or not level_id or not selected_week_days:
+        return columns
+    try:
+        for day in selected_week_days:
+            dt = day.get('date')
+            if not dt:
+                try:
+                    dt = datetime.strptime(day.get('date_str', ''), '%Y-%m-%d').date()
+                except Exception:
+                    continue
+            weekday = dt.strftime('%A')
+            cursor.execute("""
+                SELECT DISTINCT t.subject_id, s.subject_name, s.subject_code
+                FROM timetables t
+                INNER JOIN subjects s ON s.id = t.subject_id
+                WHERE t.term_id = %s AND t.academic_level_id = %s AND t.teacher_id = %s
+                  AND t.day_of_week = %s
+                ORDER BY s.subject_name ASC
+            """, (int(term_id), int(level_id), int(teacher_id), weekday))
+            for row in cursor.fetchall() or []:
+                sid = row.get('subject_id') if isinstance(row, dict) else row[0]
+                if sid is None:
+                    continue
+                sname = (row.get('subject_name', '') if isinstance(row, dict) else (row[1] if len(row) > 1 else '')) or ''
+                scode = (row.get('subject_code', '') if isinstance(row, dict) else (row[2] if len(row) > 2 else '')) or ''
+                short = scode or sname
+                columns.append({
+                    'date_str': day.get('date_str', ''),
+                    'label': day.get('label', ''),
+                    'subject_id': int(sid),
+                    'subject_name': sname,
+                    'subject_code': scode,
+                    'header_label': f"{day.get('label', '')} · {short}",
+                })
+    except Exception as e:
+        print(f"_build_teacher_level_attendance_columns: {e}")
+    return columns
+
+
+def _credit_subject_progress_from_attendance(cursor, level_id, subject_id, term_id, session_date, employee_id):
+    """Mark one class session complete on the next open topic when attendance is saved for that subject/day."""
+    if not level_id or not subject_id or not term_id or not session_date:
+        return
+    ensure_subject_progress_topics_table(cursor)
+    ensure_subject_progress_session_log_table(cursor)
+    topic_id = None
+    try:
+        cursor.execute("""
+            SELECT id FROM subject_progress_topics
+            WHERE academic_level_id = %s AND subject_id = %s AND duration_unit = 'classes'
+              AND classes_completed < expected_duration_value
+            ORDER BY sort_order ASC, id ASC
+            LIMIT 1
+        """, (int(level_id), int(subject_id)))
+        trow = cursor.fetchone()
+        if trow:
+            topic_id = trow.get('id') if isinstance(trow, dict) else trow[0]
+        cursor.execute("""
+            INSERT IGNORE INTO subject_progress_session_log
+                (academic_level_id, subject_id, term_id, session_date, topic_id, recorded_by_employee_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (int(level_id), int(subject_id), int(term_id), session_date, topic_id, employee_id))
+        if cursor.rowcount and topic_id:
+            cursor.execute("""
+                UPDATE subject_progress_topics
+                SET classes_completed = LEAST(
+                    expected_duration_value,
+                    classes_completed + 1
+                )
+                WHERE id = %s
+            """, (int(topic_id),))
+    except Exception as e:
+        print(f"_credit_subject_progress_from_attendance: {e}")
+
+
+def _attendance_register_get_context(students_by_level, is_teacher, req_args, teacher_id=None):
     """Build template variables for student attendance register (GET). req_args is typically request.args."""
     term_id = req_args.get('term_id', type=int)
     academic_year_id = req_args.get('academic_year_id', type=int)
-    default_filter_type = 'month'
+    default_filter_type = 'day'
     filter_type = (req_args.get('filter_type') or default_filter_type).strip().lower()
     if filter_type not in ('month', 'day', 'period'):
         filter_type = default_filter_type
@@ -20040,6 +22048,9 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
     attendance_summary = {}
     schedule_days_list = []
     register_aggregate_analytics = _register_aggregate_analytics_empty()
+    use_subject_attendance_columns = bool(is_teacher and teacher_id)
+    attendance_columns_by_level = {}
+    level_id_by_name = {}
 
     connection = get_db_connection()
     if connection:
@@ -20221,8 +22232,10 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
                                         })
                                     cur_date += timedelta(days=1)
 
+                    ensure_student_attendance_subject_column(cursor)
                     cursor.execute("""
-                        SELECT sar.student_id, sar.attendance_date, sar.present
+                        SELECT sar.student_id, sar.attendance_date, sar.present,
+                               COALESCE(sar.subject_id, 0) AS subject_id
                         FROM student_attendance_records sar
                         WHERE sar.term_id = %s
                     """, (term_id,))
@@ -20230,8 +22243,16 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
                         sid = r.get('student_id') if isinstance(r, dict) else r[0]
                         dt = r.get('attendance_date') if isinstance(r, dict) else r[1]
                         pres = r.get('present') if isinstance(r, dict) else r[2]
+                        subj_id = r.get('subject_id') if isinstance(r, dict) else (r[3] if len(r) > 3 else 0)
+                        try:
+                            subj_id = int(subj_id or 0)
+                        except (TypeError, ValueError):
+                            subj_id = 0
                         date_str = dt.strftime('%Y-%m-%d') if hasattr(dt, 'strftime') else str(dt)
-                        attendance_records[(sid, date_str)] = bool(pres)
+                        if _attendance_register_row_present(pres):
+                            attendance_records[(sid, date_str, subj_id)] = True
+                            if subj_id == 0:
+                                attendance_records[(sid, date_str)] = True
 
                     if selected_week_days:
                         date_list = [d['date_str'] for d in selected_week_days]
@@ -20268,6 +22289,17 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
                     register_aggregate_analytics = _compute_register_aggregate_analytics(
                         cursor, term_id, selected_week_days, students_by_level
                     )
+
+                if use_subject_attendance_columns and teacher_id and term_id:
+                    for _lg in students_by_level:
+                        lname = str(_lg.get('level_name') or '').strip()
+                        lid = _lg.get('id') or level_id_by_name.get(lname)
+                        if lid is None:
+                            continue
+                        _lg['id'] = int(lid)
+                        attendance_columns_by_level[int(lid)] = _build_teacher_level_attendance_columns(
+                            cursor, teacher_id, term_id, int(lid), selected_week_days
+                        )
         except Exception as e:
             print(f"Error in _attendance_register_get_context: {e}")
         finally:
@@ -20286,6 +22318,8 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
                 if _sid is not None and str(_sid).strip():
                     _sid_list.append(str(_sid).strip())
         attendance_student_ids_csv = ','.join(_sid_list)
+
+    subject_progress_url = employee_dash_url('subject-progress')
 
     return {
         'students_by_level': students_by_level,
@@ -20311,6 +22345,9 @@ def _attendance_register_get_context(students_by_level, is_teacher, req_args):
         'calendar_month_min': calendar_month_min,
         'calendar_month_max': calendar_month_max,
         'today_server': today_server,
+        'use_subject_attendance_columns': use_subject_attendance_columns,
+        'attendance_columns_by_level': attendance_columns_by_level,
+        'subject_progress_url': subject_progress_url,
     }
 
 
@@ -20640,6 +22677,8 @@ def student_attendance():
     else:
         students_by_level = students_by_level_all
 
+    use_subject_attendance_post = bool(is_teacher and teacher_id)
+
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         xhr_saved = False
@@ -20647,20 +22686,26 @@ def student_attendance():
         term_id = request.form.get('term_id', type=int)
         week_dates_str = request.form.get('week_dates', '')
         student_ids_str = request.form.get('student_ids', '')
-        week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
+        post_register_ctx = None
+        if term_id:
+            post_register_ctx = _attendance_register_get_context(
+                students_by_level, is_teacher, _attendance_filter_args_from_form(request.form), teacher_id=teacher_id
+            )
+        week_dates = [
+            d.get('date_str') for d in (post_register_ctx.get('selected_week_days') or []) if d.get('date_str')
+        ] if post_register_ctx else []
+        if not week_dates and week_dates_str:
+            week_dates = [d.strip() for d in week_dates_str.split(',') if d.strip()]
         week_dates_set = set(week_dates)
         student_ids = [s.strip() for s in student_ids_str.split(',') if s.strip()]
 
-        def _ids_from_att_field_names(prefix='att_'):
+        def _ids_from_att_field_names():
             out = set()
             for key in request.form:
-                if not key.startswith(prefix):
+                parsed = _parse_attendance_checkbox_key(key)
+                if not parsed:
                     continue
-                rest = key[len(prefix):]
-                idx = rest.rfind('_')
-                if idx <= 0:
-                    continue
-                sid, date_str = rest[:idx], rest[idx + 1:]
+                sid, date_str, _subj = parsed
                 if date_str in week_dates_set and sid:
                     out.add(sid)
             return out
@@ -20668,7 +22713,7 @@ def student_attendance():
         ids_from_cells = _ids_from_att_field_names() if week_dates_set else set()
         student_ids = sorted(set(student_ids) | ids_from_cells)
 
-        if term_id and week_dates_str and student_ids:
+        if term_id and week_dates_set and student_ids:
             conn = get_db_connection()
             if not conn:
                 xhr_error = 'Database connection failed.'
@@ -20677,18 +22722,9 @@ def student_attendance():
             else:
                 try:
                     with conn.cursor() as cur:
-                        cur.execute("SELECT id, level_name FROM academic_levels")
-                        level_rows = cur.fetchall() or []
-                        level_id_by_name = {}
-                        level_id_by_lower = {}
-                        for r in level_rows:
-                            lid = r.get('id') if isinstance(r, dict) else r[0]
-                            lname = r.get('level_name') if isinstance(r, dict) else r[1]
-                            if lid is None or not lname:
-                                continue
-                            lname_str = str(lname).strip()
-                            level_id_by_name[lname_str] = lid
-                            level_id_by_lower[lname_str.lower()] = lid
+                        ensure_student_attendance_subject_column(cur)
+                        level_id_by_name = _level_name_to_id_map(cur)
+                        level_id_by_lower = {str(k).lower(): v for k, v in level_id_by_name.items()}
 
                         def resolve_level_id(grade_raw):
                             if grade_raw is None:
@@ -20700,6 +22736,7 @@ def student_attendance():
                                 return level_id_by_name[gn]
                             return level_id_by_lower.get(gn.lower())
 
+                        rows_saved = 0
                         rrole = (session.get('role') or '').lower().strip()
                         view_emp_role = (session.get('viewing_as_employee_role') or '').lower().strip()
                         emp_id = None
@@ -20713,37 +22750,67 @@ def student_attendance():
                                 emp_id = int(session.get('user_id'))
                             except (TypeError, ValueError):
                                 emp_id = None
-                        checked = set()
                         student_id_set_for_form = set(student_ids)
+                        cell_updates = []
                         for key in request.form:
-                            if key.startswith('att_') and request.form.get(key) == 'on':
-                                rest = key[4:]
-                                idx = rest.rfind('_')
-                                if idx > 0:
-                                    sid, date_str = rest[:idx], rest[idx+1:]
-                                    if sid in student_id_set_for_form and date_str in week_dates_set:
-                                        checked.add((sid, date_str))
-                        for sid in student_ids:
-                            cur.execute("SELECT current_grade FROM students WHERE student_id = %s", (sid,))
-                            row = cur.fetchone()
-                            if not row:
+                            if not key.startswith('att_'):
                                 continue
-                            level_name = row.get('current_grade') if isinstance(row, dict) else row[0]
-                            lid = resolve_level_id(level_name)
+                            parsed = _parse_attendance_checkbox_key(key)
+                            if not parsed:
+                                continue
+                            sid, date_str, subject_id = parsed
+                            if sid not in student_id_set_for_form:
+                                continue
+                            if week_dates_set and date_str not in week_dates_set:
+                                continue
+                            is_present = request.form.get(key) == 'on'
+                            cell_updates.append((sid, date_str, subject_id, is_present))
+
+                        sessions_with_present = set()
+                        student_level_cache = {}
+                        for sid, date_str, subject_id, is_present in cell_updates:
+                            if sid not in student_level_cache:
+                                cur.execute("SELECT current_grade FROM students WHERE student_id = %s", (sid,))
+                                row = cur.fetchone()
+                                if not row:
+                                    student_level_cache[sid] = None
+                                else:
+                                    level_name = row.get('current_grade') if isinstance(row, dict) else row[0]
+                                    student_level_cache[sid] = resolve_level_id(level_name)
+                            lid = student_level_cache.get(sid)
                             if not lid:
                                 continue
-                            for date_str in week_dates:
-                                is_present = (sid, date_str) in checked
-                                cur.execute("""
-                                    INSERT INTO student_attendance_records
-                                    (student_id, attendance_date, academic_level_id, term_id, present, recorded_by_employee_id)
-                                    VALUES (%s, %s, %s, %s, %s, %s)
-                                    ON DUPLICATE KEY UPDATE present = VALUES(present), recorded_by_employee_id = VALUES(recorded_by_employee_id)
-                                """, (sid, date_str, lid, term_id, 1 if is_present else 0, emp_id))
+                            subj_id = int(subject_id or 0)
+                            cur.execute("""
+                                INSERT INTO student_attendance_records
+                                (student_id, attendance_date, academic_level_id, term_id, subject_id, present, recorded_by_employee_id)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                ON DUPLICATE KEY UPDATE present = VALUES(present),
+                                    recorded_by_employee_id = VALUES(recorded_by_employee_id)
+                            """, (sid, date_str, lid, term_id, subj_id, 1 if is_present else 0, emp_id))
+                            rows_saved += 1
+                            if use_subject_attendance_post and subj_id > 0 and is_present:
+                                sessions_with_present.add((int(lid), subj_id, date_str))
+                        if use_subject_attendance_post:
+                            for lid, subj_id, sess_date in sessions_with_present:
+                                _credit_subject_progress_from_attendance(
+                                    cur, lid, subj_id, term_id, sess_date, emp_id
+                                )
                         conn.commit()
-                    xhr_saved = True
-                    if not is_ajax:
-                        flash('Attendance saved successfully.', 'success')
+                    if rows_saved > 0:
+                        xhr_saved = True
+                        if not is_ajax:
+                            flash('Attendance saved successfully.', 'success')
+                    elif is_ajax:
+                        xhr_error = (
+                            'No attendance was saved. Check that students have a valid class/grade '
+                            'and that the date filter matches the register columns.'
+                        )
+                    elif not is_ajax:
+                        flash(
+                            'No attendance was saved. Check class/grade and date filter.',
+                            'error',
+                        )
                 except Exception as e:
                     print(f"Error saving attendance: {e}")
                     if conn:
@@ -20760,7 +22827,8 @@ def student_attendance():
         from urllib.parse import urlencode
         if is_ajax:
             if xhr_saved:
-                return jsonify({'ok': True})
+                fragments = _attendance_register_refresh_html(students_by_level, is_teacher, teacher_id)
+                return jsonify({'ok': True, **fragments})
             return jsonify({'ok': False, 'message': xhr_error or 'Save failed.'})
         params = {}
         if request.form.get('term_id'):
@@ -20781,7 +22849,7 @@ def student_attendance():
             params['class_level'] = request.form.get('class_level')
         return redirect(url_for('student_attendance') + ('?' + urlencode(params) if params else ''))
 
-    ctx = _attendance_register_get_context(students_by_level, is_teacher, request.args)
+    ctx = _attendance_register_get_context(students_by_level, is_teacher, request.args, teacher_id=teacher_id)
     merged = {
         **ctx,
         'is_teacher_view': is_teacher,
@@ -23794,6 +25862,7 @@ def switch_employee(employee_id):
     # If employee_id is 0, clear the selection
     if employee_id == 0:
         session.pop('viewing_as_employee_id', None)
+        session.pop('teacher_view_employee_id', None)
         flash('Employee selection cleared.', 'success')
         if redirect_url:
             return redirect(redirect_url)
@@ -23811,12 +25880,20 @@ def switch_employee(employee_id):
     if connection:
         try:
             with connection.cursor() as cursor:
-                # Check if employee exists and has the correct role
-                cursor.execute("""
+                role_vals = employee_role_db_match_values(viewing_as_role)
+                if not role_vals:
+                    flash('Invalid role for employee switch.', 'error')
+                    if redirect_url:
+                        return redirect(redirect_url)
+                    return redirect(url_for('role_switch_page'))
+                ph = ','.join(['%s'] * len(role_vals))
+                cursor.execute(f"""
                     SELECT id, employee_id, full_name, role, status
                     FROM employees
-                    WHERE id = %s AND (role = %s OR role = %s) AND status = 'active'
-                """, (employee_id, viewing_as_role, viewing_as_role + 's'))
+                    WHERE id = %s
+                      AND LOWER(TRIM(COALESCE(status, 'active'))) = 'active'
+                      AND LOWER(TRIM(role)) IN ({ph})
+                """, (employee_id,) + role_vals)
                 employee = cursor.fetchone()
                 
                 if not employee:
@@ -23825,9 +25902,16 @@ def switch_employee(employee_id):
                         return redirect(redirect_url)
                     return redirect(url_for('role_switch_page'))
                 
-                # Store the employee ID in session
                 session['viewing_as_employee_id'] = employee_id
-                flash(f'Now viewing as {employee.get("full_name") if isinstance(employee, dict) else employee[2]}.', 'success')
+                emp_role = normalize_allocated_role(
+                    employee.get('role') if isinstance(employee, dict) else ''
+                )
+                if emp_role in ('teachers', 'teacher'):
+                    session['teacher_view_employee_id'] = employee_id
+                if emp_role == 'parent':
+                    session.pop('teacher_view_employee_id', None)
+                ename = employee.get('full_name') if isinstance(employee, dict) else employee[2]
+                flash(f'Now viewing as {ename}.', 'success')
         except Exception as e:
             print(f"Error switching employee: {e}")
             flash('Error switching employee. Please try again.', 'error')
@@ -28889,6 +30973,250 @@ def get_terms_for_year():
     
     return jsonify({'success': True, 'terms': terms})
 
+
+def _academic_classes_portal_allowed():
+    """Curriculum coordinator, principal, or technician view-as those roles."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
+    is_technician = user_role == 'technician'
+    is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
+    return is_academic_coordinator or is_technician or is_principal
+
+
+def _subject_progress_portal_allowed():
+    """Coordinators, principal, technician view-as, or teachers."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
+    return _academic_classes_portal_allowed() or is_teacher
+
+
+def _subject_progress_teacher_id():
+    """Employee PK when the session is a teacher (or technician viewing as teacher)."""
+    user_role = session.get('role', '').lower()
+    viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    if user_role in ('teachers', 'teacher'):
+        return session.get('user_id')
+    if user_role == 'technician' and (
+        viewing_as_role in ('teachers', 'teacher')
+        or _technician_portal_preview_role() in ('teachers', 'teacher')
+    ):
+        return session.get('viewing_as_employee_id') or session.get('teacher_view_employee_id')
+    return None
+
+
+def _teacher_assigned_subject_progress(cursor, teacher_id, level_id, subject_id):
+    if not teacher_id:
+        return False
+    try:
+        cursor.execute("""
+            SELECT 1 FROM teacher_subject_assignments
+            WHERE teacher_id = %s AND academic_level_id = %s AND subject_id = %s
+            LIMIT 1
+        """, (int(teacher_id), int(level_id), int(subject_id)))
+        return bool(cursor.fetchone())
+    except Exception as e:
+        print(f"_teacher_assigned_subject_progress: {e}")
+        return False
+
+
+def _fetch_teacher_subject_progress_levels(cursor, teacher_id):
+    """Academic levels and subject_allocations for one teacher's assignments."""
+    if not teacher_id:
+        return []
+    try:
+        cursor.execute("""
+            SELECT al.id AS level_id, al.level_category, al.level_name, al.level_description,
+                   al.level_status, s.id AS subject_id, s.subject_name, s.subject_code
+            FROM teacher_subject_assignments tsa
+            INNER JOIN academic_levels al ON al.id = tsa.academic_level_id
+            INNER JOIN subjects s ON s.id = tsa.subject_id
+            WHERE tsa.teacher_id = %s
+              AND COALESCE(al.level_status, 'active') = 'active'
+              AND COALESCE(s.status, 'active') = 'active'
+            ORDER BY al.level_category, al.level_name, s.subject_name
+        """, (int(teacher_id),))
+        levels_by_id = {}
+        order = []
+        for row in cursor.fetchall() or []:
+            if isinstance(row, dict):
+                level_id = row.get('level_id')
+                subject_id = row.get('subject_id')
+                if level_id is None:
+                    continue
+                if level_id not in levels_by_id:
+                    levels_by_id[level_id] = {
+                        'id': level_id,
+                        'level_category': row.get('level_category', ''),
+                        'level_name': row.get('level_name', ''),
+                        'level_description': row.get('level_description', ''),
+                        'level_status': row.get('level_status', 'active'),
+                        'subject_allocations': [],
+                    }
+                    order.append(level_id)
+                if subject_id is not None:
+                    levels_by_id[level_id]['subject_allocations'].append({
+                        'subject_id': subject_id,
+                        'subject_name': (row.get('subject_name') or '') or 'Subject',
+                        'subject_code': (row.get('subject_code') or '') or '',
+                    })
+            else:
+                level_id = row[0] if len(row) > 0 else None
+                subject_id = row[5] if len(row) > 5 else None
+                if level_id is None:
+                    continue
+                if level_id not in levels_by_id:
+                    levels_by_id[level_id] = {
+                        'id': level_id,
+                        'level_category': row[1] if len(row) > 1 else '',
+                        'level_name': row[2] if len(row) > 2 else '',
+                        'level_description': row[3] if len(row) > 3 else '',
+                        'level_status': row[4] if len(row) > 4 else 'active',
+                        'subject_allocations': [],
+                    }
+                    order.append(level_id)
+                if subject_id is not None:
+                    levels_by_id[level_id]['subject_allocations'].append({
+                        'subject_id': subject_id,
+                        'subject_name': (row[6] if len(row) > 6 and row[6] else '') or 'Subject',
+                        'subject_code': (row[7] if len(row) > 7 and row[7] else '') or '',
+                    })
+        return [levels_by_id[lid] for lid in order]
+    except Exception as e:
+        print(f"_fetch_teacher_subject_progress_levels: {e}")
+        return []
+
+
+def _fetch_academic_levels_with_subject_allocations(cursor):
+    """Active academic levels, each with sorted subject_allocations for class/subject browsers."""
+    cursor.execute("""
+        SELECT id, level_category, level_name, level_description, level_status
+        FROM academic_levels
+        WHERE level_status = 'active'
+        ORDER BY level_category, level_name ASC
+    """)
+    academic_levels = []
+    for row in cursor.fetchall() or []:
+        academic_levels.append({
+            'id': row.get('id') if isinstance(row, dict) else row[0],
+            'level_category': row.get('level_category', '') if isinstance(row, dict) else row[1],
+            'level_name': row.get('level_name', '') if isinstance(row, dict) else row[2],
+            'level_description': row.get('level_description', '') if isinstance(row, dict) else row[3],
+            'level_status': row.get('level_status', 'active') if isinstance(row, dict) else (row[4] if len(row) > 4 else 'active'),
+        })
+
+    allocations_by_level = {}
+    try:
+        cursor.execute("""
+            SELECT sal.academic_level_id, sal.subject_id,
+                   s.subject_name, s.subject_code,
+                   COALESCE(s.status, 'active') AS subject_status
+            FROM subject_academic_levels sal
+            INNER JOIN academic_levels al
+                ON sal.academic_level_id = al.id
+               AND COALESCE(al.level_status, 'active') = 'active'
+            INNER JOIN subjects s ON sal.subject_id = s.id
+            ORDER BY al.level_name ASC, s.subject_name ASC
+        """)
+        for arow in cursor.fetchall() or []:
+            lid = arow.get('academic_level_id') if isinstance(arow, dict) else arow[0]
+            if lid is None:
+                continue
+            subj_status = (arow.get('subject_status', 'active') if isinstance(arow, dict) else (arow[4] if len(arow) > 4 else 'active'))
+            if str(subj_status or '').lower() == 'inactive':
+                continue
+            subj_id = arow.get('subject_id') if isinstance(arow, dict) else arow[1]
+            if subj_id is None:
+                continue
+            level_subjects = allocations_by_level.setdefault(lid, {})
+            if subj_id not in level_subjects:
+                level_subjects[subj_id] = {
+                    'subject_id': subj_id,
+                    'subject_name': (arow.get('subject_name', '') if isinstance(arow, dict) else (arow[2] if len(arow) > 2 else '')) or 'Subject',
+                    'subject_code': (arow.get('subject_code', '') if isinstance(arow, dict) else (arow[3] if len(arow) > 3 else '')) or '',
+                }
+    except Exception as e:
+        print(f"Note: subject_academic_levels for level subjects: {e}")
+
+    try:
+        cursor.execute("""
+            SELECT tsa.academic_level_id, tsa.subject_id,
+                   s.subject_name, s.subject_code,
+                   COALESCE(s.status, 'active') AS subject_status
+            FROM teacher_subject_assignments tsa
+            INNER JOIN academic_levels al
+                ON tsa.academic_level_id = al.id
+               AND COALESCE(al.level_status, 'active') = 'active'
+            LEFT JOIN subjects s ON tsa.subject_id = s.id
+            ORDER BY al.level_name ASC, s.subject_name ASC
+        """)
+        for trow in cursor.fetchall() or []:
+            lid = trow.get('academic_level_id') if isinstance(trow, dict) else trow[0]
+            subj_id = trow.get('subject_id') if isinstance(trow, dict) else trow[1]
+            if lid is None or subj_id is None:
+                continue
+            subj_status = (trow.get('subject_status', 'active') if isinstance(trow, dict) else (trow[4] if len(trow) > 4 else 'active'))
+            if str(subj_status or '').lower() == 'inactive':
+                continue
+            level_subjects = allocations_by_level.setdefault(lid, {})
+            if subj_id not in level_subjects:
+                level_subjects[subj_id] = {
+                    'subject_id': subj_id,
+                    'subject_name': (trow.get('subject_name', '') if isinstance(trow, dict) else (trow[2] if len(trow) > 2 else '')) or 'Subject',
+                    'subject_code': (trow.get('subject_code', '') if isinstance(trow, dict) else (trow[3] if len(trow) > 3 else '')) or '',
+                }
+    except Exception as e:
+        print(f"Note: teacher_subject_assignments fallback for level subjects: {e}")
+
+    ensure_subject_exam_display_order_columns(cursor)
+    all_level_sids = set()
+    for _lid, subdict in allocations_by_level.items():
+        all_level_sids.update(int(x) for x in subdict.keys() if x is not None)
+    edo_by_sid = {}
+    id_to_gc_all = {}
+    if all_level_sids:
+        ph = ','.join(['%s'] * len(all_level_sids))
+        cursor.execute(
+            f"SELECT id, exam_display_order FROM subjects WHERE id IN ({ph})",
+            tuple(all_level_sids),
+        )
+        for er in cursor.fetchall() or []:
+            eid = er.get('id') if isinstance(er, dict) else er[0]
+            if eid is not None:
+                edo_by_sid[int(eid)] = er.get('exam_display_order') if isinstance(er, dict) else (er[1] if len(er) > 1 else None)
+        id_to_gc_all = fetch_subject_id_to_exam_group_category(cursor, list(all_level_sids))
+    base_cat_order = fetch_base_academic_level_category_order(cursor)
+
+    for level in academic_levels:
+        level_subjects = allocations_by_level.get(level['id'], {})
+        sort_rows = []
+        for sid, info in level_subjects.items():
+            try:
+                sid_i = int(sid)
+            except (TypeError, ValueError):
+                continue
+            gc = id_to_gc_all.get(sid_i, 'Uncategorized')
+            sort_rows.append({
+                'id': sid_i,
+                'subject_name': info.get('subject_name') or '',
+                'subject_code': info.get('subject_code') or '',
+                'exam_display_order': edo_by_sid.get(sid_i),
+                'group_category': gc,
+            })
+        sec_ord = build_exam_subject_section_order({r['group_category'] for r in sort_rows}, base_cat_order)
+        sort_rows.sort(key=lambda r: exam_subject_column_sort_key(r, sec_ord))
+        level['subject_allocations'] = [
+            {
+                'subject_id': r['id'],
+                'subject_name': r['subject_name'],
+                'subject_code': r['subject_code'],
+            }
+            for r in sort_rows
+        ]
+    return academic_levels
+
+
 @app.route('/dashboard/employee/classes-subjects')
 @login_required
 def classes_subjects():
@@ -29228,6 +31556,322 @@ def classes_subjects_level_detail(level_id):
         level_subjects=level_subjects,
         total_allocated_teachers=total_allocated_teachers,
     )
+
+
+@app.route('/teachers/subject-progress')
+@login_required
+def teacher_subject_progress():
+    """Teacher URL alias for subject progress."""
+    return subject_progress()
+
+
+@app.route('/dashboard/employee/subject-progress')
+@login_required
+def subject_progress():
+    """List academic levels and their subjects; each subject links to progress detail."""
+    if not _subject_progress_portal_allowed():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    teacher_id = _subject_progress_teacher_id()
+    academic_levels = []
+    connection = get_db_connection()
+    current_term_name = None
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                _year_id, _yn, term_id, current_term_name = _get_current_academic_year_and_term(cursor)
+                if teacher_id:
+                    academic_levels = _fetch_teacher_subject_progress_levels(cursor, teacher_id)
+                else:
+                    academic_levels = _fetch_academic_levels_with_subject_allocations(cursor)
+                academic_levels = _enrich_academic_levels_subject_coverage(
+                    cursor, academic_levels, term_id
+                )
+        except Exception as e:
+            print(f"Error loading subject progress list: {e}")
+            flash('Could not load subjects right now.', 'error')
+        finally:
+            connection.close()
+
+    return render_template(
+        'dashboards/subject_progress.html',
+        role=user_role,
+        academic_levels=academic_levels,
+        current_term_name=current_term_name,
+    )
+
+
+@app.route('/dashboard/employee/subject-progress/level/<int:level_id>/subject/<int:subject_id>')
+@login_required
+def subject_progress_subject(level_id, subject_id):
+    """Curriculum topics and expected coverage duration for one subject at one level."""
+    if not _subject_progress_portal_allowed():
+        flash('You do not have permission to access this page.', 'error')
+        return redirect(employee_dashboard_path())
+
+    user_role = session.get('role', '').lower()
+    teacher_id = _subject_progress_teacher_id()
+    level = None
+    subject = None
+    topics = []
+    total_planned_classes = 0
+    timetable_classes_per_week = 0
+    timetable_allocation = _subject_timetable_allocation_empty()
+    session_coverage = _subject_session_coverage_empty()
+    current_year_name = None
+    current_term_name = None
+    timetable_term_label = None
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dash_url('subject-progress'))
+
+    try:
+        with connection.cursor() as cursor:
+            if teacher_id and not _teacher_assigned_subject_progress(cursor, teacher_id, level_id, subject_id):
+                flash('You are not assigned to this class and subject.', 'error')
+                return redirect(employee_dash_url('subject-progress'))
+            level, subject = _load_subject_progress_level_subject(cursor, level_id, subject_id)
+            if not level:
+                flash('Academic level not found.', 'error')
+                return redirect(employee_dash_url('subject-progress'))
+            if not subject:
+                flash('Subject is not registered for this academic level.', 'error')
+                return redirect(employee_dash_url('subject-progress'))
+
+            subject = {
+                'id': subject['id'],
+                'subject_name': subject['subject_name'],
+                'subject_code': subject['subject_code'],
+            }
+            _year_id, current_year_name, term_id, current_term_name = _get_current_academic_year_and_term(cursor)
+            if current_year_name and current_term_name:
+                timetable_term_label = f'{current_year_name} · {current_term_name}'
+            elif current_year_name:
+                timetable_term_label = current_year_name
+            timetable_allocation = _fetch_subject_timetable_allocation(
+                cursor, level_id, subject_id, term_id
+            )
+            timetable_classes_per_week = int(timetable_allocation.get('count') or 0)
+            topics = _fetch_subject_progress_topics(cursor, level_id, subject_id)
+            session_coverage = _compute_subject_session_coverage(
+                cursor, level_id, subject_id, term_id, timetable_allocation
+            )
+            for t in topics:
+                if t.get('duration_unit') == 'classes':
+                    total_planned_classes += int(t.get('expected_duration_value') or 0)
+
+    except Exception as e:
+        print(f"Error loading subject progress detail: {e}")
+        flash('Could not load subject progress.', 'error')
+        return redirect(employee_dash_url('subject-progress'))
+    finally:
+        connection.close()
+
+    total_planned_label = None
+    if total_planned_classes > 0:
+        total_planned_label = f'{total_planned_classes} class' + ('' if total_planned_classes == 1 else 'es')
+        if timetable_classes_per_week > 0:
+            weeks_est = total_planned_classes / timetable_classes_per_week
+            if weeks_est >= 1:
+                wstr = str(int(weeks_est)) if abs(weeks_est - round(weeks_est)) < 0.05 else f'{weeks_est:.1f}'
+                total_planned_label += f' (~{wstr} week' + ('' if float(wstr) == 1 else 's') + ' on timetable)'
+
+    return render_template(
+        'dashboards/subject_progress_subject.html',
+        role=user_role,
+        level=level,
+        subject=subject,
+        topics=topics,
+        session_coverage=session_coverage,
+        total_planned_classes=total_planned_classes,
+        total_planned_label=total_planned_label,
+        timetable_classes_per_week=timetable_classes_per_week,
+        timetable_allocation=timetable_allocation,
+        timetable_term_label=timetable_term_label,
+        timetable_manage_url=employee_dash_url('timetable-management'),
+        topics_save_url=employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}/topics'),
+    )
+
+
+def _parse_subject_progress_topics_payload():
+    """Normalize topic rows from JSON or form for bulk register."""
+    data = request.get_json(silent=True)
+    if data and isinstance(data.get('topics'), list):
+        raw_items = data['topics']
+    else:
+        names = request.form.getlist('topic_name')
+        values = request.form.getlist('expected_duration_value')
+        raw_items = []
+        for i, name in enumerate(names):
+            raw_items.append({
+                'topic_name': name,
+                'expected_duration_value': values[i] if i < len(values) else '',
+            })
+
+    cleaned = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        name = (item.get('topic_name') or '').strip()
+        if not name:
+            continue
+        if len(name) > 500:
+            name = name[:500]
+        try:
+            val = int(round(float(item.get('expected_duration_value'))))
+        except (TypeError, ValueError):
+            continue
+        if val <= 0 or val > 9999:
+            continue
+        cleaned.append({
+            'topic_name': name,
+            'expected_duration_value': val,
+            'duration_unit': 'classes',
+        })
+    return cleaned
+
+
+def _subject_progress_action_allowed(cursor, level_id, subject_id):
+    """Permission + teacher must be assigned to this class/subject."""
+    if not _subject_progress_portal_allowed():
+        return False, 'You do not have permission to perform this action.'
+    teacher_id = _subject_progress_teacher_id()
+    if teacher_id and not _teacher_assigned_subject_progress(cursor, teacher_id, level_id, subject_id):
+        return False, 'You are not assigned to this class and subject.'
+    return True, None
+
+
+@app.route('/dashboard/employee/subject-progress/level/<int:level_id>/subject/<int:subject_id>/topics', methods=['POST'])
+@login_required
+def subject_progress_topics_save(level_id, subject_id):
+    """Register one or more curriculum topics with expected duration."""
+    items = _parse_subject_progress_topics_payload()
+    if not items:
+        flash('Add at least one topic with a name and number of classes (1 or more).', 'error')
+        return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+
+    connection = get_db_connection()
+    if not connection:
+        flash('Database connection failed.', 'error')
+        return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+
+    try:
+        with connection.cursor() as cursor:
+            ok, msg = _subject_progress_action_allowed(cursor, level_id, subject_id)
+            if not ok:
+                flash(msg, 'error')
+                return redirect(employee_dash_url('subject-progress') if 'assigned' in (msg or '') else employee_dashboard_path())
+            level, subject = _load_subject_progress_level_subject(cursor, level_id, subject_id)
+            if not level or not subject:
+                flash('Invalid class or subject.', 'error')
+                return redirect(employee_dash_url('subject-progress'))
+
+            ensure_subject_progress_topics_table(cursor)
+            cursor.execute("""
+                SELECT COALESCE(MAX(sort_order), 0) AS mx
+                FROM subject_progress_topics
+                WHERE academic_level_id = %s AND subject_id = %s
+            """, (level_id, subject_id))
+            mx_row = cursor.fetchone()
+            next_order = int(mx_row.get('mx') if isinstance(mx_row, dict) else (mx_row[0] if mx_row else 0)) + 1
+
+            for item in items:
+                cursor.execute("""
+                    INSERT INTO subject_progress_topics
+                        (academic_level_id, subject_id, topic_name, expected_duration_value, duration_unit, sort_order)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    level_id, subject_id, item['topic_name'],
+                    item['expected_duration_value'], item['duration_unit'], next_order,
+                ))
+                next_order += 1
+            connection.commit()
+        flash(f'{len(items)} topic(s) registered.', 'success')
+    except Exception as e:
+        print(f"subject_progress_topics_save: {e}")
+        flash('Could not save topics. Please try again.', 'error')
+    finally:
+        connection.close()
+
+    return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+
+
+@app.route('/dashboard/employee/subject-progress/level/<int:level_id>/subject/<int:subject_id>/topics/<int:topic_id>/update', methods=['POST'])
+@login_required
+def subject_progress_topic_update(level_id, subject_id, topic_id):
+    name = (request.form.get('topic_name') or '').strip()
+    if not name:
+        flash('Topic name is required.', 'error')
+        return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+    if len(name) > 500:
+        name = name[:500]
+    try:
+        val = int(round(float(request.form.get('expected_duration_value'))))
+    except (TypeError, ValueError):
+        flash('Enter a valid number of classes.', 'error')
+        return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+    if val <= 0 or val > 9999:
+        flash('Number of classes must be between 1 and 9999.', 'error')
+        return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ok, msg = _subject_progress_action_allowed(cursor, level_id, subject_id)
+                if not ok:
+                    flash(msg, 'error')
+                    return redirect(employee_dash_url('subject-progress') if 'assigned' in (msg or '') else employee_dashboard_path())
+                cursor.execute("""
+                    UPDATE subject_progress_topics
+                    SET topic_name = %s, expected_duration_value = %s, duration_unit = %s
+                    WHERE id = %s AND academic_level_id = %s AND subject_id = %s
+                """, (name, val, 'classes', topic_id, level_id, subject_id))
+                connection.commit()
+                if cursor.rowcount:
+                    flash('Topic updated.', 'success')
+                else:
+                    flash('Topic not found.', 'error')
+        except Exception as e:
+            print(f"subject_progress_topic_update: {e}")
+            flash('Could not update topic.', 'error')
+        finally:
+            connection.close()
+
+    return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
+
+
+@app.route('/dashboard/employee/subject-progress/level/<int:level_id>/subject/<int:subject_id>/topics/<int:topic_id>/delete', methods=['POST'])
+@login_required
+def subject_progress_topic_delete(level_id, subject_id, topic_id):
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                ok, msg = _subject_progress_action_allowed(cursor, level_id, subject_id)
+                if not ok:
+                    flash(msg, 'error')
+                    return redirect(employee_dash_url('subject-progress') if 'assigned' in (msg or '') else employee_dashboard_path())
+                cursor.execute("""
+                    DELETE FROM subject_progress_topics
+                    WHERE id = %s AND academic_level_id = %s AND subject_id = %s
+                """, (topic_id, level_id, subject_id))
+                connection.commit()
+                if cursor.rowcount:
+                    flash('Topic removed.', 'success')
+                else:
+                    flash('Topic not found.', 'error')
+        except Exception as e:
+            print(f"subject_progress_topic_delete: {e}")
+            flash('Could not delete topic.', 'error')
+        finally:
+            connection.close()
+
+    return redirect(employee_dash_url(f'subject-progress/level/{level_id}/subject/{subject_id}'))
 
 
 def _subject_allocated_to_academic_category(cursor, subject_id, academic_category):
@@ -35888,6 +38532,13 @@ def exams_assessments():
     return render_template('dashboards/exams_assessments.html', role=user_role, academic_levels=academic_levels)
 
 
+@app.route('/teachers/exam-analytics')
+@login_required
+def teacher_exam_analytics():
+    """Teacher URL alias for exam analytics (same view as coordinators)."""
+    return exam_analytics()
+
+
 @app.route('/teachers/exams-assessments')
 @login_required
 def teacher_exams_assessments():
@@ -36994,10 +39645,11 @@ def exam_analytics():
     """Exam analytics page - list all registered exams (one row per exam, latest first)"""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     exams = []
@@ -37049,10 +39701,11 @@ def exam_analytics_detail(exam_id):
     """View details for one exam (all subject/supervisor slots for that exam)."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     connection = get_db_connection()
@@ -37335,78 +39988,18 @@ def exam_analytics_detail(exam_id):
         try:
             with connection.cursor() as cur2:
                 ensure_subject_exam_total_marks_column(cur2)
-                # Load grading allocations (default + subject-specific overrides)
-                default_grade_bands = []
-                subject_grade_bands = {}
-                try:
-                    cur2.execute("""
-                        SELECT code, level_label, start_mark, end_mark, allocation_points
-                        FROM grade_registrations
-                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                        ORDER BY start_mark DESC, end_mark DESC
-                    """)
-                    for grow in (cur2.fetchall() or []):
-                        if isinstance(grow, dict):
-                            ap = grow.get('allocation_points')
-                            default_grade_bands.append({
-                                'code': (grow.get('code') or '').strip(),
-                                'label': (grow.get('level_label') or '').strip(),
-                                'start': float(grow.get('start_mark') or 0),
-                                'end': float(grow.get('end_mark') or 0),
-                                'allocation_points': float(ap) if ap is not None else None,
-                            })
-                        else:
-                            apv = grow[4] if len(grow) > 4 else None
-                            default_grade_bands.append({
-                                'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
-                                'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
-                                'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
-                                'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
-                                'allocation_points': float(apv) if apv is not None else None,
-                            })
-                except Exception as ge:
-                    print(f"Note: grade_registrations lookup skipped: {ge}")
+                default_grade_bands, _, class_grade_bands = load_grade_bands_from_db(cur2)
+                scope_level_ids = [int(x) for x in (level_scope.get('level_ids') or []) if x is not None]
+                level_name_to_id = _level_name_to_id_map(cur2)
+                student_level_by_id = {}
 
-                try:
-                    cur2.execute("""
-                        SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
-                        FROM subject_grade_mark_overrides
-                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                        ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
-                    """)
-                    for srow in (cur2.fetchall() or []):
-                        if isinstance(srow, dict):
-                            sid = int(srow.get('subject_id') or 0)
-                            ap = srow.get('allocation_points')
-                            band = {
-                                'code': (srow.get('code') or '').strip(),
-                                'label': (srow.get('level_label') or '').strip(),
-                                'start': float(srow.get('start_mark') or 0),
-                                'end': float(srow.get('end_mark') or 0),
-                                'allocation_points': float(ap) if ap is not None else None,
-                            }
-                        else:
-                            sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                            apv = srow[5] if len(srow) > 5 else None
-                            band = {
-                                'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                                'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
-                                'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
-                                'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
-                                'allocation_points': float(apv) if apv is not None else None,
-                            }
-                        if sid <= 0:
-                            continue
-                        if sid not in subject_grade_bands:
-                            subject_grade_bands[sid] = []
-                        subject_grade_bands[sid].append(band)
-                except Exception as se:
-                    print(f"Note: subject_grade_mark_overrides lookup skipped: {se}")
-
-                def _grade_for_mark(subject_id, marks_value):
+                def _grade_for_mark(subject_id, marks_value, level_id=None):
                     if marks_value is None:
                         return ''
-                    bands = subject_grade_bands.get(subject_id) or default_grade_bands
+                    lid = level_id
+                    if lid is None and scope_level_ids:
+                        lid = scope_level_ids[0] if len(scope_level_ids) == 1 else None
+                    bands = resolve_grade_bands(lid, class_grade_bands, default_grade_bands)
                     band = match_grade_band(marks_value, bands)
                     if not band:
                         return ''
@@ -37419,7 +40012,8 @@ def exam_analytics_detail(exam_id):
                     nm_ph = ','.join(['%s'] * len(level_names_for_students))
                     cur2.execute(
                         f"""
-                        SELECT student_id, full_name FROM students
+                        SELECT student_id, full_name, TRIM(COALESCE(current_grade, '')) AS current_grade
+                        FROM students
                         WHERE current_grade IN ({nm_ph}) AND status = 'in session'
                         ORDER BY full_name ASC
                         """,
@@ -37429,6 +40023,15 @@ def exam_analytics_detail(exam_id):
                 for srow in all_students_rows:
                     sid = srow.get('student_id') if isinstance(srow, dict) else srow[0]
                     full_name = (srow.get('full_name', '') if isinstance(srow, dict) else (srow[1] if len(srow) > 1 else sid)) if srow else sid
+                    cur_grade = (
+                        str(srow.get('current_grade') or '').strip()
+                        if isinstance(srow, dict)
+                        else (str(srow[2]).strip() if len(srow) > 2 and srow[2] is not None else '')
+                    )
+                    student_level_id = level_name_to_id.get(cur_grade)
+                    if student_level_id is None and len(scope_level_ids) == 1:
+                        student_level_id = scope_level_ids[0]
+                    student_level_by_id[sid] = student_level_id
                     marks_list = []
                     for subj in distinct_subjects_students:
                         total_for_subject = None
@@ -37511,7 +40114,9 @@ def exam_analytics_detail(exam_id):
                                         if p is not None:
                                             pcts_fb.append(p)
                             total_for_subject = round(sum(pcts_fb) / len(pcts_fb), 2) if pcts_fb else None
-                        grade_value = _grade_for_mark(subj.get('subject_id'), total_for_subject)
+                        grade_value = _grade_for_mark(
+                            subj.get('subject_id'), total_for_subject, level_id=student_level_by_id.get(sid)
+                        )
                         marks_list.append({
                             'subject_name': subj['subject_name'],
                             'marks': total_for_subject,
@@ -37529,7 +40134,9 @@ def exam_analytics_detail(exam_id):
                     if scored_subjects > 0:
                         sm['total_marks'] = round(sum(pct_vals) / float(scored_subjects), 2)
                         sm['total_percent'] = sm['total_marks']
-                        sm['total_grade'] = _grade_for_mark(None, sm['total_percent'])
+                        sm['total_grade'] = _grade_for_mark(
+                            None, sm['total_percent'], level_id=student_level_by_id.get(sm.get('student_id'))
+                        )
                     else:
                         sm['total_marks'] = 0
                         sm['total_percent'] = None
@@ -37575,7 +40182,9 @@ def exam_analytics_detail(exam_id):
                             'student_id': sid,
                             'full_name': fn or sid,
                             'marks': marks_val,
-                            'grade': _grade_for_mark(subj_id, marks_val)
+                            'grade': _grade_for_mark(
+                                subj_id, marks_val, level_id=student_level_by_id.get(sid)
+                            )
                         })
                     subject_analytics.append({'subject_id': subj_id, 'subject_name': subj.get('subject_name') or '—', 'top_students': top_students})
                 # Teacher Analytics: mean grade per subject (marks from any exam_id in this exam), rank by mean
@@ -37678,10 +40287,11 @@ def exam_analytics_slot(exam_id, slot_id):
     """View analytics for one class (subject): mean grade, position, top ranking teachers."""
     user_role = session.get('role', '').lower()
     viewing_as_role = session.get('viewing_as_employee_role', '').lower()
+    is_teacher = user_role in ('teachers', 'teacher') or viewing_as_role in ('teachers', 'teacher')
     is_academic_coordinator = user_role == 'curriculum coordinator' or viewing_as_role == 'curriculum coordinator'
     is_technician = user_role == 'technician'
     is_principal = user_role == 'head of institution' or viewing_as_role == 'head of institution'
-    if not (is_academic_coordinator or is_technician or is_principal):
+    if not (is_teacher or is_academic_coordinator or is_technician or is_principal):
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
     connection = get_db_connection()
@@ -37806,6 +40416,7 @@ def students_by_academic_level(level_id):
     terms = []
     default_grade_bands = []
     subject_grade_bands = {}
+    class_grade_bands = {}
     subject_exam_max_map_base = {}
     combination_column_members = {}
     current_year_id = None
@@ -38142,71 +40753,8 @@ def students_by_academic_level(level_id):
                     print(f"Marks table not found or error fetching marks: {e}")
                     student_marks = {}
 
-                # Load grading bands (default + subject-specific) for column mean grade display.
-                try:
-                    cursor.execute("""
-                        SELECT code, level_label, start_mark, end_mark, allocation_points
-                        FROM grade_registrations
-                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                        ORDER BY start_mark DESC, end_mark DESC
-                    """)
-                    for grow in (cursor.fetchall() or []):
-                        if isinstance(grow, dict):
-                            ap = grow.get('allocation_points')
-                            default_grade_bands.append({
-                                'code': (grow.get('code') or '').strip(),
-                                'label': (grow.get('level_label') or '').strip(),
-                                'start': float(grow.get('start_mark') or 0),
-                                'end': float(grow.get('end_mark') or 0),
-                                'allocation_points': float(ap) if ap is not None else None,
-                            })
-                        else:
-                            apv = grow[4] if len(grow) > 4 else None
-                            default_grade_bands.append({
-                                'code': ((grow[0] if len(grow) > 0 else '') or '').strip(),
-                                'label': ((grow[1] if len(grow) > 1 else '') or '').strip(),
-                                'start': float(grow[2] or 0) if len(grow) > 2 else 0.0,
-                                'end': float(grow[3] or 0) if len(grow) > 3 else 0.0,
-                                'allocation_points': float(apv) if apv is not None else None,
-                            })
-                except Exception as ge:
-                    print(f"Note: grade_registrations lookup skipped on students-by-level: {ge}")
-
-                try:
-                    cursor.execute("""
-                        SELECT subject_id, code, level_label, start_mark, end_mark, allocation_points
-                        FROM subject_grade_mark_overrides
-                        WHERE start_mark IS NOT NULL AND end_mark IS NOT NULL
-                        ORDER BY subject_id ASC, start_mark DESC, end_mark DESC
-                    """)
-                    for srow in (cursor.fetchall() or []):
-                        if isinstance(srow, dict):
-                            sid = int(srow.get('subject_id') or 0)
-                            ap = srow.get('allocation_points')
-                            band = {
-                                'code': (srow.get('code') or '').strip(),
-                                'label': (srow.get('level_label') or '').strip(),
-                                'start': float(srow.get('start_mark') or 0),
-                                'end': float(srow.get('end_mark') or 0),
-                                'allocation_points': float(ap) if ap is not None else None,
-                            }
-                        else:
-                            sid = int(srow[0] or 0) if len(srow) > 0 else 0
-                            apv = srow[5] if len(srow) > 5 else None
-                            band = {
-                                'code': ((srow[1] if len(srow) > 1 else '') or '').strip(),
-                                'label': ((srow[2] if len(srow) > 2 else '') or '').strip(),
-                                'start': float(srow[3] or 0) if len(srow) > 3 else 0.0,
-                                'end': float(srow[4] or 0) if len(srow) > 4 else 0.0,
-                                'allocation_points': float(apv) if apv is not None else None,
-                            }
-                        if sid <= 0:
-                            continue
-                        if sid not in subject_grade_bands:
-                            subject_grade_bands[sid] = []
-                        subject_grade_bands[sid].append(band)
-                except Exception as se:
-                    print(f"Note: subject_grade_mark_overrides lookup skipped on students-by-level: {se}")
+                # Load grading bands (default + class + subject overrides) for column mean grade display.
+                default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
         except Exception as e:
             print(f"Error fetching students by academic level: {e}")
             flash('Error loading students. Please try again.', 'error')
@@ -38313,6 +40861,8 @@ def students_by_academic_level(level_id):
                          student_marks=student_marks,
                          default_grade_bands=default_grade_bands,
                          subject_grade_bands=subject_grade_bands,
+                         class_grade_bands=class_grade_bands,
+                         academic_level_id=level_id,
                          subject_exam_max_map=subject_exam_max_map,
                          combination_column_members=combination_column_members,
                          can_edit=can_edit,
@@ -39235,6 +41785,7 @@ def _build_exam_class_report(
     exam_extra_params,
     default_grade_bands,
     subject_grade_bands,
+    class_grade_bands=None,
     *,
     is_combined=False,
     combo_id=None,
@@ -39381,7 +41932,9 @@ def _build_exam_class_report(
             sid_int = int(sid)
         except (TypeError, ValueError):
             sid_int = 0
-        subj_bands = subject_grade_bands.get(sid_int) or default_grade_bands
+        subj_bands = resolve_grade_bands(
+            primary_level_id, class_grade_bands or {}, default_grade_bands
+        )
         grade_code, grade_points = grade_code_and_points_from_pct(
             sdata['mean'] if marks else None, subj_bands
         )
@@ -39408,8 +41961,11 @@ def _build_exam_class_report(
         round_mark_display(sum(student_overall_means) / len(student_overall_means))
         if student_overall_means else None
     )
+    class_bands = resolve_grade_bands(
+        primary_level_id, class_grade_bands or {}, default_grade_bands
+    )
     class_grade_code, class_grade_points = grade_code_and_points_from_pct(
-        class_grade_mean, default_grade_bands
+        class_grade_mean, class_bands
     )
 
     class_mean = round_mark_display(sum(all_marks_for_class) / len(all_marks_for_class)) if all_marks_for_class else 0
@@ -39684,7 +42240,7 @@ def reports():
 
                     report_data = []
                     combined_report_data = []
-                    default_grade_bands, subject_grade_bands = load_grade_bands_from_db(cursor)
+                    default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
 
                     combos_to_build = []
                     for combo in level_combinations:
@@ -39710,6 +42266,7 @@ def reports():
                                 exam_extra_params,
                                 default_grade_bands,
                                 subject_grade_bands,
+                                class_grade_bands,
                                 is_combined=True,
                                 combo_id=disp['combo_id'],
                                 primary_level_id=disp['level_ids'][0] if disp.get('level_ids') else None,
@@ -39740,6 +42297,7 @@ def reports():
                                 exam_extra_params,
                                 default_grade_bands,
                                 subject_grade_bands,
+                                class_grade_bands,
                                 is_combined=False,
                                 primary_level_id=lev['id'],
                             )
@@ -41199,10 +43757,47 @@ def _academic_report_bundle_summary_lines(bundle, report_type):
 
 def _exam_all_students_performance_footer_rows(columns, meta, student_rows):
     """
-    Two summary rows for CSV/Excel after student rows:
-    (1) Class mean per subject, mean GP (grade_points), (2) class mean of total % (total_marks).
+    Summary rows for CSV/Excel after student rows:
+    (1) Subject mean per class (+ mean GP), (2) class mean of total % (total_marks).
+    Combined cohort: repeat per member class, then a combined (all) pair.
     """
     if not columns or not isinstance(student_rows, list) or not student_rows:
+        return []
+    is_combined = bool(meta.get('is_combined_level_view') or meta.get('merge_single_cohort'))
+    if is_combined:
+        from collections import defaultdict
+
+        by_class = defaultdict(list)
+        for row in student_rows:
+            if not isinstance(row, dict):
+                continue
+            label = _academic_report_home_class_value(row) or '—'
+            by_class[label].append(row)
+        member_names = list(meta.get('combined_member_level_names') or [])
+        class_order = [n for n in member_names if n in by_class and by_class[n]]
+        for key in sorted(by_class.keys(), key=lambda x: (x == '—', str(x).lower())):
+            if key not in class_order:
+                class_order.append(key)
+        footers = []
+        for class_name in class_order:
+            footers.extend(
+                _exam_all_students_performance_footer_pair(
+                    columns, meta, by_class[class_name], class_name,
+                )
+            )
+        combined_label = (meta.get('combined_display_name') or '').strip() or 'Combined'
+        footers.extend(
+            _exam_all_students_performance_footer_pair(
+                columns, meta, student_rows, combined_label,
+            )
+        )
+        return footers
+    return _exam_all_students_performance_footer_pair(columns, meta, student_rows, None)
+
+
+def _exam_all_students_performance_footer_pair(columns, meta, student_rows, class_label):
+    """Two footer rows for one cohort slice (single class or combined group)."""
+    if not columns or not student_rows:
         return []
     colset = set(columns)
     subject_cols = [c for c in (meta.get('subject_columns') or []) if c in colset]
@@ -41228,13 +43823,19 @@ def _exam_all_students_performance_footer_rows(columns, meta, student_rows):
     def blank_row():
         return {c: '' for c in columns}
 
+    if class_label:
+        subj_mean_label = f'Subject mean ({class_label})'
+        class_mean_label = f'Class mean (avg total %) ({class_label})'
+    else:
+        subj_mean_label = 'Subject mean (class)'
+        class_mean_label = 'Class mean (avg total %)'
     row_subj = blank_row()
     for c in columns:
         if c == 'full_name':
-            row_subj[c] = 'Subject mean (class)'
-        elif c == 'position':
-            row_subj[c] = ''
-        elif c == 'admission_number':
+            row_subj[c] = subj_mean_label
+        elif c == 'home_class' and class_label:
+            row_subj[c] = class_label
+        elif c in ('position', 'admission_number'):
             row_subj[c] = ''
     for sc in subject_cols:
         vals = [_fnum(r, sc) for r in student_rows]
@@ -41253,7 +43854,9 @@ def _exam_all_students_performance_footer_rows(columns, meta, student_rows):
     row_class = blank_row()
     for c in columns:
         if c == 'full_name':
-            row_class[c] = 'Class mean (avg total %)'
+            row_class[c] = class_mean_label
+        elif c == 'home_class' and class_label:
+            row_class[c] = class_label
         elif c == 'total_marks':
             row_class[c] = class_avg if class_avg is not None else ''
 
@@ -41686,11 +44289,13 @@ def _build_attendance_by_student(rows):
 
 def _build_exam_marks_by_student(rows):
     from collections import defaultdict
-    by_sid = defaultdict(lambda: {'full_name': '', 'level_name': '', 'marks': []})
+    by_sid = defaultdict(lambda: {'full_name': '', 'level_name': '', 'academic_level_id': None, 'marks': []})
     for r in rows:
         sid = r.get('student_id')
         by_sid[sid]['full_name'] = r.get('full_name') or ''
         by_sid[sid]['level_name'] = r.get('level_name') or ''
+        if r.get('academic_level_id') is not None:
+            by_sid[sid]['academic_level_id'] = r.get('academic_level_id')
         by_sid[sid]['marks'].append(r)
     for sid in by_sid:
         by_sid[sid]['marks'].sort(
@@ -41844,6 +44449,7 @@ def _build_academic_report_payload(cursor, report_type, f):
     def _load_grade_bands_for_reports():
         default_bands = []
         subject_bands = {}
+        class_bands = {}
         try:
             cursor.execute("""
                 SELECT code, level_label, meaning, start_mark, end_mark, allocation_points
@@ -41911,6 +44517,8 @@ def _build_academic_report_payload(cursor, report_type, f):
         except Exception as se:
             print(f"Note: subject_grade_mark_overrides lookup skipped on academic reports: {se}")
 
+        class_bands = build_class_grade_bands_from_profiles(cursor)
+
         code_to_default_pts = {}
         for b in default_bands:
             ck = (b.get('code') or '').strip().upper()
@@ -41922,23 +44530,29 @@ def _build_academic_report_payload(cursor, report_type, f):
                     ck = (b.get('code') or '').strip().upper()
                     if ck in code_to_default_pts:
                         b['allocation_points'] = code_to_default_pts[ck]
+        for _lid, blist in class_bands.items():
+            for b in blist:
+                if b.get('allocation_points') is None:
+                    ck = (b.get('code') or '').strip().upper()
+                    if ck in code_to_default_pts:
+                        b['allocation_points'] = code_to_default_pts[ck]
 
-        return default_bands, subject_bands
+        return default_bands, subject_bands, class_bands
 
-    def _grade_from_settings(subject_id, marks_value, default_bands, subject_bands):
+    def _grade_from_settings(marks_value, default_bands, level_id=None, class_bands=None):
         if marks_value is None:
             return ''
-        bands = subject_bands.get(int(subject_id or 0)) or default_bands
+        bands = resolve_grade_bands(level_id, class_bands or {}, default_bands)
         band = match_grade_band(marks_value, bands)
         if not band:
             return ''
         return (band.get('code') or band.get('label') or '').strip()
 
-    def _grade_points_from_settings(subject_id, marks_value, default_bands, subject_bands):
-        """Allocation / grade points for a percentage (Grades Registration + subject overrides)."""
+    def _grade_points_from_settings(marks_value, default_bands, level_id=None, class_bands=None):
+        """Allocation / grade points using class grading setting or school default."""
         if marks_value is None or marks_value == '':
             return None
-        bands = subject_bands.get(int(subject_id or 0)) or default_bands
+        bands = resolve_grade_bands(level_id, class_bands or {}, default_bands)
         _gc, pts = grade_code_and_points_from_pct(marks_value, bands)
         return pts
 
@@ -42297,9 +44911,11 @@ def _build_academic_report_payload(cursor, report_type, f):
             is_combined_level,
             insert_after='full_name',
         )
-        default_grade_bands, _subject_grade_bands = _load_grade_bands_for_reports()
+        default_grade_bands, _subject_grade_bands, class_grade_bands = _load_grade_bands_for_reports()
         if default_grade_bands:
             meta['grade_bands'] = default_grade_bands
+        if class_grade_bands:
+            meta['class_grade_bands'] = {str(k): v for k, v in class_grade_bands.items()}
         meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, al.level_name,
@@ -42565,8 +45181,18 @@ def _build_academic_report_payload(cursor, report_type, f):
             mean_marks = round_mark_display(mean_raw) if marks else 0
             rank_total_raw = sum(raw_subject_avgs)
             rank_mean_raw = mean_raw
-            grade = _grade_from_settings(None, mean_marks, default_grade_bands, {})
-            grade_points = _grade_points_from_settings(None, mean_marks, default_grade_bands, {})
+            class_key = _student_class_key(student.get('current_grade'), student.get('level_name'))
+            student_level_id = level_name_to_id.get(class_key)
+            if student_level_id is None and level_ids and len(level_ids) == 1:
+                student_level_id = int(level_ids[0])
+            grade = _grade_from_settings(
+                mean_marks, default_grade_bands,
+                level_id=student_level_id, class_bands=class_grade_bands,
+            )
+            grade_points = _grade_points_from_settings(
+                mean_marks, default_grade_bands,
+                level_id=student_level_id, class_bands=class_grade_bands,
+            )
             raw_pf = str(student.get('profile_raw') or '').strip()
             photo_url = ''
             if raw_pf:
@@ -42582,6 +45208,7 @@ def _build_academic_report_payload(cursor, report_type, f):
                 'level_name': combined_display or student.get('level_name') or '',
                 'current_grade': home_class,
                 'home_class': home_class,
+                'academic_level_id': student_level_id,
                 'student_photo': photo_url,
                 'subject_marks': subject_marks_map,
                 'class_subject_columns': cols_for_student,
@@ -42928,15 +45555,17 @@ def _build_academic_report_payload(cursor, report_type, f):
             ['student_id', 'full_name', 'level_name', 'subject_name', 'exam_name', 'exam_date', 'marks', 'grade', 'grade_points'],
             is_combined_level,
         )
-        default_grade_bands, subject_grade_bands = _load_grade_bands_for_reports()
+        default_grade_bands, subject_grade_bands, class_grade_bands = _load_grade_bands_for_reports()
         if default_grade_bands:
             meta['grade_bands'] = default_grade_bands
         if subject_grade_bands:
             meta['subject_grade_bands'] = {str(k): v for k, v in subject_grade_bands.items()}
+        if class_grade_bands:
+            meta['class_grade_bands'] = {str(k): v for k, v in class_grade_bands.items()}
         meta['marks_scale'] = 'scaled_pct'
         q = """
             SELECT st.student_id, st.full_name, TRIM(COALESCE(st.current_grade, '')) AS current_grade,
-                   al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                   al.level_name, al.id AS academic_level_id, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                    COALESCE(sub.subject_code, '') AS subject_code,
                    e.exam_name, e.exam_date, sm.marks, COALESCE(st.profile_image, '') AS profile_image, e.subject_id,
                    COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
@@ -42970,7 +45599,7 @@ def _build_academic_report_payload(cursor, report_type, f):
             # Backward-compatible fallback for databases without students.profile_image.
             q_no_image = """
                 SELECT st.student_id, st.full_name, TRIM(COALESCE(st.current_grade, '')) AS current_grade,
-                       al.level_name, COALESCE(sub.subject_name, 'N/A') AS subject_name,
+                       al.level_name, al.id AS academic_level_id, COALESCE(sub.subject_name, 'N/A') AS subject_name,
                        COALESCE(sub.subject_code, '') AS subject_code,
                        e.exam_name, e.exam_date, sm.marks, e.subject_id,
                        COALESCE(sub.exam_display_order, 1000000000) AS subject_exam_display_order,
@@ -43017,43 +45646,46 @@ def _build_academic_report_payload(cursor, report_type, f):
                 full_name_out = r.get('full_name')
                 cur_grade_out = str(r.get('current_grade') or '').strip()
                 level_name_out = r.get('level_name')
+                level_id_val = r.get('academic_level_id')
                 subject_code_out = r.get('subject_code')
             elif include_profile_image:
-                ed = r[7] if len(r) > 7 else None
-                raw_profile = str(r[9]).strip() if len(r) > 9 and r[9] else ''
+                ed = r[8] if len(r) > 8 else None
+                raw_profile = str(r[10]).strip() if len(r) > 10 and r[10] else ''
+                subject_id_val = r[11] if len(r) > 11 else None
+                exam_ord_val = r[12] if len(r) > 12 else None
+                exam_total_marks = r[13] if len(r) > 13 else None
+                raw_marks_val = r[9] if len(r) > 9 else None
+                subj_disp = subject_display_label(
+                    r[6] if len(r) > 6 else '',
+                    r[5] if len(r) > 5 else '',
+                    'N/A',
+                )
+                student_id_out = r[0] if len(r) > 0 else None
+                full_name_out = r[1] if len(r) > 1 else None
+                cur_grade_out = str(r[2]).strip() if len(r) > 2 and r[2] is not None else ''
+                level_name_out = r[3] if len(r) > 3 else None
+                level_id_val = r[4] if len(r) > 4 else None
+                subject_code_out = r[6] if len(r) > 6 else ''
+                exam_nm = r[7] if len(r) > 7 else None
+            else:
+                ed = r[8] if len(r) > 8 else None
+                raw_profile = ''
                 subject_id_val = r[10] if len(r) > 10 else None
                 exam_ord_val = r[11] if len(r) > 11 else None
                 exam_total_marks = r[12] if len(r) > 12 else None
-                raw_marks_val = r[8] if len(r) > 8 else None
+                raw_marks_val = r[9] if len(r) > 9 else None
                 subj_disp = subject_display_label(
+                    r[6] if len(r) > 6 else '',
                     r[5] if len(r) > 5 else '',
-                    r[4] if len(r) > 4 else '',
                     'N/A',
                 )
                 student_id_out = r[0] if len(r) > 0 else None
                 full_name_out = r[1] if len(r) > 1 else None
                 cur_grade_out = str(r[2]).strip() if len(r) > 2 and r[2] is not None else ''
                 level_name_out = r[3] if len(r) > 3 else None
-                subject_code_out = r[5] if len(r) > 5 else ''
-                exam_nm = r[6] if len(r) > 6 else None
-            else:
-                ed = r[7] if len(r) > 7 else None
-                raw_profile = ''
-                subject_id_val = r[9] if len(r) > 9 else None
-                exam_ord_val = r[10] if len(r) > 10 else None
-                exam_total_marks = r[11] if len(r) > 11 else None
-                raw_marks_val = r[8] if len(r) > 8 else None
-                subj_disp = subject_display_label(
-                    r[5] if len(r) > 5 else '',
-                    r[4] if len(r) > 4 else '',
-                    'N/A',
-                )
-                student_id_out = r[0] if len(r) > 0 else None
-                full_name_out = r[1] if len(r) > 1 else None
-                cur_grade_out = str(r[2]).strip() if len(r) > 2 and r[2] is not None else ''
-                level_name_out = r[3] if len(r) > 3 else None
-                subject_code_out = r[5] if len(r) > 5 else ''
-                exam_nm = r[6] if len(r) > 6 else None
+                level_id_val = r[4] if len(r) > 4 else None
+                subject_code_out = r[6] if len(r) > 6 else ''
+                exam_nm = r[7] if len(r) > 7 else None
             photo_url = ''
             if raw_profile:
                 try:
@@ -43063,14 +45695,21 @@ def _build_academic_report_payload(cursor, report_type, f):
             scaled_marks = raw_mark_to_percentage(raw_marks_val, exam_total_marks)
             if scaled_marks is not None:
                 scaled_marks = round_mark_display(scaled_marks)
-            grade_code = _grade_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
-            grade_points = _grade_points_from_settings(subject_id_val, scaled_marks, default_grade_bands, subject_grade_bands)
+            grade_code = _grade_from_settings(
+                scaled_marks, default_grade_bands,
+                level_id=level_id_val, class_bands=class_grade_bands,
+            )
+            grade_points = _grade_points_from_settings(
+                scaled_marks, default_grade_bands,
+                level_id=level_id_val, class_bands=class_grade_bands,
+            )
             row_out = {
                 'student_id': student_id_out,
                 'full_name': full_name_out,
                 'current_grade': cur_grade_out,
                 'home_class': cur_grade_out,
                 'level_name': level_name_out,
+                'academic_level_id': level_id_val,
                 'subject_name': subj_disp,
                 'subject_code': subject_code_out,
                 'exam_name': exam_nm,

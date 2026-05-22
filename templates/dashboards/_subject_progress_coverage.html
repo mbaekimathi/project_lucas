@@ -1,0 +1,166 @@
+{# coverage: session_coverage dict; compact: mini card vs full panel #}
+{% set cov = coverage | default({}, true) %}
+{% set compact = compact | default(false, true) %}
+{% set pace = cov.pace_status | default('none') %}
+{% if pace == 'ahead' %}
+{% set pace_color = 'text-emerald-600 dark:text-emerald-400' %}
+{% set pace_bg = 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200/60 dark:border-emerald-800/50' %}
+{% set bar_color = 'bg-emerald-500' %}
+{% elif pace == 'on_track' %}
+{% set pace_color = 'text-indigo-600 dark:text-indigo-400' %}
+{% set pace_bg = 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200/60 dark:border-indigo-800/50' %}
+{% set bar_color = 'bg-indigo-500' %}
+{% elif pace == 'steady' %}
+{% set pace_color = 'text-amber-600 dark:text-amber-400' %}
+{% set pace_bg = 'bg-amber-50 dark:bg-amber-900/30 border-amber-200/60 dark:border-amber-800/50' %}
+{% set bar_color = 'bg-amber-500' %}
+{% elif pace == 'behind' %}
+{% set pace_color = 'text-rose-600 dark:text-rose-400' %}
+{% set pace_bg = 'bg-rose-50 dark:bg-rose-900/30 border-rose-200/60 dark:border-rose-800/50' %}
+{% set bar_color = 'bg-rose-500' %}
+{% else %}
+{% set pace_color = 'text-gray-500 dark:text-gray-400' %}
+{% set pace_bg = 'bg-gray-50 dark:bg-gray-900/40 border-gray-200/60 dark:border-gray-700/60' %}
+{% set bar_color = 'bg-brand-primary' %}
+{% endif %}
+
+{% if compact %}
+{% if cov.has_data %}
+<div class="sp-cov-compact mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-700/80" aria-label="Session coverage trend">
+    <div class="flex items-center justify-between gap-2 mb-2">
+        <span class="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide {{ pace_color }}">
+            <i class="fas {{ cov.pace_icon | default('fa-circle-notch') }}" aria-hidden="true"></i>
+            {{ cov.pace_label }}
+        </span>
+        <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400 tabular-nums">
+            <i class="fas fa-chalkboard-teacher text-[9px] mr-0.5 opacity-70" aria-hidden="true"></i>{{ cov.sessions_done }}/{{ cov.sessions_planned_term or '—' }}
+        </span>
+    </div>
+    {% if cov.trend_weeks %}
+    <div class="flex items-end gap-1 h-9" role="img" aria-label="Sessions per week">
+        {% for w in cov.trend_weeks[-5:] %}
+        <div class="flex-1 flex flex-col items-center justify-end min-w-0 h-full gap-0.5">
+            <div class="w-full max-w-[2rem] mx-auto rounded-t-md {{ bar_color }} opacity-90 transition-all"
+                 style="height: {{ w.height_pct }}%; min-height: 3px;"
+                 title="{{ w.label }}: {{ w.count }} session{% if w.count != 1 %}s{% endif %}"></div>
+            <span class="text-[8px] font-medium text-gray-400 dark:text-gray-500 leading-none">{{ w.label }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% if cov.curriculum_pct is not none %}
+    <div class="mt-2 flex items-center gap-2">
+        <i class="fas fa-book text-[9px] text-gray-400 shrink-0" aria-hidden="true"></i>
+        <div class="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+            <div class="h-full rounded-full bg-gradient-to-r from-brand-primary to-brand-secondary" style="width: {{ cov.curriculum_pct }}%"></div>
+        </div>
+        <span class="text-[9px] font-bold tabular-nums text-gray-500 dark:text-gray-400">{{ cov.curriculum_pct }}%</span>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<p class="sp-cov-compact mt-2.5 pt-2 border-t border-dashed border-gray-200 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500 m-0 flex items-center gap-1.5">
+    <i class="fas fa-chart-bar opacity-60" aria-hidden="true"></i>
+    Sessions appear after attendance
+</p>
+{% endif %}
+
+{% else %}
+<section class="sp-cov-panel mb-6 rounded-2xl border border-gray-200/80 dark:border-gray-700 overflow-hidden relative" aria-labelledby="sp-coverage-heading">
+    <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/[0.04] via-transparent to-brand-secondary/[0.06] pointer-events-none" aria-hidden="true"></div>
+    <div class="relative p-4 sm:p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+                <h2 id="sp-coverage-heading" class="text-sm font-bold text-gray-900 dark:text-white m-0 flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary text-white flex items-center justify-center text-xs shadow-sm">
+                        <i class="fas fa-wave-square" aria-hidden="true"></i>
+                    </span>
+                    Session coverage
+                </h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1">Teaching sessions credited from attendance · weekly trend</p>
+            </div>
+            {% if cov.has_data %}
+            <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold {{ pace_bg }} {{ pace_color }}">
+                <i class="fas {{ cov.pace_icon | default('fa-circle-notch') }}" aria-hidden="true"></i>
+                {{ cov.pace_label }}
+            </span>
+            {% endif %}
+        </div>
+
+        {% if cov.has_data %}
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div class="rounded-xl border border-gray-200/70 dark:border-gray-600/70 bg-white/80 dark:bg-gray-900/50 px-3 py-3 text-center backdrop-blur-sm">
+                <i class="fas fa-chalkboard-teacher text-brand-primary dark:text-brand-secondary text-sm mb-1" aria-hidden="true"></i>
+                <p class="m-0 text-2xl font-extrabold tabular-nums text-gray-900 dark:text-white">{{ cov.sessions_done }}</p>
+                <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 m-0 mt-0.5">Sessions held</p>
+            </div>
+            <div class="rounded-xl border border-gray-200/70 dark:border-gray-600/70 bg-white/80 dark:bg-gray-900/50 px-3 py-3 text-center backdrop-blur-sm">
+                <i class="fas fa-calendar-check text-indigo-500 text-sm mb-1" aria-hidden="true"></i>
+                <p class="m-0 text-2xl font-extrabold tabular-nums text-gray-900 dark:text-white">{{ cov.sessions_planned_term or '—' }}</p>
+                <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 m-0 mt-0.5">Planned term</p>
+            </div>
+            <div class="rounded-xl border border-gray-200/70 dark:border-gray-600/70 bg-white/80 dark:bg-gray-900/50 px-3 py-3 text-center backdrop-blur-sm">
+                <i class="fas fa-book-open text-emerald-500 text-sm mb-1" aria-hidden="true"></i>
+                <p class="m-0 text-2xl font-extrabold tabular-nums text-gray-900 dark:text-white">{% if cov.curriculum_pct is not none %}{{ cov.curriculum_pct }}%{% else %}—{% endif %}</p>
+                <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 m-0 mt-0.5">Curriculum</p>
+            </div>
+            <div class="rounded-xl border border-gray-200/70 dark:border-gray-600/70 bg-white/80 dark:bg-gray-900/50 px-3 py-3 text-center backdrop-blur-sm">
+                <i class="fas fa-list-check text-amber-500 text-sm mb-1" aria-hidden="true"></i>
+                <p class="m-0 text-2xl font-extrabold tabular-nums text-gray-900 dark:text-white">{{ cov.topics_complete }}/{{ cov.topics_total }}</p>
+                <p class="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 m-0 mt-0.5">Topics done</p>
+            </div>
+        </div>
+
+        {% if cov.trend_weeks %}
+        <div class="rounded-xl border border-gray-200/60 dark:border-gray-600/60 bg-white/60 dark:bg-gray-900/40 p-3 sm:p-4">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 m-0 mb-3 flex items-center gap-1.5">
+                <i class="fas fa-chart-column" aria-hidden="true"></i> Weekly sessions
+            </p>
+            <div class="flex items-end gap-1.5 sm:gap-2 h-28 sm:h-32" role="img" aria-label="Weekly session trend for this term">
+                {% for w in cov.trend_weeks %}
+                <div class="flex-1 flex flex-col items-center justify-end h-full min-w-0 gap-1 group">
+                    <span class="text-[10px] font-bold tabular-nums text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity">{{ w.count }}</span>
+                    <div class="w-full max-w-[3rem] mx-auto rounded-t-lg {{ bar_color }} shadow-sm opacity-90 group-hover:opacity-100 transition-all"
+                         style="height: {{ w.height_pct }}%; min-height: 6px;"
+                         title="{{ w.label }}: {{ w.count }} session{% if w.count != 1 %}s{% endif %}"></div>
+                    <span class="text-[10px] font-semibold text-gray-500 dark:text-gray-400">{{ w.label }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {% if cov.sessions_term_pct is not none %}
+            <div>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="font-medium text-gray-600 dark:text-gray-300"><i class="fas fa-school mr-1 opacity-70"></i> Term sessions</span>
+                    <span class="font-bold tabular-nums text-gray-900 dark:text-white">{{ cov.sessions_term_pct }}%</span>
+                </div>
+                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-indigo-500 to-brand-primary" style="width: {{ cov.sessions_term_pct }}%"></div>
+                </div>
+            </div>
+            {% endif %}
+            {% if cov.curriculum_pct is not none %}
+            <div>
+                <div class="flex justify-between text-xs mb-1">
+                    <span class="font-medium text-gray-600 dark:text-gray-300"><i class="fas fa-book mr-1 opacity-70"></i> Topic classes</span>
+                    <span class="font-bold tabular-nums text-gray-900 dark:text-white">{{ cov.curriculum_done }}/{{ cov.curriculum_planned }}</span>
+                </div>
+                <div class="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                    <div class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-500" style="width: {{ cov.curriculum_pct }}%"></div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 py-8 text-center">
+            <i class="fas fa-chart-line text-3xl text-gray-300 dark:text-gray-600 mb-2" aria-hidden="true"></i>
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-300 m-0">No sessions recorded yet</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-1 max-w-sm mx-auto">Save attendance with students present to credit sessions and build your coverage trend.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endif %}

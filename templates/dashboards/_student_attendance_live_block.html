@@ -1,41 +1,3 @@
-    {% if selected_term_id and attendance_summary and students_by_level %}
-    <div class="mb-6 modern-card p-4 sm:p-6">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4 flex items-center">
-            <i class="fas fa-chart-pie text-brand-primary mr-2"></i>
-            Attendance Summary (out of 100)
-        </h2>
-        <div class="flex flex-wrap gap-2 mb-3 text-xs">
-            <span class="px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 font-medium">80-100% Excellent</span>
-            <span class="px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 font-medium">60-79% Good</span>
-            <span class="px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 font-medium">40-59% Fair</span>
-            <span class="px-2 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 font-medium">0-39% Poor</span>
-            <span class="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 font-medium">No data</span>
-        </div>
-        <div class="space-y-4">
-            {% for level_group in students_by_level %}
-            <div>
-                <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}</h3>
-                <div class="flex flex-wrap gap-2">
-                    {% for student in level_group.students %}
-                    {% set summ = attendance_summary.get(student.student_id, {}) %}
-                    {% set cat = summ.get('category', 'none') %}
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                        {% if cat == 'excellent' %}bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300
-                        {% elif cat == 'good' %}bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300
-                        {% elif cat == 'fair' %}bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300
-                        {% elif cat == 'poor' %}bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300
-                        {% else %}bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400{% endif %}">
-                        {{ student.full_name }} ({{ student.student_id }})
-                        <strong>{% if summ %}{{ summ.present }}/{{ summ.total }} = {{ summ.pct }}%{% else %}-{% endif %}</strong>
-                    </span>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
     {% if schedule_days_list %}
     <div class="mb-4 text-xs text-gray-600 dark:text-gray-400">
         <i class="fas fa-calendar-check mr-1"></i>
@@ -43,97 +5,14 @@
     </div>
     {% endif %}
 
-    {% if not is_parent_view|default(false) and selected_term_id and selected_week_days %}
-    {% set ra = register_aggregate_analytics|default({}) %}
-    <div class="mb-6 modern-card p-4 sm:p-6 border border-emerald-200/80 dark:border-emerald-800/50 bg-gradient-to-br from-white to-emerald-50/40 dark:from-gray-800 dark:to-emerald-950/20">
-        <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
-            <i class="fas fa-chart-line text-emerald-600 dark:text-emerald-400"></i>
-            Register analytics
-        </h2>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4">Saved rows in <strong class="text-gray-700 dark:text-gray-300">{{ ra.total_records|default(0) }}</strong> student–date cells for the students and dates in this view (after class and calendar filters).</p>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <div class="rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/25 p-4">
-                <p class="text-xs font-semibold text-emerald-800 dark:text-emerald-200 uppercase tracking-wide">Present</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ ra.present_count|default(0) }}</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 dark:border-gray-600 bg-slate-50/80 dark:bg-gray-900/40 p-4">
-                <p class="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">Absent</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{{ ra.absent_count|default(0) }}</p>
-            </div>
-            <div class="rounded-xl border border-teal-100 dark:border-teal-900/40 bg-teal-50/60 dark:bg-teal-950/25 p-4">
-                <p class="text-xs font-semibold text-teal-800 dark:text-teal-200 uppercase tracking-wide">Present rate</p>
-                <p class="text-2xl font-bold text-gray-900 dark:text-white mt-1">{% if ra.has_data %}{{ ra.overall_pct }}%{% else %}—{% endif %}</p>
-            </div>
-        </div>
-        {% if not ra.has_data %}
-        <p class="text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">No attendance has been saved yet for these dates and students. Mark the register and save (or wait for auto-save).</p>
-        {% else %}
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div>
-                <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-                    <i class="fas fa-layer-group text-emerald-600"></i> By class
-                </h3>
-                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-gray-50 dark:bg-gray-900/60">
-                            <tr>
-                                <th class="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Class</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Present</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Absent</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">%</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                            {% for row in ra.by_level %}
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40">
-                                <td class="px-3 py-2 text-gray-900 dark:text-white font-medium">{{ row.level_name }}</td>
-                                <td class="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">{{ row.present }}</td>
-                                <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ row.absent }}</td>
-                                <td class="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">{{ row.pct }}%</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div>
-                <h3 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
-                    <i class="fas fa-calendar-alt text-teal-600"></i> By day
-                </h3>
-                <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
-                    <table class="min-w-full text-sm">
-                        <thead class="bg-gray-50 dark:bg-gray-900/60 sticky top-0">
-                            <tr>
-                                <th class="text-left px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Date</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Present</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">Absent</th>
-                                <th class="text-right px-3 py-2 font-semibold text-gray-600 dark:text-gray-300">%</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                            {% for row in ra.by_day %}
-                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40">
-                                <td class="px-3 py-2 text-gray-900 dark:text-white"><span class="font-medium">{{ row.label }}</span><span class="text-gray-400 dark:text-gray-500 text-xs ml-1">{{ row.date_str }}</span></td>
-                                <td class="px-3 py-2 text-right text-emerald-700 dark:text-emerald-300">{{ row.present }}</td>
-                                <td class="px-3 py-2 text-right text-gray-600 dark:text-gray-400">{{ row.absent }}</td>
-                                <td class="px-3 py-2 text-right font-semibold text-gray-900 dark:text-white">{% if row.pct is not none %}{{ row.pct }}%{% else %}—{% endif %}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-    {% endif %}
+    {% include 'dashboards/_attendance_register_analytics_partial.html' %}
 
     {% if students_by_level %}
     {% if selected_week_days %}
     {% if is_parent_view|default(false) %}
     <div id="attendance-form">
     {% else %}
-    <form id="attendance-form" method="POST" action="{{ url_for('student_attendance') }}">
+    <form id="attendance-form" method="POST" action="{{ employee_dash_url('student-management/student-attendance') }}">
         <input type="hidden" name="term_id" value="{{ selected_term_id }}">
         <input type="hidden" name="academic_year_id" value="{{ selected_academic_year_id }}">
         <input type="hidden" name="filter_type" value="{{ selected_filter_type }}">
@@ -144,7 +23,6 @@
         <input type="hidden" name="class_level" value="{{ selected_class_level }}">
         <input type="hidden" name="week_dates" value="{{ selected_week_days|map(attribute='date_str')|join(',') }}">
         <input type="hidden" name="student_ids" value="{{ attendance_student_ids_csv|default('', true) }}">
-        <div id="save-status" class="mb-4 text-sm hidden"></div>
     {% endif %}
 
         {% if not is_parent_view|default(false) %}
@@ -155,16 +33,16 @@
                         <i class="fas fa-users-cog text-brand-primary"></i>
                         Bulk attendance
                     </h3>
-                    <p class="text-xs text-gray-600 dark:text-gray-400 max-w-xl">Edits save automatically shortly after you change checkboxes (no page refresh). Bulk buttons apply to the whole grid; Save still forces an immediate sync.</p>
+                    <p class="text-xs text-gray-600 dark:text-gray-400 max-w-xl">Checked = <strong>present</strong>, unchecked = <strong>absent</strong>. Mark the register, then click <strong>Save attendance</strong> at the bottom of each class.</p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
+                <div class="att-bulk-actions shrink-0">
                     <button type="button" id="att-mark-all-present"
-                            class="touch-btn px-4 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white shadow-md transition-all pointer-events-auto">
-                        <i class="fas fa-check-double mr-2 pointer-events-none" aria-hidden="true"></i>Mark all present
+                            class="touch-btn px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold bg-green-600 hover:bg-green-700 text-white shadow-md transition-all pointer-events-auto">
+                        <i class="fas fa-check-double mr-1 sm:mr-2 pointer-events-none" aria-hidden="true"></i><span class="hidden sm:inline">Mark all </span>Present
                     </button>
                     <button type="button" id="att-mark-all-absent"
-                            class="touch-btn px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white transition-all pointer-events-auto">
-                        <i class="fas fa-times mr-2 pointer-events-none" aria-hidden="true"></i>Mark all absent
+                            class="touch-btn px-3 sm:px-4 py-2.5 rounded-xl text-sm font-semibold bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-900 dark:text-white transition-all pointer-events-auto">
+                        <i class="fas fa-times mr-1 sm:mr-2 pointer-events-none" aria-hidden="true"></i><span class="hidden sm:inline">Mark all </span>Absent
                     </button>
                 </div>
             </div>
@@ -173,7 +51,13 @@
 
     <div class="space-y-6">
         {% for level_group in students_by_level %}
-        <div id="level-{{ loop.index }}" class="modern-card overflow-hidden scroll-mt-4 rounded-xl">
+        {% set level_id = level_group.id|default(none) %}
+        {% if use_subject_attendance_columns|default(false) and level_id %}
+        {% set register_columns = attendance_columns_by_level.get(level_id, []) %}
+        {% else %}
+        {% set register_columns = none %}
+        {% endif %}
+        <div id="level-{{ loop.index }}" class="attendance-level-card modern-card overflow-hidden scroll-mt-4 rounded-xl" data-level-name="{{ level_group.level_name }}">
             <div class="level-header-card">
                 <h2 class="text-lg font-bold text-white flex items-center justify-between">
                     <span>
@@ -183,22 +67,31 @@
                     <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
                 </h2>
             </div>
-            <div class="table-responsive-wrapper">
-                <table class="w-full min-w-[600px]">
+            {% if use_subject_attendance_columns|default(false) and register_columns is not none and register_columns|length == 0 %}
+            <p class="px-4 py-6 text-sm text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-950/30 border-t border-amber-200/60 dark:border-amber-800/40 m-0">
+                No timetable periods for your subjects in this date range. Add slots in <a href="{{ employee_dash_url('timetable-management') }}" class="font-semibold underline">Timetable management</a>.
+            </p>
+            {% else %}
+            <p class="att-scroll-hint sm:hidden" aria-hidden="true"><i class="fas fa-arrows-alt-h"></i> Swipe sideways to see all dates</p>
+            <div class="table-responsive-wrapper att-register-scroll">
+                <table class="w-full att-register-table">
                     <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                         <tr>
-                            <th class="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 w-10 text-sm">#</th>
-                            <th class="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[200px]">Student</th>
-                            {% for day in selected_week_days %}
-                            <th class="text-center px-1 py-2 font-semibold text-gray-700 dark:text-gray-300 w-[4.5rem] text-xs align-top" title="{{ day.date_str }}">
+                            <th class="hidden sm:table-cell text-left px-2 sm:px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 w-8 sm:w-10 text-sm">#</th>
+                            <th class="att-sticky-student text-left px-2 sm:px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[9rem] sm:min-w-[11rem] max-w-[45vw] sm:max-w-none">Student</th>
+                            {% for col in (register_columns if register_columns is not none else selected_week_days) %}
+                            <th class="text-center px-1 sm:px-2 py-2 font-semibold text-gray-700 dark:text-gray-300 min-w-[3.25rem] sm:min-w-[5rem] text-[10px] sm:text-xs align-top whitespace-nowrap" title="{% if col.date_str is defined %}{{ col.date_str }}{% else %}{{ col.date_str }}{% endif %}{% if col.subject_name %} — {{ col.subject_name }}{% endif %}">
                                 <div class="flex flex-col items-center gap-1">
-                                    <span>{{ day.label }}</span>
+                                    <span class="leading-tight">{{ col.header_label|default(col.label) }}</span>
+                                    {% if use_subject_attendance_columns|default(false) and col.subject_code %}
+                                    <span class="text-[10px] font-normal text-gray-500 dark:text-gray-400 truncate max-w-full">{{ col.subject_name }}</span>
+                                    {% endif %}
                                     {% if not is_parent_view|default(false) %}
                                     <div class="flex gap-0.5 justify-center">
                                         <button type="button" class="att-day-all-present px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-100 dark:bg-green-900/40 text-green-800 dark:text-green-300 hover:opacity-90 leading-none pointer-events-auto"
-                                                data-date="{{ day.date_str }}" title="Present for all students on this date">P</button>
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="Present for all students">P</button>
                                         <button type="button" class="att-day-all-absent px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:opacity-90 leading-none pointer-events-auto"
-                                                data-date="{{ day.date_str }}" title="Absent for all students on this date">A</button>
+                                                data-date="{{ col.date_str }}" data-subject-id="{{ col.subject_id|default(0) }}" title="Absent for all students">A</button>
                                     </div>
                                     {% endif %}
                                 </div>
@@ -208,28 +101,32 @@
                     </thead>
                     <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
                         {% for student in level_group.students %}
-                        <tr class="attendance-row transition-colors duration-300" data-total="{{ selected_week_days|length }}">
-                            <td class="px-3 py-2 text-sm text-gray-600 dark:text-gray-400 font-medium">{{ loop.index }}</td>
-                            <td class="px-3 py-2">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
+                        <tr class="attendance-row transition-colors duration-300" data-student-id="{{ student.student_id }}" data-total="{% if register_columns is not none %}{{ register_columns|length }}{% else %}{{ selected_week_days|length }}{% endif %}">
+                            <td class="hidden sm:table-cell px-2 sm:px-3 py-2 text-sm text-gray-600 dark:text-gray-400 font-medium">{{ loop.index }}</td>
+                            <td class="att-sticky-student px-2 sm:px-3 py-2">
+                                <div class="flex items-center gap-2 att-student-cell-inner min-w-0">
+                                    <div class="att-student-avatar w-8 h-8 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
                                         <i class="fas fa-user-graduate text-white text-xs"></i>
                                     </div>
-                                    <div>
-                                        <span class="font-medium text-gray-900 dark:text-white block">{{ student.full_name }}</span>
-                                        <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</span>
+                                    <div class="min-w-0 flex-1">
+                                        <span class="font-medium text-gray-900 dark:text-white block text-sm truncate">{{ student.full_name }}</span>
+                                        <span class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 font-mono">{{ student.student_id }}</span>
+                                        <span class="attendance-pct text-[10px] sm:text-xs font-semibold sm:ml-1 block sm:inline"></span>
                                     </div>
-                                    <span class="attendance-pct text-xs font-semibold ml-1"></span>
                                 </div>
                             </td>
-                            {% for day in selected_week_days %}
-                            <td class="px-2 py-2 text-center">
+                            {% for col in (register_columns if register_columns is not none else selected_week_days) %}
+                            {% set subj_id = col.subject_id|default(0) %}
+                            {% set att_key = (student.student_id, col.date_str, subj_id) %}
+                            <td class="px-1 sm:px-2 py-2 text-center align-middle">
                                 <input type="checkbox"
-                                       name="att_{{ student.student_id }}_{{ day.date_str }}"
-                                       {% if attendance_records.get((student.student_id, day.date_str)) or (is_teacher_view|default(false) and not is_parent_view|default(false) and ((student.student_id, day.date_str) not in attendance_records)) %}checked{% endif %}
+                                       name="att_{{ student.student_id }}_{{ col.date_str }}{% if subj_id > 0 %}_{{ subj_id }}{% endif %}"
+                                       data-date="{{ col.date_str }}"
+                                       data-subject-id="{{ subj_id }}"
+                                       {% if attendance_records.get(att_key) %}checked{% endif %}
                                        {% if is_parent_view|default(false) %}disabled{% endif %}
-                                       class="attendance-cb w-5 h-5 rounded border-2 transition-colors duration-200 {% if is_parent_view|default(false) %}cursor-default opacity-90{% else %}cursor-pointer{% endif %}"
-                                       title="{{ day.label }} ({{ day.date_str }}) - {{ student.full_name }}">
+                                       class="attendance-cb w-5 h-5 sm:w-5 sm:h-5 rounded border-2 transition-colors duration-200 {% if is_parent_view|default(false) %}cursor-default opacity-90{% else %}cursor-pointer{% endif %}"
+                                       title="{{ col.header_label|default(col.label) }} — {{ student.full_name }}">
                             </td>
                             {% endfor %}
                         </tr>
@@ -237,14 +134,24 @@
                     </tbody>
                 </table>
             </div>
+            {% if not is_parent_view|default(false) %}
+            <div class="att-level-save-footer px-3 sm:px-5 py-3 sm:py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/40 flex flex-col gap-3">
+                <p class="att-level-save-status text-sm hidden order-1" role="status" aria-live="polite"></p>
+                <button type="button"
+                        class="att-level-save-btn order-2 touch-btn inline-flex items-center justify-center gap-2 px-4 sm:px-5 py-3 rounded-xl text-sm font-semibold bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
+                    <i class="fas fa-save pointer-events-none shrink-0" aria-hidden="true"></i>
+                    <span class="truncate">Save — {{ level_group.level_name }}</span>
+                </button>
+            </div>
+            {% endif %}
+            {% endif %}
         </div>
         {% endfor %}
     </div>
         {% if not is_parent_view|default(false) %}
-        <div class="mt-6">
-            <p class="text-xs text-gray-500 dark:text-gray-400">
-                <i class="fas fa-bolt mr-1 text-amber-500 dark:text-amber-400" aria-hidden="true"></i>Live save: changes persist automatically after each edit (see the status line above).
-            </p>
+        <div class="mt-4 text-xs text-gray-500 dark:text-gray-400">
+            <i class="fas fa-info-circle mr-1" aria-hidden="true"></i>
+            Register analytics update after you save each class.
         </div>
         {% endif %}
     {% if is_parent_view|default(false) %}
@@ -277,7 +184,8 @@
             cbs.forEach(function(cb) { if (cb.checked) checked++; });
             const pct = total ? Math.round(100 * checked / total) : 0;
             row.classList.remove('att-pct-excellent', 'att-pct-good', 'att-pct-fair', 'att-pct-poor');
-            row.classList.add(getRowColorClass(pct));
+            var rowPctClass = getRowColorClass(pct);
+            if (rowPctClass) row.classList.add(rowPctClass);
             const pctSpan = row.querySelector('.attendance-pct');
             if (pctSpan) pctSpan.textContent = total ? checked + '/' + total + ' (' + pct + '%)' : '';
             const color = getAccentColor(pct);

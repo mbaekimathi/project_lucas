@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subject.subject_name }} — {{ level.level_name }} - Subject Progress{% endblock %}
+
+{% set nav_role = (dashboard_content_role or session.get('viewing_as_employee_role') or session.get('role', ''))|lower %}
+
+{% block sidebar_content %}
+{% if nav_role in ('teachers', 'teacher') %}
+{% set teacher_nav_scope = 'classes' %}
+{% include 'dashboards/includes/teacher_page_sidebar.html' %}
+{% elif nav_role == 'curriculum coordinator' %}
+{% set cc_nav_scope = 'classes' %}
+{% include 'dashboards/includes/curriculum_coordinator_page_sidebar.html' %}
+{% elif nav_role in ('head of institution', 'deputy head of institution') %}
+{% set leadership_nav_scope = 'academic' %}
+{% include 'dashboards/includes/institution_leadership_page_sidebar.html' %}
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+<style>
+.sp-topic-row input { font-size: 0.875rem; }
+.sp-alloc-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, rgba(16, 185, 129, 0.04) 50%, transparent 100%);
+}
+.dark .sp-alloc-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(16, 185, 129, 0.06) 50%, transparent 100%);
+}
+.sp-alloc-stat {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(8px);
+}
+.dark .sp-alloc-stat {
+    background: rgba(17, 24, 39, 0.5);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set timetable_allocation = timetable_allocation | default({
+    'count': timetable_classes_per_week | default(0),
+    'by_day': {},
+    'by_day_ordered': [],
+    'slots': [],
+    'term_weeks': 0,
+    'total_term': 0,
+    'term_start_date': none,
+    'term_end_date': none,
+    'term_date_range': none
+}, true) %}
+{% set timetable_classes_per_week = timetable_classes_per_week | default(timetable_allocation.count, true) %}
+{% set timetable_total_term = timetable_allocation.total_term | default(0) %}
+{% set timetable_term_weeks = timetable_allocation.term_weeks | default(0) %}
+<div class="role-page role-page--{{ portal_page_variant|default('default') }} p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto"
+     x-data="subjectTopicsRegister({{ 'true' if not topics else 'false' }})">
+    <a href="{{ employee_dash_url('subject-progress') }}" class="inline-flex items-center text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-brand-primary dark:hover:text-brand-secondary mb-4">
+        <i class="fas fa-arrow-left mr-2" aria-hidden="true"></i>All subjects
+    </a>
+
+    {% set role_theme = portal_page_variant|default('default') %}
+    {% set role_hero_eyebrow = level.level_category ~ ' · ' ~ level.level_name %}
+    {% set role_hero_title = subject.subject_name %}
+    {% if subject.subject_code %}
+    {% set role_hero_subtitle = subject.subject_code ~ ' — Session trend, topics & class coverage.' %}
+    {% else %}
+    {% set role_hero_subtitle = 'Session trend, topics & class coverage.' %}
+    {% endif %}
+    {% set role_hero_icon_class = 'fa-chart-line' %}
+    {% include 'dashboards/includes/role_hero.html' %}
+
+    {% if nav_role in ('teachers', 'teacher') %}
+    <p class="mb-4 text-sm">
+        <a href="{{ employee_dash_url('student-management/student-attendance') }}"
+           class="inline-flex items-center gap-2 font-semibold text-brand-primary dark:text-brand-secondary hover:underline">
+            <i class="fas fa-check-circle" aria-hidden="true"></i>
+            Mark attendance to complete class sessions on topics below
+        </a>
+    </p>
+    {% endif %}
+
+    <!-- Timetable allocation — simple summary -->
+    <section class="sp-alloc-card mb-6 rounded-2xl border border-gray-200/80 dark:border-gray-700 p-4 sm:p-5 relative overflow-hidden" aria-labelledby="sp-timetable-allocation-heading">
+        <div class="absolute top-0 right-0 w-32 h-32 rounded-full bg-gradient-to-br from-brand-primary/15 to-brand-secondary/10 blur-2xl -translate-y-1/2 translate-x-1/4 pointer-events-none" aria-hidden="true"></div>
+        <div class="relative flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h2 id="sp-timetable-allocation-heading" class="text-sm font-bold text-gray-900 dark:text-white m-0">Timetable allocation</h2>
+                <p class="text-xs text-gray-500 dark:text-gray-400 m-0 mt-0.5">{{ subject.subject_name }} · {{ level.level_name }}{% if timetable_term_label %} · {{ timetable_term_label }}{% endif %}</p>
+            </div>
+            <a href="{{ timetable_manage_url }}" class="text-xs font-semibold text-brand-primary dark:text-brand-secondary hover:underline shrink-0">Timetable →</a>
+        </div>
+        {% if timetable_classes_per_week > 0 %}
+        <div class="relative grid grid-cols-2 gap-3 sm:gap-4 max-w-md">
+            <div class="sp-alloc-stat rounded-xl border border-gray-200/60 dark:border-gray-600/60 px-4 py-3 text-center">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 m-0 mb-1">Per week</p>
+                <p class="m-0 text-3xl font-extrabold tabular-nums bg-gradient-to-br from-brand-primary to-brand-secondary bg-clip-text text-transparent">{{ timetable_classes_per_week }}</p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">classes</p>
+            </div>
+            <div class="sp-alloc-stat rounded-xl border border-gray-200/60 dark:border-gray-600/60 px-4 py-3 text-center">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 m-0 mb-1">This term</p>
+                <p class="m-0 text-3xl font-extrabold tabular-nums text-gray-900 dark:text-white">{{ timetable_total_term }}</p>
+                <p class="text-[11px] text-gray-500 dark:text-gray-400 m-0 mt-0.5">classes{% if timetable_term_weeks > 0 %} · {{ timetable_term_weeks }} wks{% endif %}</p>
+            </div>
+        </div>
+        {% else %}
+        <p class="relative text-sm text-amber-700 dark:text-amber-300 m-0">
+            Not on the timetable yet. <a href="{{ timetable_manage_url }}" class="font-semibold underline hover:no-underline">Add periods</a>
+        </p>
+        {% endif %}
+    </section>
+
+    {% with coverage=session_coverage, compact=false %}
+    {% include 'dashboards/_subject_progress_coverage.html' %}
+    {% endwith %}
+
+    <section class="mb-8 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 overflow-hidden">
+        <!-- Registered topics list -->
+        <div class="p-4 sm:p-5 {% if topics %}border-b border-gray-100 dark:border-gray-700/80{% endif %}">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white m-0">
+                    Registered topics
+                    <span class="font-normal text-gray-500 dark:text-gray-400">({{ topics|length }})</span>
+                </h3>
+                <button type="button" @click="openAddForm()"
+                        class="inline-flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border border-brand-primary/40 text-brand-primary dark:text-brand-secondary hover:bg-brand-primary/5 dark:hover:bg-brand-primary/10 transition">
+                    <i class="fas fa-plus" aria-hidden="true"></i>
+                    Add another topic
+                </button>
+            </div>
+
+            {% if topics %}
+            <ul class="space-y-2 list-none m-0 p-0" role="list">
+                {% for t in topics %}
+                <li class="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden bg-gray-50/40 dark:bg-gray-900/20"
+                    x-data="{ editing: false }">
+                    <!-- View row -->
+                    <div class="flex flex-wrap items-center gap-3 px-3 sm:px-4 py-3" x-show="!editing">
+                        <span class="w-7 text-xs font-semibold text-gray-400 tabular-nums shrink-0">{{ loop.index }}</span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-gray-900 dark:text-white m-0 truncate">{{ t.topic_name }}</p>
+                            {% if t.is_legacy_duration %}
+                            <p class="text-xs text-amber-700 dark:text-amber-300 m-0 mt-0.5">{{ t.duration_label }}</p>
+                            {% endif %}
+                        </div>
+                        <span class="inline-flex flex-col items-end gap-0.5 shrink-0">
+                            <span class="inline-flex items-center rounded-full {% if t.is_complete %}bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200{% else %}bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200{% endif %} px-2.5 py-1 text-xs font-semibold tabular-nums">
+                                {{ t.classes_completed|default(0) }} / {{ t.expected_duration_value }} classes
+                            </span>
+                            {% if t.is_complete %}
+                            <span class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Complete</span>
+                            {% endif %}
+                        </span>
+                        <div class="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-0">
+                            <button type="button" @click="editing = true"
+                                    class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-brand-primary dark:text-brand-secondary hover:bg-brand-primary/10 dark:hover:bg-brand-primary/15 transition"
+                                    title="Edit topic" aria-label="Edit {{ t.topic_name }}">
+                                <i class="fas fa-pen" aria-hidden="true"></i>
+                                Edit
+                            </button>
+                            <form method="post" action="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ subject.id ~ '/topics/' ~ t.id ~ '/delete') }}"
+                                  onsubmit="return confirm('Delete this topic?');" class="inline m-0">
+                                <button type="submit"
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition"
+                                        title="Delete topic" aria-label="Delete {{ t.topic_name }}">
+                                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                                    Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Edit row -->
+                    <form method="post" x-show="editing" x-cloak
+                          action="{{ employee_dash_url('subject-progress/level/' ~ level.id ~ '/subject/' ~ subject.id ~ '/topics/' ~ t.id ~ '/update') }}"
+                          class="px-3 sm:px-4 py-3 border-t border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900/40">
+                        <div class="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                            <div class="sm:col-span-7">
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" for="edit-name-{{ t.id }}">Topic name</label>
+                                <input type="text" id="edit-name-{{ t.id }}" name="topic_name" value="{{ t.topic_name }}" required maxlength="500"
+                                       class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
+                            </div>
+                            <div class="sm:col-span-3">
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" for="edit-classes-{{ t.id }}">Number of classes</label>
+                                <input type="number" id="edit-classes-{{ t.id }}" name="expected_duration_value" value="{{ t.expected_duration_value }}" min="1" step="1" max="9999" required
+                                       class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100">
+                            </div>
+                            <div class="sm:col-span-2 flex flex-wrap gap-2 sm:justify-end pb-0.5">
+                                <button type="submit"
+                                        class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white hover:opacity-95">
+                                    <i class="fas fa-check" aria-hidden="true"></i>
+                                    Save
+                                </button>
+                                <button type="button" @click="editing = false"
+                                        class="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="text-sm text-gray-500 dark:text-gray-400 m-0 py-6 text-center border border-dashed border-gray-200 dark:border-gray-600 rounded-lg">
+                No topics registered yet. Use <strong>Add another topic</strong> below to register your first topics.
+            </p>
+            {% endif %}
+        </div>
+
+        <!-- Add / register topics form -->
+        <div id="register-topics" class="p-4 sm:p-5 bg-gray-50/50 dark:bg-gray-900/20" x-show="showAddForm" x-cloak>
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white m-0">
+                    {% if topics %}Add new topics{% else %}Register topics{% endif %}
+                </h3>
+                {% if topics %}
+                <button type="button" @click="showAddForm = false"
+                        class="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+                    <i class="fas fa-times mr-1" aria-hidden="true"></i>Close
+                </button>
+                {% endif %}
+            </div>
+            <div class="space-y-3">
+                <template x-for="(row, index) in rows" :key="index">
+                    <div class="sp-topic-row grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-end p-3 rounded-lg border border-dashed border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800/60">
+                        <div class="sm:col-span-8">
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" :for="'topic-name-' + index">Topic name</label>
+                            <input type="text" :id="'topic-name-' + index" x-model="row.topic_name" placeholder="e.g. Algebra — linear equations"
+                                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
+                        </div>
+                        <div class="sm:col-span-3">
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1" :for="'topic-classes-' + index">Number of classes</label>
+                            <input type="number" :id="'topic-classes-' + index" x-model.number="row.expected_duration_value" min="1" step="1" max="9999"
+                                   class="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-brand-primary/30 focus:border-brand-primary">
+                        </div>
+                        <div class="sm:col-span-1 flex sm:justify-end pb-0.5">
+                            <button type="button" @click="removeRow(index)" :disabled="rows.length <= 1"
+                                    class="p-2 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Remove row" aria-label="Remove row">
+                                <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-4">
+                <button type="button" @click="addRow()"
+                        class="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <i class="fas fa-plus" aria-hidden="true"></i>
+                    Add row
+                </button>
+                <button type="button" @click="saveTopics()" :disabled="saving"
+                        class="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg bg-gradient-to-r from-brand-primary to-brand-secondary text-white shadow-md hover:opacity-95 disabled:opacity-50">
+                    <i class="fas fa-spinner fa-spin" x-show="saving" aria-hidden="true"></i>
+                    <i class="fas fa-save" x-show="!saving" aria-hidden="true"></i>
+                    <span x-text="saving ? 'Saving…' : 'Save topics'"></span>
+                </button>
+            </div>
+            <p x-show="saveError" x-cloak class="mt-3 text-sm text-red-600 dark:text-red-400" x-text="saveError"></p>
+        </div>
+    </section>
+</div>
+
+<script>
+function subjectTopicsRegister(startWithAddFormOpen) {
+    return {
+        rows: [{ topic_name: '', expected_duration_value: 1 }],
+        saving: false,
+        saveError: '',
+        saveUrl: {{ topics_save_url|tojson }},
+        showAddForm: !!startWithAddFormOpen,
+        openAddForm() {
+            this.showAddForm = true;
+            this.$nextTick(function () {
+                var el = document.getElementById('register-topics');
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        },
+        addRow() {
+            this.rows.push({ topic_name: '', expected_duration_value: 1 });
+        },
+        removeRow(index) {
+            if (this.rows.length > 1) {
+                this.rows.splice(index, 1);
+            }
+        },
+        async saveTopics() {
+            this.saveError = '';
+            const topics = this.rows
+                .map(function (r) {
+                    return {
+                        topic_name: (r.topic_name || '').trim(),
+                        expected_duration_value: parseInt(r.expected_duration_value, 10),
+                    };
+                })
+                .filter(function (t) {
+                    return t.topic_name && !isNaN(t.expected_duration_value) && t.expected_duration_value >= 1;
+                });
+            if (!topics.length) {
+                this.saveError = 'Enter at least one topic with a name and at least 1 class.';
+                return;
+            }
+            this.saving = true;
+            try {
+                var res = await fetch(this.saveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ topics: topics }),
+                    redirect: 'follow',
+                });
+                if (res.redirected || res.ok) {
+                    window.location.href = res.url || window.location.href;
+                    return;
+                }
+                var data = {};
+                try { data = await res.json(); } catch (e) {}
+                this.saveError = data.message || 'Could not save topics. Please try again.';
+            } catch (err) {
+                this.saveError = 'Network error. Please try again.';
+            } finally {
+                this.saving = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}
