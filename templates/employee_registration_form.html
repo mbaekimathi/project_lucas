@@ -58,7 +58,13 @@
                 </div>
             {% endif %}
 
+            {% if registration_open is defined and not registration_open %}
+            <div class="mb-6 p-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-900">
+                Staff registration is closed. Please contact the school office.
+            </div>
+            {% else %}
             <form method="POST" action="/register-employee" enctype="multipart/form-data" class="space-y-8">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <!-- Personal Information -->
                 <div>
                     <h2 class="text-2xl font-bold mb-6 text-gray-900 border-b-2 border-brand-primary pb-2">
@@ -131,7 +137,7 @@
                                 <span class="text-xs text-gray-500 block mt-1">Minimum 6 characters</span>
                             </label>
                             <div class="relative">
-                                <input type="password" id="password" name="password" required minlength="6"
+                                <input type="password" id="password" name="password" required minlength="8"
                                        class="w-full px-4 py-3 pr-12 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                                        placeholder="Enter password">
                                 <button type="button"
@@ -147,7 +153,7 @@
                                 Confirm Password <span class="text-red-500">*</span>
                             </label>
                             <div class="relative">
-                                <input type="password" id="confirm_password" name="confirm_password" required minlength="6"
+                                <input type="password" id="confirm_password" name="confirm_password" required minlength="8"
                                        class="w-full px-4 py-3 pr-12 rounded-lg border-2 border-gray-300 bg-white text-gray-900 focus:ring-2 focus:ring-brand-primary focus:border-brand-primary"
                                        placeholder="Confirm password">
                                 <button type="button"
@@ -202,6 +208,7 @@
                     </button>
                 </div>
             </form>
+            {% endif %}
         </div>
     </div>
 </section>

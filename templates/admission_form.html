@@ -42,7 +42,7 @@
                     </div>
                     <div class="ml-3 flex-1">
                         <p class="text-xs sm:text-sm text-gray-700 leading-relaxed">
-                            <strong class="font-semibold text-gray-900">Note:</strong> Fields marked with a red asterisk (<span class="text-red-500">*</span>) are required. Parent/guardian and additional information are optional. You will receive a student reference when you submit.
+                            <strong class="font-semibold text-gray-900">Note:</strong> Fields marked with a red asterisk (<span class="text-red-500">*</span>) are required, including parent/guardian contact and home address. You will receive a student admission ID when you submit.
                         </p>
                     </div>
                 </div>
@@ -51,6 +51,7 @@
             <!-- Form Card -->
             <div class="modern-card rounded-2xl overflow-hidden">
                 <form method="POST" action="/admission" class="p-6 sm:p-8 md:p-10 lg:p-12 space-y-8 sm:space-y-10">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     
                     <!-- Student Information Section -->
                     <div class="space-y-6">
@@ -184,25 +185,24 @@
                             </div>
                             <div>
                                 <h2 class="text-xl sm:text-2xl font-heading font-bold text-gray-900">Parent/Guardian Information</h2>
-                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Optional — contact details if available</p>
+                                <p class="text-xs sm:text-sm text-gray-500 mt-0.5">Required for admission processing and parent portal setup</p>
                             </div>
                         </div>
                         
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div>
                                 <label for="parent_name" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Parent/Guardian Name <span class="text-xs font-normal text-gray-400">(optional)</span>
+                                    Parent/Guardian Name <span class="text-red-500">*</span>
                                 </label>
-                                <input type="text" id="parent_name" name="parent_name"
-        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400"
-                                       placeholder="Leave blank if unknown">
+                                <input type="text" id="parent_name" name="parent_name" required
+        class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400">
                             </div>
                             
                             <div>
                                 <label for="relationship" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Relationship to Student <span class="text-xs font-normal text-gray-400">(optional)</span>
+                                    Relationship to Student <span class="text-red-500">*</span>
                                 </label>
-                                <select id="relationship" name="relationship"
+                                <select id="relationship" name="relationship" required
                                         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
                                     <option value="">Select relationship</option>
                                     <option value="Father">Father</option>
@@ -214,9 +214,9 @@
                             
                             <div>
                                 <label for="parent_phone" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Parent Phone <span class="text-xs font-normal text-gray-400">(optional)</span>
+                                    Parent Phone <span class="text-red-500">*</span>
                                 </label>
-                                <input type="tel" id="parent_phone" name="parent_phone"
+                                <input type="tel" id="parent_phone" name="parent_phone" required
         class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400"
                                        placeholder="e.g. 07…">
                             </div>
@@ -246,9 +246,9 @@
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div class="sm:col-span-2">
                                 <label for="address" class="block text-sm font-semibold mb-2 text-gray-700">
-                                    Address <span class="text-xs font-normal text-gray-400">(optional)</span>
+                                    Home address <span class="text-red-500">*</span>
                                 </label>
-                                <textarea id="address" name="address" rows="3"
+                                <textarea id="address" name="address" rows="3" required
                                           class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder:text-gray-400 resize-none"></textarea>
                             </div>
                             

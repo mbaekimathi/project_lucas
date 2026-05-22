@@ -54,8 +54,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}" x-data="{ searchQuery: '', selectedClass: '' }">
-    <!-- Modern Hero Header -->
+<script type="application/json" id="students-progress-config">{{ {
+  'studentsApi': students_progress_students_api,
+  'detailUrlTemplate': url_for('student_progress_detail', student_id='__ID__'),
+}|tojson }}</script>
+<div class="p-4 sm:p-5 md:p-6 lg:p-8 page-content max-w-7xl mx-auto role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="studentsProgressPage()" x-init="init()">
     <div class="page-hero mb-6 sm:mb-8">
         <div class="relative px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
             <div class="flex items-center gap-4">
@@ -64,7 +68,7 @@
                 </div>
                 <div>
                     <h1 class="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">Students Progress</h1>
-                    <p class="text-white/90 text-sm sm:text-base">Select a student by academic level to view their exam progress.</p>
+                    <p class="text-white/90 text-sm sm:text-base">Select a class to load students (50 per page).</p>
                 </div>
             </div>
         </div>
@@ -78,98 +82,148 @@
                 </div>
                 <input type="text"
                        x-model="searchQuery"
-                       placeholder="Search by name, ID, grade, or parent..."
-                       class="w-full modern-input pl-12 pr-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                       @input.debounce.350ms="fetchStudents(1)"
+                       placeholder="Search name, ID, or parent…"
+                       :disabled="!selectedClass"
+                       class="w-full modern-input pl-12 pr-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white disabled:opacity-50">
             </div>
         </div>
-        {% if students_by_level %}
-        <div class="sm:w-64 flex-shrink-0">
-            <label for="quick-class" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Quick jump to class</label>
+        <div class="sm:w-72 flex-shrink-0">
+            <label for="quick-class" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Class / grade</label>
             <select id="quick-class"
                     x-model="selectedClass"
-                    @change="const id = $event.target.value; if (id) { document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } else { window.scrollTo({ top: 0, behavior: 'smooth' }); }"
+                    @change="fetchStudents(1)"
                     class="w-full modern-input px-4 py-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
-                <option value="">All classes</option>
-                {% for level_group in students_by_level %}
-                <option value="level-{{ loop.index }}">{{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %} ({{ level_group.students|length }})</option>
-                {% endfor %}
+                <option value="">Select a class…</option>
+                <template x-for="lvl in levelSummaries" :key="lvl.level_name">
+                    <option :value="lvl.level_name" x-text="(lvl.level_name || 'Ungraded') + (lvl.level_category ? ' (' + lvl.level_category + ')' : '') + ' — ' + (lvl.total || 0) + ' students'"></option>
+                </template>
             </select>
         </div>
-        {% endif %}
     </div>
 
-    {% if students_by_level %}
-    <div class="space-y-6">
-        {% for level_group in students_by_level %}
-        <div id="level-{{ loop.index }}" class="modern-card overflow-hidden scroll-mt-4 rounded-xl">
-            <div class="level-header-card">
-                <h2 class="text-lg font-bold text-white flex items-center justify-between">
-                    <span>
-                        <i class="fas fa-graduation-cap mr-2"></i>
-                        {{ level_group.level_name }}{% if level_group.level_category %} ({{ level_group.level_category }}){% endif %}
-                    </span>
-                    <span class="text-white/90 text-sm font-normal">{{ level_group.students|length }} student{% if level_group.students|length != 1 %}s{% endif %}</span>
-                </h2>
-            </div>
-            <div class="table-responsive-wrapper">
-                <table class="w-full">
-                    <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
-                        <tr>
-                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Student</th>
-                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">ID</th>
-                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Status</th>
-                            <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 hidden sm:table-cell">Parent</th>
-                            <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
-                        {% for student in level_group.students %}
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors student-row"
-                            data-name="{{ student.full_name|lower }}"
-                            data-id="{{ student.student_id|lower }}"
-                            data-grade="{{ (student.current_grade or '')|lower }}"
-                            data-parent="{{ (student.parent_name or '')|lower }}"
-                            x-show="!searchQuery || '{{ student.full_name|lower }} {{ student.student_id|lower }} {{ (student.current_grade or '')|lower }} {{ (student.parent_name or '')|lower }}'.includes(searchQuery.toLowerCase())">
-                            <td class="px-4 py-3">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
-                                        <i class="fas fa-user-graduate text-white"></i>
-                                    </div>
-                                    <span class="font-semibold text-gray-900 dark:text-white">{{ student.full_name }}</span>
-                                </div>
-                            </td>
-                            <td class="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300">{{ student.student_id }}</td>
-                            <td class="px-4 py-3">
-                                {% if student.status == 'in session' %}
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">Active</span>
-                                {% elif student.status == 'pending approval' %}
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300">Pending</span>
-                                {% else %}
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{{ student.status|default('-')|title }}</span>
-                                {% endif %}
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 hidden sm:table-cell">{{ student.parent_name or '-' }}</td>
+    <p x-show="listError" class="mb-4 text-sm text-red-600 dark:text-red-400" x-text="listError"></p>
+    <p x-show="listLoading" class="mb-4 text-sm text-gray-500"><i class="fas fa-spinner fa-spin mr-1"></i> Loading students…</p>
+
+    <div x-show="selectedClass && !listLoading && students.length" class="modern-card overflow-hidden rounded-xl">
+        <div class="level-header-card px-4 py-3">
+            <h2 class="text-lg font-bold text-white flex items-center justify-between">
+                <span x-text="selectedClass"></span>
+                <span class="text-white/90 text-sm font-normal" x-text="totalCount + ' student(s)'"></span>
+            </h2>
+        </div>
+        <div class="table-responsive-wrapper">
+            <table class="w-full">
+                <thead class="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
+                    <tr>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Student</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">ID</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Status</th>
+                        <th class="text-left px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 hidden sm:table-cell">Parent</th>
+                        <th class="text-right px-4 py-3 font-semibold text-gray-700 dark:text-gray-300">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <template x-for="student in students" :key="student.student_id">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                            <td class="px-4 py-3 font-semibold text-gray-900 dark:text-white" x-text="student.full_name"></td>
+                            <td class="px-4 py-3 font-mono text-sm text-gray-700 dark:text-gray-300" x-text="student.student_id"></td>
+                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400" x-text="student.status || '-'"></td>
+                            <td class="px-4 py-3 text-sm text-gray-600 dark:text-gray-400 hidden sm:table-cell" x-text="student.parent_name || '-'"></td>
                             <td class="px-4 py-3 text-right">
-                                <a href="{{ url_for('student_progress_detail', student_id=student.student_id) }}"
+                                <a :href="detailUrl(student.student_id)"
                                    class="touch-btn inline-flex items-center px-4 py-2 bg-gradient-to-r from-brand-primary to-brand-secondary text-white text-sm font-semibold rounded-xl hover:opacity-95 transition-all">
                                     <i class="fas fa-chart-line mr-2"></i>View Progress
                                 </a>
                             </td>
                         </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <nav class="flex flex-wrap items-center justify-between gap-3 px-4 py-4 border-t border-gray-100 dark:border-gray-800"
+             x-show="pages > 1">
+            <p class="text-xs text-gray-500">Page <span x-text="page"></span> of <span x-text="pages"></span></p>
+            <div class="flex gap-2">
+                <button type="button" class="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                        :disabled="listLoading || page <= 1" @click="fetchStudents(page - 1)">Previous</button>
+                <button type="button" class="rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-40"
+                        :disabled="listLoading || page >= pages" @click="fetchStudents(page + 1)">Next</button>
             </div>
-        </div>
-        {% endfor %}
+        </nav>
     </div>
-    {% else %}
-    <div class="empty-state modern-card">
-        <div class="empty-state-icon">
-            <i class="fas fa-user-graduate text-gray-400 text-3xl"></i>
-        </div>
+
+    <div x-show="selectedClass && !listLoading && !students.length && !listError" class="empty-state modern-card">
+        <p class="text-gray-600 dark:text-gray-400">No students in this class match your search.</p>
+    </div>
+    <div x-show="!selectedClass && !listLoading" class="empty-state modern-card">
+        <p class="text-gray-600 dark:text-gray-400">Select a class above to load students.</p>
+    </div>
+    <div x-show="!levelSummaries.length && !listLoading" class="empty-state modern-card">
         <p class="text-gray-600 dark:text-gray-400">No students found. Add students via admission or student management.</p>
     </div>
-    {% endif %}
 </div>
+<script>
+function studentsProgressPage() {
+  var cfg = {};
+  try {
+    var el = document.getElementById('students-progress-config');
+    cfg = el && el.textContent ? JSON.parse(el.textContent) : {};
+  } catch (e) { cfg = {}; }
+  return {
+    levelSummaries: {{ level_summaries|default([])|tojson }},
+    selectedClass: '',
+    searchQuery: '',
+    students: [],
+    page: 1,
+    pages: 1,
+    totalCount: 0,
+    listLoading: false,
+    listError: '',
+    studentsApi: cfg.studentsApi || '',
+    detailTemplate: cfg.detailUrlTemplate || '',
+    init: function () {},
+    detailUrl: function (sid) {
+      return (this.detailTemplate || '').replace('__ID__', encodeURIComponent(sid || ''));
+    },
+    fetchStudents: function (p) {
+      var self = this;
+      if (!self.selectedClass || !self.studentsApi) {
+        self.students = [];
+        return;
+      }
+      self.listLoading = true;
+      self.listError = '';
+      var params = new URLSearchParams();
+      params.set('level', self.selectedClass);
+      params.set('page', String(p || 1));
+      params.set('per_page', '50');
+      var q = (self.searchQuery || '').trim();
+      if (q) params.set('q', q);
+      fetch(self.studentsApi + '?' + params.toString(), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          self.listLoading = false;
+          if (!data.success) {
+            self.listError = data.message || 'Could not load students';
+            self.students = [];
+            return;
+          }
+          self.students = data.students || [];
+          self.page = data.page || 1;
+          self.pages = data.pages || 1;
+          self.totalCount = data.total || 0;
+        })
+        .catch(function () {
+          self.listLoading = false;
+          self.listError = 'Could not load students';
+          self.students = [];
+        });
+    },
+  };
+}
+</script>
 {% endblock %}

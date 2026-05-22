@@ -53,6 +53,7 @@
             </div>
 
             <form method="POST" action="{{ url_for('login') }}" class="cbc-premium-form mt-6 space-y-4" id="main_login_form" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" id="role" name="role" value="employee">
                 <div>
                     <label for="role_view">Login as</label>
@@ -111,6 +112,7 @@
             </form>
 
             <form method="POST" action="{{ url_for('login_parent_register') }}" id="login_parent_register_form" class="cbc-premium-form mt-6 hidden space-y-4 border-t border-white/10 pt-6" data-skip-global-validate="true" novalidate>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <p class="text-sm font-semibold text-white/90">Create your parent portal</p>
                 <p class="text-xs text-white/55">Admission <strong class="text-white/80" id="parent_reg_admission_display"></strong> — confirm your child’s date of birth, then set email and password.</p>
                 <input type="hidden" name="admission" id="parent_reg_admission_hidden" value="">
@@ -125,7 +127,7 @@
                 <div class="cbc-password-field" x-data="{ showPw: false }">
                     <label for="parent_reg_pw">New password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPw ? 'text' : 'password'" id="parent_reg_pw" name="new_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="At least 6 characters">
+                        <input :type="showPw ? 'text' : 'password'" id="parent_reg_pw" name="new_password" required minlength="8" autocomplete="new-password" class="cbc-password-field__input" placeholder="At least 8 characters, with letters and numbers">
                         <button type="button" class="cbc-password-field__toggle" @click="showPw = !showPw" :aria-label="showPw ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPw ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>
@@ -134,7 +136,7 @@
                 <div class="cbc-password-field" x-data="{ showPw2: false }">
                     <label for="parent_reg_pw2">Confirm password</label>
                     <div class="cbc-password-field__wrap">
-                        <input :type="showPw2 ? 'text' : 'password'" id="parent_reg_pw2" name="confirm_password" required minlength="6" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password">
+                        <input :type="showPw2 ? 'text' : 'password'" id="parent_reg_pw2" name="confirm_password" required minlength="8" autocomplete="new-password" class="cbc-password-field__input" placeholder="Repeat password">
                         <button type="button" class="cbc-password-field__toggle" @click="showPw2 = !showPw2" :aria-label="showPw2 ? 'Hide password' : 'Show password'">
                             <i class="fas text-lg" :class="showPw2 ? 'fa-eye-slash' : 'fa-eye'" aria-hidden="true"></i>
                         </button>

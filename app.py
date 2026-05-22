@@ -16,6 +16,15 @@ from collections import defaultdict
 from functools import wraps
 from urllib.parse import quote, urlencode
 from env_loader import load_project_env
+from portal_public import (
+    check_rate_limit,
+    portal_csrf_token,
+    rate_limit_flash_message,
+    validate_email_format,
+    validate_phone,
+    validate_portal_csrf,
+    validate_portal_password,
+)
 from portal_font_families import (
     PORTAL_FONT_FAMILIES,
     normalize_portal_font_family,
@@ -70,6 +79,11 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-change-in-production')
 # Used when the user checks "Remember me" on login (browser session cookie otherwise).
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=30)
+
+
+@app.context_processor
+def _inject_portal_public():
+    return {'csrf_token': portal_csrf_token()}
 
 
 @app.template_global()
@@ -10084,6 +10098,101 @@ def normalize_text(value, uppercase=True, allow_empty=False):
         return None if allow_empty else ''
     return normalized.upper() if uppercase else normalized
 
+
+def _insert_admission_application(
+    connection,
+    student_fields,
+    parent_fields,
+    send_confirmation,
+):
+    """
+    Insert student + parent with retry on duplicate student_id (concurrent admissions).
+    Returns (ok, student_id, error_message).
+    """
+    student_sql = """
+        INSERT INTO students
+        (student_id, full_name, date_of_birth, gender, current_grade, previous_school,
+         assessment_number, address, medical_info, special_needs, student_category,
+         sponsor_name, sponsor_phone, sponsor_email, status)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
+    """
+    parent_sql = """
+        INSERT INTO parents
+        (student_id, full_name, phone, email, relationship, emergency_contact)
+        VALUES (%s, %s, %s, %s, %s, %s)
+    """
+    last_error = None
+    for _attempt in range(6):
+        try:
+            with connection.cursor() as cursor:
+                student_id = generate_student_id(connection)
+                sf = dict(student_fields)
+                sf['student_id'] = student_id
+                cursor.execute(
+                    student_sql,
+                    (
+                        student_id,
+                        sf['full_name'],
+                        sf['date_of_birth'],
+                        sf['gender'],
+                        sf['current_grade'],
+                        sf['previous_school'],
+                        sf['assessment_number'],
+                        sf['address'],
+                        sf['medical_info'],
+                        sf['special_needs'],
+                        sf['student_category'],
+                        sf['sponsor_name'],
+                        sf['sponsor_phone'],
+                        sf['sponsor_email'],
+                    ),
+                )
+                pf = dict(parent_fields)
+                pf['student_id'] = student_id
+                cursor.execute(
+                    parent_sql,
+                    (
+                        student_id,
+                        pf['full_name'],
+                        pf['phone'],
+                        pf['email'],
+                        pf['relationship'],
+                        pf['emergency_contact'],
+                    ),
+                )
+            connection.commit()
+            if send_confirmation:
+                try:
+                    send_admission_confirmation_email(
+                        send_confirmation['email'],
+                        send_confirmation['parent_name'],
+                        send_confirmation['student_name'],
+                        student_id,
+                    )
+                except Exception as email_error:
+                    print(f'admission confirmation email: {email_error}')
+            return True, student_id, None
+        except IntegrityError as ie:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            last_error = ie
+            err_text = str(ie).lower()
+            if 'student_id' in err_text or 'duplicate' in err_text:
+                continue
+            break
+        except Exception as ex:
+            try:
+                connection.rollback()
+            except Exception:
+                pass
+            print(f'_insert_admission_application: {ex}')
+            return False, None, 'An error occurred while submitting your application. Please try again.'
+    print(f'_insert_admission_application exhausted retries: {last_error}')
+    return False, None, 'Could not assign a student ID right now. Please try again in a moment.'
+
+
 @app.route('/admission', methods=['GET', 'POST'])
 def admission():
     _portal = get_school_settings()
@@ -10092,6 +10201,15 @@ def admission():
     if request.method == 'POST':
         if not admission_open:
             flash('Online admission is temporarily closed. Please contact the school office.', 'error')
+            return redirect(url_for('admission'))
+
+        allowed, retry_after = check_rate_limit('admission_post', limit=8, window_sec=300)
+        if not allowed:
+            flash(rate_limit_flash_message(retry_after), 'error')
+            return redirect(url_for('admission'))
+
+        if not validate_portal_csrf(request.form.get('csrf_token')):
+            flash('Your session expired. Refresh the page and submit again.', 'error')
             return redirect(url_for('admission'))
 
         # Get form data directly from students table column names
@@ -10129,111 +10247,117 @@ def admission():
         emergency_contact = normalize_text(request.form.get('emergency_contact'), allow_empty=True) if request.form.get('emergency_contact') else None
         
         consent = request.form.get('consent')
-        parent_email_left_blank = not (request.form.get('parent_email') or '').strip()
-        
-        # Required: student core + category + consent
+        parent_email_raw = (request.form.get('parent_email') or '').strip()
+
+        # Required: student core + category + consent + guardian contact + address
         if not all([full_name, date_of_birth, consent, student_category]):
             flash('Please fill in all required fields (student details, student category, and consent).', 'error')
             return redirect(url_for('admission'))
-        
+        if not parent_name:
+            flash('Please enter the parent or guardian name.', 'error')
+            return redirect(url_for('admission'))
+        if not relationship:
+            flash('Please select the relationship to the student.', 'error')
+            return redirect(url_for('admission'))
+        parent_phone_norm, phone_err = validate_phone(parent_phone, required=True)
+        if phone_err:
+            flash(phone_err, 'error')
+            return redirect(url_for('admission'))
+        parent_phone = parent_phone_norm
+        if not address:
+            flash('Please enter the student home address.', 'error')
+            return redirect(url_for('admission'))
+        if parent_email_raw:
+            parent_email, email_err = validate_email_format(parent_email_raw, required=False)
+            if email_err:
+                flash(email_err, 'error')
+                return redirect(url_for('admission'))
+        else:
+            parent_email = None
+        if emergency_contact:
+            ec_norm, ec_err = validate_phone(emergency_contact, required=True)
+            if ec_err:
+                flash('Enter a valid emergency contact phone, or leave it blank to use the parent phone.', 'error')
+                return redirect(url_for('admission'))
+            emergency_contact = ec_norm
+        else:
+            emergency_contact = parent_phone
+        if sponsor_phone:
+            sp_norm, sp_err = validate_phone(sponsor_phone, required=False)
+            if sp_err:
+                flash('Enter a valid sponsor phone number, or leave it blank.', 'error')
+                return redirect(url_for('admission'))
+            sponsor_phone = sp_norm
+        if sponsor_email:
+            sponsor_email, sem_err = validate_email_format(sponsor_email, required=False)
+            if sem_err:
+                flash(sem_err, 'error')
+                return redirect(url_for('admission'))
+
         # Validate sponsor_name if category is sponsored or both
         if student_category in ['sponsored', 'both'] and not sponsor_name:
             flash('Please provide sponsor name/company for sponsored students.', 'error')
             return redirect(url_for('admission'))
-        
-        # Optional blanks → placeholders (parents.phone / parents.full_name are NOT NULL in DB)
-        if not parent_name:
-            parent_name = normalize_text(f'PARENT TO {full_name}')
-        if not relationship:
-            relationship = normalize_text('NOT SPECIFIED')
-        if not parent_phone:
-            parent_phone = '070000000000'
-        if parent_email_left_blank:
-            parent_email = 'parent@gmail.com'
-        if not emergency_contact:
-            emergency_contact = '070000000000'
-        if not address:
-            address = normalize_text(
-                f'NOT PROVIDED AT APPLICATION — STUDENT: {full_name}',
-                uppercase=False,
-                allow_empty=False,
-            )
-        if not medical_info:
-            medical_info = normalize_text(
-                'NOT PROVIDED AT APPLICATION',
-                uppercase=False,
-                allow_empty=False,
-            )
-        if not special_needs:
-            special_needs = normalize_text(
-                'NONE REPORTED AT APPLICATION',
-                uppercase=False,
-                allow_empty=False,
-            )
-        
-        # Save to database
+
+        medical_info = normalize_text(medical_info, uppercase=False, allow_empty=True) if medical_info else None
+        special_needs = normalize_text(special_needs, uppercase=False, allow_empty=True) if special_needs else None
+
+        student_fields = {
+            'full_name': full_name,
+            'date_of_birth': date_of_birth,
+            'gender': gender,
+            'current_grade': current_grade,
+            'previous_school': previous_school,
+            'assessment_number': assessment_number,
+            'address': address,
+            'medical_info': medical_info,
+            'special_needs': special_needs,
+            'student_category': student_category,
+            'sponsor_name': sponsor_name,
+            'sponsor_phone': sponsor_phone,
+            'sponsor_email': sponsor_email,
+        }
+        parent_fields = {
+            'full_name': parent_name,
+            'phone': parent_phone,
+            'email': parent_email,
+            'relationship': relationship,
+            'emergency_contact': emergency_contact,
+        }
+        send_confirmation = None
+        if parent_email:
+            send_confirmation = {
+                'email': parent_email,
+                'parent_name': parent_name,
+                'student_name': full_name,
+            }
+
         connection = get_db_connection()
         if connection:
             try:
-                with connection.cursor() as cursor:
-                    # Generate unique student ID
-                    student_id = generate_student_id(connection)
-                    
-                    # Insert student data into students table (using exact column names from students table)
-                    student_sql = """
-                        INSERT INTO students 
-                        (student_id, full_name, date_of_birth, gender, current_grade, previous_school,
-                         assessment_number, address, medical_info, special_needs, student_category, sponsor_name, sponsor_phone, sponsor_email, status)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending approval')
-                    """
-                    cursor.execute(student_sql, (
-                        student_id, full_name, date_of_birth, gender, current_grade, 
-                        previous_school, assessment_number, address, medical_info, special_needs, student_category, 
-                        sponsor_name, sponsor_phone, sponsor_email
-                    ))
-                    
-                    # Insert parent data into parents table (linked via student_id)
-                    parent_sql = """
-                        INSERT INTO parents 
-                        (student_id, full_name, phone, email, relationship, emergency_contact)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """
-                    cursor.execute(parent_sql, (
-                        student_id,
-                        (parent_name or ''),
-                        (parent_phone or ''),
-                        parent_email,
-                        relationship,
-                        emergency_contact,
-                    ))
-                    
-                    connection.commit()
-                    
-                    # Confirmation email only when applicant typed an address (not auto-filled placeholder)
-                    if parent_email and not parent_email_left_blank:
-                        try:
-                            send_admission_confirmation_email(parent_email, parent_name, full_name, student_id)
-                        except Exception as email_error:
-                            print(f"Error sending email: {email_error}")
-                            # Don't fail the submission if email fails
-                    
-                    flash(f'Application submitted successfully! Your Student ID is: {student_id}. We will review it and get back to you soon.', 'success')
-            except Exception as e:
-                print(f"Error saving admission: {e}")
-                try:
-                    connection.rollback()
-                except:
-                    pass  # Connection might already be closed
-                flash('An error occurred while submitting your application. Please try again.', 'error')
+                ok, student_id, err_msg = _insert_admission_application(
+                    connection,
+                    student_fields,
+                    parent_fields,
+                    send_confirmation,
+                )
+                if ok:
+                    flash(
+                        f'Application submitted successfully! Your Student ID is: {student_id}. '
+                        'We will review it and get back to you soon.',
+                        'success',
+                    )
+                else:
+                    flash(err_msg or 'An error occurred while submitting your application. Please try again.', 'error')
             finally:
                 if connection:
                     try:
                         connection.close()
-                    except:
-                        pass  # Connection might already be closed
+                    except Exception:
+                        pass
         else:
             flash('Database connection error. Please try again later.', 'error')
-        
+
         return redirect(url_for('home'))
     
     # GET request - render admission form
@@ -10272,7 +10396,23 @@ def admission():
 
 @app.route('/register-employee', methods=['GET', 'POST'])
 def register_employee():
+    _portal = get_school_settings()
+    registration_open = bool(_portal.get('allow_registration', True))
+
     if request.method == 'POST':
+        if not registration_open:
+            flash('Online staff registration is temporarily closed. Please contact the school office.', 'error')
+            return redirect(url_for('register_employee'))
+
+        allowed, retry_after = check_rate_limit('register_employee_post', limit=6, window_sec=300)
+        if not allowed:
+            flash(rate_limit_flash_message(retry_after), 'error')
+            return redirect(url_for('register_employee'))
+
+        if not validate_portal_csrf(request.form.get('csrf_token')):
+            flash('Your session expired. Refresh the page and submit again.', 'error')
+            return redirect(url_for('register_employee'))
+
         # Get form data and convert to proper case
         # All text fields to UPPERCASE except email (lowercase)
         # Normalize spacing: multiple spaces become single space
@@ -10321,10 +10461,19 @@ def register_employee():
         # Validate passwords match
         if password != confirm_password:
             return render_registration_error('Passwords do not match.')
-        
-        # Validate password strength
-        if len(password) < 6:
-            return render_registration_error('Password must be at least 6 characters long.')
+
+        pw_err = validate_portal_password(password)
+        if pw_err:
+            return render_registration_error(pw_err)
+
+        phone_norm, phone_err = validate_phone(phone, required=True)
+        if phone_err:
+            return render_registration_error(phone_err)
+        phone = phone_norm
+
+        email, email_err = validate_email_format(email, required=True)
+        if email_err:
+            return render_registration_error(email_err)
         
         # Handle profile picture upload
         profile_picture = None
@@ -10355,6 +10504,15 @@ def register_employee():
                     cursor.execute("SELECT id FROM employees WHERE email = %s", (email,))
                     if cursor.fetchone():
                         return render_registration_error('Email already registered. Please use a different email.')
+
+                    cursor.execute(
+                        "SELECT id FROM employees WHERE UPPER(TRIM(id_number)) = UPPER(TRIM(%s))",
+                        (id_number,),
+                    )
+                    if cursor.fetchone():
+                        return render_registration_error(
+                            'This national ID number is already registered. Contact the school if this is an error.'
+                        )
                     
                     # Insert employee data
                     employee_sql = """
@@ -10404,6 +10562,7 @@ def register_employee():
         register_error='',
         register_success='',
         ask_login_after_register=False,
+        registration_open=registration_open,
     )
 
 @app.route('/check-employee-id', methods=['POST'])
@@ -10502,6 +10661,17 @@ def check_staff_number():
 @app.route('/api/parent-portal/check-admission', methods=['GET'])
 def api_parent_portal_check_admission():
     """Live validation: admission exists (parent row created if missing), and no parent users row yet."""
+    allowed, retry_after = check_rate_limit('check_admission', limit=30, window_sec=60)
+    if not allowed:
+        return jsonify(
+            {
+                'ok': False,
+                'ready': False,
+                'reason': 'rate_limited',
+                'message': rate_limit_flash_message(retry_after),
+            }
+        ), 429
+
     raw = (request.args.get('q') or '').strip()
     admission_key = _normalize_parent_admission(raw)
     if not admission_key:
@@ -10837,8 +11007,8 @@ def parent_portal_setup():
                         pw2 = request.form.get('confirm_password', '')
                         if not email or '@' not in email:
                             error = 'Enter a valid email address.'
-                        elif len(pw) < 6:
-                            error = 'Password must be at least 6 characters.'
+                        elif validate_portal_password(pw):
+                            error = validate_portal_password(pw)
                         elif pw != pw2:
                             error = 'Password and confirmation do not match.'
                         else:
@@ -10919,6 +11089,15 @@ def parent_portal_setup():
 @app.route('/login/parent-register', methods=['POST'])
 def login_parent_register():
     """Create parent portal account from login page (admission + DOB + email + password), then sign in."""
+    allowed, retry_after = check_rate_limit('parent_register_post', limit=6, window_sec=300)
+    if not allowed:
+        flash(rate_limit_flash_message(retry_after), 'error')
+        return redirect(url_for('login', role='parent'))
+
+    if not validate_portal_csrf(request.form.get('csrf_token')):
+        flash('Your session expired. Refresh the page and submit again.', 'error')
+        return redirect(url_for('login', role='parent'))
+
     admission_raw = (request.form.get('admission') or '').strip()
     email = normalize_login_email(request.form.get('email', ''))
     pw = request.form.get('new_password', '')
@@ -10944,8 +11123,9 @@ def login_parent_register():
     if not email or '@' not in email:
         flash('Enter a valid email address.', 'error')
         return _back(admission_raw)
-    if len(pw) < 6:
-        flash('Password must be at least 6 characters.', 'error')
+    pw_err = validate_portal_password(pw)
+    if pw_err:
+        flash(pw_err, 'error')
         return _back(admission_raw)
     if pw != pw2:
         flash('Password and confirmation do not match.', 'error')
@@ -11024,6 +11204,15 @@ def login_parent_register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        allowed, retry_after = check_rate_limit('login_post', limit=15, window_sec=300)
+        if not allowed:
+            flash(rate_limit_flash_message(retry_after), 'error')
+            return redirect(url_for('login'))
+
+        if not validate_portal_csrf(request.form.get('csrf_token')):
+            flash('Your session expired. Refresh the page and submit again.', 'error')
+            return redirect(url_for('login'))
+
         role = request.form.get('role', '').strip()
         raw_password = request.form.get('password', '')
         password = raw_password.strip()
@@ -11335,6 +11524,15 @@ def retrieve_password():
         'If an account matches this email, we sent a verification code. Check your inbox (and spam).'
     )
     if request.method == 'POST':
+        allowed, retry_after = check_rate_limit('retrieve_password_post', limit=8, window_sec=300)
+        if not allowed:
+            flash(rate_limit_flash_message(retry_after), 'error')
+            return redirect(url_for('retrieve_password'))
+
+        if not validate_portal_csrf(request.form.get('csrf_token')):
+            flash('Your session expired. Refresh the page and submit again.', 'error')
+            return redirect(url_for('retrieve_password'))
+
         email = request.form.get('email', '').strip()
         if not email:
             flash('Please enter your email.', 'error')
@@ -11416,8 +11614,9 @@ def reset_password():
             flash('Please enter the verification code from your email.', 'error')
             return _render_form()
 
-        if len(new_password) < 6:
-            flash('Your new password must be at least 6 characters.', 'error')
+        pw_err = validate_portal_password(new_password)
+        if pw_err:
+            flash(pw_err, 'error')
             return _render_form()
 
         if new_password != confirm_password:
@@ -22050,6 +22249,127 @@ def _get_students_by_level():
     return students_by_level
 
 
+def _students_progress_level_summaries(cursor):
+    """Class names with student counts (no full student list)."""
+    level_meta = {}
+    try:
+        cursor.execute(
+            """
+            SELECT id, level_name, level_category
+            FROM academic_levels
+            WHERE level_status = 'active'
+            ORDER BY level_name ASC
+            """
+        )
+        for row in cursor.fetchall() or []:
+            ln = (row.get('level_name') if isinstance(row, dict) else row[1]) or ''
+            ln = str(ln).strip()
+            if not ln:
+                continue
+            level_meta[ln] = {
+                'level_name': ln,
+                'level_category': (row.get('level_category') if isinstance(row, dict) else row[2]) or '',
+                'total': 0,
+            }
+        cursor.execute(
+            """
+            SELECT TRIM(COALESCE(s.current_grade, '')) AS level_name, COUNT(*) AS c
+            FROM students s
+            GROUP BY TRIM(COALESCE(s.current_grade, ''))
+            """
+        )
+        out = []
+        seen = set()
+        for row in cursor.fetchall() or []:
+            ln = (row.get('level_name') if isinstance(row, dict) else row[0]) or ''
+            ln = str(ln).strip() or 'Ungraded'
+            cnt = int((row.get('c') if isinstance(row, dict) else row[1]) or 0)
+            cat = (level_meta.get(ln) or {}).get('level_category', '')
+            out.append({'level_name': ln, 'level_category': cat, 'total': cnt})
+            seen.add(ln)
+        for ln, meta in sorted(level_meta.items(), key=lambda x: x[0]):
+            if ln not in seen:
+                out.append({'level_name': ln, 'level_category': meta['level_category'], 'total': 0})
+        out.sort(key=lambda x: (x.get('level_category') or '', x.get('level_name') or ''))
+        return out
+    except Exception as e:
+        print(f'_students_progress_level_summaries: {e}')
+        return []
+
+
+def _fetch_students_progress_page(cursor, level_name, page=1, per_page=50, q=''):
+    """Paginated students for one class/grade on Students Progress."""
+    rows = []
+    total = 0
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    pages = 1
+    level_key = (level_name or '').strip()
+    if level_key == 'Ungraded':
+        grade_clause = "(TRIM(COALESCE(s.current_grade, '')) = '' OR s.current_grade IS NULL)"
+        params_base = []
+    else:
+        grade_clause = "TRIM(COALESCE(s.current_grade, '')) = %s"
+        params_base = [level_key]
+    search_sql = ''
+    search_params = []
+    q = (q or '').strip()
+    if q:
+        like = f'%{q}%'
+        search_sql = (
+            ' AND (s.full_name LIKE %s OR s.student_id LIKE %s OR COALESCE(p.full_name, "") LIKE %s) '
+        )
+        search_params = [like, like, like]
+    try:
+        count_sql = f"""
+            SELECT COUNT(*) AS c
+            FROM students s
+            LEFT JOIN parents p ON s.student_id = p.student_id
+            WHERE {grade_clause}
+            {search_sql}
+        """
+        cursor.execute(count_sql, tuple(params_base) + tuple(search_params))
+        count_row = cursor.fetchone()
+        total = int((count_row.get('c') if isinstance(count_row, dict) else count_row[0]) or 0)
+        pages = max(1, (total + per_page - 1) // per_page) if total else 1
+        if page > pages:
+            page = pages
+        offset = (page - 1) * per_page
+        list_sql = f"""
+            SELECT s.student_id, s.full_name, s.current_grade, s.status, s.gender,
+                   p.full_name AS parent_name
+            FROM students s
+            LEFT JOIN parents p ON s.student_id = p.student_id
+            WHERE {grade_clause}
+            {search_sql}
+            ORDER BY s.full_name ASC
+            LIMIT %s OFFSET %s
+        """
+        cursor.execute(list_sql, tuple(params_base) + tuple(search_params) + (per_page, offset))
+        for row in cursor.fetchall() or []:
+            rows.append({
+                'student_id': row.get('student_id') if isinstance(row, dict) else row[0],
+                'full_name': row.get('full_name') if isinstance(row, dict) else row[1],
+                'current_grade': row.get('current_grade') if isinstance(row, dict) else row[2],
+                'status': row.get('status') if isinstance(row, dict) else row[3],
+                'gender': row.get('gender') if isinstance(row, dict) else row[4],
+                'parent_name': row.get('parent_name') if isinstance(row, dict) else row[5],
+            })
+    except Exception as e:
+        print(f'_fetch_students_progress_page: {e}')
+        rows = []
+        total = 0
+        pages = 1
+    return {
+        'students': rows,
+        'page': page,
+        'per_page': per_page,
+        'total': total,
+        'pages': pages,
+        'level_name': level_key or 'Ungraded',
+    }
+
+
 def _get_attendance_class_level_options(is_teacher, teacher_id=None):
     """Class names for attendance filter without loading every student."""
     options = []
@@ -25280,7 +25600,7 @@ def parent_library_detail(student_id):
 @app.route('/student-management/students-progress')
 @login_required
 def students_progress():
-    """Students Progress - list all students to select and view progress"""
+    """Students Progress — pick a class; students load via paginated API (large-school safe)."""
     has_access = check_permission_or_role('view_students',
         allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
                       'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
@@ -25288,8 +25608,75 @@ def students_progress():
     if not has_access:
         flash('You do not have permission to access this page.', 'error')
         return redirect(employee_dashboard_path())
-    students_by_level = _get_students_by_level()
-    return render_template('dashboards/students_progress.html', students_by_level=students_by_level)
+    level_summaries = []
+    connection = get_db_connection()
+    if connection:
+        try:
+            with connection.cursor() as cursor:
+                level_summaries = _students_progress_level_summaries(cursor)
+        finally:
+            try:
+                connection.close()
+            except Exception:
+                pass
+    return render_template(
+        'dashboards/students_progress.html',
+        level_summaries=level_summaries,
+        students_progress_levels_api=employee_dash_url('student-management/students-progress/levels'),
+        students_progress_students_api=employee_dash_url('student-management/students-progress/students'),
+    )
+
+
+@app.route('/student-management/students-progress/levels', methods=['GET'])
+@login_required
+def students_progress_levels_api():
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
+                      'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+                      'warden', 'transport manager', 'store manager', 'technician'])
+    if not has_access:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            levels = _students_progress_level_summaries(cursor)
+        return jsonify({'success': True, 'levels': levels})
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
+
+
+@app.route('/student-management/students-progress/students', methods=['GET'])
+@login_required
+def students_progress_students_api():
+    has_access = check_permission_or_role('view_students',
+        allowed_roles=['employee', 'super admin', 'head of institution', 'deputy head of institution',
+                      'curriculum coordinator', 'teachers', 'accountant', 'secretary', 'librarian',
+                      'warden', 'transport manager', 'store manager', 'technician'])
+    if not has_access:
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
+    level_name = (request.args.get('level') or '').strip()
+    if not level_name:
+        return jsonify({'success': False, 'message': 'level is required'}), 400
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
+    q = (request.args.get('q') or '').strip()
+    connection = get_db_connection()
+    if not connection:
+        return jsonify({'success': False, 'message': 'Database unavailable'}), 500
+    try:
+        with connection.cursor() as cursor:
+            payload = _fetch_students_progress_page(cursor, level_name, page=page, per_page=per_page, q=q)
+        return jsonify({'success': True, **payload})
+    finally:
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 @app.route('/student-management/students-progress/<student_id>')
@@ -47451,31 +47838,45 @@ def _user_can_access_communication():
     return ur in allowed or vr in allowed
 
 
-def _communication_recipient_rows(cursor, audience, q=None, role_filter=None, level_filter=None):
-    """Load employees or parents for the communication centre (optional search/filters)."""
+def _communication_recipient_rows(
+    cursor, audience, q=None, role_filter=None, level_filter=None, page=1, per_page=50,
+):
+    """Load employees or parents for the communication centre (paginated, optional search/filters)."""
     audience = (audience or 'employees').lower().strip()
     q_norm = (q or '').strip().lower()
     like = f'%{q_norm}%' if q_norm else None
+    per_page = max(1, min(int(per_page or 50), 100))
+    page = max(1, int(page or 1))
+    offset = (page - 1) * per_page
     out = []
+    total = 0
 
     if audience == 'employees':
-        sql = """
-            SELECT id, employee_id, full_name, phone, email, role
+        base = """
             FROM employees
             WHERE status = 'active'
         """
         params = []
+        filters = ''
         if role_filter:
-            sql += " AND LOWER(TRIM(role)) = %s"
+            filters += ' AND LOWER(TRIM(role)) = %s'
             params.append(str(role_filter).strip().lower())
         if like:
-            sql += (
+            filters += (
                 " AND (LOWER(full_name) LIKE %s OR LOWER(COALESCE(phone,'')) LIKE %s"
                 " OR LOWER(COALESCE(email,'')) LIKE %s OR LOWER(COALESCE(employee_id,'')) LIKE %s)"
             )
             params.extend([like, like, like, like])
-        sql += " ORDER BY full_name ASC LIMIT 500"
-        cursor.execute(sql, params)
+        cursor.execute('SELECT COUNT(*) AS c ' + base + filters, tuple(params))
+        crow = cursor.fetchone()
+        total = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0)
+        sql = (
+            'SELECT id, employee_id, full_name, phone, email, role '
+            + base
+            + filters
+            + ' ORDER BY full_name ASC LIMIT %s OFFSET %s'
+        )
+        cursor.execute(sql, tuple(params) + (per_page, offset))
         for row in cursor.fetchall() or []:
             rid = row.get('id') if isinstance(row, dict) else row[0]
             eid = row.get('employee_id') if isinstance(row, dict) else row[1]
@@ -47494,13 +47895,6 @@ def _communication_recipient_rows(cursor, audience, q=None, role_filter=None, le
                 'search': f"{fn} {ph} {em} {eid} {rl}".lower(),
             })
     else:
-        sql = """
-            SELECT p.id, p.full_name, p.phone, p.email,
-                   GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
-                   GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
-            FROM parents p
-            INNER JOIN students s ON s.student_id = p.student_id AND s.status = 'in session'
-        """
         params = []
         where = []
         if level_filter:
@@ -47512,10 +47906,40 @@ def _communication_recipient_rows(cursor, audience, q=None, role_filter=None, le
                 " OR LOWER(COALESCE(p.email,'')) LIKE %s)"
             )
             params.extend([like, like, like])
+        base_from = """
+            FROM parents p
+            INNER JOIN students s ON s.student_id = p.student_id AND s.status = 'in session'
+        """
         if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " GROUP BY p.id, p.full_name, p.phone, p.email ORDER BY p.full_name ASC LIMIT 500"
-        cursor.execute(sql, params)
+            count_sql = (
+                'SELECT COUNT(DISTINCT p.id) AS c ' + base_from + ' WHERE ' + ' AND '.join(where)
+            )
+            list_sql = (
+                """
+            SELECT p.id, p.full_name, p.phone, p.email,
+                   GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
+                   GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
+            """
+                + base_from
+                + ' WHERE '
+                + ' AND '.join(where)
+                + ' GROUP BY p.id, p.full_name, p.phone, p.email ORDER BY p.full_name ASC LIMIT %s OFFSET %s'
+            )
+        else:
+            count_sql = 'SELECT COUNT(DISTINCT p.id) AS c ' + base_from
+            list_sql = (
+                """
+            SELECT p.id, p.full_name, p.phone, p.email,
+                   GROUP_CONCAT(DISTINCT s.current_grade ORDER BY s.current_grade SEPARATOR ', ') AS grades,
+                   GROUP_CONCAT(DISTINCT s.full_name ORDER BY s.full_name SEPARATOR ' | ') AS children
+            """
+                + base_from
+                + ' GROUP BY p.id, p.full_name, p.phone, p.email ORDER BY p.full_name ASC LIMIT %s OFFSET %s'
+            )
+        cursor.execute(count_sql, tuple(params))
+        crow = cursor.fetchone()
+        total = int((crow.get('c') if isinstance(crow, dict) else crow[0]) or 0)
+        cursor.execute(list_sql, tuple(params) + (per_page, offset))
         for row in cursor.fetchall() or []:
             rid = row.get('id') if isinstance(row, dict) else row[0]
             fn = row.get('full_name') if isinstance(row, dict) else row[1]
@@ -47533,7 +47957,11 @@ def _communication_recipient_rows(cursor, audience, q=None, role_filter=None, le
                 'children': children or '',
                 'search': f"{fn} {ph} {em} {grades} {children}".lower(),
             })
-    return out
+    pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return {
+        'recipients': out,
+        'meta': {'page': page, 'per_page': per_page, 'total': total, 'pages': pages},
+    }
 
 
 def _communication_resolve_targets(cursor, audience, recipient_ids, send_to_all, role_filter=None, level_filter=None):
@@ -47720,6 +48148,8 @@ def api_communication_recipients():
     q = (request.args.get('q') or '').strip()
     role_filter = (request.args.get('role') or '').strip().lower() or None
     level_filter = (request.args.get('level') or '').strip() or None
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 50, type=int)
 
     connection = get_db_connection()
     if not connection:
@@ -47727,9 +48157,17 @@ def api_communication_recipients():
 
     try:
         with connection.cursor() as cursor:
-            out = _communication_recipient_rows(
-                cursor, audience, q=q or None, role_filter=role_filter, level_filter=level_filter
+            payload = _communication_recipient_rows(
+                cursor,
+                audience,
+                q=q or None,
+                role_filter=role_filter,
+                level_filter=level_filter,
+                page=page,
+                per_page=per_page,
             )
+            out = payload['recipients']
+            meta = payload['meta']
             roles = sorted({r.get('role') for r in out if r.get('role')})
     except Exception as e:
         print(f"api_communication_recipients: {e}")
@@ -47737,7 +48175,12 @@ def api_communication_recipients():
     finally:
         connection.close()
 
-    return jsonify({'success': True, 'recipients': out, 'roles': roles if audience == 'employees' else []})
+    return jsonify({
+        'success': True,
+        'recipients': out,
+        'meta': meta,
+        'roles': roles if audience == 'employees' else [],
+    })
 
 
 @app.route('/api/employee/communication/send', methods=['POST'])
