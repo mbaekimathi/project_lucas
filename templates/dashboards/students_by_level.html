@@ -598,7 +598,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
             Enter each subject <strong>out of its exam total</strong> (set under Exam subject settings). The <strong>Avg%</strong> column is the mean of column percentages across subjects with a mark.
             {% endif %}
             <p class="mt-2 pt-2 border-t border-slate-200/80 dark:border-slate-600/80 text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a> bands: the row&apos;s <strong>mean %</strong> across subjects with a mark is <strong>rounded down to a whole number</strong> (e.g. 89.8% → 89) before matching the band&apos;s code and allocation points.
+                Use <strong>Student order</strong> below to sort rows by name or by <strong>{% if marks_summary_column == 'total_scaled' %}Total{% else %}Avg%{% endif %}</strong> for the selected exam. <strong>Code</strong> and <strong>Points</strong> use <a href="{{ employee_dash_url('grades-registration') }}" class="underline font-semibold text-slate-800 dark:text-slate-200">Grades Registration</a>{% if uses_class_grading_setting and grading_setting_name %} — grading setting <strong>{{ grading_setting_name }}</strong> assigned to this class{% else %} — school default grade bands{% endif %}: the row&apos;s <strong>mean %</strong> across subjects with a mark is <strong>rounded down to a whole number</strong> (e.g. 89.8% → 89) before matching the band&apos;s code and allocation points.
             </p>
         </div>
 
@@ -667,7 +667,7 @@ tbody tr:hover .sticky-col { background: #f3f4f6; }
                             {% else %}
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase bg-emerald-100 dark:bg-emerald-900/40 leading-tight" title="Mean percentage across subjects with a mark">Avg%</th>
                             {% endif %}
-                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Grade code from Grades Registration (default bands)">Code</th>
+                            <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[10px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="{% if uses_class_grading_setting and grading_setting_name %}Grade code from {{ grading_setting_name }}{% else %}Grade code from school default bands{% endif %}">Code</th>
                             <th class="px-0.5 py-2 sm:px-2 sm:py-3 text-center text-[9px] sm:text-xs font-bold text-amber-700 dark:text-amber-400 uppercase bg-amber-100 dark:bg-amber-900/40 leading-tight" title="Allocation points from Grades Registration for that band">Points</th>
                         </tr>
                     </thead>
@@ -835,7 +835,9 @@ function marksSheet() {
         academicYears: {{ (academic_years or [])|tojson|safe }},
         terms: {{ (terms or [])|tojson|safe }},
         defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
-        activeGradeBands: {{ (active_grade_bands or default_grade_bands or [])|tojson|safe }},
+        activeGradeBands: {{ (active_grade_bands or [])|tojson|safe }},
+        usesClassGradingSetting: {{ (uses_class_grading_setting or false)|tojson }},
+        gradingSettingName: {{ (grading_setting_name or '')|tojson|safe }},
         subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
         classGradeBands: {{ (class_grade_bands or {})|tojson|safe }},
         academicLevelId: {{ academic_level_id|default('null') }},
@@ -1374,7 +1376,7 @@ function marksSheet() {
 
         /**
          * Mean percentage (0–100) across subjects with a mark — matches subject-grade scale
-         * so overall Code / Pts align with Grades Registration default bands.
+         * so overall Code / Pts align with this class's Grades Registration bands.
          */
         getOverallMeanPctForGrading(studentId) {
             if (!this.selectedExam) return null;
@@ -1407,14 +1409,14 @@ function marksSheet() {
 
         /** Bands for this class: assigned grading setting from Grades Registration, else school defaults. */
         gradeBandsForLevel() {
-            if (this.activeGradeBands && this.activeGradeBands.length) {
-                return this.activeGradeBands;
-            }
             const lid = this.academicLevelId;
-            const classBands = (lid != null && lid !== '')
-                ? (this.classGradeBands[String(lid)] || this.classGradeBands[lid] || [])
-                : [];
-            return (classBands && classBands.length) ? classBands : (this.defaultGradeBands || []);
+            if (lid != null && lid !== '') {
+                const classBands = this.classGradeBands[String(lid)] || this.classGradeBands[lid] || [];
+                if (classBands.length) return classBands;
+            }
+            const active = this.activeGradeBands || [];
+            if (active.length) return active;
+            return this.defaultGradeBands || [];
         },
 
         findBandForPct(pct) {

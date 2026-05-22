@@ -2319,6 +2319,53 @@ def grade_bands_for_level(level_id, class_grade_bands, default_grade_bands):
     return resolve_grade_bands(level_id, class_grade_bands, default_grade_bands)
 
 
+def fetch_grade_bands_for_marks_sheet(level_id):
+    """
+    Load grading bands for an exams-assessments class marks sheet.
+    Returns active bands (class setting or school default), all band maps, and metadata.
+    """
+    connection = get_db_connection()
+    if not connection:
+        return [], [], {}, {}, False, None
+    try:
+        with connection.cursor() as cursor:
+            default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
+            active_grade_bands = grade_bands_for_level(level_id, class_grade_bands, default_grade_bands)
+            try:
+                lid = int(level_id or 0)
+            except (TypeError, ValueError):
+                lid = 0
+            uses_class = bool(lid and class_grade_bands.get(lid))
+            grading_setting_name = None
+            if uses_class:
+                assignments = load_class_grade_setting_assignments_map(cursor)
+                pid = assignments.get(lid)
+                if pid:
+                    cursor.execute(
+                        "SELECT name FROM grade_setting_profiles WHERE id = %s",
+                        (pid,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        grading_setting_name = (
+                            row.get('name') if isinstance(row, dict) else row[0]
+                        )
+            class_grade_bands_json = {str(k): v for k, v in (class_grade_bands or {}).items()}
+            return (
+                active_grade_bands,
+                default_grade_bands,
+                subject_grade_bands,
+                class_grade_bands_json,
+                uses_class,
+                grading_setting_name,
+            )
+    except Exception as e:
+        print(f"Error loading grade bands for marks sheet level {level_id}: {e}")
+        return [], [], {}, {}, False, None
+    finally:
+        connection.close()
+
+
 def load_grade_bands_from_db(cursor):
     """Load default, per-class, and per-subject grade bands (marks sheet / reports)."""
     default_grade_bands = []
@@ -42190,8 +42237,6 @@ def students_by_academic_level(level_id):
                     print(f"Marks table not found or error fetching marks: {e}")
                     student_marks = {}
 
-                # Load grading bands (default + class + subject overrides) for column mean grade display.
-                default_grade_bands, subject_grade_bands, class_grade_bands = load_grade_bands_from_db(cursor)
         except Exception as e:
             print(f"Error fetching students by academic level: {e}")
             flash('Error loading students. Please try again.', 'error')
@@ -42283,7 +42328,14 @@ def students_by_academic_level(level_id):
     marks_display_scaled = not can_edit
     marks_summary_column = 'total_scaled' if marks_display_scaled else 'avg_pct'
 
-    active_grade_bands = grade_bands_for_level(level_id, class_grade_bands, default_grade_bands)
+    (
+        active_grade_bands,
+        default_grade_bands,
+        subject_grade_bands,
+        class_grade_bands,
+        uses_class_grading_setting,
+        grading_setting_name,
+    ) = fetch_grade_bands_for_marks_sheet(level_id)
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -42302,6 +42354,8 @@ def students_by_academic_level(level_id):
                          subject_grade_bands=subject_grade_bands,
                          class_grade_bands=class_grade_bands,
                          active_grade_bands=active_grade_bands,
+                         uses_class_grading_setting=uses_class_grading_setting,
+                         grading_setting_name=grading_setting_name,
                          academic_level_id=level_id,
                          subject_exam_max_map=subject_exam_max_map,
                          combination_column_members=combination_column_members,
