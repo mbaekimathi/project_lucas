@@ -835,6 +835,7 @@ function marksSheet() {
         academicYears: {{ (academic_years or [])|tojson|safe }},
         terms: {{ (terms or [])|tojson|safe }},
         defaultGradeBands: {{ (default_grade_bands or [])|tojson|safe }},
+        activeGradeBands: {{ (active_grade_bands or default_grade_bands or [])|tojson|safe }},
         subjectGradeBands: {{ (subject_grade_bands or {})|tojson|safe }},
         classGradeBands: {{ (class_grade_bands or {})|tojson|safe }},
         academicLevelId: {{ academic_level_id|default('null') }},
@@ -1404,10 +1405,22 @@ function marksSheet() {
             return Math.floor(Number(pct) + 1e-9);
         },
 
-        findDefaultBandForPct(pct) {
+        /** Bands for this class: assigned grading setting from Grades Registration, else school defaults. */
+        gradeBandsForLevel() {
+            if (this.activeGradeBands && this.activeGradeBands.length) {
+                return this.activeGradeBands;
+            }
+            const lid = this.academicLevelId;
+            const classBands = (lid != null && lid !== '')
+                ? (this.classGradeBands[String(lid)] || this.classGradeBands[lid] || [])
+                : [];
+            return (classBands && classBands.length) ? classBands : (this.defaultGradeBands || []);
+        },
+
+        findBandForPct(pct) {
             const mv = this.pctForGradeBandMatch(pct);
             if (mv === null) return null;
-            const bands = this.defaultGradeBands || [];
+            const bands = this.gradeBandsForLevel();
             for (const band of bands) {
                 const start = Number(band.start ?? 0);
                 const end = Number(band.end ?? 0);
@@ -1419,7 +1432,7 @@ function marksSheet() {
         getOverallGradeCode(studentId) {
             const pct = this.getOverallMeanPctForGrading(studentId);
             if (pct === null) return null;
-            const band = this.findDefaultBandForPct(pct);
+            const band = this.findBandForPct(pct);
             if (!band) return null;
             const c = (band.code || '').toString().trim();
             if (c) return c;
@@ -1430,7 +1443,7 @@ function marksSheet() {
         getOverallGradePoints(studentId) {
             const pct = this.getOverallMeanPctForGrading(studentId);
             if (pct === null) return null;
-            const band = this.findDefaultBandForPct(pct);
+            const band = this.findBandForPct(pct);
             if (!band) return null;
             const ap = band.allocation_points;
             if (ap === null || ap === undefined || ap === '') return null;
@@ -1458,7 +1471,7 @@ function marksSheet() {
         getClassOverallGradeCode() {
             const pct = this.getClassOverallMeanPctForGrading();
             if (pct === null) return null;
-            const band = this.findDefaultBandForPct(pct);
+            const band = this.findBandForPct(pct);
             if (!band) return null;
             const c = (band.code || '').toString().trim();
             if (c) return c;
@@ -1469,7 +1482,7 @@ function marksSheet() {
         getClassOverallGradePoints() {
             const pct = this.getClassOverallMeanPctForGrading();
             if (pct === null) return null;
-            const band = this.findDefaultBandForPct(pct);
+            const band = this.findBandForPct(pct);
             if (!band) return null;
             const ap = band.allocation_points;
             if (ap === null || ap === undefined || ap === '') return null;
@@ -1518,11 +1531,7 @@ function marksSheet() {
             if (marksValue === null || marksValue === undefined || marksValue === '' || isNaN(marksValue)) return '';
             const mv = this.pctForGradeBandMatch(marksValue);
             if (mv === null) return '';
-            const lid = this.academicLevelId;
-            const classBands = (lid != null && lid !== '')
-                ? (this.classGradeBands[String(lid)] || this.classGradeBands[lid] || [])
-                : [];
-            const bands = classBands.length ? classBands : this.defaultGradeBands;
+            const bands = this.gradeBandsForLevel();
             for (const band of bands) {
                 const start = Number(band.start ?? 0);
                 const end = Number(band.end ?? 0);

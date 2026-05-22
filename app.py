@@ -9359,6 +9359,101 @@ def apply_mail_config_from_env_and_integration():
     return bool((app.config.get('MAIL_USERNAME') or '').strip())
 
 
+def get_public_app_base_url():
+    """
+    Public portal base URL for links in emails/SMS.
+    Prefer APP_DOMAIN or PORTAL_BASE_URL in .env (production domain); else current request host.
+    """
+    raw = (os.environ.get('APP_DOMAIN') or os.environ.get('PORTAL_BASE_URL') or '').strip().rstrip('/')
+    if raw:
+        if not re.match(r'^https?://', raw, re.I):
+            raw = 'https://' + raw.lstrip('/')
+        return raw
+    if has_request_context():
+        try:
+            return request.url_root.rstrip('/')
+        except Exception:
+            pass
+    return ''
+
+
+def public_portal_url(endpoint, **values):
+    """Absolute URL for parent/staff portal pages (honours APP_DOMAIN when set)."""
+    path = url_for(endpoint, **values)
+    base = get_public_app_base_url()
+    if base:
+        if not path.startswith('/'):
+            path = '/' + path
+        return base + path
+    if has_request_context():
+        return url_for(endpoint, _external=True, **values)
+    return path
+
+
+def _parent_portal_setup_urls(student_id):
+    """Login and setup-wizard URLs for a given admission ID."""
+    sid = (student_id or '').strip()
+    login_url = public_portal_url('login', role='parent', admission=sid)
+    setup_url = public_portal_url('parent_portal_setup', admission=sid)
+    portal_home = get_public_app_base_url() or login_url.rsplit('/login', 1)[0]
+    return {
+        'portal_home': portal_home,
+        'login_url': login_url,
+        'setup_url': setup_url,
+    }
+
+
+def _send_integration_sms(phone, message):
+    """Send one SMS via Africa's Talking when Integration Settings → SMS is configured."""
+    phone = (phone or '').strip()
+    if not phone:
+        return False, 'no phone'
+    txt = (message or '').strip()[:480]
+    if not txt:
+        return False, 'empty message'
+    integ = _load_integration_data_communication()
+    flags = _communication_channel_flags(integ)
+    if not flags.get('sms'):
+        return False, 'SMS not configured'
+    sm = integ.get('sms') or {}
+    prov = (sm.get('provider') or '').lower()
+    api_key = (sm.get('api_key') or '').strip()
+    sender_id = (sm.get('sender_id') or '').strip() or 'INFO'
+    if not ('africa' in prov or prov == 'africastalking'):
+        return False, 'SMS provider not supported'
+    username = (sm.get('username') or sm.get('account_username') or '').strip()
+    if not username or not api_key:
+        return False, "Africa's Talking username/API key missing"
+    try:
+        import urllib.parse
+        import urllib.request
+
+        data = urllib.parse.urlencode(
+            {
+                'username': username,
+                'to': phone,
+                'message': txt,
+                'from': sender_id,
+            }
+        ).encode()
+        req = urllib.request.Request(
+            'https://api.africastalking.com/version1/messaging',
+            data=data,
+            headers={
+                'apiKey': api_key,
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+            },
+            method='POST',
+        )
+        with urllib.request.urlopen(req, timeout=25) as resp:
+            _ = resp.read()
+        return True, ''
+    except Exception as ex:
+        print(f"_send_integration_sms: {ex}")
+        return False, str(ex)
+
+
 def send_password_reset_email(to_email, recipient_name, verification_code):
     """Send verification code for password reset."""
     try:
@@ -9394,123 +9489,77 @@ def send_password_reset_email(to_email, recipient_name, verification_code):
 
 
 def send_student_approval_email(parent_email, parent_name, student_name, student_id):
-    """Send approval congratulations email to parent/guardian after student admission is approved"""
+    """Approval email with parent portal setup guidance and school portal links."""
     try:
-        # Get support contact information from environment or use defaults
-        support_email = os.environ.get('SUPPORT_EMAIL', 'support@modernschool.com')
-        support_phone = os.environ.get('SUPPORT_PHONE', '+254 700 000 000')
-        school_name = os.environ.get('SCHOOL_NAME', 'Modern School')
-        
-        subject = f"Congratulations! {student_name} Has Been Accepted to {school_name}"
-        
-        # Create email body
+        if not apply_mail_config_from_env_and_integration():
+            print("Student approval: no SMTP credentials in .env or Integration Settings → Email.")
+            return False
+        settings = get_school_settings()
+        school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'Modern School').strip()
+        support_email = (settings.get('school_email') or os.environ.get('SUPPORT_EMAIL') or 'support@modernschool.com').strip()
+        support_phone = (settings.get('school_phone') or os.environ.get('SUPPORT_PHONE') or '+254 700 000 000').strip()
+        salutation = (parent_name or '').strip() or 'Parent/Guardian'
+        urls = _parent_portal_setup_urls(student_id)
+        portal_home = urls['portal_home']
+        login_url = urls['login_url']
+        setup_url = urls['setup_url']
+
+        subject = f"Congratulations! {student_name} approved — set up your parent portal | {school_name}"
+
         html_body = f"""
         <!DOCTYPE html>
         <html>
         <head>
             <meta charset="UTF-8">
             <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }}
-                .header {{
-                    background: linear-gradient(135deg, #1e40af 0%, #f97316 100%);
-                    color: white;
-                    padding: 30px;
-                    text-align: center;
-                    border-radius: 10px 10px 0 0;
-                }}
-                .content {{
-                    background: #f9fafb;
-                    padding: 30px;
-                    border: 1px solid #e5e7eb;
-                }}
-                .info-box {{
-                    background: white;
-                    border-left: 4px solid #10b981;
-                    padding: 15px;
-                    margin: 20px 0;
-                }}
-                .footer {{
-                    background: #1f2937;
-                    color: white;
-                    padding: 20px;
-                    text-align: center;
-                    border-radius: 0 0 10px 10px;
-                    font-size: 14px;
-                }}
-                .contact-info {{
-                    background: #d1fae5;
-                    border: 1px solid #10b981;
-                    border-radius: 8px;
-                    padding: 20px;
-                    margin: 20px 0;
-                }}
-                .contact-info h3 {{
-                    margin-top: 0;
-                    color: #059669;
-                }}
-                .contact-info p {{
-                    margin: 8px 0;
-                }}
-                .status-badge {{
-                    display: inline-block;
-                    background: #10b981;
-                    color: white;
-                    padding: 5px 15px;
-                    border-radius: 20px;
-                    font-weight: bold;
-                    font-size: 14px;
-                }}
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background: linear-gradient(135deg, #1e40af 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+                .content {{ background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; }}
+                .info-box {{ background: white; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; }}
+                .portal-box {{ background: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+                .portal-box h3 {{ margin-top: 0; color: #1e40af; }}
+                .portal-box ol {{ margin: 12px 0 0 18px; padding: 0; }}
+                .portal-box li {{ margin-bottom: 8px; }}
+                .cta {{ display: inline-block; background: #059669; color: white !important; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; margin: 12px 8px 0 0; }}
+                .cta-secondary {{ background: #1e40af; }}
+                .footer {{ background: #1f2937; color: white; padding: 20px; text-align: center; border-radius: 0 0 10px 10px; font-size: 14px; }}
+                .contact-info {{ background: #d1fae5; border: 1px solid #10b981; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+                .status-badge {{ display: inline-block; background: #10b981; color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; font-size: 14px; }}
             </style>
         </head>
         <body>
-            <div class="header">
-                <h1>🎉 Congratulations! 🎉</h1>
-            </div>
+            <div class="header"><h1>Congratulations!</h1></div>
             <div class="content">
-                <p>Dear {parent_name},</p>
-                
-                <p>We are delighted to inform you that <strong>{student_name}</strong> has been accepted to <strong>{school_name}</strong>! We are thrilled to welcome your child to our school community.</p>
-                
+                <p>Dear {salutation},</p>
+                <p><strong>{student_name}</strong> has been <strong>approved</strong> and is now enrolled at <strong>{school_name}</strong>.</p>
                 <div class="info-box">
-                    <p><strong>Admission Details:</strong></p>
-                    <p><strong>Student Name:</strong> {student_name}</p>
-                    <p><strong>Student ID:</strong> {student_id}</p>
-                    <p><strong>Status:</strong> <span class="status-badge">Approved - In Session</span></p>
+                    <p><strong>Admission ID:</strong> {student_id}</p>
+                    <p><strong>Status:</strong> <span class="status-badge">Approved — In session</span></p>
                 </div>
-                
-                <p>Your child's admission has been approved and they are now officially enrolled in our school. We are excited to have {student_name} join us and look forward to supporting their educational journey.</p>
-                
-                <p><strong>Next Steps:</strong></p>
-                <p>Our admissions office will be in touch with you shortly regarding the next steps in the admission procedure. This will include information about:</p>
-                <ul>
-                    <li>Orientation dates and schedules</li>
-                    <li>Required documentation and forms</li>
-                    <li>School policies and procedures</li>
-                    <li>Important dates and events</li>
-                </ul>
-                
-                <p>Please keep your Student ID (<strong>{student_id}</strong>) for future reference, as you will need it for various school-related activities.</p>
-                
+                <div class="portal-box">
+                    <h3>Set up your parent portal account</h3>
+                    <p>Use the school portal to view fees, attendance, notices, and timetables. You only need to register once per child.</p>
+                    <p><strong>School portal:</strong> <a href="{portal_home}" style="color:#1e40af;">{portal_home}</a></p>
+                    <ol>
+                        <li>Open the portal link above (or tap the button below).</li>
+                        <li>Under <strong>Login as</strong>, choose <strong>Parent</strong>.</li>
+                        <li>Enter admission ID <strong>{student_id}</strong>.</li>
+                        <li>Confirm your child&apos;s <strong>date of birth</strong>.</li>
+                        <li>Create your <strong>email</strong> and <strong>password</strong> (at least 8 characters with letters and numbers).</li>
+                        <li>Sign in anytime with Parent + admission ID + password.</li>
+                    </ol>
+                    <p>
+                        <a class="cta" href="{login_url}">Open parent login</a>
+                        <a class="cta cta-secondary" href="{setup_url}">Step-by-step setup wizard</a>
+                    </p>
+                </div>
+                <p>Keep admission ID <strong>{student_id}</strong> safe — you will need it every time you sign in as a parent.</p>
                 <div class="contact-info">
-                    <h3>Need Assistance?</h3>
-                    <p>If you have any questions or need support, please don't hesitate to contact our admissions office:</p>
-                    <p><strong>Email:</strong> <a href="mailto:{support_email}" style="color: #059669;">{support_email}</a></p>
+                    <h3 style="margin-top:0;color:#059669;">Need help?</h3>
+                    <p><strong>Email:</strong> <a href="mailto:{support_email}" style="color:#059669;">{support_email}</a></p>
                     <p><strong>Phone:</strong> {support_phone}</p>
-                    <p>Our support team is available Monday through Friday, 8:00 AM to 5:00 PM.</p>
                 </div>
-                
-                <p>Once again, congratulations on this wonderful achievement! We are honored to have {student_name} as part of our school family and look forward to working together to ensure their success.</p>
-                
-                <p>Best regards,<br>
-                <strong>Admissions Office</strong><br>
-                {school_name}</p>
+                <p>Best regards,<br><strong>Admissions Office</strong><br>{school_name}</p>
             </div>
             <div class="footer">
                 <p>This is an automated message. Please do not reply to this email.</p>
@@ -9519,59 +9568,84 @@ def send_student_approval_email(parent_email, parent_name, student_name, student
         </body>
         </html>
         """
-        
-        # Plain text version
-        text_body = f"""
-Dear {parent_name},
 
-We are delighted to inform you that {student_name} has been accepted to {school_name}! We are thrilled to welcome your child to our school community.
+        text_body = f"""Dear {salutation},
 
-Admission Details:
-- Student Name: {student_name}
-- Student ID: {student_id}
-- Status: Approved - In Session
+Congratulations! {student_name} has been approved and is now enrolled at {school_name}.
 
-Your child's admission has been approved and they are now officially enrolled in our school. We are excited to have {student_name} join us and look forward to supporting their educational journey.
+Admission ID: {student_id}
+Status: Approved — In session
 
-Next Steps:
-Our admissions office will be in touch with you shortly regarding the next steps in the admission procedure. This will include information about:
-- Orientation dates and schedules
-- Required documentation and forms
-- School policies and procedures
-- Important dates and events
+SET UP YOUR PARENT PORTAL
+School portal: {portal_home}
 
-Please keep your Student ID ({student_id}) for future reference, as you will need it for various school-related activities.
+1. Open the portal link above.
+2. Choose "Parent" as your login role.
+3. Enter admission ID: {student_id}
+4. Confirm your child's date of birth.
+5. Create your email and password (at least 8 characters with letters and numbers).
+6. Sign in later with Parent + admission ID + your password.
 
-Need Assistance?
-If you have any questions or need support, please don't hesitate to contact our admissions office:
-- Email: {support_email}
-- Phone: {support_phone}
-Our support team is available Monday through Friday, 8:00 AM to 5:00 PM.
+Quick links:
+- Parent login: {login_url}
+- Setup wizard: {setup_url}
 
-Once again, congratulations on this wonderful achievement! We are honored to have {student_name} as part of our school family and look forward to working together to ensure their success.
+Need help?
+Email: {support_email}
+Phone: {support_phone}
 
 Best regards,
 Admissions Office
 {school_name}
+"""
 
----
-This is an automated message. Please do not reply to this email.
-© {datetime.now().year} {school_name}. All rights reserved.
-        """
-        
         msg = Message(
             subject=subject,
             recipients=[parent_email],
             html=html_body,
-            body=text_body
+            body=text_body,
         )
-        
         mail.send(msg)
         print(f"Student approval email sent to {parent_email}")
         return True
     except Exception as e:
         print(f"Error sending student approval email: {e}")
         return False
+
+
+def notify_parent_student_approved(parent_email, parent_phone, parent_name, student_name, student_id):
+    """
+    Notify parent/guardian after approval: email (required path) + optional SMS.
+    Returns dict: email_sent, sms_sent, sms_note, errors[].
+    """
+    result = {'email_sent': False, 'sms_sent': False, 'sms_note': '', 'errors': []}
+    urls = _parent_portal_setup_urls(student_id)
+    settings = get_school_settings()
+    school_name = (settings.get('school_name') or os.environ.get('SCHOOL_NAME') or 'School').strip()
+
+    if (parent_email or '').strip():
+        try:
+            if send_student_approval_email(parent_email, parent_name, student_name, student_id):
+                result['email_sent'] = True
+            else:
+                result['errors'].append('Email could not be sent (check SMTP / Integration Settings).')
+        except Exception as ex:
+            result['errors'].append(f'Email error: {ex}')
+    else:
+        result['errors'].append('No parent email on file.')
+
+    if (parent_phone or '').strip():
+        sms_text = (
+            f"{school_name}: {student_name} ({student_id}) is approved. "
+            f"Set up your parent portal: {urls['login_url']} — choose Parent, enter admission ID & child DOB, then create your password."
+        )[:480]
+        ok, note = _send_integration_sms(parent_phone, sms_text)
+        result['sms_sent'] = ok
+        result['sms_note'] = note or ''
+        if not ok and note and note != 'no phone':
+            result['errors'].append(f'SMS: {note}')
+
+    return result
 
 def send_employee_welcome_email(employee_email, employee_name, employee_id):
     """Send welcome email to employee after registration"""
@@ -22145,7 +22219,7 @@ def approve_student(student_id):
             # Check if student exists and get student details
             cursor.execute("""
                 SELECT s.id, s.student_id, s.full_name, s.status,
-                       p.full_name as parent_name, p.email as parent_email
+                       p.full_name as parent_name, p.email as parent_email, p.phone as parent_phone
                 FROM students s
                 LEFT JOIN parents p ON s.student_id = p.student_id
                 WHERE s.student_id = %s
@@ -22170,23 +22244,28 @@ def approve_student(student_id):
             
             connection.commit()
             
-            # Send approval email to parent
-            if student.get('parent_email') and student.get('parent_name'):
-                try:
-                    send_student_approval_email(
-                        student.get('parent_email'),
-                        student.get('parent_name'),
-                        student.get('full_name'),
-                        student_id
-                    )
-                except Exception as email_error:
-                    print(f"Error sending approval email: {email_error}")
-                    # Don't fail the approval if email fails, but log it
-                    flash(f'Student approved successfully, but email could not be sent: {email_error}', 'warning')
-                else:
-                    flash(f'Student {student.get("full_name")} has been approved successfully! Congratulations email sent to parent.', 'success')
+            student_name = student.get('full_name') or student_id
+            notify = notify_parent_student_approved(
+                student.get('parent_email'),
+                student.get('parent_phone'),
+                student.get('parent_name'),
+                student_name,
+                student_id,
+            )
+            parts = [f'{student_name} approved.']
+            if notify.get('email_sent'):
+                parts.append('Parent notified by email with portal setup instructions and login link.')
+            elif not (student.get('parent_email') or '').strip():
+                parts.append('No parent email on file — add one in student details to send portal instructions.')
+            if notify.get('sms_sent'):
+                parts.append('SMS sent to parent phone.')
+            err_bits = [e for e in (notify.get('errors') or []) if e]
+            if err_bits and not notify.get('email_sent'):
+                flash(' '.join(parts) + ' ' + ' '.join(err_bits), 'warning')
+            elif err_bits:
+                flash(' '.join(parts) + ' Note: ' + ' '.join(err_bits), 'warning' if not notify.get('email_sent') else 'success')
             else:
-                flash(f'Student {student.get("full_name")} has been approved successfully! (No parent email found to send notification.)', 'success')
+                flash(' '.join(parts), 'success')
             
     except Exception as e:
         print(f"Error approving student: {e}")
@@ -42203,6 +42282,8 @@ def students_by_academic_level(level_id):
     # View-only roles (e.g. curriculum coordinator): scaled /100 cells + total of converted marks.
     marks_display_scaled = not can_edit
     marks_summary_column = 'total_scaled' if marks_display_scaled else 'avg_pct'
+
+    active_grade_bands = grade_bands_for_level(level_id, class_grade_bands, default_grade_bands)
     
     return render_template('dashboards/students_by_level.html', 
                          role=user_role,
@@ -42220,6 +42301,7 @@ def students_by_academic_level(level_id):
                          default_grade_bands=default_grade_bands,
                          subject_grade_bands=subject_grade_bands,
                          class_grade_bands=class_grade_bands,
+                         active_grade_bands=active_grade_bands,
                          academic_level_id=level_id,
                          subject_exam_max_map=subject_exam_max_map,
                          combination_column_members=combination_column_members,
