@@ -1,0 +1,582 @@
+{# Allocate in-stock books to class levels — form shown only after selecting a book. #}
+<script type="application/json" id="stock-allocate-page-data">{{ {
+    'books': books_stock|default([]),
+    'levels': inventory_academic_levels|default([]),
+    'teachersUrl': employee_dash_url('books-inventory/level-teachers'),
+    'postUrl': url_for('books_inventory_allocate_stock'),
+    'stockUrl': employee_dash_url('books-inventory/stock'),
+    'allocationApiPrefix': employee_dash_url('books-inventory/allocations'),
+    'recentAllocations': library_stock_in_records|default([]),
+}|tojson }}</script>
+
+<section class="normal-case space-y-6" x-data="stockAllocatePage()" x-cloak>
+    <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
+        <div class="flex flex-col gap-3 border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">
+                Books in stock
+                <span class="font-normal text-gray-500">({{ stock_page_meta.total|default(books_stock|length) }})</span>
+            </h2>
+            <form method="get" action="{{ employee_dash_url('books-inventory/stock') }}" class="w-full sm:max-w-xs">
+                <label for="stock_book_search" class="sr-only">Search books</label>
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-gray-400" aria-hidden="true"></i>
+                    <input type="search" id="stock_book_search" name="q" value="{{ request.args.get('q', '') }}"
+                           placeholder="Search book name…"
+                           class="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-4 text-sm normal-case text-gray-900 shadow-sm focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                </div>
+            </form>
+        </div>
+
+        {% if books_stock %}
+        <div class="overflow-x-auto">
+            <table class="min-w-[640px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Book</th>
+                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Subject</th>
+                        <th class="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Available</th>
+                        <th class="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">At classes</th>
+                        <th class="sticky right-0 z-[2] w-[6.5rem] border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/95">Allocate</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <template x-for="b in books" :key="b.id">
+                        <tr class="hover:bg-brand-primary/[0.04] transition-colors"
+                            :class="{
+                              'bg-emerald-50/80 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-950/30 dark:ring-emerald-800': selectedBook && selectedBook.id === b.id,
+                              'opacity-75': (b.available_to_allocate || 0) < 1
+                            }">
+                            <td class="px-4 py-3.5 sm:px-5">
+                                <span class="font-semibold text-gray-900 dark:text-white" x-text="b.book_name"></span>
+                                <span class="mt-0.5 block text-xs text-gray-500" x-text="b.book_category"></span>
+                                <span class="text-[10px] font-medium text-sky-700 dark:text-sky-300" x-show="b.store_item_id">Store stock</span>
+                            </td>
+                            <td class="px-4 py-3.5 text-gray-600 dark:text-gray-300 sm:px-5">
+                                <span x-text="b.subject_name || '—'"></span>
+                                <span class="text-gray-400" x-show="b.subject_code" x-text="' (' + b.subject_code + ')'"></span>
+                            </td>
+                            <td class="px-4 py-3.5 text-right tabular-nums font-bold text-emerald-800 dark:text-emerald-200 sm:px-5"
+                                x-text="b.available_to_allocate || 0"></td>
+                            <td class="px-4 py-3.5 text-right tabular-nums text-gray-600 dark:text-gray-300 sm:px-5"
+                                x-text="b.quantity_in_stock || 0"></td>
+                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3"
+                                :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-50/80 dark:bg-emerald-950/30' : ''">
+                                <button type="button" @click="selectBook(b)"
+                                        x-show="(b.available_to_allocate || 0) > 0"
+                                        class="inline-flex h-9 items-center justify-center rounded-lg px-3 text-xs font-semibold text-white"
+                                        :class="selectedBook && selectedBook.id === b.id ? 'bg-emerald-800 hover:bg-emerald-900' : 'bg-emerald-600 hover:bg-emerald-700'">
+                                    <span x-text="selectedBook && selectedBook.id === b.id ? 'Selected' : 'Allocate'"></span>
+                                </button>
+                                <span class="text-xs text-gray-400" x-show="(b.available_to_allocate || 0) < 1">—</span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        {% set spm = stock_page_meta|default({}) %}
+        {% if spm.pages and spm.pages > 1 %}
+        <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">
+            <p class="text-xs text-gray-500">Page {{ spm.page }} of {{ spm.pages }}</p>
+            <div class="flex gap-2">
+                {% if spm.page > 1 %}
+                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page - 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Previous</a>
+                {% endif %}
+                {% if spm.page < spm.pages %}
+                <a href="{{ employee_dash_url('books-inventory/stock') }}?{% if request.args.get('q') %}q={{ request.args.get('q')|urlencode }}&amp;{% endif %}page={{ spm.page + 1 }}" class="rounded-lg border px-3 py-2 text-xs font-semibold">Next</a>
+                {% endif %}
+            </div>
+        </nav>
+        {% endif %}
+        {% else %}
+        <p class="px-4 py-12 text-center text-sm text-gray-600 dark:text-gray-400 sm:px-5">
+            {% if request.args.get('q') %}
+            No configured books match your search.
+            {% else %}
+            No configured books yet. Complete setup in the
+            <a href="{{ employee_dash_url('books-inventory') }}" class="font-semibold text-brand-primary underline">books catalog</a>.
+            {% endif %}
+        </p>
+        {% endif %}
+    </div>
+
+    <p class="rounded-xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center text-sm text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+       x-show="!selectedBook">
+        <i class="fas fa-hand-pointer text-2xl text-gray-300 dark:text-gray-600 mb-2 block" aria-hidden="true"></i>
+        Select a book from the table above, then click <strong>Allocate</strong> to assign copies to a class and teacher.
+    </p>
+
+    <div id="allocate-form" class="scroll-mt-24 rounded-xl border border-emerald-200/80 bg-white shadow-sm dark:border-emerald-900/40 dark:bg-gray-900"
+         x-show="selectedBook" x-transition>
+        <div class="border-b border-emerald-100 bg-emerald-50/60 px-4 py-4 dark:border-emerald-900/30 dark:bg-emerald-950/25 sm:px-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Allocate to class &amp; teacher</h2>
+                    <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" x-show="selectedBook">
+                        <span class="font-semibold text-gray-900 dark:text-white" x-text="selectedBook.book_name"></span>
+                        · <span x-text="(selectedBook.available_to_allocate || 0) + ' available in stock'"></span>
+                    </p>
+                </div>
+                <button type="button" @click="clearSelection()"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300">
+                    <i class="fas fa-times" aria-hidden="true"></i> Close
+                </button>
+            </div>
+        </div>
+        <div x-show="selectedBook && (selectedBook.available_to_allocate || 0) > 0">
+            <form method="post" :action="postUrl" class="space-y-5 px-4 py-5 sm:px-5">
+                <input type="hidden" name="book_id" :value="selectedBook.id" />
+                <input type="hidden" name="teacher_id" :value="teacherId" />
+                <input type="hidden" name="teacher_subject_id" :value="teacherSubjectId" />
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label for="allocate_level" class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Class / academic level</label>
+                        <select id="allocate_level" name="academic_level_id" required
+                                x-model="levelId" @change="onLevelChange()"
+                                class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                            <option value="">Select class</option>
+                            <template x-for="lvl in levelsForBook()" :key="lvl.id">
+                                <option :value="lvl.id" x-text="lvl.level_category + ' · ' + lvl.level_name"></option>
+                            </template>
+                        </select>
+                        <p class="mt-1.5 text-xs text-gray-500" x-show="selectedBook">
+                            Only levels in <strong x-text="selectedBook.academic_category"></strong> are shown.
+                        </p>
+                    </div>
+                    <div>
+                        <label for="allocate_teacher" class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Teacher</label>
+                        <select id="allocate_teacher" required
+                                x-ref="teacherSelect"
+                                x-model="teacherKey" @change="onTeacherChange()"
+                                :disabled="!levelId || loadingTeachers"
+                                class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white disabled:cursor-not-allowed disabled:opacity-60">
+                            <option value="">Select class first</option>
+                        </select>
+                        <p class="mt-1.5 text-xs text-amber-700 dark:text-amber-300" x-show="teacherError" x-text="teacherError"></p>
+                        <p class="mt-1.5 text-xs text-gray-500" x-show="levelId && !loadingTeachers && !teacherError && teachers.length === 0">
+                            No active employees with the teacher role were found.
+                        </p>
+                        <p class="mt-1.5 text-xs text-teal-700 dark:text-teal-300" x-show="teachers.length > 0 && !loadingTeachers">
+                            <span x-text="teachers.length"></span> teacher<span x-show="teachers.length !== 1">s</span> available for this class.
+                        </p>
+                    </div>
+                    <div>
+                        <label for="allocate_qty" class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Quantity</label>
+                        <input type="number" id="allocate_qty" name="quantity" min="1" step="1" value="1" required
+                               :max="selectedBook ? selectedBook.available_to_allocate : 1"
+                               class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm tabular-nums dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label for="allocate_notes" class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Notes <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                        <input type="text" id="allocate_notes" name="notes" maxlength="500"
+                               class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                    <button type="submit"
+                            :disabled="!levelId || !teacherKey || loadingTeachers"
+                            class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white shadow-md hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        <i class="fas fa-school"></i> Confirm allocation
+                    </button>
+                    <button type="button" @click="clearSelection()"
+                            class="inline-flex items-center rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+        <p class="px-4 py-6 text-sm text-amber-800 dark:text-amber-200 sm:px-5"
+           x-show="selectedBook && (selectedBook.available_to_allocate || 0) < 1">
+            No copies left in stock for this title.
+        </p>
+    </div>
+
+    <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900" x-show="recentAllocations.length">
+        <div class="border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">
+            <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Recent class allocations</h2>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">View teacher assignments and edit notes or assigned teacher.</p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[720px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Date</th>
+                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Book</th>
+                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Class</th>
+                        <th class="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Teacher allocated</th>
+                        <th class="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Qty</th>
+                        <th class="sticky right-0 z-[2] w-24 border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/95 sm:px-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    <template x-for="row in recentAllocations" :key="row.id">
+                        <tr class="hover:bg-gray-50/80 dark:hover:bg-gray-800/40">
+                            <td class="px-4 py-3 text-xs tabular-nums text-gray-500 sm:px-5" x-text="row.created_at_display || row.created_at || '—'"></td>
+                            <td class="px-4 py-3 font-medium text-gray-900 dark:text-white sm:px-5" x-text="row.book_name"></td>
+                            <td class="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 sm:px-5">
+                                <span x-text="(row.level_category || '') + ' · ' + (row.level_name || '')"></span>
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-700 dark:text-gray-300 sm:px-5 max-w-[14rem]">
+                                <span x-show="row.teacher_summary" class="font-medium text-teal-800 dark:text-teal-200" x-text="row.teacher_summary"></span>
+                                <span x-show="!row.teacher_summary" class="italic text-gray-400">Not assigned</span>
+                            </td>
+                            <td class="px-4 py-3 text-right tabular-nums font-semibold sm:px-5" x-text="row.quantity"></td>
+                            <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3">
+                                <button type="button" @click="openEditAllocation(row)"
+                                        class="inline-flex h-8 items-center justify-center rounded-lg border border-gray-200 px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800">
+                                    Edit
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div x-show="editAllocation" x-cloak
+         class="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4 bg-black/40"
+         @keydown.escape.window="closeEditAllocation()">
+        <div class="w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-900"
+             @click.outside="closeEditAllocation()" role="dialog" aria-labelledby="edit-allocation-title">
+            <div class="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+                <h3 id="edit-allocation-title" class="text-base font-semibold text-gray-900 dark:text-white">Edit allocation</h3>
+                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" x-show="editAllocation">
+                    <span class="font-semibold text-gray-900 dark:text-white" x-text="editAllocation.book_name"></span>
+                    · <span x-text="(editAllocation.level_category || '') + ' · ' + (editAllocation.level_name || '')"></span>
+                    · <span x-text="editAllocation.quantity + ' copies'"></span>
+                </p>
+            </div>
+            <div class="space-y-4 px-5 py-5">
+                <div>
+                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Notes</label>
+                    <input type="text" x-model="editNotes" maxlength="500"
+                           class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                </div>
+                <div>
+                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Teacher allocated</label>
+                    <select x-ref="editTeacherSelect" x-model="editTeacherKey" @change="onEditTeacherChange()"
+                            :disabled="editLoadingTeachers"
+                            class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-white disabled:opacity-60">
+                        <option value="">No teacher assigned</option>
+                    </select>
+                    <p class="mt-1.5 text-xs text-amber-700 dark:text-amber-300" x-show="editTeacherError" x-text="editTeacherError"></p>
+                    <p class="mt-1.5 text-xs text-gray-500" x-show="editLoadingTeachers">Loading teachers…</p>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-gray-400" x-show="editAllocation && editAllocation.students_allocated_count > 0">
+                    <span x-text="editAllocation.students_allocated_count"></span> copy/copies already issued to students — class and quantity cannot be changed here.
+                </p>
+            </div>
+            <div class="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+                <button type="button" @click="closeEditAllocation()"
+                        class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">
+                    Cancel
+                </button>
+                <button type="button" @click="saveEditAllocation()" :disabled="editSaving"
+                        class="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+                    <span x-text="editSaving ? 'Saving…' : 'Save changes'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+(function () {
+  function registerStockAllocatePage() {
+    Alpine.data('stockAllocatePage', function () {
+      var payload = {};
+      try {
+        var el = document.getElementById('stock-allocate-page-data');
+        payload = el && el.textContent ? JSON.parse(el.textContent) : {};
+      } catch (e) {
+        payload = {};
+      }
+      return {
+        books: payload.books || [],
+        levels: payload.levels || [],
+        teachersUrl: payload.teachersUrl || '',
+        postUrl: payload.postUrl || '',
+        stockUrl: payload.stockUrl || '',
+        allocationApiPrefix: payload.allocationApiPrefix || '',
+        recentAllocations: (payload.recentAllocations || []).slice(0, 30),
+        editAllocation: null,
+        editNotes: '',
+        editTeacherKey: '',
+        editTeacherId: '',
+        editTeacherSubjectId: '',
+        editTeachers: [],
+        editLoadingTeachers: false,
+        editTeacherError: '',
+        editSaving: false,
+        selectedBook: null,
+        levelId: '',
+        teacherKey: '',
+        teacherId: '',
+        teacherSubjectId: '',
+        teachers: [],
+        loadingTeachers: false,
+        teacherError: '',
+        levelsForBook: function () {
+          if (!this.selectedBook) return [];
+          var cat = (this.selectedBook.academic_category || '').toUpperCase();
+          return (this.levels || []).filter(function (lvl) {
+            return (lvl.level_category || '').toUpperCase() === cat;
+          });
+        },
+        selectBook: function (book) {
+          if (!book || (book.available_to_allocate || 0) < 1) return;
+          this.selectedBook = book;
+          this.levelId = '';
+          this.teacherKey = '';
+          this.teacherId = '';
+          this.teacherSubjectId = '';
+          this.teachers = [];
+          this.teacherError = '';
+          this.loadingTeachers = false;
+          var self = this;
+          this.$nextTick(function () {
+            self.renderTeacherOptions();
+            var panel = document.getElementById('allocate-form');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          });
+        },
+        clearSelection: function () {
+          this.selectedBook = null;
+          this.levelId = '';
+          this.teacherKey = '';
+          this.teacherId = '';
+          this.teacherSubjectId = '';
+          this.teachers = [];
+          this.teacherError = '';
+          if (window.history && window.history.replaceState) {
+            var base = this.stockUrl || window.location.pathname;
+            var q = window.location.search.replace(/[?&]book=\d+/g, '').replace(/^&/, '?');
+            window.history.replaceState({}, '', base + (q === '?' ? '' : q));
+          }
+        },
+        renderTeacherOptions: function () {
+          var sel = this.$refs.teacherSelect;
+          if (!sel) return;
+          sel.innerHTML = '';
+          var ph = document.createElement('option');
+          ph.value = '';
+          if (this.loadingTeachers) {
+            ph.textContent = 'Loading teachers…';
+          } else if (!this.levelId) {
+            ph.textContent = 'Select class first';
+          } else if (!this.teachers.length) {
+            ph.textContent = 'No teachers for this class';
+          } else {
+            ph.textContent = 'Select teacher';
+          }
+          sel.appendChild(ph);
+          var self = this;
+          this.teachers.forEach(function (t) {
+            var opt = document.createElement('option');
+            opt.value = String(t.teacher_id) + ':' + String(t.subject_id);
+            var label = (t.teacher_name || 'Teacher') + ' — ' + (t.subject_name || 'Subject');
+            if (t.from_class_assignment) {
+              label += ' (class assignment)';
+            } else {
+              label += ' (teacher)';
+            }
+            if (t.matches_book_subject && t.from_class_assignment) {
+              label += ' · book subject';
+            }
+            opt.textContent = label;
+            sel.appendChild(opt);
+          });
+          if (self.teacherKey) sel.value = self.teacherKey;
+        },
+        onLevelChange: function () {
+          this.teacherKey = '';
+          this.teacherId = '';
+          this.teacherSubjectId = '';
+          this.teachers = [];
+          this.teacherError = '';
+          this.renderTeacherOptions();
+          if (!this.levelId || !this.selectedBook) return;
+          var self = this;
+          this.loadingTeachers = true;
+          this.renderTeacherOptions();
+          var url = this.teachersUrl + '?academic_level_id=' + encodeURIComponent(this.levelId)
+            + '&book_id=' + encodeURIComponent(this.selectedBook.id);
+          fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) {
+              if (!r.ok) {
+                return r.json().catch(function () {
+                  return { ok: false, message: 'Could not load teachers (HTTP ' + r.status + ').' };
+                });
+              }
+              return r.json();
+            })
+            .then(function (data) {
+              self.loadingTeachers = false;
+              if (!data || !data.ok) {
+                self.teacherError = (data && data.message) || 'Could not load teachers.';
+                self.teachers = [];
+                self.renderTeacherOptions();
+                return;
+              }
+              var rows = data.assignments || [];
+              self.teachers = rows.slice().sort(function (a, b) {
+                var ac = a.from_class_assignment ? 1 : 0;
+                var bc = b.from_class_assignment ? 1 : 0;
+                if (bc !== ac) return bc - ac;
+                var am = a.matches_book_subject ? 1 : 0;
+                var bm = b.matches_book_subject ? 1 : 0;
+                if (bm !== am) return bm - am;
+                return (a.teacher_name || '').localeCompare(b.teacher_name || '');
+              });
+              self.teacherError = '';
+              self.renderTeacherOptions();
+              if (self.teachers.length === 1) {
+                self.teacherKey = String(self.teachers[0].teacher_id) + ':' + String(self.teachers[0].subject_id);
+                self.onTeacherChange();
+                if (self.$refs.teacherSelect) self.$refs.teacherSelect.value = self.teacherKey;
+              }
+            })
+            .catch(function (err) {
+              console.error('stockAllocatePage teachers fetch:', err);
+              self.loadingTeachers = false;
+              self.teacherError = 'Could not load teachers. Check your connection and try again.';
+              self.teachers = [];
+              self.renderTeacherOptions();
+            });
+        },
+        onTeacherChange: function () {
+          var parts = (this.teacherKey || '').split(':');
+          this.teacherId = parts[0] || '';
+          this.teacherSubjectId = parts[1] || '';
+        },
+        allocationApiUrl: function (movementId) {
+          return (this.allocationApiPrefix || '').replace(/\/$/, '') + '/' + movementId;
+        },
+        openEditAllocation: function (row) {
+          if (!row || !row.id) return;
+          this.editAllocation = row;
+          this.editNotes = row.notes || '';
+          this.editTeacherKey = '';
+          this.editTeacherId = '';
+          this.editTeacherSubjectId = '';
+          this.editTeachers = [];
+          this.editTeacherError = '';
+          var dists = row.teacher_distributions || [];
+          if (dists.length === 1) {
+            var d0 = dists[0];
+            this.editTeacherKey = String(d0.teacher_id) + ':' + String(d0.subject_id);
+            this.onEditTeacherChange();
+          } else if (dists.length > 1 && dists[0]) {
+            var d = dists[0];
+            this.editTeacherKey = String(d.teacher_id) + ':' + String(d.subject_id);
+            this.onEditTeacherChange();
+          }
+          this.loadEditTeachers();
+        },
+        closeEditAllocation: function () {
+          this.editAllocation = null;
+          this.editSaving = false;
+        },
+        onEditTeacherChange: function () {
+          var parts = (this.editTeacherKey || '').split(':');
+          this.editTeacherId = parts[0] || '';
+          this.editTeacherSubjectId = parts[1] || '';
+        },
+        renderEditTeacherOptions: function () {
+          var sel = this.$refs.editTeacherSelect;
+          if (!sel) return;
+          sel.innerHTML = '';
+          var ph = document.createElement('option');
+          ph.value = '';
+          ph.textContent = this.editLoadingTeachers ? 'Loading teachers…' : 'No teacher assigned';
+          sel.appendChild(ph);
+          var self = this;
+          this.editTeachers.forEach(function (t) {
+            var opt = document.createElement('option');
+            opt.value = String(t.teacher_id) + ':' + String(t.subject_id);
+            var label = (t.teacher_name || 'Teacher') + ' — ' + (t.subject_name || 'Subject');
+            opt.textContent = label;
+            sel.appendChild(opt);
+          });
+          if (self.editTeacherKey) sel.value = self.editTeacherKey;
+        },
+        loadEditTeachers: function () {
+          if (!this.editAllocation) return;
+          var self = this;
+          this.editLoadingTeachers = true;
+          this.renderEditTeacherOptions();
+          var url = this.teachersUrl + '?academic_level_id=' + encodeURIComponent(this.editAllocation.level_id)
+            + '&book_id=' + encodeURIComponent(this.editAllocation.book_id);
+          fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+              self.editLoadingTeachers = false;
+              if (!data || !data.ok) {
+                self.editTeacherError = (data && data.message) || 'Could not load teachers.';
+                self.editTeachers = [];
+                self.renderEditTeacherOptions();
+                return;
+              }
+              self.editTeachers = data.assignments || [];
+              self.renderEditTeacherOptions();
+            })
+            .catch(function () {
+              self.editLoadingTeachers = false;
+              self.editTeacherError = 'Could not load teachers.';
+              self.renderEditTeacherOptions();
+            });
+        },
+        saveEditAllocation: function () {
+          if (!this.editAllocation) return;
+          var self = this;
+          this.editSaving = true;
+          var body = {
+            notes: this.editNotes,
+            quantity: this.editAllocation.quantity,
+          };
+          if (this.editTeacherKey) {
+            body.teacher_id = parseInt(this.editTeacherId, 10);
+            body.teacher_subject_id = parseInt(this.editTeacherSubjectId, 10);
+          } else {
+            body.clear_teacher = true;
+          }
+          fetch(this.allocationApiUrl(this.editAllocation.id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+          })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+            .then(function (res) {
+              self.editSaving = false;
+              if (!res.ok || !res.data.ok) {
+                window.alert((res.data && res.data.message) || 'Could not save changes.');
+                return;
+              }
+              var rec = res.data.record;
+              if (rec) {
+                var idx = self.recentAllocations.findIndex(function (x) { return x.id === rec.id; });
+                if (idx >= 0) {
+                  self.recentAllocations[idx] = rec;
+                  self.recentAllocations = self.recentAllocations.slice();
+                }
+              }
+              self.closeEditAllocation();
+            })
+            .catch(function () {
+              self.editSaving = false;
+              window.alert('Could not save changes.');
+            });
+        },
+        init: function () {},
+      };
+    });
+  }
+  if (window.Alpine && window.Alpine.data) {
+    registerStockAllocatePage();
+  } else {
+    document.addEventListener('alpine:init', registerStockAllocatePage);
+  }
+})();
+</script>

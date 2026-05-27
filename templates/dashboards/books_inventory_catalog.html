@@ -31,116 +31,134 @@
         {% endif %}
 
         {% if books %}
-        <div class="divide-y divide-gray-100 dark:divide-gray-800">
-            {% for b in books %}
-            {% set show_setup_form = b.needs_setup or (open_setup_book_id == b.id) %}
-            <article id="book-{{ b.id }}" class="scroll-mt-24 {% if b.needs_setup %}bg-amber-50/30 dark:bg-amber-950/15{% endif %}">
-                <div class="px-4 py-4 sm:px-5">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div class="min-w-0">
-                            <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{{ b.book_name }}</h3>
-                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                                <span class="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium uppercase dark:bg-gray-800">{{ b.book_category }}</span>
-                                {% if b.store_item_id %}
-                                <span class="ml-2 text-xs text-sky-700 dark:text-sky-300">From store</span>
-                                {% endif %}
-                                {% if b.needs_setup %}
-                                <span class="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Needs setup</span>
-                                {% else %}
-                                <span class="ml-2 text-gray-500">{{ b.academic_category }} · {{ b.subject_name }}{% if b.subject_code %} ({{ b.subject_code }}){% endif %}</span>
-                                {% endif %}
-                            </p>
-                            {% if not b.needs_setup %}
-                            <p class="mt-1 text-xs text-gray-500 tabular-nums">
-                                {{ b.copies_total }} catalog cop{% if b.copies_total == 1 %}y{% else %}ies{% endif %}
-                                {% if b.library_status == 'suspended' %} · <span class="text-amber-600 font-medium">Suspended</span>{% endif %}
-                            </p>
+        <div class="overflow-x-auto">
+            <table class="min-w-[640px] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Book</th>
+                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Category</th>
+                        <th class="px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Subject</th>
+                        <th class="px-4 py-3.5 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-5">Qty in stock</th>
+                        <th class="sticky right-0 z-[2] w-[5.5rem] border-l border-gray-100 bg-gray-50/95 px-2 py-3.5 text-center text-[10px] font-semibold uppercase text-gray-500 dark:border-gray-800 dark:bg-gray-950/95 sm:w-24">Edit</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                    {% for b in books %}
+                    {% set lib_stock = b.quantity_in_stock|default(0) %}
+                    {% set store_stock = b.store_quantity_on_hand|default(0) if b.store_item_id else 0 %}
+                    {% if lib_stock > 0 %}
+                        {% set display_qty = lib_stock %}
+                    {% elif store_stock > 0 %}
+                        {% set display_qty = store_stock %}
+                    {% else %}
+                        {% set display_qty = 0 %}
+                    {% endif %}
+                    <tr id="book-{{ b.id }}" class="scroll-mt-24 hover:bg-brand-primary/[0.04] {% if b.needs_setup %}bg-amber-50/30 dark:bg-amber-950/15{% elif b.library_status == 'suspended' %}opacity-[0.88]{% endif %}">
+                        <td class="px-4 py-3.5 sm:px-5">
+                            <span class="font-semibold text-gray-900 dark:text-white">{{ b.book_name }}</span>
+                            {% if b.store_item_id %}
+                            <span class="ml-2 text-[10px] font-medium text-sky-700 dark:text-sky-300">Store</span>
                             {% endif %}
-                        </div>
-                        {% if not b.needs_setup %}
-                        <div class="flex flex-wrap gap-2 shrink-0">
-                            <form method="post" action="{{ url_for('books_inventory_toggle_suspend', book_id=b.id) }}" class="inline">
-                                <button type="submit" class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">
-                                    {% if b.library_status == 'suspended' %}Resume{% else %}Suspend{% endif %}
-                                </button>
-                            </form>
-                            <form method="post" action="{{ url_for('books_inventory_delete', book_id=b.id) }}" class="inline" onsubmit="return confirm('Remove this book from the catalog permanently?');">
-                                <button type="submit" class="rounded-lg border border-red-200 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-900 dark:text-red-400">Delete</button>
-                            </form>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-
-                {% if show_setup_form %}
-                <details id="book-{{ b.id }}-form" class="group border-t border-gray-100 dark:border-gray-800" open>
-                    <summary class="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-brand-primary hover:bg-gray-50 dark:hover:bg-gray-800/50 sm:px-5 [&::-webkit-details-marker]:hidden">
-                        <span class="inline-flex items-center gap-2">
-                            <i class="fas fa-sliders text-xs"></i>
-                            {% if b.needs_setup %}Set up inventory{% else %}Edit inventory setup{% endif %}
-                            <i class="fas fa-chevron-down text-[10px] transition group-open:rotate-180"></i>
-                        </span>
-                    </summary>
-                    <div class="border-t border-gray-100 bg-gray-50/80 px-4 py-5 dark:border-gray-800 dark:bg-gray-950/40 sm:px-5">
-                        <form method="post" action="{{ url_for('books_inventory_setup', book_id=b.id) }}" class="js-book-setup-form space-y-6">
-                            <div class="rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3 dark:border-sky-900/40 dark:bg-sky-950/25">
-                                <p class="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">Book &amp; academic placement</p>
-                            </div>
-                            <div class="grid gap-4 sm:grid-cols-2">
-                                <div class="sm:col-span-2">
-                                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Book category</label>
-                                    <input type="text" name="book_category" required maxlength="120" value="{{ b.book_category }}"
-                                           class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Book name</label>
-                                    <input type="text" name="book_name" required maxlength="255" value="{{ b.book_name }}"
-                                           class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Description <span class="font-normal normal-case text-gray-400">(optional)</span></label>
-                                    <textarea name="description" rows="2" maxlength="500"
-                                              class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">{{ b.description }}</textarea>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Academic category</label>
-                                    <select name="academic_category" required class="js-setup-category w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
-                                        <option value="">Select category</option>
-                                        {% for cat in academic_categories %}
-                                        <option value="{{ cat }}" {% if b.academic_category == cat and not b.needs_setup %}selected{% endif %}>{{ cat }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Subject</label>
-                                    <select name="subject_id" required class="js-setup-subject w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white"
-                                            {% if b.needs_setup %}disabled{% endif %}>
-                                        <option value="">Select subject</option>
-                                        {% if not b.needs_setup and b.academic_category in subjects_by_category %}
-                                        {% for s in subjects_by_category[b.academic_category] %}
-                                        <option value="{{ s.id }}" {% if b.subject_id == s.id %}selected{% endif %}>{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}</option>
-                                        {% endfor %}
-                                        {% endif %}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div class="flex flex-wrap gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
-                                <button type="submit"
-                                        class="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md hover:brightness-110">
-                                    <i class="fas fa-check"></i> Save setup
-                                </button>
-                                {% if not b.needs_setup %}
-                                <a href="{{ employee_dash_url('books-inventory') }}" class="inline-flex items-center rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">Cancel</a>
-                                {% endif %}
-                            </div>
-                        </form>
-                    </div>
-                </details>
-                {% endif %}
-            </article>
-            {% endfor %}
+                            {% if b.needs_setup %}
+                            <span class="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Needs setup</span>
+                            {% elif b.library_status == 'suspended' %}
+                            <span class="ml-2 text-[10px] font-medium text-amber-700 dark:text-amber-400">Suspended</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3.5 text-gray-600 dark:text-gray-300 sm:px-5">{{ b.book_category }}</td>
+                        <td class="px-4 py-3.5 text-gray-600 dark:text-gray-300 sm:px-5">
+                            {% if b.needs_setup %}
+                            <span class="text-gray-400">—</span>
+                            {% else %}
+                            {{ b.subject_name }}{% if b.subject_code %} <span class="text-gray-400">({{ b.subject_code }})</span>{% endif %}
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3.5 text-right tabular-nums font-semibold text-gray-900 dark:text-white sm:px-5">
+                            {{ display_qty }}
+                            {% if lib_stock > 0 and store_stock > 0 %}
+                            <span class="block text-[10px] font-normal text-gray-500">{{ store_stock }} in store</span>
+                            {% elif store_stock > 0 and lib_stock == 0 %}
+                            <span class="block text-[10px] font-normal text-sky-700 dark:text-sky-300">store warehouse</span>
+                            {% endif %}
+                        </td>
+                        <td class="sticky right-0 z-[1] border-l border-gray-100 bg-white px-2 py-2 text-center dark:border-gray-800 dark:bg-gray-900 sm:px-3">
+                            <a href="{{ employee_dash_url('books-inventory') }}?{% if catalog_filter == 'setup' %}filter=setup&amp;{% endif %}setup={{ b.id }}#book-{{ b.id }}-form"
+                               title="{% if b.needs_setup %}Set up{% else %}Edit{% endif %}"
+                               class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-sky-600 hover:bg-gray-50 dark:border-gray-600 dark:text-sky-400 dark:hover:bg-gray-800">
+                                <i class="fas fa-pen-to-square"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
+
+        {% for b in books %}
+        {% set show_setup_form = (b.needs_setup and catalog_filter == 'setup') or (open_setup_book_id == b.id) %}
+        {% if show_setup_form %}
+        <article id="book-{{ b.id }}-form" class="scroll-mt-24 border-t border-gray-100 dark:border-gray-800 {% if b.needs_setup %}bg-amber-50/30 dark:bg-amber-950/15{% endif %}">
+            <div class="border-b border-gray-100 px-4 py-3 dark:border-gray-800 sm:px-5">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {% if b.needs_setup %}Set up{% else %}Edit{% endif %}: {{ b.book_name }}
+                </h3>
+            </div>
+            <div class="bg-gray-50/80 px-4 py-5 dark:bg-gray-950/40 sm:px-5">
+                <form method="post" action="{{ url_for('books_inventory_setup', book_id=b.id) }}" class="js-book-setup-form space-y-6">
+                    <div class="rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3 dark:border-sky-900/40 dark:bg-sky-950/25">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-sky-800 dark:text-sky-300">Book &amp; academic placement</p>
+                    </div>
+                    <div class="grid gap-4 sm:grid-cols-2">
+                        <div class="sm:col-span-2">
+                            <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Book category</label>
+                            <input type="text" name="book_category" required maxlength="120" value="{{ b.book_category }}"
+                                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Book name</label>
+                            <input type="text" name="book_name" required maxlength="255" value="{{ b.book_name }}"
+                                   class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Description <span class="font-normal normal-case text-gray-400">(optional)</span></label>
+                            <textarea name="description" rows="2" maxlength="500"
+                                      class="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">{{ b.description }}</textarea>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Academic category</label>
+                            <select name="academic_category" required class="js-setup-category w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                                <option value="">Select category</option>
+                                {% for cat in academic_categories %}
+                                <option value="{{ cat }}" {% if b.academic_category == cat and not b.needs_setup %}selected{% endif %}>{{ cat }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-semibold uppercase text-gray-600 dark:text-gray-400">Subject</label>
+                            <select name="subject_id" required class="js-setup-subject w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm uppercase dark:border-gray-600 dark:bg-gray-950 dark:text-white"
+                                    {% if b.needs_setup %}disabled{% endif %}>
+                                <option value="">Select subject</option>
+                                {% if not b.needs_setup and b.academic_category in subjects_by_category %}
+                                {% for s in subjects_by_category[b.academic_category] %}
+                                <option value="{{ s.id }}" {% if b.subject_id == s.id %}selected{% endif %}>{{ s.subject_name }}{% if s.subject_code %} ({{ s.subject_code }}){% endif %}</option>
+                                {% endfor %}
+                                {% endif %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                        <button type="submit"
+                                class="inline-flex items-center gap-2 rounded-xl bg-brand-primary px-6 py-3 text-sm font-semibold text-white shadow-md hover:brightness-110">
+                            <i class="fas fa-check"></i> Save
+                        </button>
+                        <a href="{{ employee_dash_url('books-inventory') }}{% if catalog_filter == 'setup' %}?filter=setup{% endif %}" class="inline-flex items-center rounded-xl border border-gray-200 px-4 py-3 text-sm font-medium text-gray-700 dark:border-gray-600 dark:text-gray-300">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </article>
+        {% endif %}
+        {% endfor %}
         {% set cpm = catalog_page_meta|default({}) %}
         {% if cpm.pages and cpm.pages > 1 %}
         <nav class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-5">

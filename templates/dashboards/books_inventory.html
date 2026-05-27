@@ -32,7 +32,7 @@
             </h1>
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
                 {% if inv_view == 'stock' %}
-                <strong>Allocate to class</strong> sends copies to a class (with copy IDs). <strong>Allocate to teacher</strong> distributes class stock to teachers.
+                Select a book from stock, allocate copies to a class, and assign them to a teacher.
                 {% elif catalog_filter|default('all') == 'setup' %}
                 Complete setup for each title: academic category and subject.
                 {% else %}
@@ -41,7 +41,7 @@
             </p>
             {% if inv_view != 'stock' %}
             <p class="mt-3">
-                <a href="{{ employee_dash_url('books-inventory/stock') }}" class="text-sm font-medium text-brand-primary hover:underline">Go to allocate to class / teacher →</a>
+                <a href="{{ employee_dash_url('books-inventory/stock') }}" class="text-sm font-medium text-brand-primary hover:underline">Allocate books in stock →</a>
             </p>
             {% else %}
             <p class="mt-3">
@@ -51,7 +51,7 @@
         </header>
 
         {% if inv_view == 'stock' %}
-        {% include 'dashboards/books_inventory_stock.html' %}
+        {% include 'dashboards/books_inventory_allocate.html' %}
         {% else %}
         {% include 'dashboards/books_inventory_catalog.html' %}
         {% endif %}

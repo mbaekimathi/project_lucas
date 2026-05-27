@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Issue / Return — {{ level.level_name if level else 'Class' }} - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
+{% block title %}{{ level.level_name if level else 'Class' }} — Issue / Return Books - {{ school_settings.school_name or 'Modern School' }}{% endblock %}
 
 {% block sidebar_content %}
 <a href="{{ dashboard_home_url() }}" class="sidebar-item mb-2 pb-2 border-b border-slate-700/60">
@@ -10,8 +10,18 @@
 {% endblock %}
 
 {% block content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<script type="application/json" id="issue-records-level-data">{{ {
+    'level_id': level_id,
+    'level_name': level.level_name if level else '',
+    'books': books_for_issue|default([]),
+    'students': students|default([]),
+    'issue_url': employee_dash_url('issue-return-records/issue'),
+    'return_url': employee_dash_url('issue-return-records/return')
+}|tojson }}</script>
+
+<div class="min-h-screen bg-gradient-to-br from-slate-50 via-white to-teal-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-teal-950/20 py-6 sm:py-8 page-content portal-page-root role-page role-page--{{ portal_page_variant|default('default') }}"
+     x-data="librarianIssueRecordsLevel()">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
         <div class="mb-6 space-y-2">
@@ -27,7 +37,7 @@
         <div class="mb-6">
             <a href="{{ employee_dash_url('issue-return-records') }}"
                class="inline-flex items-center gap-2 text-sm font-medium text-teal-700 hover:text-teal-900 dark:text-teal-300">
-                <i class="fas fa-arrow-left" aria-hidden="true"></i> All classes
+                <i class="fas fa-arrow-left" aria-hidden="true"></i> All allocations
             </a>
         </div>
 
@@ -38,34 +48,281 @@
             <p class="mt-1 text-xs font-mono text-gray-500 dark:text-gray-400">{{ level.level_code }}</p>
             {% endif %}
             <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Books issued to students in this class by teachers with allocated library copies.
+                Issue or return books using reference codes for students in this class.
             </p>
             <div class="mt-4 flex flex-wrap gap-2 text-xs">
+                <span class="rounded-full bg-teal-100 px-3 py-1 font-semibold text-teal-900 dark:bg-teal-950/50 dark:text-teal-200">
+                    {{ (books_for_issue|default([]))|length }} title{% if (books_for_issue|default([]))|length != 1 %}s{% endif %} allocated
+                </span>
+                <span class="rounded-full bg-teal-50 border border-teal-200 px-3 py-1 font-semibold text-teal-800 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-200">
+                    {{ class_allocated|default(0) }} copies
+                </span>
                 <span class="rounded-full bg-emerald-100 px-3 py-1 font-semibold text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200">
-                    {{ active_count }} currently issued
+                    {{ students|default([])|length }} students
                 </span>
-                {% if returned_count > 0 %}
-                <span class="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-800 dark:bg-slate-800 dark:text-slate-200">
-                    {{ returned_count }} returned
-                </span>
-                {% endif %}
             </div>
         </header>
 
+        {% if books_for_issue %}
+        <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 mb-8">
+            <div class="border-b border-gray-100 px-4 py-4 dark:border-gray-800 sm:px-6">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-white sm:text-lg">Student book transactions</h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Issue copies to students or record returns by reference code.</p>
+                    </div>
+                    <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-950" role="tablist">
+                        <button type="button" role="tab" :aria-selected="activeTab === 'issue'"
+                                @click="activeTab = 'issue'"
+                                class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                                :class="activeTab === 'issue' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                            <i class="fas fa-arrow-right mr-1.5" aria-hidden="true"></i>Issue
+                        </button>
+                        <button type="button" role="tab" :aria-selected="activeTab === 'return'"
+                                @click="activeTab = 'return'; onReturnBookChange()"
+                                class="rounded-lg px-4 py-2 text-sm font-semibold transition"
+                                :class="activeTab === 'return' ? 'bg-slate-700 text-white shadow-sm dark:bg-slate-500' : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'">
+                            <i class="fas fa-undo mr-1.5" aria-hidden="true"></i>Return
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="px-4 py-5 sm:px-6 space-y-5" x-show="activeTab === 'issue'" id="issue-panel">
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div class="sm:col-span-2 lg:col-span-1">
+                        <label for="lib_issue_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Book</label>
+                        <select id="lib_issue_book_select" x-ref="bookSelect" x-model="selectedBookId" @change="onBookChange()"
+                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                            <option value="">Select a book…</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2" x-show="selectedBook" x-cloak>
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                            <span class="text-gray-500">Allocated</span>
+                            <span class="tabular-nums" x-text="selectedBook.allocated"></span>
+                        </span>
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                            <span class="opacity-80">Issued</span>
+                            <span class="tabular-nums" x-text="selectedBook.active_issues"></span>
+                        </span>
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800 dark:bg-sky-950/50 dark:text-sky-200">
+                            <span class="opacity-80">In stock</span>
+                            <span class="tabular-nums" x-text="selectedBook.in_stock_count"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div x-show="selectedBook" x-cloak>
+                    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <span class="font-semibold text-gray-900 dark:text-white" x-text="students.length"></span> students in this class
+                        </p>
+                        <button type="button" @click="saveIssues()" :disabled="submitting || !hasPendingIssues()"
+                                class="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-50">
+                            <i class="fas fa-save" x-show="!submitting"></i>
+                            <i class="fas fa-spinner fa-spin" x-show="submitting"></i>
+                            <span x-text="submitting ? 'Saving…' : 'Save reference codes'"></span>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                        <table class="min-w-[640px] w-full border-collapse text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                                    <th class="w-10 px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">#</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Student ID</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Name</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Reference code</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                <template x-for="(stu, idx) in students" :key="stu.student_id">
+                                    <tr class="hover:bg-teal-50/30 dark:hover:bg-teal-950/20">
+                                        <td class="px-3 py-3 tabular-nums text-gray-400 sm:px-4" x-text="idx + 1"></td>
+                                        <td class="px-3 py-3 font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 sm:px-4" x-text="stu.student_id"></td>
+                                        <td class="px-3 py-3 font-medium text-gray-900 dark:text-white sm:px-4" x-text="stu.full_name"></td>
+                                        <td class="px-3 py-3 sm:px-4">
+                                            <template x-if="existingIssue(stu.student_id)">
+                                                <span class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-mono text-sm font-bold uppercase text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                                      x-text="existingIssue(stu.student_id).copy_code"></span>
+                                            </template>
+                                            <template x-if="!existingIssue(stu.student_id)">
+                                                <input type="text" maxlength="4" autocomplete="off"
+                                                       :list="'lib-copy-codes-' + selectedBookId"
+                                                       x-model="refInputs[stu.student_id]"
+                                                       @input="refInputs[stu.student_id] = ($event.target.value || '').toUpperCase()"
+                                                       placeholder="e.g. A001"
+                                                       class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                            </template>
+                                        </td>
+                                        <td class="px-3 py-3 sm:px-4">
+                                            <template x-if="existingIssue(stu.student_id)">
+                                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">Issued</span>
+                                            </template>
+                                            <template x-if="!existingIssue(stu.student_id) && (refInputs[stu.student_id] || '').trim()">
+                                                <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">Pending</span>
+                                            </template>
+                                            <template x-if="!existingIssue(stu.student_id) && !(refInputs[stu.student_id] || '').trim()">
+                                                <span class="text-xs text-gray-400">—</span>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <datalist :id="'lib-copy-codes-' + selectedBookId">
+                        <template x-for="code in (selectedBook ? selectedBook.copies_in_stock : [])" :key="code">
+                            <option :value="code"></option>
+                        </template>
+                    </datalist>
+                    <p class="mt-3 text-xs" x-show="saveMessage" x-text="saveMessage"
+                       :class="saveOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"></p>
+                </div>
+
+                <div x-show="!selectedBook && books.length" class="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center dark:border-gray-700">
+                    <i class="fas fa-hand-pointer text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">Select a book above to list students and enter reference codes.</p>
+                </div>
+            </div>
+
+            <div class="border-t border-gray-100 px-4 py-5 sm:px-6 space-y-5 dark:border-gray-800" x-show="activeTab === 'return'" id="return-panel" x-cloak>
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div class="sm:col-span-2 lg:col-span-1">
+                        <label for="lib_return_book_select" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">Filter by book</label>
+                        <select id="lib_return_book_select" x-ref="returnBookSelect" x-model="selectedReturnBookId" @change="onReturnBookChange()"
+                                class="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white">
+                            <option value="">All books</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3 sm:col-span-2">
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
+                            <span class="opacity-80">Students with books</span>
+                            <span class="tabular-nums" x-text="returnRows.length"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div x-show="returnRows.length" x-cloak>
+                    <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            Students who currently have a copy issued. Enter the reference code on each returned book.
+                        </p>
+                        <button type="button" @click="saveReturns()" :disabled="returnSubmitting || !hasPendingReturns()"
+                                class="inline-flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-slate-600 dark:hover:bg-slate-500">
+                            <i class="fas fa-undo" x-show="!returnSubmitting"></i>
+                            <i class="fas fa-spinner fa-spin" x-show="returnSubmitting"></i>
+                            <span x-text="returnSubmitting ? 'Saving…' : 'Save returns'"></span>
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                        <table class="min-w-[720px] w-full border-collapse text-left text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-100 bg-gray-50/95 dark:border-gray-800 dark:bg-gray-950/80">
+                                    <th class="w-10 px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">#</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Student ID</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Name</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4" x-show="!selectedReturnBookId">Book</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Issued ref</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Return ref</th>
+                                    <th class="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500 sm:px-4">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                <template x-for="(row, idx) in returnRows" :key="row.rowKey">
+                                    <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-950/30">
+                                        <td class="px-3 py-3 tabular-nums text-gray-400 sm:px-4" x-text="idx + 1"></td>
+                                        <td class="px-3 py-3 font-mono text-xs font-semibold text-gray-800 dark:text-gray-200 sm:px-4" x-text="row.student_id"></td>
+                                        <td class="px-3 py-3 font-medium text-gray-900 dark:text-white sm:px-4" x-text="row.full_name"></td>
+                                        <td class="px-3 py-3 text-xs text-gray-700 dark:text-gray-300 sm:px-4" x-show="!selectedReturnBookId" x-text="row.book_name"></td>
+                                        <td class="px-3 py-3 sm:px-4">
+                                            <span class="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 font-mono text-sm font-bold uppercase text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
+                                                  x-text="row.copy_code"></span>
+                                        </td>
+                                        <td class="px-3 py-3 sm:px-4">
+                                            <input type="text" maxlength="4" autocomplete="off"
+                                                   :list="'lib-return-codes-' + row.book_id"
+                                                   x-model="returnRefInputs[row.rowKey]"
+                                                   @input="returnRefInputs[row.rowKey] = ($event.target.value || '').toUpperCase(); clearReturnHint(row.rowKey)"
+                                                   :placeholder="row.copy_code"
+                                                   class="w-full max-w-[7rem] rounded-lg border border-gray-200 bg-white px-2.5 py-2 font-mono text-sm uppercase tracking-wide text-gray-900 shadow-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500/20 dark:border-gray-600 dark:bg-gray-950 dark:text-white" />
+                                        </td>
+                                        <td class="px-3 py-3 sm:px-4">
+                                            <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                                                  :class="(returnRefInputs[row.rowKey] || '').trim() ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200'"
+                                                  x-text="(returnRefInputs[row.rowKey] || '').trim() ? 'Pending return' : 'Issued'"></span>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                    <template x-for="book in books" :key="'lib-rdl-' + book.book_id">
+                        <datalist :id="'lib-return-codes-' + book.book_id">
+                            <template x-for="code in (book.copies_issued || [])" :key="book.book_id + '-' + code">
+                                <option :value="code"></option>
+                            </template>
+                        </datalist>
+                    </template>
+                    <p class="mt-3 text-xs" x-show="returnSaveMessage" x-text="returnSaveMessage"
+                       :class="returnSaveOk ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'"></p>
+                    <div class="mt-3 space-y-2" x-show="returnHints.length">
+                        <template x-for="hint in returnHints" :key="hint.rowKey + '-' + hint.copy_code">
+                            <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                                <span class="font-semibold" x-text="hint.student_id + ' · ' + hint.copy_code"></span>
+                                <span class="block mt-0.5" x-text="hint.message"></span>
+                                <span class="block mt-1 font-medium text-amber-900 dark:text-amber-200" x-show="hint.owner">
+                                    Suggested holder:
+                                    <span x-text="(hint.owner.student_name || '') + ' (' + (hint.owner.student_id || '') + ')'"></span>
+                                    <span x-show="hint.owner.copy_code" class="font-mono" x-text="' — ref ' + hint.owner.copy_code"></span>
+                                </span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div x-show="!returnRows.length" class="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center dark:border-gray-700">
+                    <i class="fas fa-check-circle text-3xl text-gray-300 dark:text-gray-600 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-gray-400">No students currently have books issued in this class.</p>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90 px-6 py-14 text-center mb-8">
+            <i class="fas fa-book text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
+            <p class="text-gray-700 dark:text-gray-300 font-medium">No books allocated to this class yet</p>
+            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
+                Allocate books from
+                <a href="{{ employee_dash_url('books-inventory/stock') }}" class="font-semibold text-brand-primary underline">Allocate books</a>
+                first.
+            </p>
+        </div>
+        {% endif %}
+
         {% if records %}
-        <div class="rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden dark:border-gray-700 dark:bg-gray-900/90">
-            <div class="overflow-x-auto">
+        <details class="group rounded-2xl border border-gray-200/90 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900/90">
+            <summary class="cursor-pointer list-none px-4 py-4 sm:px-6 [&::-webkit-details-marker]:hidden">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        All issue / return records
+                        <span class="ml-2 font-normal text-gray-500">({{ records|length }})</span>
+                    </h2>
+                    <i class="fas fa-chevron-down text-xs text-gray-400 transition group-open:rotate-180"></i>
+                </div>
+            </summary>
+            <div class="border-t border-gray-100 dark:border-gray-800 overflow-x-auto">
                 <table class="min-w-full text-sm">
                     <thead>
                         <tr class="border-b border-gray-200 bg-gray-50/80 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-400">
                             <th class="px-4 py-3 whitespace-nowrap">Copy ref</th>
                             <th class="px-4 py-3 whitespace-nowrap">Book</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Subject</th>
                             <th class="px-4 py-3 whitespace-nowrap">Student</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Teacher</th>
+                            <th class="px-4 py-3 whitespace-nowrap">Recorded by</th>
                             <th class="px-4 py-3 whitespace-nowrap">Status</th>
                             <th class="px-4 py-3 whitespace-nowrap">Issued</th>
-                            <th class="px-4 py-3 whitespace-nowrap">Returned</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -73,7 +330,6 @@
                         <tr class="hover:bg-teal-50/50 dark:hover:bg-teal-950/20 {% if rec.status == 'returned' %}opacity-75{% endif %}">
                             <td class="px-4 py-3 font-mono text-xs font-bold text-teal-800 dark:text-teal-200 whitespace-nowrap">{{ rec.copy_code }}</td>
                             <td class="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{{ rec.book_name }}</td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400">{{ rec.subject_name or '—' }}</td>
                             <td class="px-4 py-3">
                                 <span class="font-mono text-xs font-semibold text-gray-800 dark:text-gray-200">{{ rec.student_id }}</span>
                                 <span class="block text-gray-600 dark:text-gray-400 truncate max-w-[12rem]">{{ rec.student_name }}</span>
@@ -81,36 +337,309 @@
                             <td class="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{{ rec.teacher_name or '—' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 {% if rec.status == 'issued' %}
-                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">
-                                    <i class="fas fa-circle text-[6px]" aria-hidden="true"></i> Issued
-                                </span>
+                                <span class="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200">Issued</span>
                                 {% else %}
-                                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                                    <i class="fas fa-undo text-[10px]" aria-hidden="true"></i> Returned
-                                </span>
+                                <span class="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">Returned</span>
                                 {% endif %}
                             </td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
-                                {{ rec.issued_at.strftime('%d %b %Y') if rec.issued_at else '—' }}
-                            </td>
-                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">
-                                {{ rec.returned_at.strftime('%d %b %Y') if rec.returned_at else '—' }}
-                            </td>
+                            <td class="px-4 py-3 text-gray-600 dark:text-gray-400 whitespace-nowrap text-xs">{{ rec.issued_at.strftime('%d %b %Y') if rec.issued_at else '—' }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-        </div>
-        {% else %}
-        <div class="rounded-2xl border border-dashed border-gray-300 bg-white/80 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-900/50">
-            <i class="fas fa-book-open text-4xl text-gray-300 dark:text-gray-600 mb-4" aria-hidden="true"></i>
-            <p class="text-gray-700 dark:text-gray-300 font-medium">No issue records for this class yet</p>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                When teachers issue allocated library copies to students, they will appear here.
-            </p>
-        </div>
+        </details>
         {% endif %}
     </div>
 </div>
+
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('librarianIssueRecordsLevel', function () {
+    var payload = {};
+    try {
+      var el = document.getElementById('issue-records-level-data');
+      payload = el && el.textContent ? JSON.parse(el.textContent) : {};
+    } catch (e) {
+      payload = {};
+    }
+    return {
+      levelId: payload.level_id || {{ level_id|tojson }},
+      books: payload.books || [],
+      students: payload.students || [],
+      issueUrl: payload.issue_url || '',
+      returnUrl: payload.return_url || '',
+      activeTab: 'issue',
+      selectedBookId: '',
+      selectedReturnBookId: '',
+      refInputs: {},
+      returnRefInputs: {},
+      submitting: false,
+      returnSubmitting: false,
+      saveMessage: '',
+      saveOk: false,
+      returnSaveMessage: '',
+      returnSaveOk: false,
+      returnHints: [],
+      init: function () {
+        this.renderBookOptions();
+        this.renderReturnBookOptions();
+      },
+      renderBookOptions: function () {
+        var sel = this.$refs.bookSelect;
+        if (!sel) return;
+        var current = this.selectedBookId;
+        sel.innerHTML = '';
+        var ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = 'Select a book…';
+        sel.appendChild(ph);
+        (this.books || []).forEach(function (book) {
+          var opt = document.createElement('option');
+          opt.value = String(book.book_id);
+          var avail = book.available != null ? book.available : (book.in_stock_count || 0);
+          opt.textContent = (book.book_name || 'Book') + ' (' + avail + ' available)';
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+      },
+      renderReturnBookOptions: function () {
+        var sel = this.$refs.returnBookSelect;
+        if (!sel) return;
+        var current = this.selectedReturnBookId;
+        sel.innerHTML = '';
+        var totalIssued = 0;
+        (this.books || []).forEach(function (book) {
+          totalIssued += book.active_issues != null ? book.active_issues : 0;
+        });
+        var ph = document.createElement('option');
+        ph.value = '';
+        ph.textContent = 'All books (' + totalIssued + ' issued)';
+        sel.appendChild(ph);
+        (this.books || []).forEach(function (book) {
+          var issued = book.active_issues != null ? book.active_issues : 0;
+          if (issued < 1) return;
+          var opt = document.createElement('option');
+          opt.value = String(book.book_id);
+          opt.textContent = (book.book_name || 'Book') + ' (' + issued + ' issued)';
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+      },
+      findStudent: function (studentId) {
+        var key = (studentId || '').trim().toUpperCase();
+        for (var i = 0; i < (this.students || []).length; i++) {
+          var s = this.students[i];
+          if ((s.student_id || '').trim().toUpperCase() === key) return s;
+        }
+        return null;
+      },
+      get returnRows() {
+        var self = this;
+        var filterId = this.selectedReturnBookId ? String(this.selectedReturnBookId) : '';
+        var rows = [];
+        (this.books || []).forEach(function (book) {
+          if (filterId && String(book.book_id) !== filterId) return;
+          var issues = book.issues_by_student || {};
+          Object.keys(issues).forEach(function (key) {
+            var issue = issues[key];
+            var sid = (issue.student_id || key || '').trim();
+            if (!sid) return;
+            var stu = self.findStudent(sid);
+            rows.push({
+              rowKey: String(book.book_id) + '|' + sid.toUpperCase(),
+              student_id: sid,
+              full_name: stu ? stu.full_name : (issue.student_name || sid),
+              book_id: book.book_id,
+              book_name: book.book_name || '',
+              copy_code: issue.copy_code || '',
+              issue_id: issue.issue_id,
+            });
+          });
+        });
+        rows.sort(function (a, b) {
+          var na = (a.full_name || '').toUpperCase();
+          var nb = (b.full_name || '').toUpperCase();
+          if (na < nb) return -1;
+          if (na > nb) return 1;
+          return (a.student_id || '').localeCompare(b.student_id || '');
+        });
+        return rows;
+      },
+      get selectedBook() {
+        if (!this.selectedBookId) return null;
+        var id = String(this.selectedBookId);
+        for (var i = 0; i < this.books.length; i++) {
+          if (String(this.books[i].book_id) === id) return this.books[i];
+        }
+        return null;
+      },
+      onBookChange: function () {
+        this.refInputs = {};
+        this.saveMessage = '';
+        this.saveOk = false;
+      },
+      onReturnBookChange: function () {
+        this.returnRefInputs = {};
+        this.returnSaveMessage = '';
+        this.returnSaveOk = false;
+        this.returnHints = [];
+      },
+      clearReturnHint: function (rowKey) {
+        this.returnHints = (this.returnHints || []).filter(function (h) {
+          return h.rowKey !== rowKey;
+        });
+      },
+      existingIssue: function (studentId) {
+        var book = this.selectedBook;
+        if (!book || !book.issues_by_student) return null;
+        var key = (studentId || '').trim().toUpperCase();
+        return book.issues_by_student[key] || book.issues_by_student[studentId] || null;
+      },
+      hasPendingIssues: function () {
+        var self = this;
+        return (this.students || []).some(function (stu) {
+          if (self.existingIssue(stu.student_id)) return false;
+          return ((self.refInputs[stu.student_id] || '').trim().length >= 1);
+        });
+      },
+      hasPendingReturns: function () {
+        var self = this;
+        return (this.returnRows || []).some(function (row) {
+          return ((self.returnRefInputs[row.rowKey] || '').trim().length >= 1);
+        });
+      },
+      saveIssues: function () {
+        var self = this;
+        var book = this.selectedBook;
+        if (!book) {
+          window.alert('Select a book first.');
+          return;
+        }
+        var issues = [];
+        (this.students || []).forEach(function (stu) {
+          if (self.existingIssue(stu.student_id)) return;
+          var code = (self.refInputs[stu.student_id] || '').trim().toUpperCase();
+          if (!code) return;
+          issues.push({ student_id: stu.student_id, copy_code: code });
+        });
+        if (!issues.length) {
+          window.alert('Enter at least one reference code.');
+          return;
+        }
+        this.submitting = true;
+        this.saveMessage = '';
+        fetch(this.issueUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            academic_level_id: this.levelId,
+            book_id: book.book_id,
+            issues: issues,
+          }),
+        })
+          .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+          .then(function (res) {
+            self.submitting = false;
+            var data = res.data || {};
+            if (res.ok && data.ok) {
+              self.saveOk = true;
+              self.saveMessage = data.message || 'Saved.';
+              window.setTimeout(function () { window.location.reload(); }, 800);
+            } else {
+              self.saveOk = false;
+              self.saveMessage = data.message || 'Could not save issues.';
+              if (data.results && data.results.length) {
+                var failed = data.results.filter(function (r) { return !r.ok; });
+                if (failed.length) {
+                  self.saveMessage += ' ' + failed.map(function (f) {
+                    return (f.student_id || '') + ': ' + (f.message || 'failed');
+                  }).join('; ');
+                }
+              }
+            }
+          })
+          .catch(function () {
+            self.submitting = false;
+            self.saveOk = false;
+            self.saveMessage = 'Could not reach the server.';
+          });
+      },
+      saveReturns: function () {
+        var self = this;
+        var returns = [];
+        (this.returnRows || []).forEach(function (row) {
+          var code = (self.returnRefInputs[row.rowKey] || '').trim().toUpperCase();
+          if (!code) return;
+          returns.push({
+            student_id: row.student_id,
+            copy_code: code,
+            book_id: row.book_id,
+          });
+        });
+        if (!returns.length) {
+          window.alert('Enter at least one return reference code.');
+          return;
+        }
+        this.returnSubmitting = true;
+        this.returnSaveMessage = '';
+        this.returnHints = [];
+        fetch(this.returnUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            academic_level_id: this.levelId,
+            returns: returns,
+          }),
+        })
+          .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, data: data }; }); })
+          .then(function (res) {
+            self.returnSubmitting = false;
+            var data = res.data || {};
+            if (res.ok && data.ok) {
+              self.returnSaveOk = true;
+              self.returnSaveMessage = data.message || 'Returns saved.';
+              window.setTimeout(function () { window.location.reload(); }, 800);
+              return;
+            }
+            self.returnSaveOk = false;
+            self.returnSaveMessage = data.message || 'Could not save returns.';
+            var hints = [];
+            if (data.results && data.results.length) {
+              data.results.forEach(function (r) {
+                if (r.ok) return;
+                var match = (self.returnRows || []).find(function (row) {
+                  return row.student_id === r.student_id && (row.copy_code || '').toUpperCase() === (r.copy_code || '').toUpperCase();
+                });
+                hints.push({
+                  rowKey: match ? match.rowKey : ((r.student_id || '') + '|' + (r.copy_code || '')),
+                  student_id: r.student_id || '',
+                  copy_code: r.copy_code || '',
+                  message: r.message || 'Could not return.',
+                  owner: r.owner || null,
+                });
+              });
+            } else if (data.owner) {
+              hints.push({
+                rowKey: '',
+                student_id: '',
+                copy_code: '',
+                message: self.returnSaveMessage,
+                owner: data.owner,
+              });
+            }
+            self.returnHints = hints;
+          })
+          .catch(function () {
+            self.returnSubmitting = false;
+            self.returnSaveOk = false;
+            self.returnSaveMessage = 'Could not reach the server.';
+          });
+      },
+    };
+  });
+});
+</script>
 {% endblock %}
